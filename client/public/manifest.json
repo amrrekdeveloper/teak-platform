@@ -1,0 +1,22 @@
+{
+  "name": "Teak Manufacturing | تيك للتصنيع",
+  "short_name": "Teak",
+  "description": "منصة متكاملة لإدارة التصنيع والعملاء والمشاريع",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#171717",
+  "theme_color": "#B91C1C",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/favicon.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/favicon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
