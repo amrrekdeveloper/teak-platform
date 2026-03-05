@@ -886,5 +886,123 @@ export async function registerRoutes(
     }
   });
 
+  // ==================== EMPLOYEES ====================
+
+  app.get("/api/employees", requireRole("owner", "assistant", "hr"), async (_req, res) => {
+    try {
+      const list = await storage.getEmployees();
+      res.json(list);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ في جلب الموظفين", messageEn: "Error fetching employees" });
+    }
+  });
+
+  app.get("/api/employees/:id", requireRole("owner", "assistant", "hr"), async (req, res) => {
+    try {
+      const emp = await storage.getEmployee(parseInt(req.params.id));
+      if (!emp) return res.status(404).json({ message: "الموظف غير موجود", messageEn: "Employee not found" });
+      res.json(emp);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ", messageEn: "Error" });
+    }
+  });
+
+  app.post("/api/employees", requireRole("owner", "assistant", "hr"), async (req, res) => {
+    try {
+      const { insertEmployeeSchema } = await import("@shared/schema");
+      const parsed = insertEmployeeSchema.parse(req.body);
+      const emp = await storage.createEmployee(parsed);
+      res.status(201).json(emp);
+    } catch (error: any) {
+      if (error?.name === "ZodError") return res.status(400).json({ message: "بيانات غير صالحة", messageEn: "Invalid data", errors: error.errors });
+      console.error("Employee creation error:", error);
+      res.status(500).json({ message: "حدث خطأ في إضافة الموظف", messageEn: "Error creating employee" });
+    }
+  });
+
+  app.patch("/api/employees/:id", requireRole("owner", "assistant", "hr"), async (req, res) => {
+    try {
+      const updated = await storage.updateEmployee(parseInt(req.params.id), req.body);
+      if (!updated) return res.status(404).json({ message: "الموظف غير موجود", messageEn: "Employee not found" });
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ في تحديث الموظف", messageEn: "Error updating employee" });
+    }
+  });
+
+  // ==================== DELIVERIES ====================
+
+  app.get("/api/deliveries", requireRole("owner", "assistant", "delivery", "production"), async (_req, res) => {
+    try { res.json(await storage.getDeliveries()); }
+    catch (error) { res.status(500).json({ message: "حدث خطأ", messageEn: "Error fetching deliveries" }); }
+  });
+
+  app.post("/api/deliveries", requireRole("owner", "assistant", "delivery", "production"), async (req, res) => {
+    try { res.status(201).json(await storage.createDelivery(req.body)); }
+    catch (error) { console.error(error); res.status(500).json({ message: "حدث خطأ", messageEn: "Error creating delivery" }); }
+  });
+
+  app.patch("/api/deliveries/:id", requireRole("owner", "assistant", "delivery"), async (req, res) => {
+    try {
+      const updated = await storage.updateDelivery(parseInt(req.params.id), req.body);
+      if (!updated) return res.status(404).json({ message: "غير موجود", messageEn: "Not found" });
+      res.json(updated);
+    } catch (error) { res.status(500).json({ message: "حدث خطأ", messageEn: "Error updating delivery" }); }
+  });
+
+  // ==================== INSTALLATIONS ====================
+
+  app.get("/api/installations", requireRole("owner", "assistant", "installation"), async (_req, res) => {
+    try { res.json(await storage.getInstallations()); }
+    catch (error) { res.status(500).json({ message: "حدث خطأ", messageEn: "Error fetching installations" }); }
+  });
+
+  app.post("/api/installations", requireRole("owner", "assistant", "installation"), async (req, res) => {
+    try { res.status(201).json(await storage.createInstallation(req.body)); }
+    catch (error) { console.error(error); res.status(500).json({ message: "حدث خطأ", messageEn: "Error creating installation" }); }
+  });
+
+  app.patch("/api/installations/:id", requireRole("owner", "assistant", "installation"), async (req, res) => {
+    try {
+      const updated = await storage.updateInstallation(parseInt(req.params.id), req.body);
+      if (!updated) return res.status(404).json({ message: "غير موجود", messageEn: "Not found" });
+      res.json(updated);
+    } catch (error) { res.status(500).json({ message: "حدث خطأ", messageEn: "Error updating installation" }); }
+  });
+
+  // ==================== MAINTENANCE REQUESTS ====================
+
+  app.get("/api/maintenance-requests", requireRole("owner", "assistant", "installation", "customer_service"), async (_req, res) => {
+    try { res.json(await storage.getMaintenanceRequests()); }
+    catch (error) { res.status(500).json({ message: "حدث خطأ", messageEn: "Error fetching maintenance requests" }); }
+  });
+
+  app.post("/api/maintenance-requests", requireRole("owner", "assistant", "installation", "customer_service"), async (req, res) => {
+    try { res.status(201).json(await storage.createMaintenanceRequest(req.body)); }
+    catch (error) { console.error(error); res.status(500).json({ message: "حدث خطأ", messageEn: "Error creating maintenance request" }); }
+  });
+
+  app.patch("/api/maintenance-requests/:id", requireRole("owner", "assistant", "installation"), async (req, res) => {
+    try {
+      const updated = await storage.updateMaintenanceRequest(parseInt(req.params.id), req.body);
+      if (!updated) return res.status(404).json({ message: "غير موجود", messageEn: "Not found" });
+      res.json(updated);
+    } catch (error) { res.status(500).json({ message: "حدث خطأ", messageEn: "Error updating maintenance request" }); }
+  });
+
+  // ==================== QUALITY CHECKS ====================
+
+  app.get("/api/quality-checks", requireRole("owner", "assistant", "quality", "production"), async (_req, res) => {
+    try { res.json(await storage.getQualityChecks()); }
+    catch (error) { res.status(500).json({ message: "حدث خطأ", messageEn: "Error fetching quality checks" }); }
+  });
+
+  app.post("/api/quality-checks", requireRole("owner", "assistant", "quality"), async (req, res) => {
+    try {
+      const data = { ...req.body, checkedBy: req.session.userId };
+      res.status(201).json(await storage.createQualityCheck(data));
+    } catch (error) { console.error(error); res.status(500).json({ message: "حدث خطأ", messageEn: "Error creating quality check" }); }
+  });
+
   return httpServer;
 }

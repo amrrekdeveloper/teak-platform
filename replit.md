@@ -66,6 +66,26 @@ Integrated Manufacturing + CRM + Project Management platform for a Saudi wood pr
 - `client/src/pages/inventory.tsx` — Inventory management with CRUD, stock in/out transactions, low stock alerts, search
 - `client/src/pages/suppliers.tsx` — Supplier management with CRUD, search, contact details
 - `client/src/pages/purchases.tsx` — Purchase orders with create (multi-item), status flow (draft→pending→approved→ordered→received), supplier linking
+- `client/src/pages/employees.tsx` — HR employee management with stats, department/status filters, iqama tracking for residents, CRUD
+- `client/src/pages/deliveries.tsx` — Delivery scheduling and tracking with status workflow (scheduled→in_transit→delivered/failed)
+- `client/src/pages/installations.tsx` — Installation scheduling + Maintenance requests (tabbed), priority levels, status workflows
+- `client/src/pages/quality.tsx` — Quality control checks (material incoming, in-process, final product), pass/fail/conditional results, stats dashboard
+
+## HR Module
+- Employee records linked to user accounts (optional)
+- Saudi/Resident nationality tracking with iqama number + expiry for residents
+- Department-based organization (management, sales, design, production, warehouse, finance, customer_service, delivery, installation)
+- Monthly salary tracking, contract start/end dates
+- Status: active, inactive, terminated
+- Stats: active count, Saudi count, resident count, total salaries
+- APIs: GET/POST/PATCH /api/employees
+
+## Services Module (Delivery, Installation, Maintenance, Quality)
+- Deliveries: schedule from work orders, track status (scheduled→in_transit→delivered/failed)
+- Installations: schedule from work orders, track status (scheduled→in_progress→completed/rescheduled)
+- Maintenance: customer requests with priority (low/normal/high/urgent), status workflow
+- Quality: checks per work order (material_incoming/in_process/final_product), results (pass/fail/conditional)
+- APIs: GET/POST/PATCH /api/deliveries, /api/installations, /api/maintenance-requests; GET/POST /api/quality-checks
 
 ## Warehouse/Inventory Module
 - Inventory items with Arabic/English names, SKU, category, unit, quantity tracking, min quantity alerts
@@ -94,7 +114,7 @@ Integrated Manufacturing + CRM + Project Management platform for a Saudi wood pr
 - Verification endpoint: GET /api/invoices/:id/verify
 
 ## Seed Users (password: 123456)
-jabran/owner, khaled/assistant, hadi/sales, mohnad/sales, mohsen/designer, hamdi/production, ayman/purchasing, bassam/warehouse, ismail/accountant, fatima/customer_service, mohammed/delivery, saddad/installation, quality1/quality, noura/hr, hanan/hr, siham/it
+k.asiri/owner, khaled/assistant, hadi/sales, mohnad/sales, mohsen/designer, hamdi/production, ayman/purchasing, bassam/warehouse, ismail/accountant, fatima/customer_service, mohammed/delivery, saddad/installation, quality1/quality, noura/hr, hanan/hr, siham/it
 
 ## Logos
 - English (logo_teak2_1772689894105.png) → favicon + splash + EN mode

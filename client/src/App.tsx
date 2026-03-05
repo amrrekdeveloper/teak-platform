@@ -27,6 +27,10 @@ import ProductionPage from "@/pages/production";
 import InventoryPage from "@/pages/inventory";
 import SuppliersPage from "@/pages/suppliers";
 import PurchasesPage from "@/pages/purchases";
+import EmployeesPage from "@/pages/employees";
+import DeliveriesPage from "@/pages/deliveries";
+import InstallationsPage from "@/pages/installations";
+import QualityPage from "@/pages/quality";
 import AppLayout from "@/components/app-layout";
 import NotFound from "@/pages/not-found";
 import logoEN from "@assets/logo_teak2_1772689894105.png";
@@ -92,18 +96,10 @@ function DashboardRoutes() {
         <Route path="/inventory" component={InventoryPage} />
         <Route path="/suppliers" component={SuppliersPage} />
         <Route path="/purchases" component={PurchasesPage} />
-        <Route path="/deliveries">
-          <PlaceholderPage titleAr="التوصيل" titleEn="Deliveries" />
-        </Route>
-        <Route path="/installations">
-          <PlaceholderPage titleAr="التركيب والصيانة" titleEn="Installation & Maintenance" />
-        </Route>
-        <Route path="/quality">
-          <PlaceholderPage titleAr="الجودة" titleEn="Quality" />
-        </Route>
-        <Route path="/employees">
-          <PlaceholderPage titleAr="الموظفين" titleEn="Employees" />
-        </Route>
+        <Route path="/deliveries" component={DeliveriesPage} />
+        <Route path="/installations" component={InstallationsPage} />
+        <Route path="/quality" component={QualityPage} />
+        <Route path="/employees" component={EmployeesPage} />
         <Route path="/settings">
           <PlaceholderPage titleAr="الإعدادات" titleEn="Settings" />
         </Route>

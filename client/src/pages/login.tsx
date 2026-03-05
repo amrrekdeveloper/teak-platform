@@ -6,8 +6,7 @@ import { useTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Sun, Moon, Eye, EyeOff, Loader2 } from "lucide-react";
+import { Sun, Moon, Eye, EyeOff, Loader2, Lock } from "lucide-react";
 import logoEN from "@assets/logo_teak2_1772689894105.png";
 import logoAR from "@assets/logo_teak1_1772689915503.png";
 
@@ -45,115 +44,121 @@ export default function LoginPage() {
         <Button
           size="icon"
           variant="ghost"
-          onClick={toggleLang}
-          data-testid="button-login-lang"
-        >
-          <span className="text-xs font-bold">{lang === "ar" ? "EN" : "ع"}</span>
-        </Button>
-        <Button
-          size="icon"
-          variant="ghost"
           onClick={toggleTheme}
+          className="rounded-full"
           data-testid="button-login-theme"
         >
           {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
         </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={toggleLang}
+          className="rounded-full text-xs font-bold"
+          data-testid="button-login-lang"
+        >
+          {lang === "ar" ? "EN" : "عربي"}
+        </Button>
       </div>
 
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center pb-2">
+      <div className="w-full max-w-sm">
+        <div className="text-center mb-8">
           <img
             src={currentLogo}
             alt="Teak"
-            className="w-20 h-20 mx-auto mb-4 object-contain"
+            className="w-24 h-24 mx-auto mb-6 object-contain"
             data-testid="img-login-logo"
           />
-          <h1 className="text-2xl font-bold" data-testid="text-login-title">
+          <h1 className="text-2xl font-bold mb-1" data-testid="text-login-title">
             {t("تسجيل الدخول", "Sign In")}
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            {t("أدخل بيانات حسابك للمتابعة", "Enter your credentials to continue")}
+          <p className="text-sm text-muted-foreground">
+            {t("لوحة تحكم تيك للتصنيع", "Teak Manufacturing Dashboard")}
           </p>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {error && (
-              <div
-                className="p-3 rounded-md bg-destructive/10 text-destructive text-sm text-center"
-                data-testid="text-login-error"
-              >
-                {error}
-              </div>
-            )}
-            <div className="space-y-2">
-              <Label htmlFor="username">
-                {t("اسم المستخدم", "Username")}
-              </Label>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-5">
+          {error && (
+            <div
+              className="p-3 rounded-lg bg-destructive/10 text-destructive text-sm text-center"
+              data-testid="text-login-error"
+            >
+              {error}
+            </div>
+          )}
+
+          <div className="space-y-1.5">
+            <Label htmlFor="username" className="text-xs font-medium text-muted-foreground">
+              {t("اسم المستخدم", "Username")}
+            </Label>
+            <Input
+              id="username"
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder={t("أدخل اسم المستخدم", "Enter username")}
+              required
+              autoComplete="username"
+              className="h-11"
+              data-testid="input-username"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="password" className="text-xs font-medium text-muted-foreground">
+              {t("كلمة المرور", "Password")}
+            </Label>
+            <div className="relative">
               <Input
-                id="username"
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder={t("أدخل اسم المستخدم", "Enter username")}
+                id="password"
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder={t("أدخل كلمة المرور", "Enter password")}
                 required
-                autoComplete="username"
-                data-testid="input-username"
+                autoComplete="current-password"
+                className="h-11 pe-11"
+                data-testid="input-password"
               />
+              <button
+                type="button"
+                className="absolute top-1/2 -translate-y-1/2 end-3 text-muted-foreground hover:text-foreground transition-colors"
+                onClick={() => setShowPassword(!showPassword)}
+                tabIndex={-1}
+                data-testid="button-toggle-password"
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">
-                {t("كلمة المرور", "Password")}
-              </Label>
-              <div className="relative">
-                <Input
-                  id="password"
-                  type={showPassword ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder={t("أدخل كلمة المرور", "Enter password")}
-                  required
-                  autoComplete="current-password"
-                  data-testid="input-password"
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="absolute top-0 end-0 h-full px-3"
-                  onClick={() => setShowPassword(!showPassword)}
-                  data-testid="button-toggle-password"
-                >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </Button>
-              </div>
-            </div>
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={isLoggingIn}
-              data-testid="button-login-submit"
-            >
-              {isLoggingIn ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                t("دخول", "Sign In")
-              )}
-            </Button>
-          </form>
-          <div className="mt-6 text-center">
-            <a
-              href="/"
-              className="text-sm text-muted-foreground hover:text-primary transition-colors"
-              data-testid="link-back-home"
-            >
-              {t("العودة للصفحة الرئيسية", "Back to Home")}
-            </a>
           </div>
-          <div className="mt-4 p-3 rounded-md bg-muted/50 text-xs text-muted-foreground text-center">
-            {t("للتجربة: اسم المستخدم: jabran - كلمة المرور: 123456", "Demo: Username: jabran - Password: 123456")}
-          </div>
-        </CardContent>
-      </Card>
+
+          <Button
+            type="submit"
+            className="w-full h-11 text-sm font-semibold"
+            disabled={isLoggingIn}
+            data-testid="button-login-submit"
+          >
+            {isLoggingIn ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <>
+                <Lock className="w-4 h-4 me-2" />
+                {t("دخول", "Sign In")}
+              </>
+            )}
+          </Button>
+        </form>
+
+        <div className="mt-8 text-center">
+          <a
+            href="/"
+            className="text-xs text-muted-foreground hover:text-primary transition-colors"
+            data-testid="link-back-home"
+          >
+            {t("العودة للصفحة الرئيسية", "Back to Home")}
+          </a>
+        </div>
+      </div>
     </div>
   );
 }

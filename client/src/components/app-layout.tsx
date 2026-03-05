@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { useLanguage } from "@/components/language-provider";
 import { useTheme } from "@/components/theme-provider";
-import { AppSidebar, MobileBottomNav } from "@/components/app-sidebar";
+import { AppSidebar, MobileMenuButton } from "@/components/app-sidebar";
 import { Button } from "@/components/ui/button";
 import { Sun, Moon, LogOut, Bell, Loader2 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
@@ -70,10 +70,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           data-testid="header"
         >
           <div className="flex items-center gap-3">
+            <MobileMenuButton />
             <img
               src={currentLogo}
               alt="Teak"
-              className="w-8 h-8 object-contain md:hidden"
+              className="w-7 h-7 object-contain md:hidden"
               data-testid="img-header-logo"
             />
             <div className="hidden sm:flex items-center gap-2">
@@ -138,12 +139,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <main className="flex-1 p-4 md:p-6 overflow-y-auto pb-20 md:pb-6">
+        <main className="flex-1 p-4 md:p-6 overflow-y-auto">
           {children}
         </main>
       </div>
-
-      <MobileBottomNav />
     </div>
   );
 }

@@ -2,7 +2,7 @@ import { db } from "./db";
 import { hashPassword } from "./auth";
 import {
   users, customers, products, woodTypes, doorTypes,
-  inventory, suppliers, companySettings,
+  inventory, suppliers, employees, companySettings,
 } from "@shared/schema";
 import { eq } from "drizzle-orm";
 
@@ -18,7 +18,7 @@ export async function seedDatabase() {
   const defaultPassword = await hashPassword("123456");
 
   const userSeeds = [
-    { username: "jabran", password: defaultPassword, role: "owner" as const, fullNameAr: "جبران", fullNameEn: "Jabran", phone: "0501234567", email: "jabran@teak.sa" },
+    { username: "k.asiri", password: defaultPassword, role: "owner" as const, fullNameAr: "جبران", fullNameEn: "Jabran", phone: "0501234567", email: "jabran@teak.sa" },
     { username: "khaled", password: defaultPassword, role: "assistant" as const, fullNameAr: "خالد", fullNameEn: "Khaled", phone: "0502234567", email: "khaled@teak.sa" },
     { username: "hadi", password: defaultPassword, role: "sales" as const, fullNameAr: "هادي", fullNameEn: "Hadi", phone: "0503234567", email: "hadi@teak.sa" },
     { username: "mohnad", password: defaultPassword, role: "sales" as const, fullNameAr: "مهند", fullNameEn: "Mohnad", phone: "0503334567", email: "mohnad@teak.sa" },
@@ -120,6 +120,30 @@ export async function seedDatabase() {
 
   await db.insert(suppliers).values(supplierSeeds);
   console.log(`Seeded ${supplierSeeds.length} suppliers`);
+
+  const createdUsers = await db.select().from(users);
+  const getUserId = (username: string) => createdUsers.find(u => u.username === username)?.id || null;
+
+  const employeeSeeds = [
+    { employeeNumber: "EMP-001", userId: getUserId("k.asiri"), nationality: "saudi" as const, position: "المدير العام", department: "management" as const, monthlySalary: "25000", contractStart: "2020-01-01" },
+    { employeeNumber: "EMP-002", userId: getUserId("khaled"), nationality: "saudi" as const, position: "مساعد المدير", department: "management" as const, monthlySalary: "15000", contractStart: "2020-03-01" },
+    { employeeNumber: "EMP-003", userId: getUserId("hadi"), nationality: "saudi" as const, position: "مدير المبيعات", department: "sales" as const, monthlySalary: "12000", contractStart: "2021-01-15" },
+    { employeeNumber: "EMP-004", userId: getUserId("mohnad"), nationality: "saudi" as const, position: "مندوب مبيعات", department: "sales" as const, monthlySalary: "8000", contractStart: "2022-06-01" },
+    { employeeNumber: "EMP-005", userId: getUserId("mohsen"), nationality: "resident" as const, position: "مصمم رئيسي", department: "design" as const, monthlySalary: "10000", iqamaNumber: "2411234567", iqamaExpiry: "2027-06-15", contractStart: "2021-03-01" },
+    { employeeNumber: "EMP-006", userId: getUserId("hamdi"), nationality: "resident" as const, position: "مشرف الإنتاج", department: "production" as const, monthlySalary: "9000", iqamaNumber: "2412345678", iqamaExpiry: "2026-12-01", contractStart: "2020-08-01" },
+    { employeeNumber: "EMP-007", userId: getUserId("ayman"), nationality: "saudi" as const, position: "مسؤول المشتريات", department: "warehouse" as const, monthlySalary: "8500", contractStart: "2021-09-01" },
+    { employeeNumber: "EMP-008", userId: getUserId("bassam"), nationality: "resident" as const, position: "أمين المستودع", department: "warehouse" as const, monthlySalary: "6000", iqamaNumber: "2413456789", iqamaExpiry: "2027-03-20", contractStart: "2022-01-01" },
+    { employeeNumber: "EMP-009", userId: getUserId("ismail"), nationality: "saudi" as const, position: "المحاسب", department: "finance" as const, monthlySalary: "11000", contractStart: "2020-06-01" },
+    { employeeNumber: "EMP-010", userId: getUserId("fatima"), nationality: "saudi" as const, position: "خدمة العملاء", department: "customer_service" as const, monthlySalary: "7000", contractStart: "2023-01-01" },
+    { employeeNumber: "EMP-011", userId: getUserId("mohammed"), nationality: "resident" as const, position: "سائق توصيل", department: "delivery" as const, monthlySalary: "5000", iqamaNumber: "2414567890", iqamaExpiry: "2026-09-10", contractStart: "2022-05-01" },
+    { employeeNumber: "EMP-012", userId: getUserId("saddad"), nationality: "resident" as const, position: "فني تركيب", department: "installation" as const, monthlySalary: "6500", iqamaNumber: "2415678901", iqamaExpiry: "2027-01-15", contractStart: "2021-11-01" },
+    { employeeNumber: "EMP-013", nationality: "resident" as const, position: "نجار رئيسي", department: "production" as const, monthlySalary: "7500", iqamaNumber: "2416789012", iqamaExpiry: "2026-08-20", contractStart: "2020-04-01" },
+    { employeeNumber: "EMP-014", nationality: "resident" as const, position: "فني حواف", department: "production" as const, monthlySalary: "5500", iqamaNumber: "2417890123", iqamaExpiry: "2027-05-01", contractStart: "2023-02-01" },
+    { employeeNumber: "EMP-015", nationality: "saudi" as const, position: "فني تشطيب", department: "production" as const, monthlySalary: "6000", contractStart: "2022-10-01" },
+  ];
+
+  await db.insert(employees).values(employeeSeeds);
+  console.log(`Seeded ${employeeSeeds.length} employees`);
 
   await db.insert(companySettings).values({
     nameAr: "مصنع تيك للمنتجات الخشبية",
