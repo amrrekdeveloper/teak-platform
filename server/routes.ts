@@ -7,7 +7,7 @@ import {
   insertCustomerSchema, insertProductSchema, insertWoodTypeSchema,
   insertDoorTypeSchema, insertQuotationSchema, insertContractSchema,
   insertPaymentSchema, insertInvoiceSchema, insertUserSchema,
-  insertCompanySettingsSchema,
+  insertCompanySettingsSchema, insertWorkOrderSchema, insertProductionStageSchema,
 } from "@shared/schema";
 
 function generateQRData(invoice: any): string {
@@ -152,10 +152,13 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/users", requireRole("owner", "it", "assistant"), async (_req, res) => {
+  app.get("/api/users", requireAuth, async (_req, res) => {
     try {
       const allUsers = await storage.getUsers();
-      const safeUsers = allUsers.map(({ password, ...u }) => u);
+      const safeUsers = allUsers.map(({ password, ...u }) => ({
+        id: u.id, username: u.username, fullNameAr: u.fullNameAr,
+        fullNameEn: u.fullNameEn, role: u.role, phone: u.phone,
+      }));
       res.json(safeUsers);
     } catch (error) {
       res.status(500).json({ message: "حدث خطأ" });
@@ -582,16 +585,18 @@ export async function registerRoutes(
 
   app.get("/api/dashboard/stats", requireAuth, async (_req, res) => {
     try {
-      const [customersList, quotationsList, contractsList, paymentsList] = await Promise.all([
+      const [customersList, quotationsList, contractsList, paymentsList, workOrdersList] = await Promise.all([
         storage.getCustomers(),
         storage.getQuotations(),
         storage.getContracts(),
         storage.getPayments(),
+        storage.getWorkOrders(),
       ]);
 
       const totalRevenue = paymentsList.reduce((sum, p) => sum + parseFloat(p.amount), 0);
       const activeContracts = contractsList.filter(c => c.status === "active").length;
       const pendingQuotations = quotationsList.filter(q => q.status === "draft" || q.status === "sent").length;
+      const inProductionOrders = workOrdersList.filter(w => w.status === "in_production").length;
 
       res.json({
         totalCustomers: customersList.length,
@@ -601,9 +606,113 @@ export async function registerRoutes(
         pendingQuotations,
         totalRevenue,
         totalPayments: paymentsList.length,
+        totalWorkOrders: workOrdersList.length,
+        inProductionOrders,
       });
     } catch (error) {
       res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  // ==================== WORK ORDERS ====================
+
+  app.get("/api/work-orders", requireAuth, requireRole("owner", "assistant", "production", "designer", "sales"), async (req, res) => {
+    try {
+      const allOrders = await storage.getWorkOrders();
+      const status = req.query.status as string | undefined;
+      const filtered = status ? allOrders.filter(wo => wo.status === status) : allOrders;
+      res.json(filtered);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ في جلب أوامر العمل", messageEn: "Error fetching work orders" });
+    }
+  });
+
+  app.get("/api/work-orders/:id", requireAuth, requireRole("owner", "assistant", "production", "designer", "sales"), async (req, res) => {
+    try {
+      const wo = await storage.getWorkOrder(parseInt(req.params.id));
+      if (!wo) return res.status(404).json({ message: "أمر العمل غير موجود", messageEn: "Work order not found" });
+      res.json(wo);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  app.post("/api/work-orders", requireAuth, requireRole("owner", "assistant", "production", "sales"), async (req, res) => {
+    try {
+      const data = insertWorkOrderSchema.parse({
+        ...req.body,
+        createdBy: (req.user as any).id,
+      });
+      const wo = await storage.createWorkOrder(data);
+
+      const stages = ["cutting", "edging", "assembly", "finishing"] as const;
+      for (const stage of stages) {
+        await storage.createProductionStage({
+          workOrderId: wo.id,
+          stage,
+          status: "pending",
+        });
+      }
+
+      res.status(201).json(wo);
+    } catch (error: any) {
+      if (error.name === "ZodError") {
+        return res.status(400).json({ message: "بيانات غير صالحة", messageEn: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: "حدث خطأ في إنشاء أمر العمل", messageEn: "Error creating work order" });
+    }
+  });
+
+  app.patch("/api/work-orders/:id", requireAuth, requireRole("owner", "assistant", "production"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const existing = await storage.getWorkOrder(id);
+      if (!existing) return res.status(404).json({ message: "أمر العمل غير موجود", messageEn: "Work order not found" });
+
+      const updated = await storage.updateWorkOrder(id, req.body);
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ في تحديث أمر العمل", messageEn: "Error updating work order" });
+    }
+  });
+
+  // ==================== PRODUCTION STAGES ====================
+
+  app.get("/api/work-orders/:id/stages", requireAuth, requireRole("owner", "assistant", "production", "designer", "quality"), async (req, res) => {
+    try {
+      const stages = await storage.getProductionStages(parseInt(req.params.id));
+      res.json(stages);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  app.patch("/api/production-stages/:id", requireAuth, requireRole("owner", "assistant", "production"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const updateData: any = { ...req.body };
+
+      if (updateData.status === "in_progress" && !updateData.startedAt) {
+        updateData.startedAt = new Date();
+      }
+      if (updateData.status === "completed" && !updateData.completedAt) {
+        updateData.completedAt = new Date();
+      }
+
+      const updated = await storage.updateProductionStage(id, updateData);
+      if (!updated) return res.status(404).json({ message: "مرحلة الإنتاج غير موجودة", messageEn: "Production stage not found" });
+
+      if (updated.status === "completed") {
+        const allStages = await storage.getProductionStages(updated.workOrderId);
+        const allCompleted = allStages.every(s => s.status === "completed");
+        if (allCompleted) {
+          await storage.updateWorkOrder(updated.workOrderId, { status: "quality_check" });
+        }
+      }
+
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ في تحديث مرحلة الإنتاج", messageEn: "Error updating production stage" });
     }
   });
 

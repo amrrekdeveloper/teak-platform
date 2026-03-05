@@ -25,7 +25,7 @@ Integrated Manufacturing + CRM + Project Management platform for a Saudi wood pr
 ## Key Files
 - `shared/schema.ts` — Full database schema with Drizzle + Zod types
 - `server/auth.ts` — Session auth, password hashing, RBAC middleware
-- `server/routes.ts` — All API routes with RBAC protection + ZATCA QR generation
+- `server/routes.ts` — All API routes with RBAC protection + ZATCA QR generation + Manufacturing
 - `server/storage.ts` — DatabaseStorage class (IStorage interface)
 - `server/seed.ts` — Seed data (16 users, 15 products, 7 wood types, 5 customers, etc.)
 - `client/src/App.tsx` — Root with providers, routing, splash screen (sessionStorage-gated)
@@ -38,7 +38,7 @@ Integrated Manufacturing + CRM + Project Management platform for a Saudi wood pr
 ## Routing (wouter v3)
 - Public routes: `/`, `/login`, `/products`, `/request-quote`
 - Dashboard uses `<Route path="/dashboard" nest>` — inner routes are RELATIVE (without /dashboard prefix)
-- Inner routes: `/`, `/customers`, `/customers/:id`, `/quotations`, `/quotations/new`, `/contracts`, `/contracts/:id`, `/payments`, `/invoices`, `/invoices/:id`
+- Inner routes: `/`, `/customers`, `/customers/:id`, `/quotations`, `/quotations/new`, `/contracts`, `/contracts/:id`, `/payments`, `/invoices`, `/invoices/:id`, `/work-orders`, `/work-orders/:id`, `/production`
 - Sidebar Links and `useRoute()` inside dashboard pages use scoped paths (e.g., `/customers` not `/dashboard/customers`)
 - Login page navigates to `/dashboard` using absolute path (outside nested context)
 
@@ -50,7 +50,7 @@ Integrated Manufacturing + CRM + Project Management platform for a Saudi wood pr
 
 ### Dashboard (authenticated)
 - `client/src/pages/login.tsx` — Login page
-- `client/src/pages/dashboard.tsx` — Stats overview
+- `client/src/pages/dashboard.tsx` — Stats overview (includes work order stats)
 - `client/src/pages/customers.tsx` — Customer list with search, create dialog
 - `client/src/pages/customer-detail.tsx` — Customer profile with quotations/contracts/payments
 - `client/src/pages/quotations.tsx` — Quotations list with status filters, approve/reject
@@ -60,6 +60,17 @@ Integrated Manufacturing + CRM + Project Management platform for a Saudi wood pr
 - `client/src/pages/payments.tsx` — All payments with stage/method labels
 - `client/src/pages/invoices.tsx` — Invoice list (quotations + tax invoices)
 - `client/src/pages/invoice-view.tsx` — ZATCA invoice view with real scannable QR code, print/download
+- `client/src/pages/work-orders.tsx` — Work orders list with status filters, create dialog, priority badges
+- `client/src/pages/work-order-detail.tsx` — Work order detail with production stages board (4 stages: cutting → edging → assembly → finishing), progress bar, stage status updates, notes
+- `client/src/pages/production.tsx` — Production dashboard with stats cards and Kanban-style board (4 columns by status)
+
+## Manufacturing Module
+- Work orders created from active contracts
+- Auto-creates 4 production stages: cutting, edging, assembly, finishing
+- Each stage can be: pending → in_progress → completed (or on_hold)
+- When all stages complete → work order auto-moves to quality_check
+- Production board shows active work orders in 4 status columns
+- APIs: GET/POST /api/work-orders, PATCH /api/work-orders/:id, GET /api/work-orders/:id/stages, PATCH /api/production-stages/:id
 
 ## ZATCA Invoice
 - Type: فاتورة ضريبية مبسطة (Simplified Tax Invoice)
