@@ -4,12 +4,13 @@ import { useLanguage } from "@/components/language-provider";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
-import type { Customer, WoodType, DoorType, Product } from "@shared/schema";
+import type { Customer, WoodType, DoorType, Product, DesignAssignment } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -17,7 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Trash2, Loader2, Calculator, ArrowLeft, ArrowRight } from "lucide-react";
+import { Plus, Trash2, Loader2, Calculator, ArrowLeft, ArrowRight, Paperclip, Image, FileText } from "lucide-react";
 
 interface LineItem {
   id: string;
@@ -47,6 +48,19 @@ export default function QuotationBuilderPage() {
   const { data: products = [] } = useQuery<Product[]>({ queryKey: ["/api/products"] });
   const { data: woodTypes = [] } = useQuery<WoodType[]>({ queryKey: ["/api/wood-types"] });
   const { data: doorTypes = [] } = useQuery<DoorType[]>({ queryKey: ["/api/door-types"] });
+
+  const { data: designAssignments = [] } = useQuery<DesignAssignment[]>({
+    queryKey: ["/api/design-assignments/customer", customerId],
+    queryFn: async () => {
+      if (!customerId) return [];
+      const res = await fetch(`/api/design-assignments/customer/${customerId}`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!customerId,
+  });
+
+  const completedDesign = designAssignments.find(da => da.status === "completed");
 
   const categoryLabels: Record<string, { ar: string; en: string }> = {
     kitchen: { ar: "مطبخ", en: "Kitchen" },
@@ -121,6 +135,7 @@ export default function QuotationBuilderPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/quotations"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/quote-requests"] });
       toast({ title: t("تم إنشاء عرض السعر بنجاح", "Quotation created successfully") });
       setLocation("/quotations");
     },
@@ -159,6 +174,7 @@ export default function QuotationBuilderPage() {
       finalPrice: String(totals.finalPrice),
       status,
       notes,
+      designFile: completedDesign?.sketchImage || null,
     });
   };
 
@@ -200,6 +216,81 @@ export default function QuotationBuilderPage() {
             </Select>
           </CardContent>
         </Card>
+
+        {completedDesign && (
+          <Card className="border-green-200 dark:border-green-800" data-testid="card-designer-attachments">
+            <CardHeader className="flex flex-row items-center justify-between gap-2 pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Paperclip className="w-4 h-4 text-green-600" />
+                {t("مرفقات المصمم", "Designer Attachments")}
+                <Badge variant="secondary" className="text-xs">
+                  {t("مكتمل", "Completed")}
+                </Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {completedDesign.sketchImage && (
+                <div className="space-y-1">
+                  <p className="text-sm font-medium flex items-center gap-1">
+                    <Image className="w-3 h-3" />
+                    {t("رسم التصميم", "Design Sketch")}
+                  </p>
+                  <div className="border rounded-md overflow-hidden max-w-md">
+                    <img
+                      src={completedDesign.sketchImage}
+                      alt="Design Sketch"
+                      className="w-full h-auto"
+                      data-testid="img-design-sketch"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {completedDesign.designFiles && completedDesign.designFiles.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-sm font-medium flex items-center gap-1">
+                    <FileText className="w-3 h-3" />
+                    {t("ملفات التصميم", "Design Files")}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {completedDesign.designFiles.map((file, idx) => (
+                      <a
+                        key={idx}
+                        href={file}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm text-primary underline"
+                        data-testid={`link-design-file-${idx}`}
+                      >
+                        {t(`ملف ${idx + 1}`, `File ${idx + 1}`)}
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {completedDesign.measurements != null && (
+                <div className="space-y-1">
+                  <p className="text-sm font-medium">{t("القياسات", "Measurements")}</p>
+                  <pre className="text-xs bg-muted p-2 rounded-md overflow-x-auto" data-testid="text-measurements">
+                    {String(typeof completedDesign.measurements === "string"
+                      ? completedDesign.measurements
+                      : JSON.stringify(completedDesign.measurements, null, 2))}
+                  </pre>
+                </div>
+              )}
+
+              {completedDesign.notes && (
+                <div className="space-y-1">
+                  <p className="text-sm font-medium">{t("ملاحظات المصمم", "Designer Notes")}</p>
+                  <p className="text-sm text-muted-foreground" data-testid="text-designer-notes">
+                    {completedDesign.notes}
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">

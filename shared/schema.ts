@@ -689,3 +689,61 @@ export const insertCompanySettingsSchema = createInsertSchema(companySettings).o
 });
 export type InsertCompanySettings = z.infer<typeof insertCompanySettingsSchema>;
 export type CompanySettings = typeof companySettings.$inferSelect;
+
+export const designAssignmentStatusEnum = pgEnum("design_assignment_status", [
+  "pending",
+  "designing",
+  "completed",
+  "revision",
+]);
+
+export const designAssignments = pgTable("design_assignments", {
+  id: serial("id").primaryKey(),
+  customerId: integer("customer_id").references(() => customers.id).notNull(),
+  quotationId: integer("quotation_id").references(() => quotations.id),
+  assignedTo: integer("assigned_to").references(() => users.id).notNull(),
+  status: designAssignmentStatusEnum("status").notNull().default("pending"),
+  measurements: jsonb("measurements"),
+  sketchData: text("sketch_data"),
+  sketchImage: text("sketch_image"),
+  designFiles: text("design_files").array(),
+  notes: text("notes"),
+  productDescription: text("product_description"),
+  createdBy: integer("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertDesignAssignmentSchema = createInsertSchema(designAssignments).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertDesignAssignment = z.infer<typeof insertDesignAssignmentSchema>;
+export type DesignAssignment = typeof designAssignments.$inferSelect;
+
+export const warrantyStatusEnum = pgEnum("warranty_status", [
+  "active",
+  "expired",
+  "claimed",
+  "void",
+]);
+
+export const warranties = pgTable("warranties", {
+  id: serial("id").primaryKey(),
+  contractId: integer("contract_id").references(() => contracts.id),
+  workOrderId: integer("work_order_id").references(() => workOrders.id),
+  customerId: integer("customer_id").references(() => customers.id).notNull(),
+  startDate: date("start_date").notNull(),
+  endDate: date("end_date").notNull(),
+  terms: text("terms"),
+  status: warrantyStatusEnum("status").notNull().default("active"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertWarrantySchema = createInsertSchema(warranties).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertWarranty = z.infer<typeof insertWarrantySchema>;
+export type Warranty = typeof warranties.$inferSelect;

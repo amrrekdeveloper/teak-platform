@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Sun, Moon, LogOut, Bell, Loader2, Check, Info, AlertTriangle, Zap, CheckCircle2 } from "lucide-react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useLocation } from "wouter";
 import type { Notification } from "@shared/schema";
 import logoAr from "@assets/logo_teak1_1772689915503.png";
 import logoEn from "@assets/logo_teak2_1772689894105.png";
@@ -43,11 +44,42 @@ const notifTypeColors: Record<string, string> = {
   success: "text-green-500",
 };
 
+const entityRouteMap: Record<string, string> = {
+  customer: "/customers",
+  quotation: "/quotations",
+  contract: "/contracts",
+  payment: "/payments",
+  invoice: "/invoices",
+  work_order: "/work-orders",
+  design_assignment: "/designer-board",
+  delivery: "/deliveries",
+  installation: "/installations",
+  maintenance: "/installations",
+  warranty: "/settings",
+};
+
+function getNotificationRoute(n: Notification): string | null {
+  if (n.relatedEntity && entityRouteMap[n.relatedEntity]) {
+    const base = entityRouteMap[n.relatedEntity];
+    if (n.relatedId && ["customer", "quotation", "contract", "work_order", "invoice"].includes(n.relatedEntity)) {
+      return `${base}/${n.relatedId}`;
+    }
+    return base;
+  }
+  const titleLower = (n.titleEn || "").toLowerCase();
+  if (titleLower.includes("design")) return "/designer-board";
+  if (titleLower.includes("quotation") || titleLower.includes("quote")) return "/quotations";
+  if (titleLower.includes("payment") || titleLower.includes("receipt")) return "/payments";
+  if (titleLower.includes("maintenance")) return "/installations";
+  return null;
+}
+
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, isLoading, isAuthenticated, logout, isLoggingOut } = useAuth();
   const { lang, toggleLang, t, isRTL } = useLanguage();
   const { theme, toggleTheme } = useTheme();
   const [notifOpen, setNotifOpen] = useState(false);
+  const [, setLocation] = useLocation();
 
   const currentLogo = lang === "ar" ? logoAr : logoEn;
 
@@ -152,11 +184,18 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                         notifications.slice(0, 20).map(n => {
                           const NIcon = notifTypeIcons[n.type] || Info;
                           const color = notifTypeColors[n.type] || "text-blue-500";
+                          const route = getNotificationRoute(n);
                           return (
                             <div
                               key={n.id}
                               className={`p-3 border-b border-border last:border-0 cursor-pointer transition-colors ${!n.isRead ? "bg-primary/5" : ""}`}
-                              onClick={() => { if (!n.isRead) markReadMutation.mutate(n.id); }}
+                              onClick={() => {
+                                if (!n.isRead) markReadMutation.mutate(n.id);
+                                if (route) {
+                                  setNotifOpen(false);
+                                  setLocation(route);
+                                }
+                              }}
                               data-testid={`notif-${n.id}`}
                             >
                               <div className="flex items-start gap-2">

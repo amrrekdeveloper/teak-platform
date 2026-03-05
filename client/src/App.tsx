@@ -33,6 +33,9 @@ import InstallationsPage from "@/pages/installations";
 import QualityPage from "@/pages/quality";
 import SettingsPage from "@/pages/settings";
 import TrackOrderPage from "@/pages/track-order";
+import DesignerBoardPage from "@/pages/designer-board";
+import CustomerPortalLogin from "@/pages/customer-portal-login";
+import CustomerPortal from "@/pages/customer-portal";
 import AppLayout from "@/components/app-layout";
 import NotFound from "@/pages/not-found";
 import logoEn from "@assets/logo_teak2_1772689894105.png";
@@ -149,6 +152,7 @@ function DashboardRoutes() {
         <Route path="/installations" component={InstallationsPage} />
         <Route path="/quality" component={QualityPage} />
         <Route path="/employees" component={EmployeesPage} />
+        <Route path="/designer-board" component={DesignerBoardPage} />
         <Route path="/settings" component={SettingsPage} />
         <Route component={NotFound} />
       </Switch>
@@ -164,6 +168,8 @@ function Router() {
       <Route path="/products" component={ProductsPage} />
       <Route path="/request-quote" component={RequestQuotePage} />
       <Route path="/track-order" component={TrackOrderPage} />
+      <Route path="/portal/login" component={CustomerPortalLogin} />
+      <Route path="/portal" component={CustomerPortal} />
       <Route path="/dashboard" nest component={DashboardRoutes} />
       <Route component={NotFound} />
     </Switch>

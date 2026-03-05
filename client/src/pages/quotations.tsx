@@ -3,12 +3,27 @@ import { useLanguage } from "@/components/language-provider";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
-import type { Quotation, Customer } from "@shared/schema";
-import { Card, CardContent } from "@/components/ui/card";
+import type { Quotation, Customer, DesignAssignment } from "@shared/schema";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { useState } from "react";
-import { Plus, Search, Loader2, FileText, Check, X } from "lucide-react";
+import { Plus, Search, Loader2, FileText, Check, X, UserPlus, Palette, Phone, MapPin } from "lucide-react";
 import { Link } from "wouter";
 
 const statusConfig: Record<string, { ar: string; en: string; color: string }> = {
@@ -19,12 +34,25 @@ const statusConfig: Record<string, { ar: string; en: string; color: string }> = 
   expired: { ar: "منتهي", en: "Expired", color: "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300" },
 };
 
+interface SafeUser {
+  id: number;
+  username: string;
+  fullNameAr: string;
+  fullNameEn: string;
+  role: string;
+  phone: string | null;
+}
+
 export default function QuotationsPage() {
   const { t } = useLanguage();
   const { toast } = useToast();
   const { user } = useAuth();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [assignDialogOpen, setAssignDialogOpen] = useState(false);
+  const [selectedRequestCustomer, setSelectedRequestCustomer] = useState<Customer | null>(null);
+  const [selectedDesignerId, setSelectedDesignerId] = useState("");
+  const [productDescription, setProductDescription] = useState("");
 
   const { data: quotations = [], isLoading } = useQuery<Quotation[]>({
     queryKey: ["/api/quotations"],
@@ -32,6 +60,40 @@ export default function QuotationsPage() {
 
   const { data: customers = [] } = useQuery<Customer[]>({
     queryKey: ["/api/customers"],
+  });
+
+  const { data: quoteRequests = [], isLoading: requestsLoading } = useQuery<Customer[]>({
+    queryKey: ["/api/quote-requests"],
+  });
+
+  const { data: allUsers = [] } = useQuery<SafeUser[]>({
+    queryKey: ["/api/users"],
+  });
+
+  const designers = allUsers.filter(u => u.role === "designer");
+
+  const assignDesignerMutation = useMutation({
+    mutationFn: async (data: { customerId: number; assignedTo: number; productDescription?: string }) => {
+      const res = await apiRequest("POST", "/api/design-assignments", {
+        customerId: data.customerId,
+        assignedTo: data.assignedTo,
+        status: "pending",
+        productDescription: data.productDescription || "",
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/quote-requests"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/design-assignments"] });
+      toast({ title: t("تم تحويل الطلب للمصمم", "Request assigned to designer") });
+      setAssignDialogOpen(false);
+      setSelectedRequestCustomer(null);
+      setSelectedDesignerId("");
+      setProductDescription("");
+    },
+    onError: () => {
+      toast({ title: t("حدث خطأ", "Error occurred"), variant: "destructive" });
+    },
   });
 
   const approveMutation = useMutation({
@@ -68,9 +130,88 @@ export default function QuotationsPage() {
   });
 
   const canApprove = user?.role === "owner" || user?.role === "assistant";
+  const canAssign = user?.role === "owner" || user?.role === "assistant" || user?.role === "sales";
+
+  const handleOpenAssignDialog = (customer: Customer) => {
+    setSelectedRequestCustomer(customer);
+    const notesStr = customer.notes || "";
+    const interestMatch = notesStr.match(/اهتمام:\s*([^.]*)/);
+    setProductDescription(interestMatch ? interestMatch[1].trim() : "");
+    setAssignDialogOpen(true);
+  };
 
   return (
     <div>
+      {canAssign && quoteRequests.length > 0 && (
+        <div className="mb-6">
+          <Card className="border-primary/20">
+            <CardHeader className="flex flex-row items-center justify-between gap-2 pb-3">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Palette className="w-5 h-5 text-primary" />
+                {t("طلبات عروض أسعار جديدة", "New Quote Requests")}
+                <Badge variant="secondary" className="text-xs">
+                  {quoteRequests.length}
+                </Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {requestsLoading ? (
+                <div className="flex items-center justify-center py-4">
+                  <Loader2 className="w-5 h-5 animate-spin text-primary" />
+                </div>
+              ) : (
+                quoteRequests.map((req) => (
+                  <div
+                    key={req.id}
+                    className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3 border rounded-md"
+                    data-testid={`quote-request-${req.id}`}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium" data-testid={`text-request-name-${req.id}`}>{req.fullName}</p>
+                      <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground mt-1">
+                        <span className="flex items-center gap-1">
+                          <Phone className="w-3 h-3" />
+                          {req.phone}
+                        </span>
+                        {req.city && (
+                          <span className="flex items-center gap-1">
+                            <MapPin className="w-3 h-3" />
+                            {req.city}
+                          </span>
+                        )}
+                        {req.notes && (
+                          <span className="truncate max-w-[200px]">{req.notes}</span>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {req.createdAt && new Date(req.createdAt).toLocaleDateString(t("ar-SA", "en-US"))}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleOpenAssignDialog(req)}
+                        data-testid={`button-assign-designer-${req.id}`}
+                      >
+                        <UserPlus className="w-3 h-3 me-1" />
+                        {t("تحويل لمصمم", "Assign Designer")}
+                      </Button>
+                      <Link href={`/quotations/new?customerId=${req.id}`}>
+                        <Button size="sm" data-testid={`button-create-quote-${req.id}`}>
+                          <Plus className="w-3 h-3 me-1" />
+                          {t("إنشاء عرض مباشر", "Create Quote")}
+                        </Button>
+                      </Link>
+                    </div>
+                  </div>
+                ))
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-bold" data-testid="text-quotations-title">
@@ -160,7 +301,7 @@ export default function QuotationsPage() {
                           <Button
                             size="icon"
                             variant="ghost"
-                            className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                            className="text-green-600"
                             onClick={() => approveMutation.mutate(q.id)}
                             disabled={approveMutation.isPending}
                             data-testid={`button-approve-${q.id}`}
@@ -170,7 +311,7 @@ export default function QuotationsPage() {
                           <Button
                             size="icon"
                             variant="ghost"
-                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                            className="text-red-600"
                             onClick={() => rejectMutation.mutate(q.id)}
                             disabled={rejectMutation.isPending}
                             data-testid={`button-reject-${q.id}`}
@@ -187,6 +328,72 @@ export default function QuotationsPage() {
           })}
         </div>
       )}
+
+      <Dialog open={assignDialogOpen} onOpenChange={setAssignDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("تحويل لمصمم", "Assign to Designer")}</DialogTitle>
+          </DialogHeader>
+          {selectedRequestCustomer && (
+            <div className="space-y-4">
+              <div className="p-3 border rounded-md">
+                <p className="font-medium">{selectedRequestCustomer.fullName}</p>
+                <p className="text-sm text-muted-foreground">{selectedRequestCustomer.phone}</p>
+                {selectedRequestCustomer.notes && (
+                  <p className="text-sm text-muted-foreground mt-1">{selectedRequestCustomer.notes}</p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">{t("اختر المصمم", "Select Designer")}</label>
+                <Select value={selectedDesignerId} onValueChange={setSelectedDesignerId}>
+                  <SelectTrigger data-testid="select-designer">
+                    <SelectValue placeholder={t("اختر المصمم", "Select designer")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {designers.map((d) => (
+                      <SelectItem key={d.id} value={String(d.id)}>
+                        {t(d.fullNameAr, d.fullNameEn)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">{t("وصف المنتج", "Product Description")}</label>
+                <Input
+                  value={productDescription}
+                  onChange={(e) => setProductDescription(e.target.value)}
+                  placeholder={t("مطبخ، خزانة، باب...", "Kitchen, wardrobe, door...")}
+                  data-testid="input-product-description"
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAssignDialogOpen(false)} data-testid="button-cancel-assign">
+              {t("إلغاء", "Cancel")}
+            </Button>
+            <Button
+              onClick={() => {
+                if (!selectedDesignerId || !selectedRequestCustomer) return;
+                assignDesignerMutation.mutate({
+                  customerId: selectedRequestCustomer.id,
+                  assignedTo: parseInt(selectedDesignerId),
+                  productDescription,
+                });
+              }}
+              disabled={!selectedDesignerId || assignDesignerMutation.isPending}
+              data-testid="button-confirm-assign"
+            >
+              {assignDesignerMutation.isPending ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                t("تحويل", "Assign")
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -122,5 +122,35 @@ admin/owner (System Admin), k.asiri/owner, khaled/assistant, hadi/sales, mohnad/
 - Double padding fix: app-layout provides `p-4 md:p-6` on `<main>` — pages use `<div className="space-y-6">` NOT their own padding
 - Filter tabs: `flex-nowrap` + `shrink-0 whitespace-nowrap` for scrollable mobile tabs
 
+## Sales Cycle (Full Flow)
+Customer requests quote (website) → Sales assigns to Designer → Designer draws sketch + uploads measurements → Sales creates quotation → Customer logs in via OTP (Firebase Phone Auth) → Customer approves quotation → Auto-transforms to ZATCA tax invoice → Customer pays (upload receipt) → Production with photos → Delivery → Installation → Auto warranty → Customer tracks all from portal
+
+## New Tables (added to existing 22)
+- `design_assignments` — Design tasks assigned to designers (measurements, sketch, files)
+- `warranties` — Auto-generated warranty certificates after installation
+
+## Designer Board
+- Page: `client/src/pages/designer-board.tsx`
+- Canvas sketch tool (rectangles, lines, dimensions, text, colors, undo/redo)
+- Measurement fields, file upload, "Send to Sales" button
+- Route: `/dashboard/designer-board` (visible to designer role)
+
+## Customer Portal (Firebase OTP)
+- Firebase project: `teak-manufacturing` (Phone Auth enabled, SMS template in Arabic)
+- Firebase config in env vars: VITE_FIREBASE_API_KEY, etc.
+- `client/src/lib/firebase.ts` — Firebase initialization
+- `client/src/pages/customer-portal-login.tsx` — Phone OTP login
+- `client/src/pages/customer-portal.tsx` — Customer dashboard (quotations, invoices, production timeline, payments, warranty, maintenance)
+- Routes: `/portal/login`, `/portal` (public, no dashboard auth)
+- Session storage: `portalPhone`, `portalCustomerName`
+- API: POST /api/customer-auth/verify-phone, GET /api/customer-portal/my-data, POST /api/customer-portal/approve-quotation/:id, POST /api/customer-portal/upload-receipt, POST /api/customer-portal/maintenance-request
+
+## New API Endpoints
+- Design: GET/POST /api/design-assignments, GET/PATCH /:id, POST /:id/submit, GET /customer/:customerId
+- Quote Requests: GET /api/quote-requests (website customers without quotation)
+- Warranties: GET/POST /api/warranties, GET /:id
+- Production: POST /api/production-stages/:id/upload-photo, POST /api/work-orders/:id/create-material-request
+- Installation: POST /api/installations/:id/complete-with-warranty
+
 ## Running
 - `npm run dev` starts Express backend + Vite frontend on port 5000

@@ -24,6 +24,8 @@ import {
   notifications, type Notification, type InsertNotification,
   activityLog, type ActivityLog, type InsertActivityLog,
   employees, type Employee, type InsertEmployee,
+  designAssignments, type DesignAssignment, type InsertDesignAssignment,
+  warranties, type Warranty, type InsertWarranty,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -131,6 +133,21 @@ export interface IStorage {
   getEmployee(id: number): Promise<Employee | undefined>;
   createEmployee(employee: InsertEmployee): Promise<Employee>;
   updateEmployee(id: number, data: Partial<InsertEmployee>): Promise<Employee | undefined>;
+
+  getDesignAssignments(): Promise<DesignAssignment[]>;
+  getDesignAssignmentsByDesigner(designerId: number): Promise<DesignAssignment[]>;
+  getDesignAssignmentsByCustomer(customerId: number): Promise<DesignAssignment[]>;
+  getDesignAssignment(id: number): Promise<DesignAssignment | undefined>;
+  createDesignAssignment(da: InsertDesignAssignment): Promise<DesignAssignment>;
+  updateDesignAssignment(id: number, data: Partial<InsertDesignAssignment>): Promise<DesignAssignment | undefined>;
+
+  getWarranties(): Promise<Warranty[]>;
+  getWarrantiesByCustomer(customerId: number): Promise<Warranty[]>;
+  getWarranty(id: number): Promise<Warranty | undefined>;
+  createWarranty(warranty: InsertWarranty): Promise<Warranty>;
+  updateWarranty(id: number, data: Partial<InsertWarranty>): Promise<Warranty | undefined>;
+
+  getCustomerByPhone(phone: string): Promise<Customer | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -522,6 +539,62 @@ export class DatabaseStorage implements IStorage {
   async updateEmployee(id: number, data: Partial<InsertEmployee>): Promise<Employee | undefined> {
     const [updated] = await db.update(employees).set(data).where(eq(employees.id, id)).returning();
     return updated;
+  }
+
+  async getDesignAssignments(): Promise<DesignAssignment[]> {
+    return db.select().from(designAssignments).orderBy(desc(designAssignments.createdAt));
+  }
+
+  async getDesignAssignmentsByDesigner(designerId: number): Promise<DesignAssignment[]> {
+    return db.select().from(designAssignments).where(eq(designAssignments.assignedTo, designerId)).orderBy(desc(designAssignments.createdAt));
+  }
+
+  async getDesignAssignmentsByCustomer(customerId: number): Promise<DesignAssignment[]> {
+    return db.select().from(designAssignments).where(eq(designAssignments.customerId, customerId)).orderBy(desc(designAssignments.createdAt));
+  }
+
+  async getDesignAssignment(id: number): Promise<DesignAssignment | undefined> {
+    const [da] = await db.select().from(designAssignments).where(eq(designAssignments.id, id));
+    return da;
+  }
+
+  async createDesignAssignment(da: InsertDesignAssignment): Promise<DesignAssignment> {
+    const [created] = await db.insert(designAssignments).values(da).returning();
+    return created;
+  }
+
+  async updateDesignAssignment(id: number, data: Partial<InsertDesignAssignment>): Promise<DesignAssignment | undefined> {
+    const [updated] = await db.update(designAssignments).set({ ...data, updatedAt: new Date() }).where(eq(designAssignments.id, id)).returning();
+    return updated;
+  }
+
+  async getWarranties(): Promise<Warranty[]> {
+    return db.select().from(warranties).orderBy(desc(warranties.createdAt));
+  }
+
+  async getWarrantiesByCustomer(customerId: number): Promise<Warranty[]> {
+    return db.select().from(warranties).where(eq(warranties.customerId, customerId)).orderBy(desc(warranties.createdAt));
+  }
+
+  async getWarranty(id: number): Promise<Warranty | undefined> {
+    const [w] = await db.select().from(warranties).where(eq(warranties.id, id));
+    return w;
+  }
+
+  async createWarranty(warranty: InsertWarranty): Promise<Warranty> {
+    const [created] = await db.insert(warranties).values(warranty).returning();
+    return created;
+  }
+
+  async updateWarranty(id: number, data: Partial<InsertWarranty>): Promise<Warranty | undefined> {
+    const [updated] = await db.update(warranties).set(data).where(eq(warranties.id, id)).returning();
+    return updated;
+  }
+
+  async getCustomerByPhone(phone: string): Promise<Customer | undefined> {
+    const normalized = phone.replace(/^(\+966|00966|966)/, "0");
+    const results = await db.select().from(customers);
+    return results.find(c => c.phone.replace(/^(\+966|00966|966)/, "0") === normalized);
   }
 }
 

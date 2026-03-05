@@ -1,14 +1,45 @@
-import type { Express } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
+import { eq } from "drizzle-orm";
 import { storage } from "./storage";
 import { setupAuth, requireAuth, requireRole } from "./auth";
 import { seedDatabase } from "./seed";
+import { db } from "./db";
+import { verifyFirebaseToken } from "./firebase-admin";
 import {
   insertCustomerSchema, insertProductSchema, insertWoodTypeSchema,
   insertDoorTypeSchema, insertQuotationSchema, insertContractSchema,
   insertPaymentSchema, insertInvoiceSchema, insertUserSchema,
   insertCompanySettingsSchema, insertWorkOrderSchema, insertProductionStageSchema,
+  insertDesignAssignmentSchema, insertWarrantySchema,
+  productionStages,
 } from "@shared/schema";
+
+async function requirePortalAuth(req: Request, res: Response, next: NextFunction) {
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    const token = authHeader.split(" ")[1];
+    const result = await verifyFirebaseToken(token);
+    if (result?.phone) {
+      const customer = await storage.getCustomerByPhone(result.phone);
+      if (customer) {
+        (req as any).portalCustomer = customer;
+        (req as any).portalPhone = result.phone;
+        return next();
+      }
+    }
+  }
+  const phone = req.body?.phone || req.query?.phone;
+  if (phone) {
+    const customer = await storage.getCustomerByPhone(phone as string);
+    if (customer) {
+      (req as any).portalCustomer = customer;
+      (req as any).portalPhone = phone;
+      return next();
+    }
+  }
+  return res.status(401).json({ message: "غير مصرح", messageEn: "Unauthorized" });
+}
 
 function generateQRData(invoice: any): string {
   function tlvEncode(tag: number, value: string): Buffer {
@@ -1083,6 +1114,85 @@ export async function registerRoutes(
     } catch (error) { res.status(500).json({ message: "حدث خطأ", messageEn: "Error updating installation" }); }
   });
 
+  app.post("/api/installations/:id/complete-with-warranty", requireRole("owner", "assistant", "installation"), async (req, res) => {
+    try {
+      const installationId = parseInt(req.params.id);
+      const allInstallations = await storage.getInstallations();
+      const installation = allInstallations.find(i => i.id === installationId);
+      if (!installation) {
+        return res.status(404).json({ message: "التركيب غير موجود", messageEn: "Installation not found" });
+      }
+
+      const updatedInstallation = await storage.updateInstallation(installationId, {
+        status: "completed",
+        completedDate: new Date().toISOString().split("T")[0],
+      });
+
+      const workOrder = await storage.getWorkOrder(installation.workOrderId);
+      if (!workOrder) {
+        return res.status(404).json({ message: "أمر العمل غير موجود", messageEn: "Work order not found" });
+      }
+
+      const today = new Date();
+      const warrantyEnd = new Date(today);
+      warrantyEnd.setFullYear(warrantyEnd.getFullYear() + 2);
+
+      const warranty = await storage.createWarranty({
+        contractId: workOrder.contractId,
+        workOrderId: workOrder.id,
+        customerId: workOrder.customerId,
+        startDate: today.toISOString().split("T")[0],
+        endDate: warrantyEnd.toISOString().split("T")[0],
+        terms: "ضمان سنتين على التركيب والتصنيع - Two year warranty on installation and manufacturing",
+        status: "active",
+      });
+
+      const customer = await storage.getCustomer(workOrder.customerId);
+      const allUsers = await storage.getUsers();
+      const csUsers = allUsers.filter(u => ["owner", "assistant", "customer_service"].includes(u.role));
+      for (const csUser of csUsers) {
+        await storage.createNotification({
+          userId: csUser.id,
+          type: "success",
+          titleAr: "تم إكمال التركيب وإنشاء الضمان",
+          titleEn: "Installation Completed & Warranty Created",
+          messageAr: `تم إكمال تركيب الطلب للعميل ${customer?.fullName || ""} وتم إنشاء ضمان تلقائي`,
+          messageEn: `Installation completed for customer ${customer?.fullName || ""} and warranty auto-created`,
+          relatedEntity: "warranty",
+          relatedId: warranty.id,
+          isRead: false,
+        });
+      }
+
+      const customerUsers = allUsers.filter(u => u.role === "customer" && u.phone === customer?.phone);
+      for (const cu of customerUsers) {
+        await storage.createNotification({
+          userId: cu.id,
+          type: "success",
+          titleAr: "تم إكمال التركيب وتفعيل الضمان",
+          titleEn: "Installation Completed & Warranty Activated",
+          messageAr: "تم إكمال تركيب طلبكم بنجاح وتم تفعيل الضمان لمدة سنتين",
+          messageEn: "Your installation has been completed successfully and a 2-year warranty has been activated",
+          relatedEntity: "warranty",
+          relatedId: warranty.id,
+          isRead: false,
+        });
+      }
+
+      await storage.updateWorkOrder(workOrder.id, { status: "installed" });
+
+      res.json({
+        message: "تم إكمال التركيب وإنشاء الضمان بنجاح",
+        messageEn: "Installation completed and warranty created successfully",
+        installation: updatedInstallation,
+        warranty,
+      });
+    } catch (error) {
+      console.error("Complete installation with warranty error:", error);
+      res.status(500).json({ message: "حدث خطأ", messageEn: "Error completing installation" });
+    }
+  });
+
   // ==================== MAINTENANCE REQUESTS ====================
 
   app.get("/api/maintenance-requests", requireRole("owner", "assistant", "installation", "customer_service"), async (_req, res) => {
@@ -1115,6 +1225,377 @@ export async function registerRoutes(
       const data = { ...req.body, checkedBy: req.session.userId };
       res.status(201).json(await storage.createQualityCheck(data));
     } catch (error) { console.error(error); res.status(500).json({ message: "حدث خطأ", messageEn: "Error creating quality check" }); }
+  });
+
+  // ==================== DESIGN ASSIGNMENTS ====================
+
+  app.get("/api/design-assignments", requireRole("owner", "assistant", "sales", "designer"), async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const user = await storage.getUser(userId);
+      if (user?.role === "designer") {
+        res.json(await storage.getDesignAssignmentsByDesigner(userId));
+      } else {
+        res.json(await storage.getDesignAssignments());
+      }
+    } catch (error) { res.status(500).json({ message: "حدث خطأ", messageEn: "Error fetching design assignments" }); }
+  });
+
+  app.get("/api/design-assignments/:id", requireRole("owner", "assistant", "sales", "designer"), async (req, res) => {
+    try {
+      const da = await storage.getDesignAssignment(parseInt(req.params.id));
+      if (!da) return res.status(404).json({ message: "غير موجود", messageEn: "Not found" });
+      res.json(da);
+    } catch (error) { res.status(500).json({ message: "حدث خطأ", messageEn: "Error fetching design assignment" }); }
+  });
+
+  app.get("/api/design-assignments/customer/:customerId", requireRole("owner", "assistant", "sales", "designer"), async (req, res) => {
+    try {
+      res.json(await storage.getDesignAssignmentsByCustomer(parseInt(req.params.customerId)));
+    } catch (error) { res.status(500).json({ message: "حدث خطأ", messageEn: "Error fetching design assignments" }); }
+  });
+
+  app.post("/api/design-assignments", requireRole("owner", "assistant", "sales"), async (req, res) => {
+    try {
+      const data = { ...req.body, createdBy: req.session.userId };
+      const created = await storage.createDesignAssignment(data);
+      const designer = await storage.getUser(data.assignedTo);
+      if (designer) {
+        await storage.createNotification({
+          userId: data.assignedTo,
+          type: "action",
+          titleAr: "طلب تصميم جديد",
+          titleEn: "New Design Assignment",
+          messageAr: "تم تحويل طلب تصميم جديد إليك",
+          messageEn: "A new design assignment has been assigned to you",
+          link: "/designer-board",
+        });
+      }
+      res.status(201).json(created);
+    } catch (error) { console.error(error); res.status(500).json({ message: "حدث خطأ", messageEn: "Error creating design assignment" }); }
+  });
+
+  app.patch("/api/design-assignments/:id", requireRole("owner", "assistant", "sales", "designer"), async (req, res) => {
+    try {
+      const updated = await storage.updateDesignAssignment(parseInt(req.params.id), req.body);
+      if (!updated) return res.status(404).json({ message: "غير موجود", messageEn: "Not found" });
+      res.json(updated);
+    } catch (error) { res.status(500).json({ message: "حدث خطأ", messageEn: "Error updating design assignment" }); }
+  });
+
+  app.post("/api/design-assignments/:id/submit", requireRole("owner", "assistant", "designer"), async (req, res) => {
+    try {
+      const da = await storage.getDesignAssignment(parseInt(req.params.id));
+      if (!da) return res.status(404).json({ message: "غير موجود", messageEn: "Not found" });
+      const updated = await storage.updateDesignAssignment(da.id, { status: "completed" });
+      if (da.createdBy) {
+        await storage.createNotification({
+          userId: da.createdBy,
+          type: "success",
+          titleAr: "التصميم جاهز",
+          titleEn: "Design Completed",
+          messageAr: "تم إكمال التصميم وجاهز لإنشاء عرض السعر",
+          messageEn: "Design is completed and ready for quotation",
+          link: "/quotations",
+        });
+      }
+      res.json(updated);
+    } catch (error) { console.error(error); res.status(500).json({ message: "حدث خطأ", messageEn: "Error submitting design" }); }
+  });
+
+  // ==================== QUOTE REQUESTS (customers from website without quotation) ====================
+
+  app.get("/api/quote-requests", requireRole("owner", "assistant", "sales"), async (req, res) => {
+    try {
+      const allCustomers = await storage.getCustomers();
+      const allQuotations = await storage.getQuotations();
+      const allDesignAssignments = await storage.getDesignAssignments();
+      const customerIdsWithQuotation = new Set(allQuotations.map(q => q.customerId));
+      const customerIdsWithDesign = new Set(allDesignAssignments.map(d => d.customerId));
+      const requests = allCustomers.filter(c =>
+        c.source === "website" &&
+        !customerIdsWithQuotation.has(c.id) &&
+        !customerIdsWithDesign.has(c.id)
+      );
+      res.json(requests);
+    } catch (error) { res.status(500).json({ message: "حدث خطأ", messageEn: "Error fetching quote requests" }); }
+  });
+
+  // ==================== WARRANTIES ====================
+
+  app.get("/api/warranties", requireRole("owner", "assistant", "sales", "installation"), async (_req, res) => {
+    try { res.json(await storage.getWarranties()); }
+    catch (error) { res.status(500).json({ message: "حدث خطأ", messageEn: "Error fetching warranties" }); }
+  });
+
+  app.get("/api/warranties/:id", requireRole("owner", "assistant", "sales", "installation"), async (req, res) => {
+    try {
+      const w = await storage.getWarranty(parseInt(req.params.id));
+      if (!w) return res.status(404).json({ message: "غير موجود", messageEn: "Not found" });
+      res.json(w);
+    } catch (error) { res.status(500).json({ message: "حدث خطأ", messageEn: "Error fetching warranty" }); }
+  });
+
+  app.post("/api/warranties", requireRole("owner", "assistant", "installation"), async (req, res) => {
+    try { res.status(201).json(await storage.createWarranty(req.body)); }
+    catch (error) { console.error(error); res.status(500).json({ message: "حدث خطأ", messageEn: "Error creating warranty" }); }
+  });
+
+  // ==================== CUSTOMER PORTAL ====================
+
+  app.post("/api/customer-auth/verify-phone", async (req, res) => {
+    try {
+      const { phone } = req.body;
+      if (!phone) return res.status(400).json({ message: "رقم الجوال مطلوب", messageEn: "Phone number is required" });
+      const customer = await storage.getCustomerByPhone(phone);
+      if (!customer) return res.status(404).json({ message: "لم يتم العثور على حساب بهذا الرقم", messageEn: "No account found with this phone number" });
+      res.json({ customerId: customer.id, name: customer.fullName });
+    } catch (error) { res.status(500).json({ message: "حدث خطأ", messageEn: "Error verifying phone" }); }
+  });
+
+  app.get("/api/customer-portal/my-data", requirePortalAuth, async (req, res) => {
+    try {
+      const customer = (req as any).portalCustomer;
+      const [quotationsList, contractsList, paymentsList, invoicesList, designsList, warrantiesList, maintenanceList] = await Promise.all([
+        storage.getQuotationsByCustomer(customer.id),
+        storage.getContractsByCustomer(customer.id),
+        storage.getPaymentsByCustomer(customer.id),
+        storage.getInvoicesByCustomer(customer.id),
+        storage.getDesignAssignmentsByCustomer(customer.id),
+        storage.getWarrantiesByCustomer(customer.id),
+        storage.getMaintenanceRequests(),
+      ]);
+      const customerMaintenance = maintenanceList.filter((m: any) => m.customerId === customer.id);
+      const workOrderIds = contractsList.map(c => c.id);
+      const allWorkOrders = await storage.getWorkOrders();
+      const customerWorkOrders = allWorkOrders.filter((wo: any) => workOrderIds.includes(wo.contractId));
+      const productionData = await Promise.all(
+        customerWorkOrders.map(async (wo: any) => ({
+          workOrder: wo,
+          stages: await storage.getProductionStages(wo.id),
+        }))
+      );
+      res.json({
+        customer,
+        quotations: quotationsList,
+        contracts: contractsList,
+        payments: paymentsList,
+        invoices: invoicesList,
+        designs: designsList,
+        warranties: warrantiesList,
+        maintenance: customerMaintenance,
+        production: productionData,
+      });
+    } catch (error) { console.error(error); res.status(500).json({ message: "حدث خطأ", messageEn: "Error fetching customer data" }); }
+  });
+
+  app.post("/api/customer-portal/approve-quotation/:id", requirePortalAuth, async (req, res) => {
+    try {
+      const customer = (req as any).portalCustomer;
+      const quotation = await storage.getQuotation(parseInt(req.params.id));
+      if (!quotation) return res.status(404).json({ message: "عرض السعر غير موجود", messageEn: "Quotation not found" });
+      if (quotation.customerId !== customer.id) return res.status(403).json({ message: "غير مصرح", messageEn: "Unauthorized" });
+
+      if (quotation.status === "approved") {
+        const existingContracts = await storage.getContractsByCustomer(customer.id);
+        const existingContract = existingContracts.find((c: any) => c.quotationId === quotation.id);
+        return res.json({ message: "عرض السعر معتمد مسبقاً", messageEn: "Quotation already approved", contract: existingContract });
+      }
+
+      const updatedQuotation = await storage.updateQuotation(quotation.id, { status: "approved" });
+
+      const contractNumber = `CNT-${Date.now().toString(36).toUpperCase()}`;
+      const contract = await storage.createContract({
+        contractNumber,
+        quotationId: quotation.id,
+        customerId: customer.id,
+        totalAmount: quotation.totalWithVat || quotation.total || "0",
+        status: "active",
+        terms: "تم الاعتماد عبر بوابة العميل",
+      });
+
+      const existingInvoices = await storage.getInvoicesByCustomer(customer.id);
+      const quotInvoice = existingInvoices.find((inv: any) => inv.quotationId === quotation.id);
+      if (quotInvoice) {
+        await storage.updateInvoice(quotInvoice.id, {
+          type: "simplified_tax_invoice",
+          status: "issued",
+          contractId: contract.id,
+          issuedAt: new Date(),
+        });
+      } else {
+        const invoiceNumber = `INV-${Date.now().toString(36).toUpperCase()}`;
+        const settings = await storage.getCompanySettings();
+        const qrData = generateQRData({
+          sellerName: settings?.nameAr || "تيك للتصنيع",
+          sellerVatNumber: settings?.vatNumber || "310012345600003",
+          issuedAt: new Date(),
+          totalWithVat: quotation.totalWithVat || quotation.total,
+          vatAmount: quotation.vatAmount || "0",
+        });
+        await storage.createInvoice({
+          invoiceNumber,
+          type: "simplified_tax_invoice",
+          status: "issued",
+          customerId: customer.id,
+          contractId: contract.id,
+          quotationId: quotation.id,
+          subtotal: quotation.subtotal || quotation.total || "0",
+          vatRate: "15",
+          vatAmount: quotation.vatAmount || "0",
+          totalWithVat: quotation.totalWithVat || quotation.total || "0",
+          sellerName: settings?.nameAr || "تيك للتصنيع",
+          sellerVatNumber: settings?.vatNumber || "310012345600003",
+          qrCode: qrData,
+          issuedAt: new Date(),
+        });
+      }
+
+      const salesUsers = await storage.getUsers();
+      const salesStaff = salesUsers.filter((u: any) => ["owner", "assistant", "sales", "accountant"].includes(u.role));
+      for (const staff of salesStaff) {
+        await storage.createNotification({
+          userId: staff.id,
+          type: "success",
+          titleAr: "عميل اعتمد عرض سعر",
+          titleEn: "Customer Approved Quotation",
+          messageAr: `العميل ${customer.fullName} اعتمد عرض السعر رقم ${quotation.id}`,
+          messageEn: `Customer ${customer.fullName} approved quotation #${quotation.id}`,
+          link: "/quotations",
+        });
+      }
+
+      res.json({ message: "تم اعتماد عرض السعر بنجاح", messageEn: "Quotation approved successfully", contract });
+    } catch (error) { console.error(error); res.status(500).json({ message: "حدث خطأ", messageEn: "Error approving quotation" }); }
+  });
+
+  app.post("/api/customer-portal/upload-receipt", requirePortalAuth, async (req, res) => {
+    try {
+      const customer = (req as any).portalCustomer;
+      const { contractId, amount, receiptImage, paymentMethod, notes } = req.body;
+
+      const payment = await storage.createPayment({
+        contractId: contractId || null,
+        customerId: customer.id,
+        amount: amount || "0",
+        method: paymentMethod || "bank_transfer",
+        stage: "deposit",
+        notes: notes || "تم رفع الوصل من بوابة العميل",
+        receiptImage: receiptImage || null,
+        recordedBy: null,
+      });
+
+      const salesUsers = await storage.getUsers();
+      const relevantStaff = salesUsers.filter((u: any) => ["owner", "assistant", "sales", "accountant"].includes(u.role));
+      for (const staff of relevantStaff) {
+        await storage.createNotification({
+          userId: staff.id,
+          type: "action",
+          titleAr: "وصل دفع جديد من العميل",
+          titleEn: "New Payment Receipt from Customer",
+          messageAr: `العميل ${customer.fullName} رفع وصل دفع بمبلغ ${amount}`,
+          messageEn: `Customer ${customer.fullName} uploaded payment receipt of ${amount}`,
+          link: "/payments",
+        });
+      }
+
+      res.json({ message: "تم رفع الوصل بنجاح", messageEn: "Receipt uploaded successfully", payment });
+    } catch (error) { console.error(error); res.status(500).json({ message: "حدث خطأ", messageEn: "Error uploading receipt" }); }
+  });
+
+  app.post("/api/customer-portal/maintenance-request", requirePortalAuth, async (req, res) => {
+    try {
+      const customer = (req as any).portalCustomer;
+      const { description, images } = req.body;
+
+      const maintenanceReq = await storage.createMaintenanceRequest({
+        customerId: customer.id,
+        description: description || "",
+        images: images || [],
+        status: "pending",
+      });
+
+      const installStaff = await storage.getUsers();
+      const relevantStaff = installStaff.filter((u: any) => ["owner", "assistant", "installation", "customer_service"].includes(u.role));
+      for (const staff of relevantStaff) {
+        await storage.createNotification({
+          userId: staff.id,
+          type: "action",
+          titleAr: "طلب صيانة جديد",
+          titleEn: "New Maintenance Request",
+          messageAr: `العميل ${customer.fullName} قدم طلب صيانة`,
+          messageEn: `Customer ${customer.fullName} submitted a maintenance request`,
+          link: "/installations",
+        });
+      }
+
+      res.json({ message: "تم تقديم طلب الصيانة بنجاح", messageEn: "Maintenance request submitted successfully", request: maintenanceReq });
+    } catch (error) { console.error(error); res.status(500).json({ message: "حدث خطأ", messageEn: "Error creating maintenance request" }); }
+  });
+
+  // ==================== PRODUCTION-WAREHOUSE LINK ====================
+
+  app.post("/api/production-stages/:id/upload-photo", requireRole("owner", "assistant", "production"), async (req, res) => {
+    try {
+      const stageId = parseInt(req.params.id);
+      const { imageUrl } = req.body;
+      if (!imageUrl) {
+        return res.status(400).json({ message: "رابط الصورة مطلوب", messageEn: "Image URL is required" });
+      }
+      const existingStage = await db.select().from(productionStages).where(eq(productionStages.id, stageId));
+      if (!existingStage.length) {
+        return res.status(404).json({ message: "مرحلة الإنتاج غير موجودة", messageEn: "Production stage not found" });
+      }
+      const stage = existingStage[0];
+      const currentImages: string[] = (stage as any).progressImages || [];
+      const updatedImages = [...currentImages, imageUrl];
+      await db.update(productionStages).set({ progressImages: updatedImages } as any).where(eq(productionStages.id, stageId));
+      const [updated] = await db.select().from(productionStages).where(eq(productionStages.id, stageId));
+      res.json(updated);
+    } catch (error) {
+      console.error("Upload photo error:", error);
+      res.status(500).json({ message: "حدث خطأ في رفع الصورة", messageEn: "Error uploading photo" });
+    }
+  });
+
+  app.post("/api/work-orders/:id/create-material-request", requireRole("owner", "assistant", "production", "warehouse"), async (req, res) => {
+    try {
+      const workOrderId = parseInt(req.params.id);
+      const workOrder = await storage.getWorkOrder(workOrderId);
+      if (!workOrder) {
+        return res.status(404).json({ message: "أمر العمل غير موجود", messageEn: "Work order not found" });
+      }
+      const { items } = req.body;
+      if (!items || !Array.isArray(items) || items.length === 0) {
+        return res.status(400).json({ message: "يجب تحديد المواد المطلوبة", messageEn: "Materials list is required" });
+      }
+      const transactions = [];
+      for (const item of items) {
+        const { inventoryId, quantity, reason } = item;
+        if (!inventoryId || !quantity) {
+          return res.status(400).json({ message: "معرف المادة والكمية مطلوبان", messageEn: "Inventory ID and quantity are required" });
+        }
+        const inventoryItem = await storage.getInventoryItem(inventoryId);
+        if (!inventoryItem) {
+          return res.status(404).json({ message: `المادة رقم ${inventoryId} غير موجودة`, messageEn: `Inventory item ${inventoryId} not found` });
+        }
+        const tx = await storage.createInventoryTransaction({
+          inventoryId,
+          type: "stock_out",
+          quantity: String(quantity),
+          reason: reason || `طلب مواد لأمر العمل #${workOrder.orderNumber}`,
+          workOrderId,
+          performedBy: req.session.userId!,
+        });
+        const newQty = parseFloat(inventoryItem.quantity) - parseFloat(String(quantity));
+        await storage.updateInventoryItem(inventoryId, { quantity: String(Math.max(0, newQty)) });
+        transactions.push(tx);
+      }
+      res.status(201).json({ message: "تم إنشاء طلب المواد بنجاح", messageEn: "Material request created successfully", transactions });
+    } catch (error) {
+      console.error("Material request error:", error);
+      res.status(500).json({ message: "حدث خطأ في إنشاء طلب المواد", messageEn: "Error creating material request" });
+    }
   });
 
   return httpServer;
