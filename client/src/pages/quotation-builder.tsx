@@ -122,7 +122,7 @@ export default function QuotationBuilderPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/quotations"] });
       toast({ title: t("تم إنشاء عرض السعر بنجاح", "Quotation created successfully") });
-      setLocation("/dashboard/quotations");
+      setLocation("/quotations");
     },
     onError: () => {
       toast({ title: t("حدث خطأ في إنشاء عرض السعر", "Error creating quotation"), variant: "destructive" });
@@ -167,7 +167,7 @@ export default function QuotationBuilderPage() {
   return (
     <div className="max-w-4xl mx-auto">
       <div className="flex items-center gap-3 mb-6">
-        <Button variant="ghost" size="icon" onClick={() => setLocation("/dashboard/quotations")} data-testid="button-back">
+        <Button variant="ghost" size="icon" onClick={() => setLocation("/quotations")} data-testid="button-back">
           <BackIcon className="w-4 h-4" />
         </Button>
         <div>

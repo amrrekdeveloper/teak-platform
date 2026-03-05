@@ -29,21 +29,21 @@ interface MenuItem {
 }
 
 const menuItems: MenuItem[] = [
-  { titleAr: "لوحة التحكم", titleEn: "Dashboard", icon: LayoutDashboard, path: "/dashboard", roles: ["owner", "assistant", "it"] },
-  { titleAr: "العملاء", titleEn: "Customers", icon: Users, path: "/dashboard/customers", roles: ["owner", "assistant", "sales", "customer_service"] },
-  { titleAr: "عروض الأسعار", titleEn: "Quotations", icon: FileText, path: "/dashboard/quotations", roles: ["owner", "assistant", "sales", "designer"] },
-  { titleAr: "العقود", titleEn: "Contracts", icon: FolderOpen, path: "/dashboard/contracts", roles: ["owner", "assistant", "sales", "accountant"] },
-  { titleAr: "المدفوعات", titleEn: "Payments", icon: CreditCard, path: "/dashboard/payments", roles: ["owner", "assistant", "sales", "accountant"] },
-  { titleAr: "الفواتير", titleEn: "Invoices", icon: Receipt, path: "/dashboard/invoices", roles: ["owner", "assistant", "accountant"] },
-  { titleAr: "أوامر العمل", titleEn: "Work Orders", icon: ClipboardCheck, path: "/dashboard/work-orders", roles: ["owner", "assistant", "production", "designer"] },
-  { titleAr: "الإنتاج", titleEn: "Production", icon: Factory, path: "/dashboard/production", roles: ["owner", "assistant", "production"] },
-  { titleAr: "المخزون", titleEn: "Inventory", icon: Package, path: "/dashboard/inventory", roles: ["owner", "assistant", "warehouse", "purchasing"] },
-  { titleAr: "المشتريات", titleEn: "Purchase Orders", icon: ShoppingCart, path: "/dashboard/purchases", roles: ["owner", "assistant", "purchasing"] },
-  { titleAr: "التوصيل", titleEn: "Deliveries", icon: Truck, path: "/dashboard/deliveries", roles: ["owner", "assistant", "delivery"] },
-  { titleAr: "التركيب والصيانة", titleEn: "Installation & Maintenance", icon: Wrench, path: "/dashboard/installations", roles: ["owner", "assistant", "installation"] },
-  { titleAr: "الجودة", titleEn: "Quality", icon: Shield, path: "/dashboard/quality", roles: ["owner", "assistant", "quality"] },
-  { titleAr: "الموظفين", titleEn: "Employees", icon: UserCog, path: "/dashboard/employees", roles: ["owner", "assistant", "hr"] },
-  { titleAr: "الإعدادات", titleEn: "Settings", icon: Settings, path: "/dashboard/settings", roles: ["owner", "it"] },
+  { titleAr: "لوحة التحكم", titleEn: "Dashboard", icon: LayoutDashboard, path: "/", roles: ["owner", "assistant", "it"] },
+  { titleAr: "العملاء", titleEn: "Customers", icon: Users, path: "/customers", roles: ["owner", "assistant", "sales", "customer_service"] },
+  { titleAr: "عروض الأسعار", titleEn: "Quotations", icon: FileText, path: "/quotations", roles: ["owner", "assistant", "sales", "designer"] },
+  { titleAr: "العقود", titleEn: "Contracts", icon: FolderOpen, path: "/contracts", roles: ["owner", "assistant", "sales", "accountant"] },
+  { titleAr: "المدفوعات", titleEn: "Payments", icon: CreditCard, path: "/payments", roles: ["owner", "assistant", "sales", "accountant"] },
+  { titleAr: "الفواتير", titleEn: "Invoices", icon: Receipt, path: "/invoices", roles: ["owner", "assistant", "accountant"] },
+  { titleAr: "أوامر العمل", titleEn: "Work Orders", icon: ClipboardCheck, path: "/work-orders", roles: ["owner", "assistant", "production", "designer"] },
+  { titleAr: "الإنتاج", titleEn: "Production", icon: Factory, path: "/production", roles: ["owner", "assistant", "production"] },
+  { titleAr: "المخزون", titleEn: "Inventory", icon: Package, path: "/inventory", roles: ["owner", "assistant", "warehouse", "purchasing"] },
+  { titleAr: "المشتريات", titleEn: "Purchase Orders", icon: ShoppingCart, path: "/purchases", roles: ["owner", "assistant", "purchasing"] },
+  { titleAr: "التوصيل", titleEn: "Deliveries", icon: Truck, path: "/deliveries", roles: ["owner", "assistant", "delivery"] },
+  { titleAr: "التركيب والصيانة", titleEn: "Installation & Maintenance", icon: Wrench, path: "/installations", roles: ["owner", "assistant", "installation"] },
+  { titleAr: "الجودة", titleEn: "Quality", icon: Shield, path: "/quality", roles: ["owner", "assistant", "quality"] },
+  { titleAr: "الموظفين", titleEn: "Employees", icon: UserCog, path: "/employees", roles: ["owner", "assistant", "hr"] },
+  { titleAr: "الإعدادات", titleEn: "Settings", icon: Settings, path: "/settings", roles: ["owner", "it"] },
 ];
 
 export function AppSidebar({ collapsed }: { collapsed: boolean }) {
@@ -66,7 +66,7 @@ export function AppSidebar({ collapsed }: { collapsed: boolean }) {
     >
       <nav className="flex-1 py-4 space-y-1 px-2 overflow-y-auto">
         {filteredItems.map((item) => {
-          const isActive = location === item.path || (item.path !== "/dashboard" && location.startsWith(item.path));
+          const isActive = location === item.path || (item.path !== "/" && location.startsWith(item.path));
           const Icon = item.icon;
 
           return (
@@ -112,7 +112,7 @@ export function MobileBottomNav() {
     >
       <div className="flex items-center justify-around h-16 px-1">
         {mobileItems.map((item) => {
-          const isActive = location === item.path || (item.path !== "/dashboard" && location.startsWith(item.path));
+          const isActive = location === item.path || (item.path !== "/" && location.startsWith(item.path));
           const Icon = item.icon;
 
           return (

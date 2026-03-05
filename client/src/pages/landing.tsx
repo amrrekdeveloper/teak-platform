@@ -185,22 +185,29 @@ function Navbar() {
 
           <div className="hidden md:flex items-center gap-1">
             <a
-              href="#phases"
-              className="px-3 py-2 text-sm font-medium text-muted-foreground"
-              data-testid="link-phases"
+              href="/products"
+              className="px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+              data-testid="link-products"
             >
-              {t("مراحل المشروع", "Project Phases")}
+              {t("منتجاتنا", "Products")}
             </a>
             <a
-              href="#workflow"
-              className="px-3 py-2 text-sm font-medium text-muted-foreground"
-              data-testid="link-workflow"
+              href="/request-quote"
+              className="px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+              data-testid="link-request-quote"
             >
-              {t("سير العمل", "Workflow")}
+              {t("طلب عرض سعر", "Request Quote")}
+            </a>
+            <a
+              href="#phases"
+              className="px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+              data-testid="link-phases"
+            >
+              {t("مراحل المشروع", "Phases")}
             </a>
             <a
               href="#features"
-              className="px-3 py-2 text-sm font-medium text-muted-foreground"
+              className="px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
               data-testid="link-features"
             >
               {t("المميزات", "Features")}
@@ -226,6 +233,11 @@ function Navbar() {
             >
               {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </Button>
+            <a href="/login" data-testid="link-login">
+              <Button size="sm" variant="outline" className="hidden md:inline-flex">
+                {t("تسجيل الدخول", "Sign In")}
+              </Button>
+            </a>
             <Button
               size="icon"
               variant="ghost"
@@ -251,28 +263,36 @@ function Navbar() {
           >
             <div className="px-4 py-4 flex flex-col gap-2">
               <a
+                href="/products"
+                onClick={() => setMobileOpen(false)}
+                className="px-4 py-3 text-sm font-medium rounded-md hover:bg-muted"
+                data-testid="link-products-mobile"
+              >
+                {t("منتجاتنا", "Products")}
+              </a>
+              <a
+                href="/request-quote"
+                onClick={() => setMobileOpen(false)}
+                className="px-4 py-3 text-sm font-medium rounded-md hover:bg-muted"
+                data-testid="link-request-quote-mobile"
+              >
+                {t("طلب عرض سعر", "Request Quote")}
+              </a>
+              <a
                 href="#phases"
                 onClick={() => setMobileOpen(false)}
-                className="px-4 py-3 text-sm font-medium rounded-md"
+                className="px-4 py-3 text-sm font-medium rounded-md hover:bg-muted"
                 data-testid="link-phases-mobile"
               >
-                {t("مراحل المشروع", "Project Phases")}
+                {t("مراحل المشروع", "Phases")}
               </a>
               <a
-                href="#workflow"
+                href="/login"
                 onClick={() => setMobileOpen(false)}
-                className="px-4 py-3 text-sm font-medium rounded-md"
-                data-testid="link-workflow-mobile"
+                className="px-4 py-3 text-sm font-medium rounded-md bg-primary text-primary-foreground text-center"
+                data-testid="link-login-mobile"
               >
-                {t("سير العمل", "Workflow")}
-              </a>
-              <a
-                href="#features"
-                onClick={() => setMobileOpen(false)}
-                className="px-4 py-3 text-sm font-medium rounded-md"
-                data-testid="link-features-mobile"
-              >
-                {t("المميزات", "Features")}
+                {t("تسجيل الدخول", "Sign In")}
               </a>
             </div>
           </motion.div>

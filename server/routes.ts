@@ -20,10 +20,14 @@ function generateQRData(invoice: any): string {
     ]);
   }
 
+  const timestamp = invoice.issuedAt
+    ? new Date(invoice.issuedAt).toISOString()
+    : new Date().toISOString();
+
   const tlvBuffers = [
     tlvEncode(1, invoice.sellerName),
     tlvEncode(2, invoice.sellerVatNumber),
-    tlvEncode(3, new Date().toISOString()),
+    tlvEncode(3, timestamp),
     tlvEncode(4, String(invoice.totalWithVat)),
     tlvEncode(5, String(invoice.vatAmount)),
   ];

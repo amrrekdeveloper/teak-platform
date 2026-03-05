@@ -80,7 +80,7 @@ export default function QuotationsPage() {
             {t(`${quotations.length} عرض سعر`, `${quotations.length} quotations`)}
           </p>
         </div>
-        <Link href="/dashboard/quotations/new">
+        <Link href="/quotations/new">
           <Button data-testid="button-new-quotation">
             <Plus className="w-4 h-4 me-2" />
             {t("عرض سعر جديد", "New Quotation")}

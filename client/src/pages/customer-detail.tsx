@@ -8,7 +8,7 @@ import { Loader2, Phone, Mail, MapPin, FileText, FolderOpen, CreditCard, ArrowLe
 
 export default function CustomerDetailPage() {
   const { t, isRTL } = useLanguage();
-  const [, params] = useRoute("/dashboard/customers/:id");
+  const [, params] = useRoute("/customers/:id");
   const id = params?.id;
 
   const { data: customer, isLoading } = useQuery<Customer>({
@@ -62,7 +62,7 @@ export default function CustomerDetailPage() {
   return (
     <div>
       <div className="flex items-center gap-3 mb-6">
-        <Link href="/dashboard/customers">
+        <Link href="/customers">
           <Button variant="ghost" size="icon" data-testid="button-back">
             <BackIcon className="w-4 h-4" />
           </Button>
@@ -121,7 +121,7 @@ export default function CustomerDetailPage() {
                 <FileText className="w-5 h-5" />
                 {t("عروض الأسعار", "Quotations")} ({quotations.length})
               </CardTitle>
-              <Link href={`/dashboard/quotations/new?customerId=${id}`}>
+              <Link href={`/quotations/new?customerId=${id}`}>
                 <Button size="sm" data-testid="button-new-quotation">
                   <Plus className="w-3 h-3 me-1" /> {t("جديد", "New")}
                 </Button>

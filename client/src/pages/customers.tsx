@@ -220,7 +220,7 @@ export default function CustomersPage() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map((customer) => (
-            <Link key={customer.id} href={`/dashboard/customers/${customer.id}`}>
+            <Link key={customer.id} href={`/customers/${customer.id}`}>
               <Card className="cursor-pointer hover:border-primary/30 transition-colors" data-testid={`card-customer-${customer.id}`}>
                 <CardContent className="p-4">
                   <div className="flex items-start gap-3">
