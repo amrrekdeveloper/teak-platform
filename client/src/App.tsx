@@ -35,7 +35,7 @@ import SettingsPage from "@/pages/settings";
 import TrackOrderPage from "@/pages/track-order";
 import AppLayout from "@/components/app-layout";
 import NotFound from "@/pages/not-found";
-import teakLogoWhite from "@assets/TEAK-LOGO_(1)_1772708784884.png";
+import teakLogoWhite from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
 
 function SplashScreen({ onFinish }: { onFinish: () => void }) {
   const [progress, setProgress] = useState(0);

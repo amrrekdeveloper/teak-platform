@@ -30,9 +30,7 @@ import { SiWhatsapp } from "react-icons/si";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import teakLogo from "@assets/image_1772704803717.png";
-import teakLogoWhite from "@assets/TEAK-LOGO_(1)_1772708784884.png";
-
-import TEAK_LOGO__1___1_ from "@assets/TEAK-LOGO (1) (1).png";
+import teakLogoWhite from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
 
 const heroSlides = [
   {
@@ -172,9 +170,9 @@ function Navbar() {
         <div className="flex items-center justify-between gap-4 h-16 sm:h-20">
           <a href="/" className="flex items-center gap-3">
             <img
-              src={TEAK_LOGO__1___1_}
+              src={showWhiteLogo ? teakLogoWhite : teakLogo}
               alt="Teak Logo"
-              className="w-14 h-14 sm:w-16 sm:h-16 object-contain transition-all duration-300"
+              className="h-12 sm:h-14 w-auto object-contain transition-all duration-300"
               data-testid="img-logo"
             />
           </a>
