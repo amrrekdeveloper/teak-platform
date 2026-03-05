@@ -641,7 +641,7 @@ export async function registerRoutes(
     try {
       const data = insertWorkOrderSchema.parse({
         ...req.body,
-        createdBy: (req.user as any).id,
+        createdBy: req.session.userId,
       });
       const wo = await storage.createWorkOrder(data);
 
@@ -713,6 +713,176 @@ export async function registerRoutes(
       res.json(updated);
     } catch (error) {
       res.status(500).json({ message: "حدث خطأ في تحديث مرحلة الإنتاج", messageEn: "Error updating production stage" });
+    }
+  });
+
+  // ==================== INVENTORY ====================
+
+  app.get("/api/inventory", requireRole("owner", "assistant", "warehouse", "purchasing", "production"), async (_req, res) => {
+    try {
+      const items = await storage.getInventory();
+      res.json(items);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ في جلب المخزون", messageEn: "Error fetching inventory" });
+    }
+  });
+
+  app.get("/api/inventory/:id", requireRole("owner", "assistant", "warehouse", "purchasing", "production"), async (req, res) => {
+    try {
+      const item = await storage.getInventoryItem(parseInt(req.params.id));
+      if (!item) return res.status(404).json({ message: "المادة غير موجودة", messageEn: "Item not found" });
+      res.json(item);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ", messageEn: "Error" });
+    }
+  });
+
+  app.post("/api/inventory", requireRole("owner", "assistant", "warehouse"), async (req, res) => {
+    try {
+      const { insertInventorySchema } = await import("@shared/schema");
+      const parsed = insertInventorySchema.parse(req.body);
+      const item = await storage.createInventoryItem(parsed);
+      res.status(201).json(item);
+    } catch (error: any) {
+      if (error?.name === "ZodError") return res.status(400).json({ message: "بيانات غير صالحة", messageEn: "Invalid data", errors: error.errors });
+      res.status(500).json({ message: "حدث خطأ في إضافة المادة", messageEn: "Error creating inventory item" });
+    }
+  });
+
+  app.patch("/api/inventory/:id", requireRole("owner", "assistant", "warehouse"), async (req, res) => {
+    try {
+      const updated = await storage.updateInventoryItem(parseInt(req.params.id), req.body);
+      if (!updated) return res.status(404).json({ message: "المادة غير موجودة", messageEn: "Item not found" });
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ في تحديث المادة", messageEn: "Error updating inventory item" });
+    }
+  });
+
+  app.get("/api/inventory-transactions", requireRole("owner", "assistant", "warehouse", "purchasing"), async (req, res) => {
+    try {
+      const inventoryId = req.query.inventoryId ? parseInt(req.query.inventoryId as string) : undefined;
+      const transactions = await storage.getInventoryTransactions(inventoryId);
+      res.json(transactions);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ", messageEn: "Error fetching transactions" });
+    }
+  });
+
+  app.post("/api/inventory-transactions", requireRole("owner", "assistant", "warehouse"), async (req, res) => {
+    try {
+      const { inventoryId, type, quantity, reason, workOrderId, purchaseOrderId } = req.body;
+      if (!inventoryId || !type || !quantity) {
+        return res.status(400).json({ message: "بيانات ناقصة", messageEn: "Missing required fields" });
+      }
+      const txQty = parseFloat(quantity);
+      if (txQty <= 0) return res.status(400).json({ message: "الكمية يجب أن تكون أكبر من صفر", messageEn: "Quantity must be greater than zero" });
+
+      const item = await storage.getInventoryItem(inventoryId);
+      if (!item) return res.status(404).json({ message: "المادة غير موجودة", messageEn: "Inventory item not found" });
+
+      const currentQty = parseFloat(item.quantity?.toString() || "0");
+      if (type === "stock_out" && txQty > currentQty) {
+        return res.status(400).json({ message: `الكمية المتوفرة (${currentQty}) غير كافية`, messageEn: `Insufficient stock (${currentQty} available)` });
+      }
+
+      const tx = await storage.createInventoryTransaction({ inventoryId, type, quantity, reason, workOrderId, purchaseOrderId, performedBy: req.session.userId });
+
+      let newQty = currentQty;
+      if (type === "stock_in") newQty = currentQty + txQty;
+      else if (type === "stock_out") newQty = currentQty - txQty;
+      else newQty = txQty;
+      await storage.updateInventoryItem(inventoryId, { quantity: newQty.toString() });
+
+      res.status(201).json(tx);
+    } catch (error) {
+      console.error("Inventory transaction error:", error);
+      res.status(500).json({ message: "حدث خطأ في تسجيل الحركة", messageEn: "Error recording transaction" });
+    }
+  });
+
+  // ==================== SUPPLIERS ====================
+
+  app.get("/api/suppliers", requireRole("owner", "assistant", "warehouse", "purchasing"), async (_req, res) => {
+    try {
+      const list = await storage.getSuppliers();
+      res.json(list);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ في جلب الموردين", messageEn: "Error fetching suppliers" });
+    }
+  });
+
+  app.get("/api/suppliers/:id", requireRole("owner", "assistant", "warehouse", "purchasing"), async (req, res) => {
+    try {
+      const s = await storage.getSupplier(parseInt(req.params.id));
+      if (!s) return res.status(404).json({ message: "المورد غير موجود", messageEn: "Supplier not found" });
+      res.json(s);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ", messageEn: "Error" });
+    }
+  });
+
+  app.post("/api/suppliers", requireRole("owner", "assistant", "purchasing"), async (req, res) => {
+    try {
+      const { insertSupplierSchema } = await import("@shared/schema");
+      const parsed = insertSupplierSchema.parse(req.body);
+      const supplier = await storage.createSupplier(parsed);
+      res.status(201).json(supplier);
+    } catch (error: any) {
+      if (error?.name === "ZodError") return res.status(400).json({ message: "بيانات غير صالحة", messageEn: "Invalid data", errors: error.errors });
+      res.status(500).json({ message: "حدث خطأ في إضافة المورد", messageEn: "Error creating supplier" });
+    }
+  });
+
+  app.patch("/api/suppliers/:id", requireRole("owner", "assistant", "purchasing"), async (req, res) => {
+    try {
+      const updated = await storage.updateSupplier(parseInt(req.params.id), req.body);
+      if (!updated) return res.status(404).json({ message: "المورد غير موجود", messageEn: "Supplier not found" });
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ في تحديث المورد", messageEn: "Error updating supplier" });
+    }
+  });
+
+  // ==================== PURCHASE ORDERS ====================
+
+  app.get("/api/purchase-orders", requireRole("owner", "assistant", "purchasing", "warehouse"), async (_req, res) => {
+    try {
+      const list = await storage.getPurchaseOrders();
+      res.json(list);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ في جلب أوامر الشراء", messageEn: "Error fetching purchase orders" });
+    }
+  });
+
+  app.get("/api/purchase-orders/:id", requireRole("owner", "assistant", "purchasing", "warehouse"), async (req, res) => {
+    try {
+      const po = await storage.getPurchaseOrder(parseInt(req.params.id));
+      if (!po) return res.status(404).json({ message: "أمر الشراء غير موجود", messageEn: "Purchase order not found" });
+      res.json(po);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ", messageEn: "Error" });
+    }
+  });
+
+  app.post("/api/purchase-orders", requireRole("owner", "assistant", "purchasing"), async (req, res) => {
+    try {
+      const po = await storage.createPurchaseOrder({ ...req.body, createdBy: req.session.userId });
+      res.status(201).json(po);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ في إنشاء أمر الشراء", messageEn: "Error creating purchase order" });
+    }
+  });
+
+  app.patch("/api/purchase-orders/:id", requireRole("owner", "assistant", "purchasing"), async (req, res) => {
+    try {
+      const data = { ...req.body };
+      if (data.status === "approved") data.approvedBy = req.session.userId;
+      const updated = await storage.updatePurchaseOrder(parseInt(req.params.id), data);
+      if (!updated) return res.status(404).json({ message: "أمر الشراء غير موجود", messageEn: "Purchase order not found" });
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ في تحديث أمر الشراء", messageEn: "Error updating purchase order" });
     }
   });
 

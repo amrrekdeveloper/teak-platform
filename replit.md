@@ -38,7 +38,7 @@ Integrated Manufacturing + CRM + Project Management platform for a Saudi wood pr
 ## Routing (wouter v3)
 - Public routes: `/`, `/login`, `/products`, `/request-quote`
 - Dashboard uses `<Route path="/dashboard" nest>` — inner routes are RELATIVE (without /dashboard prefix)
-- Inner routes: `/`, `/customers`, `/customers/:id`, `/quotations`, `/quotations/new`, `/contracts`, `/contracts/:id`, `/payments`, `/invoices`, `/invoices/:id`, `/work-orders`, `/work-orders/:id`, `/production`
+- Inner routes: `/`, `/customers`, `/customers/:id`, `/quotations`, `/quotations/new`, `/contracts`, `/contracts/:id`, `/payments`, `/invoices`, `/invoices/:id`, `/work-orders`, `/work-orders/:id`, `/production`, `/inventory`, `/suppliers`, `/purchases`
 - Sidebar Links and `useRoute()` inside dashboard pages use scoped paths (e.g., `/customers` not `/dashboard/customers`)
 - Login page navigates to `/dashboard` using absolute path (outside nested context)
 
@@ -63,6 +63,18 @@ Integrated Manufacturing + CRM + Project Management platform for a Saudi wood pr
 - `client/src/pages/work-orders.tsx` — Work orders list with status filters, create dialog, priority badges
 - `client/src/pages/work-order-detail.tsx` — Work order detail with production stages board (4 stages: cutting → edging → assembly → finishing), progress bar, stage status updates, notes
 - `client/src/pages/production.tsx` — Production dashboard with stats cards and Kanban-style board (4 columns by status)
+- `client/src/pages/inventory.tsx` — Inventory management with CRUD, stock in/out transactions, low stock alerts, search
+- `client/src/pages/suppliers.tsx` — Supplier management with CRUD, search, contact details
+- `client/src/pages/purchases.tsx` — Purchase orders with create (multi-item), status flow (draft→pending→approved→ordered→received), supplier linking
+
+## Warehouse/Inventory Module
+- Inventory items with Arabic/English names, SKU, category, unit, quantity tracking, min quantity alerts
+- Stock in/out transactions with quantity validation (prevents negative stock)
+- Low stock alerts when quantity ≤ minimum quantity
+- Total inventory value calculation
+- Suppliers management with contact info, materials, tax numbers
+- Purchase orders with multi-item support, supplier linking, status workflow
+- APIs: GET/POST/PATCH /api/inventory, GET/POST /api/inventory-transactions, GET/POST/PATCH /api/suppliers, GET/POST/PATCH /api/purchase-orders
 
 ## Manufacturing Module
 - Work orders created from active contracts

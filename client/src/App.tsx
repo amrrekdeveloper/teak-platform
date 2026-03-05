@@ -24,6 +24,9 @@ import InvoiceViewPage from "@/pages/invoice-view";
 import WorkOrdersPage from "@/pages/work-orders";
 import WorkOrderDetailPage from "@/pages/work-order-detail";
 import ProductionPage from "@/pages/production";
+import InventoryPage from "@/pages/inventory";
+import SuppliersPage from "@/pages/suppliers";
+import PurchasesPage from "@/pages/purchases";
 import AppLayout from "@/components/app-layout";
 import NotFound from "@/pages/not-found";
 import logoEN from "@assets/logo_teak2_1772689894105.png";
@@ -86,12 +89,9 @@ function DashboardRoutes() {
         <Route path="/work-orders/:id" component={WorkOrderDetailPage} />
         <Route path="/work-orders" component={WorkOrdersPage} />
         <Route path="/production" component={ProductionPage} />
-        <Route path="/inventory">
-          <PlaceholderPage titleAr="المخزون" titleEn="Inventory" />
-        </Route>
-        <Route path="/purchases">
-          <PlaceholderPage titleAr="المشتريات" titleEn="Purchase Orders" />
-        </Route>
+        <Route path="/inventory" component={InventoryPage} />
+        <Route path="/suppliers" component={SuppliersPage} />
+        <Route path="/purchases" component={PurchasesPage} />
         <Route path="/deliveries">
           <PlaceholderPage titleAr="التوصيل" titleEn="Deliveries" />
         </Route>
