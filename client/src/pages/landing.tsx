@@ -172,7 +172,7 @@ function Navbar() {
             <img
               src={showWhiteLogo ? teakLogoWhite : teakLogo}
               alt="Teak Logo"
-              className="w-10 h-10 sm:w-12 sm:h-12 object-contain transition-all duration-300"
+              className="w-14 h-14 sm:w-16 sm:h-16 object-contain transition-all duration-300"
               data-testid="img-logo"
             />
           </a>
