@@ -31,6 +31,8 @@ import EmployeesPage from "@/pages/employees";
 import DeliveriesPage from "@/pages/deliveries";
 import InstallationsPage from "@/pages/installations";
 import QualityPage from "@/pages/quality";
+import SettingsPage from "@/pages/settings";
+import TrackOrderPage from "@/pages/track-order";
 import AppLayout from "@/components/app-layout";
 import NotFound from "@/pages/not-found";
 import logoEN from "@assets/logo_teak2_1772689894105.png";
@@ -64,12 +66,13 @@ function SplashScreen({ onFinish }: { onFinish: () => void }) {
 
 function PlaceholderPage({ titleAr, titleEn }: { titleAr: string; titleEn: string }) {
   const { t } = useLanguage();
+  void titleAr; void titleEn;
   return (
     <div className="flex items-center justify-center min-h-[400px]">
       <div className="text-center">
         <h2 className="text-2xl font-bold mb-2">{t(titleAr, titleEn)}</h2>
         <p className="text-muted-foreground">
-          {t("قيد التطوير — سيتم بناء هذه الوحدة قريباً", "Under development — this module will be built soon")}
+          {t("قيد التطوير", "Under development")}
         </p>
       </div>
     </div>
@@ -100,9 +103,7 @@ function DashboardRoutes() {
         <Route path="/installations" component={InstallationsPage} />
         <Route path="/quality" component={QualityPage} />
         <Route path="/employees" component={EmployeesPage} />
-        <Route path="/settings">
-          <PlaceholderPage titleAr="الإعدادات" titleEn="Settings" />
-        </Route>
+        <Route path="/settings" component={SettingsPage} />
         <Route component={NotFound} />
       </Switch>
     </AppLayout>
@@ -116,6 +117,7 @@ function Router() {
       <Route path="/login" component={LoginPage} />
       <Route path="/products" component={ProductsPage} />
       <Route path="/request-quote" component={RequestQuotePage} />
+      <Route path="/track-order" component={TrackOrderPage} />
       <Route path="/dashboard" nest component={DashboardRoutes} />
       <Route component={NotFound} />
     </Switch>

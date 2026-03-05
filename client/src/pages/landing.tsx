@@ -199,6 +199,13 @@ function Navbar() {
               {t("طلب عرض سعر", "Request Quote")}
             </a>
             <a
+              href="/track-order"
+              className="px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+              data-testid="link-track-order"
+            >
+              {t("تتبع طلبك", "Track Order")}
+            </a>
+            <a
               href="#phases"
               className="px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
               data-testid="link-phases"
@@ -277,6 +284,14 @@ function Navbar() {
                 data-testid="link-request-quote-mobile"
               >
                 {t("طلب عرض سعر", "Request Quote")}
+              </a>
+              <a
+                href="/track-order"
+                onClick={() => setMobileOpen(false)}
+                className="px-4 py-3 text-sm font-medium rounded-md hover:bg-muted"
+                data-testid="link-track-order-mobile"
+              >
+                {t("تتبع طلبك", "Track Order")}
               </a>
               <a
                 href="#phases"

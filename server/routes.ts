@@ -109,6 +109,44 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/track-order", async (req, res) => {
+    try {
+      const { contractNumber, phone } = req.query;
+      if (!contractNumber || !phone) {
+        return res.status(400).json({ message: "يرجى إدخال رقم العقد ورقم الجوال", messageEn: "Contract number and phone required" });
+      }
+
+      const contracts = await storage.getContracts();
+      const contract = contracts.find(c => c.contractNumber === contractNumber);
+      if (!contract) {
+        return res.status(404).json({ message: "لم يتم العثور على العقد", messageEn: "Contract not found" });
+      }
+
+      const customer = contract.customerId ? await storage.getCustomer(contract.customerId) : null;
+      const normalizePhone = (p: string) => p.replace(/[\s\-\+]/g, "").replace(/^00966/, "0").replace(/^966/, "0");
+      const customerPhone = customer?.phone ? normalizePhone(customer.phone) : "";
+      const inputPhone = normalizePhone(phone as string);
+      if (!customer || !customerPhone || customerPhone !== inputPhone) {
+        return res.status(404).json({ message: "رقم الجوال لا يتطابق مع العقد", messageEn: "Phone does not match contract" });
+      }
+
+      const workOrders = (await storage.getWorkOrders()).filter(wo => wo.contractId === contract.id);
+
+      res.json({
+        contractNumber: contract.contractNumber,
+        customerName: customer.fullName,
+        status: contract.status,
+        workOrders: workOrders.map(wo => ({
+          orderNumber: wo.orderNumber,
+          status: wo.status,
+          dueDate: wo.dueDate,
+        })),
+      });
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ", messageEn: "Error" });
+    }
+  });
+
   app.get("/api/company-settings/public", async (_req, res) => {
     try {
       const settings = await storage.getCompanySettings();
@@ -574,10 +612,28 @@ export async function registerRoutes(
     }
   });
 
+  app.patch("/api/notifications/read-all", requireAuth, async (req, res) => {
+    try {
+      const notifs = await storage.getNotifications(req.session.userId!);
+      await Promise.all(notifs.filter(n => !n.isRead).map(n => storage.markNotificationRead(n.id)));
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
   app.patch("/api/notifications/:id/read", requireAuth, async (req, res) => {
     try {
       await storage.markNotificationRead(parseInt(req.params.id));
       res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  app.get("/api/activity-logs", requireRole("owner", "assistant", "it"), async (_req, res) => {
+    try {
+      res.json(await storage.getActivityLogs(100));
     } catch (error) {
       res.status(500).json({ message: "حدث خطأ" });
     }

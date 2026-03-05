@@ -14,7 +14,7 @@ Integrated Manufacturing + CRM + Project Management platform for a Saudi wood pr
 - **QR Code**: `qrcode` library for ZATCA-compliant scannable QR codes
 
 ## Database
-- PostgreSQL with 22 tables (see `shared/schema.ts`)
+- PostgreSQL with 23 tables (see `shared/schema.ts`)
 - Core: users, employees, customers, products, woodTypes, doorTypes
 - Sales: quotations, contracts, payments, invoices
 - Manufacturing: workOrders, productionStages
@@ -27,30 +27,32 @@ Integrated Manufacturing + CRM + Project Management platform for a Saudi wood pr
 - `server/auth.ts` — Session auth, password hashing, RBAC middleware
 - `server/routes.ts` — All API routes with RBAC protection + ZATCA QR generation + Manufacturing
 - `server/storage.ts` — DatabaseStorage class (IStorage interface)
-- `server/seed.ts` — Seed data (16 users, 15 products, 7 wood types, 5 customers, etc.)
+- `server/seed.ts` — Seed data (16 users, 16 products, 7 wood types, 5 customers, 12 inventory items, 3 suppliers)
 - `client/src/App.tsx` — Root with providers, routing, splash screen (sessionStorage-gated)
-- `client/src/components/app-layout.tsx` — Dashboard layout with header
-- `client/src/components/app-sidebar.tsx` — Role-based sidebar + mobile bottom nav
+- `client/src/components/app-layout.tsx` — Dashboard layout with header, notifications dropdown
+- `client/src/components/app-sidebar.tsx` — Role-based sidebar + mobile hamburger drawer
 - `client/src/components/language-provider.tsx` — AR/EN language switching
 - `client/src/components/theme-provider.tsx` — Dark/light mode
 - `client/src/hooks/use-auth.ts` — Auth hook with login/logout/me
 
 ## Routing (wouter v3)
-- Public routes: `/`, `/login`, `/products`, `/request-quote`
+- Public routes: `/`, `/login`, `/products`, `/request-quote`, `/track-order`
 - Dashboard uses `<Route path="/dashboard" nest>` — inner routes are RELATIVE (without /dashboard prefix)
-- Inner routes: `/`, `/customers`, `/customers/:id`, `/quotations`, `/quotations/new`, `/contracts`, `/contracts/:id`, `/payments`, `/invoices`, `/invoices/:id`, `/work-orders`, `/work-orders/:id`, `/production`, `/inventory`, `/suppliers`, `/purchases`
+- Inner routes: `/`, `/customers`, `/customers/:id`, `/quotations`, `/quotations/new`, `/contracts`, `/contracts/:id`, `/payments`, `/invoices`, `/invoices/:id`, `/work-orders`, `/work-orders/:id`, `/production`, `/inventory`, `/suppliers`, `/purchases`, `/deliveries`, `/installations`, `/quality`, `/employees`, `/settings`
 - Sidebar Links and `useRoute()` inside dashboard pages use scoped paths (e.g., `/customers` not `/dashboard/customers`)
 - Login page navigates to `/dashboard` using absolute path (outside nested context)
+- **IMPORTANT**: AppLayout uses `window.location.href` (NOT `setLocation`) for redirects to `/login` because `setLocation` in wouter v3 nested context would navigate to `/dashboard/login` instead of `/login`
 
 ## Pages
 ### Public
-- `client/src/pages/landing.tsx` — Landing page with phases, features, workflow
+- `client/src/pages/landing.tsx` — Landing page with phases, features, workflow, Track Order link
 - `client/src/pages/products.tsx` — Product catalog with category filters
 - `client/src/pages/request-quote.tsx` — Public quote request form → creates customer + notification
+- `client/src/pages/track-order.tsx` — Public order tracking (contract# + phone lookup, shows work order status timeline)
 
 ### Dashboard (authenticated)
 - `client/src/pages/login.tsx` — Login page
-- `client/src/pages/dashboard.tsx` — Stats overview (includes work order stats)
+- `client/src/pages/dashboard.tsx` — Stats overview with KPIs, work order progress bars, payment breakdown, employee stats
 - `client/src/pages/customers.tsx` — Customer list with search, create dialog
 - `client/src/pages/customer-detail.tsx` — Customer profile with quotations/contracts/payments
 - `client/src/pages/quotations.tsx` — Quotations list with status filters, approve/reject
@@ -61,53 +63,34 @@ Integrated Manufacturing + CRM + Project Management platform for a Saudi wood pr
 - `client/src/pages/invoices.tsx` — Invoice list (quotations + tax invoices)
 - `client/src/pages/invoice-view.tsx` — ZATCA invoice view with real scannable QR code, print/download
 - `client/src/pages/work-orders.tsx` — Work orders list with status filters, create dialog, priority badges
-- `client/src/pages/work-order-detail.tsx` — Work order detail with production stages board (4 stages: cutting → edging → assembly → finishing), progress bar, stage status updates, notes
-- `client/src/pages/production.tsx` — Production dashboard with stats cards and Kanban-style board (4 columns by status)
-- `client/src/pages/inventory.tsx` — Inventory management with CRUD, stock in/out transactions, low stock alerts, search
-- `client/src/pages/suppliers.tsx` — Supplier management with CRUD, search, contact details
-- `client/src/pages/purchases.tsx` — Purchase orders with create (multi-item), status flow (draft→pending→approved→ordered→received), supplier linking
-- `client/src/pages/employees.tsx` — HR employee management with stats, department/status filters, iqama tracking for residents, CRUD
-- `client/src/pages/deliveries.tsx` — Delivery scheduling and tracking with status workflow (scheduled→in_transit→delivered/failed)
-- `client/src/pages/installations.tsx` — Installation scheduling + Maintenance requests (tabbed), priority levels, status workflows
-- `client/src/pages/quality.tsx` — Quality control checks (material incoming, in-process, final product), pass/fail/conditional results, stats dashboard
+- `client/src/pages/work-order-detail.tsx` — Work order detail with production stages board
+- `client/src/pages/production.tsx` — Production dashboard with Kanban-style board
+- `client/src/pages/inventory.tsx` — Inventory management with CRUD, stock in/out, low stock alerts
+- `client/src/pages/suppliers.tsx` — Supplier management with CRUD
+- `client/src/pages/purchases.tsx` — Purchase orders with multi-item, status flow
+- `client/src/pages/employees.tsx` — HR management with iqama tracking, nationality stats
+- `client/src/pages/deliveries.tsx` — Delivery scheduling and tracking
+- `client/src/pages/installations.tsx` — Installation scheduling + Maintenance requests
+- `client/src/pages/quality.tsx` — Quality control checks
+- `client/src/pages/settings.tsx` — Company settings, user management, activity logs (3 tabs)
 
-## HR Module
-- Employee records linked to user accounts (optional)
-- Saudi/Resident nationality tracking with iqama number + expiry for residents
-- Department-based organization (management, sales, design, production, warehouse, finance, customer_service, delivery, installation)
-- Monthly salary tracking, contract start/end dates
-- Status: active, inactive, terminated
-- Stats: active count, Saudi count, resident count, total salaries
-- APIs: GET/POST/PATCH /api/employees
+## Notifications System
+- Bell icon in header with unread count badge
+- Dropdown panel with notification list, mark-as-read, mark-all-read
+- Notification types: info, warning, action, success (with color-coded icons)
+- Auto-refresh every 30s
+- API: GET /api/notifications, PATCH /api/notifications/:id/read, PATCH /api/notifications/read-all
 
-## Services Module (Delivery, Installation, Maintenance, Quality)
-- Deliveries: schedule from work orders, track status (scheduled→in_transit→delivered/failed)
-- Installations: schedule from work orders, track status (scheduled→in_progress→completed/rescheduled)
-- Maintenance: customer requests with priority (low/normal/high/urgent), status workflow
-- Quality: checks per work order (material_incoming/in_process/final_product), results (pass/fail/conditional)
-- APIs: GET/POST/PATCH /api/deliveries, /api/installations, /api/maintenance-requests; GET/POST /api/quality-checks
-
-## Warehouse/Inventory Module
-- Inventory items with Arabic/English names, SKU, category, unit, quantity tracking, min quantity alerts
-- Stock in/out transactions with quantity validation (prevents negative stock)
-- Low stock alerts when quantity ≤ minimum quantity
-- Total inventory value calculation
-- Suppliers management with contact info, materials, tax numbers
-- Purchase orders with multi-item support, supplier linking, status workflow
-- APIs: GET/POST/PATCH /api/inventory, GET/POST /api/inventory-transactions, GET/POST/PATCH /api/suppliers, GET/POST/PATCH /api/purchase-orders
-
-## Manufacturing Module
-- Work orders created from active contracts
-- Auto-creates 4 production stages: cutting, edging, assembly, finishing
-- Each stage can be: pending → in_progress → completed (or on_hold)
-- When all stages complete → work order auto-moves to quality_check
-- Production board shows active work orders in 4 status columns
-- APIs: GET/POST /api/work-orders, PATCH /api/work-orders/:id, GET /api/work-orders/:id/stages, PATCH /api/production-stages/:id
+## Track Order (Public)
+- Endpoint: GET /api/track-order?contractNumber=X&phone=Y
+- Exact phone match (normalized, strips +966/00966 prefix)
+- Returns: contract#, customer name, status, work order statuses (no financial data)
+- Frontend shows manufacturing progress timeline with 8-step status visualization
 
 ## ZATCA Invoice
 - Type: فاتورة ضريبية مبسطة (Simplified Tax Invoice)
-- QR Code with 5 TLV tags: seller name, VAT#, timestamp (from issuedAt), total, VAT amount
-- QR rendered using `qrcode` library (real scannable QR, not pseudo)
+- QR Code with 5 TLV tags: seller name, VAT#, timestamp, total, VAT amount
+- QR rendered using `qrcode` library (real scannable QR)
 - Auto-generated upon payment recording
 - Sequential invoice numbering
 - VAT at 15%
@@ -119,6 +102,11 @@ k.asiri/owner, khaled/assistant, hadi/sales, mohnad/sales, mohsen/designer, hamd
 ## Logos
 - English (logo_teak2_1772689894105.png) → favicon + splash + EN mode
 - Arabic (logo_teak1_1772689915503.png) → AR mode
+
+## Mobile
+- NO bottom nav — uses hamburger MobileMenuButton opening drawer from `start-0` (right in RTL, left in LTR)
+- Double padding fix: app-layout provides `p-4 md:p-6` on `<main>` — pages use `<div className="space-y-6">` NOT their own padding
+- Filter tabs: `flex-nowrap` + `shrink-0 whitespace-nowrap` for scrollable mobile tabs
 
 ## Running
 - `npm run dev` starts Express backend + Vite frontend on port 5000

@@ -125,6 +125,7 @@ export interface IStorage {
   markNotificationRead(id: number): Promise<void>;
 
   createActivityLog(log: InsertActivityLog): Promise<ActivityLog>;
+  getActivityLogs(limit?: number): Promise<ActivityLog[]>;
 
   getEmployees(): Promise<Employee[]>;
   getEmployee(id: number): Promise<Employee | undefined>;
@@ -498,6 +499,10 @@ export class DatabaseStorage implements IStorage {
   async createActivityLog(log: InsertActivityLog): Promise<ActivityLog> {
     const [created] = await db.insert(activityLog).values(log).returning();
     return created;
+  }
+
+  async getActivityLogs(limit: number = 50): Promise<ActivityLog[]> {
+    return db.select().from(activityLog).orderBy(desc(activityLog.createdAt)).limit(limit);
   }
 
   async getEmployees(): Promise<Employee[]> {

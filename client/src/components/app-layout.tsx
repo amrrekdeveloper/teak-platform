@@ -1,12 +1,14 @@
-import { useEffect } from "react";
-import { useLocation } from "wouter";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { useLanguage } from "@/components/language-provider";
 import { useTheme } from "@/components/theme-provider";
 import { AppSidebar, MobileMenuButton } from "@/components/app-sidebar";
 import { Button } from "@/components/ui/button";
-import { Sun, Moon, LogOut, Bell, Loader2 } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { Badge } from "@/components/ui/badge";
+import { Sun, Moon, LogOut, Bell, Loader2, Check, Info, AlertTriangle, Zap, CheckCircle2 } from "lucide-react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import type { Notification } from "@shared/schema";
 import logoEN from "@assets/logo_teak2_1772689894105.png";
 import logoAR from "@assets/logo_teak1_1772689915503.png";
 
@@ -27,26 +29,51 @@ const roleLabels: Record<string, { ar: string; en: string }> = {
   it: { ar: "تقنية المعلومات", en: "IT" },
 };
 
+const notifTypeIcons: Record<string, any> = {
+  info: Info,
+  warning: AlertTriangle,
+  action: Zap,
+  success: CheckCircle2,
+};
+
+const notifTypeColors: Record<string, string> = {
+  info: "text-blue-500",
+  warning: "text-orange-500",
+  action: "text-primary",
+  success: "text-green-500",
+};
+
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, isLoading, isAuthenticated, logout, isLoggingOut } = useAuth();
   const { lang, toggleLang, t, isRTL } = useLanguage();
   const { theme, toggleTheme } = useTheme();
-  const [, setLocation] = useLocation();
+  const [notifOpen, setNotifOpen] = useState(false);
 
   const currentLogo = lang === "ar" ? logoAR : logoEN;
 
-  const { data: notifications } = useQuery<any[]>({
+  const { data: notifications = [] } = useQuery<Notification[]>({
     queryKey: ["/api/notifications"],
     enabled: isAuthenticated,
+    refetchInterval: 30000,
   });
 
-  const unreadCount = notifications?.filter((n: any) => !n.isRead).length || 0;
+  const unreadCount = notifications.filter(n => !n.isRead).length;
+
+  const markReadMutation = useMutation({
+    mutationFn: (id: number) => apiRequest("PATCH", `/api/notifications/${id}/read`, {}),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/notifications"] }),
+  });
+
+  const markAllReadMutation = useMutation({
+    mutationFn: () => apiRequest("PATCH", "/api/notifications/read-all", {}),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/notifications"] }),
+  });
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
-      setLocation("/login");
+      window.location.href = "/login";
     }
-  }, [isLoading, isAuthenticated, setLocation]);
+  }, [isLoading, isAuthenticated]);
 
   if (isLoading) {
     return (
@@ -91,19 +118,67 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </div>
 
           <div className="flex items-center gap-1">
-            <Button
-              size="icon"
-              variant="ghost"
-              className="relative"
-              data-testid="button-notifications"
-            >
-              <Bell className="w-4 h-4" />
-              {unreadCount > 0 && (
-                <span className="absolute -top-0.5 -end-0.5 w-4 h-4 rounded-full bg-destructive text-destructive-foreground text-[10px] flex items-center justify-center">
-                  {unreadCount > 9 ? "9+" : unreadCount}
-                </span>
+            <div className="relative">
+              <Button
+                size="icon"
+                variant="ghost"
+                className="relative"
+                onClick={() => setNotifOpen(!notifOpen)}
+                data-testid="button-notifications"
+              >
+                <Bell className="w-4 h-4" />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-0.5 -end-0.5 w-4 h-4 rounded-full bg-destructive text-destructive-foreground text-[10px] flex items-center justify-center">
+                    {unreadCount > 9 ? "9+" : unreadCount}
+                  </span>
+                )}
+              </Button>
+              {notifOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setNotifOpen(false)} />
+                  <div className="absolute top-full end-0 mt-1 w-80 max-h-96 bg-card border border-border rounded-lg shadow-lg z-50 overflow-hidden" data-testid="notifications-panel">
+                    <div className="flex items-center justify-between p-3 border-b border-border">
+                      <span className="font-semibold text-sm">{t("الإشعارات", "Notifications")}</span>
+                      {unreadCount > 0 && (
+                        <Button size="sm" variant="ghost" className="text-xs" onClick={() => markAllReadMutation.mutate()} data-testid="button-mark-all-read">
+                          <Check className="w-3 h-3 me-1" />{t("قراءة الكل", "Read All")}
+                        </Button>
+                      )}
+                    </div>
+                    <div className="overflow-y-auto max-h-72">
+                      {notifications.length === 0 ? (
+                        <p className="p-4 text-center text-sm text-muted-foreground">{t("لا توجد إشعارات", "No notifications")}</p>
+                      ) : (
+                        notifications.slice(0, 20).map(n => {
+                          const NIcon = notifTypeIcons[n.type] || Info;
+                          const color = notifTypeColors[n.type] || "text-blue-500";
+                          return (
+                            <div
+                              key={n.id}
+                              className={`p-3 border-b border-border last:border-0 cursor-pointer transition-colors ${!n.isRead ? "bg-primary/5" : ""}`}
+                              onClick={() => { if (!n.isRead) markReadMutation.mutate(n.id); }}
+                              data-testid={`notif-${n.id}`}
+                            >
+                              <div className="flex items-start gap-2">
+                                <NIcon className={`w-4 h-4 mt-0.5 shrink-0 ${color}`} />
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-sm font-medium">{t(n.titleAr, n.titleEn)}</p>
+                                  <p className="text-xs text-muted-foreground truncate">{t(n.messageAr, n.messageEn)}</p>
+                                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                                    {n.createdAt && new Date(n.createdAt).toLocaleString(t("ar-SA", "en-US"))}
+                                  </p>
+                                </div>
+                                {!n.isRead && <div className="w-2 h-2 rounded-full bg-primary shrink-0 mt-1.5" />}
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                </>
               )}
-            </Button>
+            </div>
             <Button
               size="icon"
               variant="ghost"
@@ -125,7 +200,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               variant="ghost"
               onClick={async () => {
                 await logout();
-                setLocation("/login");
+                window.location.href = "/login";
               }}
               disabled={isLoggingOut}
               data-testid="button-logout"
