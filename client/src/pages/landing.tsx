@@ -1,11 +1,10 @@
-import { useState, useEffect, useCallback } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { motion, AnimatePresence, useInView } from "framer-motion";
 import { useTheme } from "@/components/theme-provider";
 import { useLanguage } from "@/components/language-provider";
 import {
   Sun,
   Moon,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   ArrowUp,
@@ -20,11 +19,18 @@ import {
   Clock,
   Shield,
   MessageCircle,
+  Factory,
+  Store,
+  Building2,
+  Sparkles,
+  Hammer,
+  Palette,
 } from "lucide-react";
 import { SiWhatsapp } from "react-icons/si";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import teakLogo from "@assets/image_1772704803717.png";
+import teakLogoWhite from "@assets/TEAK-LOGO_(1)_1772708784884.png";
 
 const heroSlides = [
   {
@@ -129,6 +135,10 @@ function Navbar() {
     return () => window.removeEventListener("scroll", handler);
   }, []);
 
+  const isOnHero = !scrolled;
+  const isDark = theme === "dark";
+  const showWhiteLogo = isDark || isOnHero;
+
   const navLinks = [
     { href: "#about", labelAr: "من نحن", labelEn: "About" },
     { href: "#products", labelAr: "منتجاتنا", labelEn: "Products" },
@@ -136,6 +146,14 @@ function Navbar() {
     { href: "#projects", labelAr: "مشاريعنا", labelEn: "Projects" },
     { href: "#contact", labelAr: "تواصل معنا", labelEn: "Contact" },
   ];
+
+  const navLinkClasses = isOnHero
+    ? "px-3 py-2 text-sm font-medium text-white/90 hover:text-white transition-colors drop-shadow-sm"
+    : "px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors";
+
+  const iconBtnClasses = isOnHero
+    ? "text-white/90 hover:text-white hover:bg-white/10"
+    : "";
 
   return (
     <motion.nav
@@ -152,9 +170,9 @@ function Navbar() {
         <div className="flex items-center justify-between gap-4 h-16 sm:h-20">
           <a href="/" className="flex items-center gap-3">
             <img
-              src={teakLogo}
+              src={showWhiteLogo ? teakLogoWhite : teakLogo}
               alt="Teak Logo"
-              className="w-10 h-10 sm:w-12 sm:h-12 object-contain"
+              className="w-10 h-10 sm:w-12 sm:h-12 object-contain transition-all duration-300"
               data-testid="img-logo"
             />
           </a>
@@ -164,7 +182,7 @@ function Navbar() {
               <a
                 key={link.href}
                 href={link.href}
-                className="px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                className={navLinkClasses}
                 data-testid={`link-nav-${link.labelEn.toLowerCase()}`}
               >
                 {t(link.labelAr, link.labelEn)}
@@ -172,14 +190,17 @@ function Navbar() {
             ))}
             <a
               href="/request-quote"
-              className="px-3 py-2 text-sm font-medium text-primary hover:text-primary/80 transition-colors"
+              className={isOnHero
+                ? "px-3 py-2 text-sm font-bold text-white hover:text-white/80 transition-colors drop-shadow-sm"
+                : "px-3 py-2 text-sm font-bold text-primary hover:text-primary/80 transition-colors"
+              }
               data-testid="link-request-quote"
             >
               {t("طلب عرض سعر", "Request Quote")}
             </a>
             <a
               href="/track-order"
-              className="px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+              className={navLinkClasses}
               data-testid="link-track-order"
             >
               {t("تتبع طلبك", "Track Order")}
@@ -191,6 +212,7 @@ function Navbar() {
               size="icon"
               variant="ghost"
               onClick={toggleLang}
+              className={iconBtnClasses}
               data-testid="button-language-toggle"
               aria-label={t("تبديل اللغة إلى الإنجليزية", "Switch language to Arabic")}
             >
@@ -200,20 +222,25 @@ function Navbar() {
               size="icon"
               variant="ghost"
               onClick={toggleTheme}
+              className={iconBtnClasses}
               data-testid="button-theme-toggle"
               aria-label={t("تبديل إلى الوضع الفاتح", "Toggle to dark mode")}
             >
               {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </Button>
             <a href="/login" data-testid="link-login">
-              <Button size="sm" variant="outline" className="hidden lg:inline-flex">
+              <Button
+                size="sm"
+                variant={isOnHero ? "secondary" : "outline"}
+                className={`hidden lg:inline-flex ${isOnHero ? "bg-white/15 backdrop-blur-sm text-white border-white/20 hover:bg-white/25" : ""}`}
+              >
                 {t("تسجيل الدخول", "Sign In")}
               </Button>
             </a>
             <Button
               size="icon"
               variant="ghost"
-              className="lg:hidden"
+              className={`lg:hidden ${iconBtnClasses}`}
               onClick={() => setMobileOpen(!mobileOpen)}
               data-testid="button-mobile-menu"
               aria-label={t("القائمة", "Menu")}
@@ -326,20 +353,6 @@ function HeroSection() {
       </AnimatePresence>
 
       <div className="relative z-10 h-full flex flex-col items-center justify-center text-center text-white px-4">
-        <motion.div
-          initial={{ y: 30, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ duration: 0.6, delay: 0.2 }}
-          className="mb-4"
-        >
-          <img
-            src={teakLogo}
-            alt="Teak Logo"
-            className="w-20 h-20 sm:w-24 sm:h-24 mx-auto object-contain drop-shadow-2xl mb-4"
-            data-testid="img-hero-logo"
-          />
-        </motion.div>
-
         <AnimatePresence mode="wait">
           <motion.div
             key={current}
@@ -465,14 +478,19 @@ function AboutSection() {
 
 function CEOSection() {
   const { t } = useLanguage();
+  const ref = useRef(null);
+  const isInView = useInView(ref, { once: true, margin: "-100px" });
 
   return (
-    <section className="py-20 sm:py-28" data-testid="section-ceo">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6">
+    <section className="py-20 sm:py-28 relative overflow-hidden" data-testid="section-ceo" ref={ref}>
+      <div className="absolute inset-0 opacity-[0.03]" style={{
+        backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%239C92AC' fill-opacity='0.4'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
+      }} />
+
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 relative">
         <motion.div
           initial={{ opacity: 0, y: 30 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
+          animate={isInView ? { opacity: 1, y: 0 } : {}}
           transition={{ duration: 0.6 }}
           className="text-center mb-12"
         >
@@ -484,42 +502,109 @@ function CEOSection() {
           </h2>
         </motion.div>
 
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.6, delay: 0.2 }}
-        >
-          <Card>
-            <CardContent className="p-6 sm:p-10">
-              <div className="flex flex-col md:flex-row items-center md:items-start gap-8">
-                <div className="shrink-0">
-                  <img
-                    src="/images/ceo_photo.jpg"
-                    alt={t("الرئيس التنفيذي", "CEO")}
-                    className="w-32 h-32 sm:w-40 sm:h-40 rounded-full object-cover border-4 border-primary/20 shadow-lg"
-                    data-testid="img-ceo-photo"
-                  />
-                </div>
-                <div className="flex-1">
-                  <p className="text-base sm:text-lg leading-loose text-muted-foreground whitespace-pre-line" data-testid="text-ceo-message">
-                    {t(
-                      "السلام عليكم ورحمة الله وبركاته … وبعد\n\nإنه لمن دواعي سروري أن أرحب بكم عملاء معارض ومصنع تيك للصناعات الخشبية لتلبية احتياجاتكم وتطلعاتكم المتجددة، ونطمح أن يشارك مصنع تيك في نهضة الصناعة التي تشهدها المملكة ونحاول قدر المستطاع أن نحظي بثقة عملائنا وتقديم كل ما هو جديد في مجال الصناعات الخشبية وذلك على مستوى عال باستخدام التقنيات الحديثة وتعيين الكوادر الفنية والإدارية لنقدم منتج بأعلى مواصفات في وقت قياسي.\n\nنسأل المولي عز وجل أن يحفظ مليكنا وولي عهده وأن يديم على بلادنا نعمة الأمن والأمان والاستقرار.",
-                      "Peace be upon you.\n\nIt is my pleasure to welcome you, clients of Teak Wood Products Factory showrooms and factory, to meet your needs and renewed aspirations. We aspire to participate in the industrial renaissance the Kingdom is witnessing, striving to earn the trust of our clients by providing the latest in wood products manufacturing using modern technologies and qualified technical and administrative staff to deliver products with the highest specifications in record time.\n\nWe ask God to preserve our King and Crown Prince and to maintain the blessings of security and stability in our country."
-                    )}
-                  </p>
-                </div>
+        <div className="flex flex-col lg:flex-row items-center gap-10 lg:gap-16">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.8, rotate: -3 }}
+            animate={isInView ? { opacity: 1, scale: 1, rotate: 0 } : {}}
+            transition={{ duration: 0.8, delay: 0.2, type: "spring", stiffness: 100 }}
+            className="shrink-0 relative group"
+          >
+            <div className="relative">
+              <div className="absolute -inset-3 bg-gradient-to-br from-primary/30 via-amber-500/20 to-primary/30 rounded-2xl blur-lg opacity-60 group-hover:opacity-80 transition-opacity" />
+              <div className="relative w-52 h-52 sm:w-64 sm:h-64 rounded-2xl overflow-hidden border-4 border-primary/20 shadow-2xl" style={{ filter: "contrast(1.05) saturate(1.1)" }}>
+                <img
+                  src="/images/ceo_painting.png"
+                  alt={t("م. جبران الشهراني", "Eng. Jabran Al-Shahrani")}
+                  className="w-full h-full object-cover"
+                  data-testid="img-ceo-photo"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent" />
               </div>
-            </CardContent>
-          </Card>
-        </motion.div>
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={isInView ? { opacity: 1, y: 0 } : {}}
+                transition={{ delay: 0.6, duration: 0.5 }}
+                className="absolute -bottom-4 inset-x-0 mx-auto w-fit"
+              >
+                <div className="bg-primary text-primary-foreground px-4 py-1.5 rounded-full text-sm font-bold shadow-lg whitespace-nowrap">
+                  {t("م. جبران الشهراني", "Eng. Jabran Al-Shahrani")}
+                </div>
+              </motion.div>
+            </div>
+
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={isInView ? { opacity: 1 } : {}}
+              transition={{ delay: 0.8, duration: 0.5 }}
+              className="text-center mt-8 text-sm text-muted-foreground font-medium"
+            >
+              {t("الرئيس التنفيذي", "Chief Executive Officer")}
+            </motion.div>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, x: 30 }}
+            animate={isInView ? { opacity: 1, x: 0 } : {}}
+            transition={{ duration: 0.6, delay: 0.4 }}
+            className="flex-1"
+          >
+            <Card className="border-primary/10 shadow-xl">
+              <CardContent className="p-6 sm:p-10 relative overflow-hidden">
+                <Sparkles className="absolute top-4 end-4 w-5 h-5 text-primary/20" />
+                <div className="absolute top-0 start-0 w-1 h-full bg-gradient-to-b from-primary via-primary/50 to-transparent rounded-full" />
+
+                <div className="text-5xl text-primary/10 font-serif leading-none mb-2 select-none">"</div>
+                <p className="text-base sm:text-lg leading-loose text-muted-foreground whitespace-pre-line" data-testid="text-ceo-message">
+                  {t(
+                    "السلام عليكم ورحمة الله وبركاته … وبعد\n\nإنه لمن دواعي سروري أن أرحب بكم عملاء معارض ومصنع تيك للصناعات الخشبية لتلبية احتياجاتكم وتطلعاتكم المتجددة، ونطمح أن يشارك مصنع تيك في نهضة الصناعة التي تشهدها المملكة ونحاول قدر المستطاع أن نحظي بثقة عملائنا وتقديم كل ما هو جديد في مجال الصناعات الخشبية وذلك على مستوى عال باستخدام التقنيات الحديثة وتعيين الكوادر الفنية والإدارية لنقدم منتج بأعلى مواصفات في وقت قياسي.\n\nنسأل المولي عز وجل أن يحفظ مليكنا وولي عهده وأن يديم على بلادنا نعمة الأمن والأمان والاستقرار.",
+                    "Peace be upon you.\n\nIt is my pleasure to welcome you, clients of Teak Wood Products Factory showrooms and factory, to meet your needs and renewed aspirations. We aspire to participate in the industrial renaissance the Kingdom is witnessing, striving to earn the trust of our clients by providing the latest in wood products manufacturing using modern technologies and qualified technical and administrative staff to deliver products with the highest specifications in record time.\n\nWe ask God to preserve our King and Crown Prince and to maintain the blessings of security and stability in our country."
+                  )}
+                </p>
+                <div className="text-5xl text-primary/10 font-serif leading-none mt-2 text-end select-none">"</div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        </div>
       </div>
     </section>
   );
 }
 
+function AnimatedCounter({ value, suffix = "" }: { value: number; suffix?: string }) {
+  const ref = useRef(null);
+  const isInView = useInView(ref, { once: true });
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    if (!isInView) return;
+    let frame: number;
+    const duration = 2000;
+    const start = performance.now();
+    const animate = (now: number) => {
+      const elapsed = now - start;
+      const progress = Math.min(elapsed / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setCount(Math.round(eased * value));
+      if (progress < 1) frame = requestAnimationFrame(animate);
+    };
+    frame = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(frame);
+  }, [isInView, value]);
+
+  return <span ref={ref}>{count}{suffix}</span>;
+}
+
 function ProductsSection() {
   const { t } = useLanguage();
+  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
+
+  const productIcons = [
+    <Hammer className="w-5 h-5" />,
+    <Package className="w-5 h-5" />,
+    <Shield className="w-5 h-5" />,
+    <Palette className="w-5 h-5" />,
+    <Sparkles className="w-5 h-5" />,
+  ];
 
   return (
     <section id="products" className="py-20 sm:py-28 bg-card/50" data-testid="section-products">
@@ -553,20 +638,38 @@ function ProductsSection() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ duration: 0.5, delay: i * 0.1 }}
+              onHoverStart={() => setHoveredIdx(i)}
+              onHoverEnd={() => setHoveredIdx(null)}
               data-testid={`card-product-${i}`}
             >
-              <Card className="overflow-hidden h-full group">
+              <Card className="overflow-hidden h-full group cursor-pointer">
                 <div className="relative h-56 overflow-hidden">
-                  <img
+                  <motion.img
                     src={product.image}
                     alt={t(product.titleAr, product.titleEn)}
-                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                    className="w-full h-full object-cover"
+                    animate={{ scale: hoveredIdx === i ? 1.1 : 1 }}
+                    transition={{ duration: 0.6 }}
                     data-testid={`img-product-${i}`}
                   />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-                  <h3 className="absolute bottom-4 start-4 text-white text-xl font-bold drop-shadow-lg" data-testid={`text-product-title-${i}`}>
-                    {t(product.titleAr, product.titleEn)}
-                  </h3>
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+                  <motion.div
+                    className="absolute bottom-4 start-4 end-4 flex items-end justify-between"
+                    animate={{ y: hoveredIdx === i ? -4 : 0 }}
+                    transition={{ duration: 0.3 }}
+                  >
+                    <h3 className="text-white text-xl font-bold drop-shadow-lg" data-testid={`text-product-title-${i}`}>
+                      {t(product.titleAr, product.titleEn)}
+                    </h3>
+                    <motion.div
+                      className="w-10 h-10 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center text-white"
+                      initial={{ scale: 0, opacity: 0 }}
+                      animate={{ scale: hoveredIdx === i ? 1 : 0, opacity: hoveredIdx === i ? 1 : 0 }}
+                      transition={{ duration: 0.2 }}
+                    >
+                      {productIcons[i] || <Sparkles className="w-5 h-5" />}
+                    </motion.div>
+                  </motion.div>
                 </div>
                 <CardContent className="p-4">
                   <p className="text-sm text-muted-foreground leading-relaxed">
@@ -585,8 +688,9 @@ function ProductsSection() {
           className="text-center mt-10"
         >
           <a href="/products" data-testid="link-all-products">
-            <Button variant="outline" size="lg">
+            <Button variant="outline" size="lg" className="group gap-2">
               {t("عرض جميع المنتجات", "View All Products")}
+              <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform rtl:rotate-180 rtl:group-hover:-translate-x-1" />
             </Button>
           </a>
         </motion.div>
@@ -758,16 +862,19 @@ function StatsSection() {
   const { t } = useLanguage();
 
   const stats = [
-    { valueAr: "+500", valueEn: "500+", labelAr: "عميل", labelEn: "Clients", icon: <Users className="w-6 h-6" /> },
-    { valueAr: "+50", valueEn: "50+", labelAr: "منتج", labelEn: "Products", icon: <Package className="w-6 h-6" /> },
-    { valueAr: "+10", valueEn: "10+", labelAr: "سنوات الخبرة", labelEn: "Years Experience", icon: <Clock className="w-6 h-6" /> },
-    { valueAr: "+100", valueEn: "100+", labelAr: "موظف وعامل", labelEn: "Employees", icon: <Award className="w-6 h-6" /> },
-    { valueAr: "5", valueEn: "5", labelAr: "سنوات ضمان", labelEn: "Years Warranty", icon: <Shield className="w-6 h-6" /> },
+    { value: 500, suffix: "+", labelAr: "عميل", labelEn: "Clients", icon: <Users className="w-6 h-6" /> },
+    { value: 50, suffix: "+", labelAr: "منتج", labelEn: "Products", icon: <Package className="w-6 h-6" /> },
+    { value: 10, suffix: "+", labelAr: "سنوات الخبرة", labelEn: "Years Experience", icon: <Clock className="w-6 h-6" /> },
+    { value: 100, suffix: "+", labelAr: "موظف وعامل", labelEn: "Employees", icon: <Award className="w-6 h-6" /> },
+    { value: 5, suffix: "", labelAr: "سنوات ضمان", labelEn: "Years Warranty", icon: <Shield className="w-6 h-6" /> },
   ];
 
   return (
-    <section className="py-16 sm:py-20 bg-primary text-primary-foreground" data-testid="section-stats">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6">
+    <section className="py-16 sm:py-20 bg-primary text-primary-foreground relative overflow-hidden" data-testid="section-stats">
+      <div className="absolute inset-0 opacity-10">
+        <div className="absolute top-0 start-0 w-full h-full" style={{ backgroundImage: "repeating-linear-gradient(45deg, transparent, transparent 35px, rgba(255,255,255,0.05) 35px, rgba(255,255,255,0.05) 70px)" }} />
+      </div>
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 relative">
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-6 sm:gap-8">
           {stats.map((stat, i) => (
             <motion.div
@@ -779,11 +886,15 @@ function StatsSection() {
               className="text-center"
               data-testid={`stat-${i}`}
             >
-              <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-primary-foreground/10 flex items-center justify-center">
+              <motion.div
+                className="w-14 h-14 mx-auto mb-3 rounded-full bg-primary-foreground/10 flex items-center justify-center"
+                whileHover={{ scale: 1.15, rotate: 5 }}
+                transition={{ type: "spring", stiffness: 300 }}
+              >
                 {stat.icon}
-              </div>
-              <div className="text-3xl sm:text-4xl font-black mb-1">
-                {t(stat.valueAr, stat.valueEn)}
+              </motion.div>
+              <div className="text-3xl sm:text-4xl font-black mb-1 tabular-nums">
+                <AnimatedCounter value={stat.value} suffix={stat.suffix} />
               </div>
               <div className="text-sm text-primary-foreground/80 font-medium">
                 {t(stat.labelAr, stat.labelEn)}
@@ -798,6 +909,42 @@ function StatsSection() {
 
 function MapSection() {
   const { t } = useLanguage();
+  const [activeBranch, setActiveBranch] = useState(0);
+
+  const branches = [
+    {
+      id: "factory",
+      icon: <Factory className="w-5 h-5" />,
+      labelAr: "المصنع الرئيسي",
+      labelEn: "Main Factory",
+      locationAr: "خميس مشيط - المدينة الصناعية",
+      locationEn: "Khamis Mushait - Industrial City",
+      mapUrl: "https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3700!2d42.7!3d18.3!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x15fb5b0c08c5b0b7%3A0x0!2zMTjCsDE4JzAwLjAiTiA0MsKwNDInMDAuMCJF!5e0!3m2!1sar!2ssa!4v1700000000000",
+      gMapsLink: "https://maps.app.goo.gl/Y4FHN6vXRgr2qPuv9",
+    },
+    {
+      id: "showroom",
+      icon: <Store className="w-5 h-5" />,
+      labelAr: "معرض خميس مشيط",
+      labelEn: "Khamis Mushait Showroom",
+      locationAr: "خميس مشيط - معرض البيع",
+      locationEn: "Khamis Mushait - Sales Showroom",
+      mapUrl: "https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3700!2d42.72!3d18.31!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x15fb5b0c08c5b0b7%3A0x0!2zMTjCsDE4JzM2LjAiTiA0MsKwNDMnMTIuMCJF!5e0!3m2!1sar!2ssa!4v1700000000001",
+      gMapsLink: "https://maps.app.goo.gl/SupLeWhZeY5VxWM38",
+    },
+    {
+      id: "riyadh",
+      icon: <Building2 className="w-5 h-5" />,
+      labelAr: "فرع الرياض",
+      labelEn: "Riyadh Branch",
+      locationAr: "الرياض",
+      locationEn: "Riyadh",
+      mapUrl: "https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3624!2d46.68!3d24.71!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3e2f03890d489399%3A0x0!2zMjTCsDQyJzM2LjAiTiA0NsijNDAnNDguMCJF!5e0!3m2!1sar!2ssa!4v1700000000002",
+      gMapsLink: "https://maps.app.goo.gl/WMjCiy6hD4Vw77zj6",
+    },
+  ];
+
+  const branch = branches[activeBranch];
 
   return (
     <section id="location" className="py-20 sm:py-28" data-testid="section-map">
@@ -810,35 +957,76 @@ function MapSection() {
           className="text-center mb-12"
         >
           <span className="inline-block px-4 py-1.5 text-xs font-medium text-primary bg-primary/10 rounded-full border border-primary/20 mb-4">
-            {t("موقعنا", "Our Location")}
+            {t("فروعنا", "Our Branches")}
           </span>
           <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black mb-4" data-testid="text-map-heading">
-            {t("موقعنا", "Our Location")}
+            {t("فروعنا ومواقعنا", "Our Branches & Locations")}
           </h2>
           <p className="text-muted-foreground text-lg">
-            {t("المنطقة الصناعية - جازان، المملكة العربية السعودية", "Industrial Area - Jazan, Saudi Arabia")}
+            {t("نتواجد في عدة مدن لخدمتكم", "We are present in multiple cities to serve you")}
           </p>
         </motion.div>
 
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          whileInView={{ opacity: 1, scale: 1 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.6 }}
-          className="rounded-xl overflow-hidden shadow-lg border border-border"
-        >
-          <iframe
-            src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3880.0!2d42.5511!3d16.8893!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x0%3A0x0!2zMTbCsDUzJzIxLjUiTiA0MsKwMzMnMDQuMCJF!5e0!3m2!1sar!2ssa!4v1700000000000"
-            width="100%"
-            height="400"
-            style={{ border: 0 }}
-            allowFullScreen
-            loading="lazy"
-            referrerPolicy="no-referrer-when-downgrade"
-            title={t("موقع مصنع تيك", "Teak Factory Location")}
-            data-testid="iframe-map"
-          />
-        </motion.div>
+        <div className="flex flex-wrap justify-center gap-3 mb-8">
+          {branches.map((b, i) => (
+            <motion.button
+              key={b.id}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setActiveBranch(i)}
+              className={`flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-bold transition-all ${
+                activeBranch === i
+                  ? "bg-primary text-primary-foreground shadow-lg shadow-primary/25"
+                  : "bg-muted/50 text-muted-foreground hover:bg-muted"
+              }`}
+              data-testid={`button-branch-${b.id}`}
+            >
+              {b.icon}
+              {t(b.labelAr, b.labelEn)}
+            </motion.button>
+          ))}
+        </div>
+
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={activeBranch}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.3 }}
+          >
+            <Card className="overflow-hidden shadow-xl">
+              <div className="p-4 border-b border-border flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                    {branch.icon}
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-sm">{t(branch.labelAr, branch.labelEn)}</h3>
+                    <p className="text-xs text-muted-foreground">{t(branch.locationAr, branch.locationEn)}</p>
+                  </div>
+                </div>
+                <a href={branch.gMapsLink} target="_blank" rel="noopener noreferrer">
+                  <Button size="sm" variant="outline" className="gap-2">
+                    <MapPin className="w-4 h-4" />
+                    {t("افتح في خرائط قوقل", "Open in Google Maps")}
+                  </Button>
+                </a>
+              </div>
+              <iframe
+                src={branch.mapUrl}
+                width="100%"
+                height="400"
+                style={{ border: 0 }}
+                allowFullScreen
+                loading="lazy"
+                referrerPolicy="no-referrer-when-downgrade"
+                title={t(branch.labelAr, branch.labelEn)}
+                data-testid="iframe-map"
+              />
+            </Card>
+          </motion.div>
+        </AnimatePresence>
       </div>
     </section>
   );
@@ -873,7 +1061,7 @@ function ContactSection() {
       icon: <MapPin className="w-5 h-5" />,
       labelAr: "العنوان",
       labelEn: "Address",
-      value: t("المنطقة الصناعية - جازان", "Industrial Area - Jazan"),
+      value: t("خميس مشيط - المدينة الصناعية", "Khamis Mushait - Industrial City"),
       href: "#location",
     },
   ];
@@ -985,8 +1173,8 @@ function Footer() {
             </div>
             <p className="text-sm text-muted-foreground leading-relaxed">
               {t(
-                "مصنع تيك للصناعات الخشبية - جازان، المملكة العربية السعودية",
-                "Teak Wood Products Factory - Jazan, Saudi Arabia"
+                "مصنع تيك للصناعات الخشبية - خميس مشيط، المملكة العربية السعودية",
+                "Teak Wood Products Factory - Khamis Mushait, Saudi Arabia"
               )}
             </p>
           </div>

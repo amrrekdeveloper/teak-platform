@@ -35,30 +35,77 @@ import SettingsPage from "@/pages/settings";
 import TrackOrderPage from "@/pages/track-order";
 import AppLayout from "@/components/app-layout";
 import NotFound from "@/pages/not-found";
-import teakLogo from "@assets/image_1772704803717.png";
+import teakLogoWhite from "@assets/TEAK-LOGO_(1)_1772708784884.png";
 
 function SplashScreen({ onFinish }: { onFinish: () => void }) {
-  const { lang } = useLanguage();
+  const [progress, setProgress] = useState(0);
+
   useEffect(() => {
-    const timer = setTimeout(onFinish, 2200);
-    return () => clearTimeout(timer);
+    const duration = 2500;
+    const interval = 30;
+    const steps = duration / interval;
+    let step = 0;
+    const timer = setInterval(() => {
+      step++;
+      const eased = 1 - Math.pow(1 - step / steps, 3);
+      setProgress(Math.min(Math.round(eased * 100), 100));
+      if (step >= steps) {
+        clearInterval(timer);
+        setTimeout(onFinish, 300);
+      }
+    }, interval);
+    return () => clearInterval(timer);
   }, [onFinish]);
 
   return (
     <motion.div
-      className="fixed inset-0 z-[9999] flex items-center justify-center bg-background"
+      className="fixed inset-0 z-[9999] flex flex-col items-center justify-center"
+      style={{ backgroundColor: "#9e0a0a" }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.5 }}
     >
+      <div className="absolute inset-0 overflow-hidden">
+        <motion.div
+          className="absolute w-[600px] h-[600px] rounded-full"
+          style={{ background: "radial-gradient(circle, rgba(255,255,255,0.06) 0%, transparent 70%)", top: "-200px", right: "-200px" }}
+          animate={{ scale: [1, 1.2, 1], opacity: [0.3, 0.6, 0.3] }}
+          transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+        />
+        <motion.div
+          className="absolute w-[400px] h-[400px] rounded-full"
+          style={{ background: "radial-gradient(circle, rgba(255,255,255,0.04) 0%, transparent 70%)", bottom: "-100px", left: "-100px" }}
+          animate={{ scale: [1.2, 1, 1.2], opacity: [0.2, 0.5, 0.2] }}
+          transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
+        />
+      </div>
+
       <motion.img
-        src={teakLogo}
+        src={teakLogoWhite}
         alt="Teak"
-        className="w-28 h-28 sm:w-36 sm:h-36 object-contain"
-        initial={{ scale: 0.6, opacity: 0 }}
+        className="w-32 h-32 sm:w-40 sm:h-40 object-contain relative z-10"
+        initial={{ scale: 0.3, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        transition={{ duration: 0.7, ease: "easeOut" }}
+        transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
         data-testid="img-splash-logo"
       />
+
+      <motion.div
+        className="mt-8 flex flex-col items-center gap-3 relative z-10"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.5, duration: 0.5 }}
+      >
+        <div className="w-48 h-1 bg-white/20 rounded-full overflow-hidden">
+          <motion.div
+            className="h-full bg-white rounded-full"
+            style={{ width: `${progress}%` }}
+            transition={{ duration: 0.1 }}
+          />
+        </div>
+        <span className="text-white/80 text-sm font-bold tabular-nums" data-testid="text-splash-progress">
+          {progress}%
+        </span>
+      </motion.div>
     </motion.div>
   );
 }
