@@ -32,6 +32,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import teakLogo from "@assets/image_1772704803717.png";
 import teakLogoWhite from "@assets/TEAK-LOGO_(1)_1772708784884.png";
 
+import TEAK_LOGO__1___1_ from "@assets/TEAK-LOGO (1) (1).png";
+
 const heroSlides = [
   {
     image: "/images/products/kitchen_modern.jpg",
@@ -170,7 +172,7 @@ function Navbar() {
         <div className="flex items-center justify-between gap-4 h-16 sm:h-20">
           <a href="/" className="flex items-center gap-3">
             <img
-              src={showWhiteLogo ? teakLogoWhite : teakLogo}
+              src={TEAK_LOGO__1___1_}
               alt="Teak Logo"
               className="w-14 h-14 sm:w-16 sm:h-16 object-contain transition-all duration-300"
               data-testid="img-logo"
@@ -251,7 +253,6 @@ function Navbar() {
           </div>
         </div>
       </div>
-
       <AnimatePresence>
         {mobileOpen && (
           <motion.div
