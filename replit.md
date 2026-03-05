@@ -97,11 +97,18 @@ Integrated Manufacturing + CRM + Project Management platform for a Saudi wood pr
 - Verification endpoint: GET /api/invoices/:id/verify
 
 ## Seed Users (password: 123456)
-k.asiri/owner, khaled/assistant, hadi/sales, mohnad/sales, mohsen/designer, hamdi/production, ayman/purchasing, bassam/warehouse, ismail/accountant, fatima/customer_service, mohammed/delivery, saddad/installation, quality1/quality, noura/hr, hanan/hr, siham/it
+admin/owner (System Admin), k.asiri/owner, khaled/assistant, hadi/sales, mohnad/sales, mohsen/designer, hamdi/production, ayman/purchasing, bassam/warehouse, ismail/accountant, fatima/customer_service, mohammed/delivery, saddad/installation, quality1/quality, noura/hr, hanan/hr, siham/it
+
+## Login Page
+- Demo credentials section with 6 account buttons (admin, k.asiri, hadi, mohsen, hamdi, ismail)
+- Clicking a demo button auto-fills username and password into the form
+- Login race condition fixed: uses `setQueryData` instead of `invalidateQueries` to prevent white screen flash
 
 ## Logos
-- Single consolidated logo: `@assets/image_1772704803717.png` imported as `teakLogo` everywhere
-- No separate AR/EN logos — all old references removed
+- Arabic logo: `@assets/logo_teak1_1772689915503.png` (imported as `logoAr`) — displayed when lang=AR
+- English logo: `@assets/logo_teak2_1772689894105.png` (imported as `logoEn`) — displayed when lang=EN, also used as favicon and splash screen
+- White logo for hero/dark: `@assets/TEAK-LOGO_(1)_(1)_1772710617816.png` (imported as `teakLogoWhite`) — used on hero section and dark backgrounds in landing page
+- All pages use `const currentLogo = lang === "ar" ? logoAr : logoEn;` for language-aware switching
 
 ## Landing Page Content (from teak2030.net)
 - All images stored in `client/public/images/` (products/, gallery/, projects/ subdirs, ceo_photo.jpg)

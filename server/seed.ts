@@ -34,6 +34,7 @@ export async function seedDatabase() {
     { username: "noura", password: defaultPassword, role: "hr" as const, fullNameAr: "نورة", fullNameEn: "Noura", phone: "0513234567", email: "noura@teak.sa" },
     { username: "hanan", password: defaultPassword, role: "hr" as const, fullNameAr: "حنان", fullNameEn: "Hanan", phone: "0513334567", email: "hanan@teak.sa" },
     { username: "siham", password: defaultPassword, role: "it" as const, fullNameAr: "سهام", fullNameEn: "Siham", phone: "0514234567", email: "siham@teak.sa" },
+    { username: "admin", password: defaultPassword, role: "owner" as const, fullNameAr: "مدير النظام", fullNameEn: "System Admin", phone: "0500000000", email: "admin@teak.sa" },
   ];
 
   await db.insert(users).values(userSeeds);

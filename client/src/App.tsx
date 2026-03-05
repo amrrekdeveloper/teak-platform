@@ -35,7 +35,7 @@ import SettingsPage from "@/pages/settings";
 import TrackOrderPage from "@/pages/track-order";
 import AppLayout from "@/components/app-layout";
 import NotFound from "@/pages/not-found";
-import teakLogoWhite from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
+import logoEn from "@assets/logo_teak2_1772689894105.png";
 
 function SplashScreen({ onFinish }: { onFinish: () => void }) {
   const [progress, setProgress] = useState(0);
@@ -80,7 +80,7 @@ function SplashScreen({ onFinish }: { onFinish: () => void }) {
       </div>
 
       <motion.img
-        src={teakLogoWhite}
+        src={logoEn}
         alt="Teak"
         className="w-32 h-32 sm:w-40 sm:h-40 object-contain relative z-10"
         initial={{ scale: 0.3, opacity: 0 }}

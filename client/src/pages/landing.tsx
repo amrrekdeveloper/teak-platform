@@ -29,7 +29,8 @@ import {
 import { SiWhatsapp } from "react-icons/si";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import teakLogo from "@assets/image_1772704803717.png";
+import logoAr from "@assets/logo_teak1_1772689915503.png";
+import logoEn from "@assets/logo_teak2_1772689894105.png";
 import teakLogoWhite from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
 
 const heroSlides = [
@@ -170,7 +171,7 @@ function Navbar() {
         <div className="flex items-center justify-between gap-4 h-16 sm:h-20">
           <a href="/" className="flex items-center gap-3">
             <img
-              src={showWhiteLogo ? teakLogoWhite : teakLogo}
+              src={showWhiteLogo ? teakLogoWhite : (lang === "ar" ? logoAr : logoEn)}
               alt="Teak Logo"
               className="h-12 sm:h-14 w-auto object-contain transition-all duration-300"
               data-testid="img-logo"
@@ -1156,7 +1157,7 @@ function Footer() {
           <div>
             <div className="flex items-center gap-3 mb-4">
               <img
-                src={teakLogo}
+                src={lang === "ar" ? logoAr : logoEn}
                 alt="Teak Logo"
                 className="w-10 h-10 object-contain"
                 data-testid="img-footer-logo"

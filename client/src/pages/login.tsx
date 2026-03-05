@@ -6,8 +6,18 @@ import { useTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Sun, Moon, Eye, EyeOff, Loader2, Lock } from "lucide-react";
-import teakLogo from "@assets/image_1772704803717.png";
+import { Sun, Moon, Eye, EyeOff, Loader2, Lock, Copy, CheckCircle2 } from "lucide-react";
+import logoAr from "@assets/logo_teak1_1772689915503.png";
+import logoEn from "@assets/logo_teak2_1772689894105.png";
+
+const demoAccounts = [
+  { username: "admin", password: "123456", roleAr: "مدير النظام", roleEn: "System Admin" },
+  { username: "k.asiri", password: "123456", roleAr: "المالك", roleEn: "Owner" },
+  { username: "hadi", password: "123456", roleAr: "المبيعات", roleEn: "Sales" },
+  { username: "mohsen", password: "123456", roleAr: "المصمم", roleEn: "Designer" },
+  { username: "hamdi", password: "123456", roleAr: "الإنتاج", roleEn: "Production" },
+  { username: "ismail", password: "123456", roleAr: "المحاسبة", roleEn: "Accounting" },
+];
 
 export default function LoginPage() {
   const { lang, toggleLang, t } = useLanguage();
@@ -18,8 +28,9 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
+  const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
 
-  const currentLogo = teakLogo;
+  const currentLogo = lang === "ar" ? logoAr : logoEn;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,8 +48,16 @@ export default function LoginPage() {
     }
   };
 
+  const fillCredentials = (account: typeof demoAccounts[0], idx: number) => {
+    setUsername(account.username);
+    setPassword(account.password);
+    setError("");
+    setCopiedIdx(idx);
+    setTimeout(() => setCopiedIdx(null), 1500);
+  };
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/5 p-4">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-background via-background to-primary/5 p-4">
       <div className="absolute top-4 end-4 flex items-center gap-2">
         <Button
           size="icon"
@@ -61,11 +80,11 @@ export default function LoginPage() {
       </div>
 
       <div className="w-full max-w-sm">
-        <div className="text-center mb-8">
+        <div className="text-center mb-6">
           <img
             src={currentLogo}
             alt="Teak"
-            className="w-24 h-24 mx-auto mb-6 object-contain"
+            className="w-20 h-20 mx-auto mb-4 object-contain"
             data-testid="img-login-logo"
           />
           <h1 className="text-2xl font-bold mb-1" data-testid="text-login-title">
@@ -76,7 +95,7 @@ export default function LoginPage() {
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-5">
+        <form onSubmit={handleSubmit} className="space-y-4">
           {error && (
             <div
               className="p-3 rounded-lg bg-destructive/10 text-destructive text-sm text-center"
@@ -148,7 +167,38 @@ export default function LoginPage() {
           </Button>
         </form>
 
-        <div className="mt-8 text-center">
+        <div className="mt-6 p-4 rounded-xl border border-dashed border-primary/30 bg-primary/5">
+          <p className="text-xs font-semibold text-primary mb-3 text-center" data-testid="text-demo-title">
+            {t("حسابات تجريبية — اضغط لنسخ البيانات", "Demo Accounts — Tap to auto-fill")}
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            {demoAccounts.map((account, idx) => (
+              <button
+                key={account.username}
+                type="button"
+                onClick={() => fillCredentials(account, idx)}
+                className="flex items-center gap-2 p-2 rounded-lg border border-border/50 bg-background hover:bg-accent hover:border-primary/40 transition-all text-start group"
+                data-testid={`button-demo-${account.username}`}
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium truncate">{account.username}</p>
+                  <p className="text-[10px] text-muted-foreground truncate">
+                    {lang === "ar" ? account.roleAr : account.roleEn}
+                  </p>
+                </div>
+                <div className="shrink-0">
+                  {copiedIdx === idx ? (
+                    <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />
+                  ) : (
+                    <Copy className="w-3.5 h-3.5 text-muted-foreground group-hover:text-primary transition-colors" />
+                  )}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-6 text-center">
           <a
             href="/"
             className="text-xs text-muted-foreground hover:text-primary transition-colors"
