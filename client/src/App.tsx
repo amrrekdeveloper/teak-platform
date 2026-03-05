@@ -35,8 +35,7 @@ import SettingsPage from "@/pages/settings";
 import TrackOrderPage from "@/pages/track-order";
 import AppLayout from "@/components/app-layout";
 import NotFound from "@/pages/not-found";
-import logoEN from "@assets/logo_teak2_1772689894105.png";
-import logoAR from "@assets/logo_teak1_1772689915503.png";
+import teakLogo from "@assets/image_1772704803717.png";
 
 function SplashScreen({ onFinish }: { onFinish: () => void }) {
   const { lang } = useLanguage();
@@ -52,7 +51,7 @@ function SplashScreen({ onFinish }: { onFinish: () => void }) {
       transition={{ duration: 0.5 }}
     >
       <motion.img
-        src={lang === "ar" ? logoAR : logoEN}
+        src={teakLogo}
         alt="Teak"
         className="w-28 h-28 sm:w-36 sm:h-36 object-contain"
         initial={{ scale: 0.6, opacity: 0 }}

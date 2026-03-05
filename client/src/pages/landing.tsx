@@ -25,8 +25,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import logoEN from "@assets/logo_teak2_1772689894105.png";
-import logoAR from "@assets/logo_teak1_1772689915503.png";
+import teakLogo from "@assets/image_1772704803717.png";
 
 const OVERALL_PROGRESS = 40;
 
@@ -142,7 +141,7 @@ function Navbar() {
   const { lang, toggleLang, t } = useLanguage();
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const currentLogo = lang === "ar" ? logoAR : logoEN;
+  const currentLogo = teakLogo;
 
   useEffect(() => {
     const handler = () => setScrolled(window.scrollY > 20);
@@ -319,7 +318,7 @@ function Navbar() {
 
 function HeroSection() {
   const { lang, t } = useLanguage();
-  const currentLogo = lang === "ar" ? logoAR : logoEN;
+  const currentLogo = teakLogo;
 
   return (
     <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
@@ -868,7 +867,7 @@ function UserTypesSection() {
 
 function Footer() {
   const { lang, t } = useLanguage();
-  const currentLogo = lang === "ar" ? logoAR : logoEN;
+  const currentLogo = teakLogo;
 
   return (
     <footer className="border-t border-border bg-card/30 py-12 sm:py-16">

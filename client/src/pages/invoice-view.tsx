@@ -6,8 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, ArrowRight, Loader2, Download, QrCode } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import logoEN from "@assets/logo_teak2_1772689894105.png";
-import logoAR from "@assets/logo_teak1_1772689915503.png";
+import teakLogo from "@assets/image_1772704803717.png";
 
 function ZatcaQRCode({ data, size = 160 }: { data: string; size?: number }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -47,7 +46,7 @@ export default function InvoiceViewPage() {
   const { t, isRTL, lang } = useLanguage();
   const [, params] = useRoute("/invoices/:id");
   const id = params?.id;
-  const currentLogo = lang === "ar" ? logoAR : logoEN;
+  const currentLogo = teakLogo;
 
   const { data: invoice, isLoading } = useQuery<Invoice>({
     queryKey: ["/api/invoices", id],

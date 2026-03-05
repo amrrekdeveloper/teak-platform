@@ -10,8 +10,7 @@ import {
   Loader2, Search, Package, Truck, Wrench, CheckCircle2,
   Clock, Factory, Shield, Sun, Moon, ArrowRight, ArrowLeft
 } from "lucide-react";
-import logoEN from "@assets/logo_teak2_1772689894105.png";
-import logoAR from "@assets/logo_teak1_1772689915503.png";
+import teakLogo from "@assets/image_1772704803717.png";
 
 const statusSteps = [
   { key: "pending", ar: "في الانتظار", en: "Pending", icon: Clock },
@@ -33,7 +32,7 @@ export default function TrackOrderPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const currentLogo = lang === "ar" ? logoAR : logoEN;
+  const currentLogo = teakLogo;
   const ArrowIcon = lang === "ar" ? ArrowLeft : ArrowRight;
 
   const handleSearch = async () => {

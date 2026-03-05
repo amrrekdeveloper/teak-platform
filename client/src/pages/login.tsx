@@ -7,8 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Sun, Moon, Eye, EyeOff, Loader2, Lock } from "lucide-react";
-import logoEN from "@assets/logo_teak2_1772689894105.png";
-import logoAR from "@assets/logo_teak1_1772689915503.png";
+import teakLogo from "@assets/image_1772704803717.png";
 
 export default function LoginPage() {
   const { lang, toggleLang, t } = useLanguage();
@@ -20,7 +19,7 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
 
-  const currentLogo = lang === "ar" ? logoAR : logoEN;
+  const currentLogo = teakLogo;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

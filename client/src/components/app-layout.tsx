@@ -9,8 +9,7 @@ import { Sun, Moon, LogOut, Bell, Loader2, Check, Info, AlertTriangle, Zap, Chec
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { Notification } from "@shared/schema";
-import logoEN from "@assets/logo_teak2_1772689894105.png";
-import logoAR from "@assets/logo_teak1_1772689915503.png";
+import teakLogo from "@assets/image_1772704803717.png";
 
 const roleLabels: Record<string, { ar: string; en: string }> = {
   owner: { ar: "المالك", en: "Owner" },
@@ -49,7 +48,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { theme, toggleTheme } = useTheme();
   const [notifOpen, setNotifOpen] = useState(false);
 
-  const currentLogo = lang === "ar" ? logoAR : logoEN;
+  const currentLogo = teakLogo;
 
   const { data: notifications = [] } = useQuery<Notification[]>({
     queryKey: ["/api/notifications"],

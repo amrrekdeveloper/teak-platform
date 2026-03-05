@@ -17,13 +17,12 @@ import {
 import { Sun, Moon, Loader2, CheckCircle2, ArrowLeft, ArrowRight } from "lucide-react";
 import { Link } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
-import logoEN from "@assets/logo_teak2_1772689894105.png";
-import logoAR from "@assets/logo_teak1_1772689915503.png";
+import teakLogo from "@assets/image_1772704803717.png";
 
 export default function RequestQuotePage() {
   const { lang, toggleLang, t, isRTL } = useLanguage();
   const { theme, toggleTheme } = useTheme();
-  const currentLogo = lang === "ar" ? logoAR : logoEN;
+  const currentLogo = teakLogo;
   const [submitted, setSubmitted] = useState(false);
 
   const [form, setForm] = useState({
