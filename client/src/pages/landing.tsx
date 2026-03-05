@@ -157,11 +157,6 @@ function Navbar() {
               className="w-10 h-10 sm:w-12 sm:h-12 object-contain"
               data-testid="img-logo"
             />
-            <div className="flex flex-col">
-              <span className="text-[10px] sm:text-xs text-muted-foreground leading-tight hidden sm:block" data-testid="text-brand-name">
-                {t("مطابخ • خزائن • أبواب • ديكورات", "Kitchens • Wardrobes • Doors • Decorations")}
-              </span>
-            </div>
           </a>
 
           <div className="hidden lg:flex items-center gap-1">
