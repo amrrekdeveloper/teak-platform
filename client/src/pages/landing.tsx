@@ -206,6 +206,17 @@ function Navbar() {
             >
               {t("تتبع طلبك", "Track Order")}
             </a>
+            <a
+              href="/portal/login"
+              className={
+                isOnHero
+                  ? "px-3 py-2 text-sm font-bold text-white hover:text-white/80 transition-colors drop-shadow-sm"
+                  : "px-3 py-2 text-sm font-bold text-primary hover:text-primary/80 transition-colors"
+              }
+              data-testid="link-customer-portal"
+            >
+              {t("بوابة العملاء", "Customer Portal")}
+            </a>
           </div>
 
           <div className="flex items-center gap-1 sm:gap-2">
@@ -295,6 +306,14 @@ function Navbar() {
                 data-testid="link-track-order-mobile"
               >
                 {t("تتبع طلبك", "Track Order")}
+              </a>
+              <a
+                href="/portal/login"
+                onClick={() => setMobileOpen(false)}
+                className="px-4 py-3 text-sm font-medium rounded-md hover:bg-muted text-primary"
+                data-testid="link-customer-portal-mobile"
+              >
+                {t("بوابة العملاء", "Customer Portal")}
               </a>
               <a
                 href="/login"
@@ -1148,6 +1167,7 @@ function Footer() {
     { href: "/products", labelAr: "منتجاتنا", labelEn: "Products" },
     { href: "/request-quote", labelAr: "طلب عرض سعر", labelEn: "Request Quote" },
     { href: "/track-order", labelAr: "تتبع طلبك", labelEn: "Track Order" },
+    { href: "/portal/login", labelAr: "بوابة العملاء", labelEn: "Customer Portal" },
   ];
 
   return (

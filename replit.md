@@ -36,7 +36,7 @@ Integrated Manufacturing + CRM + Project Management platform for a Saudi wood pr
 - `client/src/hooks/use-auth.ts` — Auth hook with login/logout/me
 
 ## Routing (wouter v3)
-- Public routes: `/`, `/login`, `/products`, `/request-quote`, `/track-order`
+- Public routes: `/`, `/login`, `/products`, `/request-quote`, `/track-order`, `/portal/login`, `/portal`
 - Dashboard uses `<Route path="/dashboard" nest>` — inner routes are RELATIVE (without /dashboard prefix)
 - Inner routes: `/`, `/customers`, `/customers/:id`, `/quotations`, `/quotations/new`, `/contracts`, `/contracts/:id`, `/payments`, `/invoices`, `/invoices/:id`, `/work-orders`, `/work-orders/:id`, `/production`, `/inventory`, `/suppliers`, `/purchases`, `/deliveries`, `/installations`, `/quality`, `/employees`, `/settings`
 - Sidebar Links and `useRoute()` inside dashboard pages use scoped paths (e.g., `/customers` not `/dashboard/customers`)
@@ -134,6 +134,7 @@ Customer requests quote (website) → Sales assigns to Designer → Designer dra
 - Canvas sketch tool (rectangles, lines, dimensions, text, colors, undo/redo)
 - Measurement fields, file upload, "Send to Sales" button
 - Route: `/dashboard/designer-board` (visible to designer role)
+- RTL: Page container has `dir="rtl"` for Arabic, card headers use `flex-row-reverse` for proper badge placement, canvas stays LTR, measurement inputs forced `dir="ltr"`
 
 ## Customer Portal (Firebase OTP)
 - Firebase project: `teak-manufacturing` (Phone Auth enabled, SMS template in Arabic)

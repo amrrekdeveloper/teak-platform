@@ -218,12 +218,12 @@ export default function QuotationBuilderPage() {
         </Card>
 
         {completedDesign && (
-          <Card className="border-green-200 dark:border-green-800" data-testid="card-designer-attachments">
+          <Card className="border-green-200 dark:border-green-800" dir={isRTL ? "rtl" : "ltr"} data-testid="card-designer-attachments">
             <CardHeader className="flex flex-row items-center justify-between gap-2 pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Paperclip className="w-4 h-4 text-green-600" />
+              <CardTitle className={`text-base flex items-center gap-2 ${isRTL ? "text-right" : "text-left"}`}>
+                <Paperclip className="w-4 h-4 text-green-600 shrink-0" />
                 {t("مرفقات المصمم", "Designer Attachments")}
-                <Badge variant="secondary" className="text-xs">
+                <Badge variant="secondary" className="text-xs shrink-0">
                   {t("مكتمل", "Completed")}
                 </Badge>
               </CardTitle>
@@ -231,8 +231,8 @@ export default function QuotationBuilderPage() {
             <CardContent className="space-y-3">
               {completedDesign.sketchImage && (
                 <div className="space-y-1">
-                  <p className="text-sm font-medium flex items-center gap-1">
-                    <Image className="w-3 h-3" />
+                  <p className={`text-sm font-medium flex items-center gap-1 ${isRTL ? "text-right" : "text-left"}`}>
+                    <Image className="w-3 h-3 shrink-0" />
                     {t("رسم التصميم", "Design Sketch")}
                   </p>
                   <div className="border rounded-md overflow-hidden max-w-md">
@@ -248,8 +248,8 @@ export default function QuotationBuilderPage() {
 
               {completedDesign.designFiles && completedDesign.designFiles.length > 0 && (
                 <div className="space-y-1">
-                  <p className="text-sm font-medium flex items-center gap-1">
-                    <FileText className="w-3 h-3" />
+                  <p className={`text-sm font-medium flex items-center gap-1 ${isRTL ? "text-right" : "text-left"}`}>
+                    <FileText className="w-3 h-3 shrink-0" />
                     {t("ملفات التصميم", "Design Files")}
                   </p>
                   <div className="flex flex-wrap gap-2">
@@ -271,8 +271,8 @@ export default function QuotationBuilderPage() {
 
               {completedDesign.measurements != null && (
                 <div className="space-y-1">
-                  <p className="text-sm font-medium">{t("القياسات", "Measurements")}</p>
-                  <pre className="text-xs bg-muted p-2 rounded-md overflow-x-auto" data-testid="text-measurements">
+                  <p className={`text-sm font-medium ${isRTL ? "text-right" : "text-left"}`}>{t("القياسات", "Measurements")}</p>
+                  <pre className="text-xs bg-muted p-2 rounded-md overflow-x-auto" dir="ltr" data-testid="text-measurements">
                     {String(typeof completedDesign.measurements === "string"
                       ? completedDesign.measurements
                       : JSON.stringify(completedDesign.measurements, null, 2))}
@@ -282,8 +282,8 @@ export default function QuotationBuilderPage() {
 
               {completedDesign.notes && (
                 <div className="space-y-1">
-                  <p className="text-sm font-medium">{t("ملاحظات المصمم", "Designer Notes")}</p>
-                  <p className="text-sm text-muted-foreground" data-testid="text-designer-notes">
+                  <p className={`text-sm font-medium ${isRTL ? "text-right" : "text-left"}`}>{t("ملاحظات المصمم", "Designer Notes")}</p>
+                  <p className={`text-sm text-muted-foreground ${isRTL ? "text-right" : "text-left"}`} data-testid="text-designer-notes">
                     {completedDesign.notes}
                   </p>
                 </div>

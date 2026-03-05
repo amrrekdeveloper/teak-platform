@@ -98,14 +98,19 @@ export default function RequestQuotePage() {
                   "Our sales team will contact you as soon as possible"
                 )}
               </p>
-              <div className="flex gap-3 justify-center">
+              <div className="flex gap-3 justify-center flex-wrap">
                 <Link href="/">
                   <Button variant="outline" data-testid="button-back-home">
                     {t("الصفحة الرئيسية", "Home")}
                   </Button>
                 </Link>
+                <Link href="/portal/login">
+                  <Button variant="default" data-testid="button-customer-portal">
+                    {t("بوابة العملاء", "Customer Portal")}
+                  </Button>
+                </Link>
                 <Link href="/products">
-                  <Button data-testid="button-view-products">
+                  <Button variant="outline" data-testid="button-view-products">
                     {t("تصفح المنتجات", "Browse Products")}
                   </Button>
                 </Link>

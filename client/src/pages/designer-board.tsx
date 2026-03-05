@@ -435,7 +435,7 @@ function SketchCanvas({
 }
 
 export default function DesignerBoardPage() {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const { user } = useAuth();
   const { toast } = useToast();
   const [selectedAssignment, setSelectedAssignment] = useState<DesignAssignment | null>(null);
@@ -533,10 +533,12 @@ export default function DesignerBoardPage() {
   const activeAssignments = assignments.filter(a => a.status === "designing");
   const completedAssignments = assignments.filter(a => a.status === "completed");
 
+  const isRTL = lang === "ar";
+
   return (
-    <div className="space-y-6 p-4 md:p-6">
+    <div className="space-y-6 p-4 md:p-6" dir={isRTL ? "rtl" : "ltr"}>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
+        <div className={isRTL ? "text-right" : "text-left"}>
           <h1 className="text-2xl font-bold" data-testid="text-page-title">
             {t("لوحة المصمم", "Designer Board")}
           </h1>
@@ -585,28 +587,28 @@ export default function DesignerBoardPage() {
                 const status = statusConfig[a.status] || statusConfig.pending;
                 return (
                   <Card key={a.id} className="hover-elevate cursor-pointer" onClick={() => selectAssignment(a)} data-testid={`card-assignment-${a.id}`}>
-                    <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-                      <CardTitle className="text-base truncate">
-                        {getCustomerName(a.customerId)}
-                      </CardTitle>
-                      <Badge className={`${status.color} no-default-active-elevate`} data-testid={`badge-status-${a.id}`}>
+                    <CardHeader className={`flex items-center justify-between gap-2 pb-2 ${isRTL ? "flex-row-reverse" : "flex-row"}`}>
+                      <Badge className={`${status.color} no-default-active-elevate shrink-0`} data-testid={`badge-status-${a.id}`}>
                         {t(status.ar, status.en)}
                       </Badge>
+                      <CardTitle className={`text-base truncate ${isRTL ? "text-right" : "text-left"}`}>
+                        {getCustomerName(a.customerId)}
+                      </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-2">
                       {a.productDescription && (
-                        <p className="text-sm text-muted-foreground line-clamp-2" data-testid={`text-description-${a.id}`}>
+                        <p className={`text-sm text-muted-foreground line-clamp-2 ${isRTL ? "text-right" : "text-left"}`} data-testid={`text-description-${a.id}`}>
                           {a.productDescription}
                         </p>
                       )}
                       {a.notes && (
-                        <p className="text-xs text-muted-foreground line-clamp-1">
+                        <p className={`text-xs text-muted-foreground line-clamp-1 ${isRTL ? "text-right" : "text-left"}`}>
                           {a.notes}
                         </p>
                       )}
                       <div className="flex items-center justify-between gap-2 pt-1">
                         <span className="text-xs text-muted-foreground" data-testid={`text-date-${a.id}`}>
-                          {new Date(a.createdAt).toLocaleDateString()}
+                          {new Date(a.createdAt).toLocaleDateString(isRTL ? "ar-SA" : "en-US")}
                         </span>
                         {a.sketchImage && (
                           <Badge variant="outline" className="no-default-active-elevate">
@@ -628,7 +630,7 @@ export default function DesignerBoardPage() {
             <>
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between gap-2">
-                  <div>
+                  <div className={isRTL ? "text-right" : "text-left"}>
                     <CardTitle className="text-lg" data-testid="text-design-customer">
                       {t("تصميم لـ", "Design for")} {getCustomerName(selectedAssignment.customerId)}
                     </CardTitle>
@@ -638,7 +640,7 @@ export default function DesignerBoardPage() {
                       </p>
                     )}
                   </div>
-                  <div className="flex items-center gap-2 flex-wrap">
+                  <div className="flex items-center gap-2 flex-wrap shrink-0">
                     <Button
                       variant="default"
                       onClick={handleSubmitToSales}
@@ -664,10 +666,12 @@ export default function DesignerBoardPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <SketchCanvas
-                    initialData={selectedAssignment.sketchData || undefined}
-                    onSave={handleSketchSave}
-                  />
+                  <div dir="ltr">
+                    <SketchCanvas
+                      initialData={selectedAssignment.sketchData || undefined}
+                      onSave={handleSketchSave}
+                    />
+                  </div>
                 </CardContent>
               </Card>
 
@@ -682,7 +686,7 @@ export default function DesignerBoardPage() {
                   <CardContent className="space-y-3">
                     {["width", "height", "depth", "custom1", "custom2"].map(key => (
                       <div key={key} className="flex items-center gap-2">
-                        <Label className="w-24 text-sm capitalize">
+                        <Label className={`w-24 text-sm ${isRTL ? "text-right" : "text-left"}`}>
                           {key === "width" ? t("العرض", "Width") :
                            key === "height" ? t("الارتفاع", "Height") :
                            key === "depth" ? t("العمق", "Depth") :
@@ -693,6 +697,7 @@ export default function DesignerBoardPage() {
                           value={measurements[key] || ""}
                           onChange={e => setMeasurements(prev => ({ ...prev, [key]: e.target.value }))}
                           placeholder={t("سم", "cm")}
+                          dir="ltr"
                           data-testid={`input-measurement-${key}`}
                         />
                       </div>
@@ -702,7 +707,7 @@ export default function DesignerBoardPage() {
 
                 <Card>
                   <CardHeader>
-                    <CardTitle className="text-base">{t("ملاحظات المصمم", "Designer Notes")}</CardTitle>
+                    <CardTitle className={`text-base ${isRTL ? "text-right" : "text-left"}`}>{t("ملاحظات المصمم", "Designer Notes")}</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <Textarea
@@ -710,6 +715,7 @@ export default function DesignerBoardPage() {
                       onChange={e => setNotes(e.target.value)}
                       rows={8}
                       placeholder={t("أضف ملاحظاتك هنا...", "Add your notes here...")}
+                      className={isRTL ? "text-right" : "text-left"}
                       data-testid="textarea-designer-notes"
                     />
                   </CardContent>
