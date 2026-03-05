@@ -513,7 +513,7 @@ function CEOSection() {
               <div className="absolute -inset-3 bg-gradient-to-br from-primary/30 via-amber-500/20 to-primary/30 rounded-2xl blur-lg opacity-60 group-hover:opacity-80 transition-opacity" />
               <div className="relative w-52 h-52 sm:w-64 sm:h-64 rounded-2xl overflow-hidden border-4 border-primary/20 shadow-2xl" style={{ filter: "contrast(1.05) saturate(1.1)" }}>
                 <img
-                  src="/images/ceo_painting.png"
+                  src="/images/ceo_photo.jpg"
                   alt={t("م. جبران الشهراني", "Eng. Jabran Al-Shahrani")}
                   className="w-full h-full object-cover"
                   data-testid="img-ceo-photo"
