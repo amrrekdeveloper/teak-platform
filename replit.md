@@ -45,7 +45,7 @@ Integrated Manufacturing + CRM + Project Management platform for a Saudi wood pr
 
 ## Pages
 ### Public
-- `client/src/pages/landing.tsx` — Landing page with phases, features, workflow, Track Order link
+- `client/src/pages/landing.tsx` — Landing page with real teak2030.net content: hero slider (4 slides, auto-rotate), About Us, CEO message with photo, Products showcase (5 categories), Gallery with lightbox (8 images, keyboard nav), Projects horizontal scroll (8 projects), Stats counter, Google Maps embed (Jazan), Contact info (phone/WhatsApp/email), Footer with quick links, WhatsApp FAB
 - `client/src/pages/products.tsx` — Product catalog with category filters
 - `client/src/pages/request-quote.tsx` — Public quote request form → creates customer + notification
 - `client/src/pages/track-order.tsx` — Public order tracking (contract# + phone lookup, shows work order status timeline)
@@ -100,8 +100,15 @@ Integrated Manufacturing + CRM + Project Management platform for a Saudi wood pr
 k.asiri/owner, khaled/assistant, hadi/sales, mohnad/sales, mohsen/designer, hamdi/production, ayman/purchasing, bassam/warehouse, ismail/accountant, fatima/customer_service, mohammed/delivery, saddad/installation, quality1/quality, noura/hr, hanan/hr, siham/it
 
 ## Logos
-- English (logo_teak2_1772689894105.png) → favicon + splash + EN mode
-- Arabic (logo_teak1_1772689915503.png) → AR mode
+- Single consolidated logo: `@assets/image_1772704803717.png` imported as `teakLogo` everywhere
+- No separate AR/EN logos — all old references removed
+
+## Landing Page Content (from teak2030.net)
+- All images stored in `client/public/images/` (products/, gallery/, projects/ subdirs, ceo_photo.jpg)
+- Product images also stored as arrays in products DB table
+- CEO photo: /images/ceo_photo.jpg
+- Contact: Phone 0173250090, WhatsApp 0558090498, Email info@teak2030.net
+- Location: Industrial Area, Jazan, Saudi Arabia
 
 ## Mobile
 - NO bottom nav — uses hamburger MobileMenuButton opening drawer from `start-0` (right in RTL, left in LTR)
