@@ -140,7 +140,7 @@ export function MobileMenuButton() {
             data-testid="mobile-menu-overlay"
           />
           <div
-            className="fixed top-0 end-0 bottom-0 w-72 bg-card z-50 md:hidden shadow-2xl flex flex-col animate-in slide-in-from-right rtl:slide-in-from-left duration-200"
+            className="fixed top-0 start-0 bottom-0 w-72 bg-card z-50 md:hidden shadow-2xl flex flex-col animate-in slide-in-from-left rtl:slide-in-from-right duration-200"
             data-testid="mobile-menu-drawer"
           >
             <div className="flex items-center justify-between p-4 border-b border-border">
