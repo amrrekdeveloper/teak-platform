@@ -99,12 +99,13 @@ export default function QuotationsPage() {
             data-testid="input-search-quotations"
           />
         </div>
-        <div className="flex gap-2 flex-wrap">
+        <div className="flex gap-2 overflow-x-auto flex-nowrap pb-1">
           {["all", "draft", "sent", "approved", "rejected"].map((status) => (
             <Button
               key={status}
               variant={statusFilter === status ? "default" : "outline"}
               size="sm"
+              className="shrink-0 whitespace-nowrap"
               onClick={() => setStatusFilter(status)}
               data-testid={`button-filter-${status}`}
             >

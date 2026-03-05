@@ -79,7 +79,7 @@ export default function InstallationsPage() {
   if (loadingI || loadingM) return <div className="flex items-center justify-center h-64"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
 
   return (
-    <div className="p-4 md:p-6 space-y-6">
+    <div className="space-y-6">
       <h1 className="text-2xl font-bold" data-testid="text-installations-title">{t("التركيب والصيانة", "Installation & Maintenance")}</h1>
 
       <Tabs value={tab} onValueChange={setTab}>

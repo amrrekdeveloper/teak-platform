@@ -585,18 +585,62 @@ export async function registerRoutes(
 
   app.get("/api/dashboard/stats", requireAuth, async (_req, res) => {
     try {
-      const [customersList, quotationsList, contractsList, paymentsList, workOrdersList] = await Promise.all([
+      const [customersList, quotationsList, contractsList, paymentsList, workOrdersList, inventoryList, employeesList, deliveriesList, maintenanceList, qualityList] = await Promise.all([
         storage.getCustomers(),
         storage.getQuotations(),
         storage.getContracts(),
         storage.getPayments(),
         storage.getWorkOrders(),
+        storage.getInventory(),
+        storage.getEmployees(),
+        storage.getDeliveries(),
+        storage.getMaintenanceRequests(),
+        storage.getQualityChecks(),
       ]);
 
       const totalRevenue = paymentsList.reduce((sum, p) => sum + parseFloat(p.amount), 0);
       const activeContracts = contractsList.filter(c => c.status === "active").length;
       const pendingQuotations = quotationsList.filter(q => q.status === "draft" || q.status === "sent").length;
       const inProductionOrders = workOrdersList.filter(w => w.status === "in_production").length;
+
+      const lowStockItems = inventoryList.filter(i =>
+        parseFloat(i.quantity?.toString() || "0") <= parseFloat(i.minQuantity?.toString() || "0") && parseFloat(i.minQuantity?.toString() || "0") > 0
+      ).length;
+
+      const activeEmployees = employeesList.filter(e => e.status === "active").length;
+      const saudiEmployees = employeesList.filter(e => e.nationality === "saudi" && e.status === "active").length;
+      const totalSalaries = employeesList.filter(e => e.status === "active").reduce((sum, e) => sum + parseFloat(e.monthlySalary?.toString() || "0"), 0);
+
+      const pendingDeliveries = deliveriesList.filter(d => d.status === "scheduled" || d.status === "in_transit").length;
+      const pendingMaintenance = maintenanceList.filter(m => m.status === "pending" || m.status === "scheduled").length;
+      const qualityPassRate = qualityList.length > 0 ? Math.round((qualityList.filter(q => q.result === "pass").length / qualityList.length) * 100) : 0;
+
+      const woByStatus = {
+        pending: workOrdersList.filter(w => w.status === "pending").length,
+        in_production: inProductionOrders,
+        quality_check: workOrdersList.filter(w => w.status === "quality_check").length,
+        ready: workOrdersList.filter(w => w.status === "ready").length,
+        completed: workOrdersList.filter(w => ["completed", "delivered", "installed"].includes(w.status)).length,
+      };
+
+      const paymentsByStage = {
+        deposit: paymentsList.filter(p => p.paymentStage === "deposit").reduce((s, p) => s + parseFloat(p.amount), 0),
+        pre_manufacturing: paymentsList.filter(p => p.paymentStage === "pre_manufacturing").reduce((s, p) => s + parseFloat(p.amount), 0),
+        delivery: paymentsList.filter(p => p.paymentStage === "delivery").reduce((s, p) => s + parseFloat(p.amount), 0),
+        final: paymentsList.filter(p => p.paymentStage === "final").reduce((s, p) => s + parseFloat(p.amount), 0),
+      };
+
+      const recentPayments = paymentsList
+        .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
+        .slice(0, 5)
+        .map(p => ({
+          id: p.id,
+          amount: p.amount,
+          stage: p.paymentStage,
+          method: p.method,
+          date: p.createdAt,
+          customerName: customersList.find(c => c.id === p.customerId)?.fullName || "",
+        }));
 
       res.json({
         totalCustomers: customersList.length,
@@ -608,6 +652,19 @@ export async function registerRoutes(
         totalPayments: paymentsList.length,
         totalWorkOrders: workOrdersList.length,
         inProductionOrders,
+        lowStockItems,
+        totalInventoryItems: inventoryList.length,
+        activeEmployees,
+        saudiEmployees,
+        residentEmployees: activeEmployees - saudiEmployees,
+        totalSalaries,
+        pendingDeliveries,
+        pendingMaintenance,
+        qualityPassRate,
+        totalQualityChecks: qualityList.length,
+        woByStatus,
+        paymentsByStage,
+        recentPayments,
       });
     } catch (error) {
       res.status(500).json({ message: "حدث خطأ" });

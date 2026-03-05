@@ -56,7 +56,7 @@ export default function DeliveriesPage() {
   if (isLoading) return <div className="flex items-center justify-center h-64"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
 
   return (
-    <div className="p-4 md:p-6 space-y-6">
+    <div className="space-y-6">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold" data-testid="text-deliveries-title">{t("التوصيل", "Deliveries")}</h1>
@@ -96,7 +96,7 @@ export default function DeliveriesPage() {
         </Dialog>
       </div>
 
-      <div className="flex gap-2 overflow-x-auto pb-2">
+      <div className="flex gap-2 overflow-x-auto pb-2 flex-nowrap">
         {[{ key: "all", ar: "الكل", en: "All" }, ...Object.entries(statusConfig).map(([k, v]) => ({ key: k, ar: v.ar, en: v.en }))].map(tab => (
           <Button key={tab.key} size="sm" variant={filter === tab.key ? "default" : "outline"} onClick={() => setFilter(tab.key)} data-testid={`button-filter-${tab.key}`}>{t(tab.ar, tab.en)}</Button>
         ))}

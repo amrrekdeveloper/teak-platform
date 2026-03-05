@@ -175,7 +175,7 @@ export default function WorkOrdersPage() {
         </Dialog>
       </div>
 
-      <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
+      <div className="flex gap-2 mb-4 overflow-x-auto pb-2 flex-nowrap">
         {[
           { value: "all", ar: "الكل", en: "All" },
           { value: "pending", ar: "في الانتظار", en: "Pending" },
@@ -188,6 +188,7 @@ export default function WorkOrdersPage() {
             key={tab.value}
             variant={statusFilter === tab.value ? "default" : "outline"}
             size="sm"
+            className="shrink-0 whitespace-nowrap"
             onClick={() => setStatusFilter(tab.value)}
             data-testid={`filter-${tab.value}`}
           >

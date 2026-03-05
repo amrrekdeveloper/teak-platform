@@ -222,7 +222,7 @@ export default function EmployeesPage() {
   );
 
   return (
-    <div className="p-4 md:p-6 space-y-6">
+    <div className="space-y-6">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold" data-testid="text-employees-title">{t("الموظفين", "Employees")}</h1>
@@ -291,14 +291,14 @@ export default function EmployeesPage() {
           <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input className="ps-10" placeholder={t("بحث برقم الموظف أو المسمى...", "Search by number or position...")} value={search} onChange={e => setSearch(e.target.value)} data-testid="input-search-employees" />
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 overflow-x-auto flex-nowrap pb-1">
           {[
             { key: "all", ar: "الكل", en: "All" },
             { key: "active", ar: "نشط", en: "Active" },
             { key: "inactive", ar: "غير نشط", en: "Inactive" },
             { key: "terminated", ar: "منتهي", en: "Terminated" },
           ].map(tab => (
-            <Button key={tab.key} size="sm" variant={filter === tab.key ? "default" : "outline"} onClick={() => setFilter(tab.key)} data-testid={`button-filter-${tab.key}`}>
+            <Button key={tab.key} size="sm" className="shrink-0 whitespace-nowrap" variant={filter === tab.key ? "default" : "outline"} onClick={() => setFilter(tab.key)} data-testid={`button-filter-${tab.key}`}>
               {t(tab.ar, tab.en)}
             </Button>
           ))}
