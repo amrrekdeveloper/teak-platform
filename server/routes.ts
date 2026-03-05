@@ -16,6 +16,16 @@ import {
 } from "@shared/schema";
 
 async function requirePortalAuth(req: Request, res: Response, next: NextFunction) {
+  const session = req.session as any;
+  if (session?.portalCustomerId && session?.portalPhone) {
+    const customer = await storage.getCustomerByPhone(session.portalPhone);
+    if (customer) {
+      (req as any).portalCustomer = customer;
+      (req as any).portalPhone = session.portalPhone;
+      return next();
+    }
+  }
+
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith("Bearer ")) {
     const token = authHeader.split(" ")[1];
@@ -29,15 +39,7 @@ async function requirePortalAuth(req: Request, res: Response, next: NextFunction
       }
     }
   }
-  const phone = req.body?.phone || req.query?.phone;
-  if (phone) {
-    const customer = await storage.getCustomerByPhone(phone as string);
-    if (customer) {
-      (req as any).portalCustomer = customer;
-      (req as any).portalPhone = phone;
-      return next();
-    }
-  }
+
   return res.status(401).json({ message: "غير مصرح", messageEn: "Unauthorized" });
 }
 
@@ -1343,6 +1345,17 @@ export async function registerRoutes(
 
   // ==================== CUSTOMER PORTAL ====================
 
+  const otpStore = new Map<string, { code: string; expiry: number; customerId: number; customerName: string; attempts: number }>();
+
+  function normalizePhone(phone: string): string {
+    let cleaned = phone.replace(/[^\d+]/g, "");
+    if (cleaned.startsWith("+966")) cleaned = "0" + cleaned.substring(4);
+    else if (cleaned.startsWith("00966")) cleaned = "0" + cleaned.substring(5);
+    else if (cleaned.startsWith("966")) cleaned = "0" + cleaned.substring(3);
+    else if (cleaned.startsWith("5")) cleaned = "0" + cleaned;
+    return cleaned;
+  }
+
   app.post("/api/customer-auth/verify-phone", async (req, res) => {
     try {
       const { phone } = req.body;
@@ -1351,6 +1364,105 @@ export async function registerRoutes(
       if (!customer) return res.status(404).json({ message: "لم يتم العثور على حساب بهذا الرقم", messageEn: "No account found with this phone number" });
       res.json({ customerId: customer.id, name: customer.fullName });
     } catch (error) { res.status(500).json({ message: "حدث خطأ", messageEn: "Error verifying phone" }); }
+  });
+
+  app.post("/api/customer-auth/send-otp", async (req, res) => {
+    try {
+      const { phone } = req.body;
+      if (!phone) return res.status(400).json({ message: "رقم الجوال مطلوب", messageEn: "Phone number is required" });
+
+      const customer = await storage.getCustomerByPhone(phone);
+      if (!customer) return res.status(404).json({ message: "لم يتم العثور على حساب بهذا الرقم", messageEn: "No account found with this phone number" });
+
+      const normalized = normalizePhone(phone);
+      const existing = otpStore.get(normalized);
+      if (existing && existing.expiry > Date.now() && (existing.expiry - Date.now()) > 4.5 * 60 * 1000) {
+        return res.status(429).json({ message: "تم إرسال الرمز مسبقاً. انتظر قليلاً", messageEn: "Code already sent. Please wait." });
+      }
+
+      const code = String(Math.floor(100000 + Math.random() * 900000));
+      otpStore.set(normalized, { code, expiry: Date.now() + 5 * 60 * 1000, customerId: customer.id, customerName: customer.fullName, attempts: 0 });
+
+      try {
+        const allUsers = await storage.getUsers();
+        const notifyUsers = allUsers.filter((u: any) => ["owner", "assistant", "sales", "customer_service"].includes(u.role));
+        for (const u of notifyUsers) {
+          await storage.createNotification({
+            type: "action",
+            titleAr: `رمز تحقق بوابة العملاء - ${customer.fullName}`,
+            titleEn: `Portal OTP - ${customer.fullName}`,
+            messageAr: `رمز التحقق للعميل ${customer.fullName} (${normalized}): ${code} — صالح لمدة 5 دقائق. أرسله للعميل عبر الواتساب.`,
+            messageEn: `OTP for customer ${customer.fullName} (${normalized}): ${code} — valid for 5 minutes. Send it via WhatsApp.`,
+            userId: u.id,
+          });
+        }
+      } catch (_e) { /* notification is optional */ }
+
+      console.log(`[OTP] Code for ${normalized} (${customer.fullName}): ${code}`);
+
+      res.json({
+        message: "تم إرسال رمز التحقق",
+        messageEn: "Verification code sent",
+        customerId: customer.id,
+        name: customer.fullName,
+        whatsappHint: normalized,
+      });
+    } catch (error) {
+      console.error("OTP send error:", error);
+      res.status(500).json({ message: "حدث خطأ", messageEn: "Error sending OTP" });
+    }
+  });
+
+  app.post("/api/customer-auth/verify-otp", async (req, res) => {
+    try {
+      const { phone, code } = req.body;
+      if (!phone || !code) return res.status(400).json({ message: "البيانات مطلوبة", messageEn: "Phone and code are required" });
+
+      const normalized = normalizePhone(phone);
+      const stored = otpStore.get(normalized);
+
+      if (!stored) {
+        return res.status(400).json({ message: "لم يتم إرسال رمز لهذا الرقم", messageEn: "No code sent for this number" });
+      }
+      if (stored.expiry < Date.now()) {
+        otpStore.delete(normalized);
+        return res.status(400).json({ message: "انتهت صلاحية الرمز. أعد الإرسال", messageEn: "Code expired. Request a new one" });
+      }
+      if (stored.attempts >= 5) {
+        otpStore.delete(normalized);
+        return res.status(429).json({ message: "محاولات كثيرة. أعد طلب الرمز", messageEn: "Too many attempts. Request a new code" });
+      }
+      if (stored.code !== code) {
+        stored.attempts++;
+        return res.status(400).json({ message: "رمز التحقق غير صحيح", messageEn: "Invalid verification code" });
+      }
+
+      otpStore.delete(normalized);
+
+      (req.session as any).portalPhone = normalized;
+      (req.session as any).portalCustomerId = stored.customerId;
+      (req.session as any).portalCustomerName = stored.customerName;
+
+      res.json({
+        success: true,
+        customerId: stored.customerId,
+        name: stored.customerName,
+      });
+    } catch (error) {
+      console.error("OTP verify error:", error);
+      res.status(500).json({ message: "حدث خطأ", messageEn: "Error verifying code" });
+    }
+  });
+
+  app.get("/api/customer-auth/pending-otps", requireAuth, requireRole(["owner", "assistant", "sales", "customer_service"]), async (_req, res) => {
+    const pending: Array<{ phone: string; customerName: string; code: string; expiresIn: number }> = [];
+    const now = Date.now();
+    otpStore.forEach((val, key) => {
+      if (val.expiry > now) {
+        pending.push({ phone: key, customerName: val.customerName, code: val.code, expiresIn: Math.round((val.expiry - now) / 1000) });
+      }
+    });
+    res.json(pending);
   });
 
   app.get("/api/customer-portal/my-data", requirePortalAuth, async (req, res) => {

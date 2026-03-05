@@ -136,15 +136,18 @@ Customer requests quote (website) → Sales assigns to Designer → Designer dra
 - Route: `/dashboard/designer-board` (visible to designer role)
 - RTL: Page container has `dir="rtl"` for Arabic, card headers use `flex-row-reverse` for proper badge placement, canvas stays LTR, measurement inputs forced `dir="ltr"`
 
-## Customer Portal (Firebase OTP)
-- Firebase project: `teak-manufacturing` (Phone Auth enabled, SMS template in Arabic)
-- Firebase config in env vars: VITE_FIREBASE_API_KEY, etc.
-- `client/src/lib/firebase.ts` — Firebase initialization
-- `client/src/pages/customer-portal-login.tsx` — Phone OTP login
+## Customer Portal (Server-Side OTP)
+- OTP system: Server-side 6-digit code generation (no Firebase dependency)
+- Flow: Customer enters phone → server generates OTP → notification sent to owner/sales/customer_service users → sales sends code to customer via WhatsApp → customer enters code → session-based auth
+- OTP stored in memory (Map) with 5-minute expiry, max 5 verification attempts per code
+- Auth: Session-based (portalPhone, portalCustomerId stored in server session after OTP verification)
+- Firebase config still available as fallback (Bearer token auth in requirePortalAuth)
+- `client/src/pages/customer-portal-login.tsx` — Phone + OTP login (server-side)
 - `client/src/pages/customer-portal.tsx` — Customer dashboard (quotations, invoices, production timeline, payments, warranty, maintenance)
 - Routes: `/portal/login`, `/portal` (public, no dashboard auth)
-- Session storage: `portalPhone`, `portalCustomerName`
-- API: POST /api/customer-auth/verify-phone, GET /api/customer-portal/my-data, POST /api/customer-portal/approve-quotation/:id, POST /api/customer-portal/upload-receipt, POST /api/customer-portal/maintenance-request
+- Session storage (client): `portalPhone`, `portalCustomerName` (for UI display)
+- API: POST /api/customer-auth/send-otp, POST /api/customer-auth/verify-otp, POST /api/customer-auth/verify-phone, GET /api/customer-auth/pending-otps (admin), GET /api/customer-portal/my-data, POST /api/customer-portal/approve-quotation/:id, POST /api/customer-portal/upload-receipt, POST /api/customer-portal/maintenance-request
+- Security: requirePortalAuth checks session first, then Firebase Bearer token; no raw phone fallback
 
 ## New API Endpoints
 - Design: GET/POST /api/design-assignments, GET/PATCH /:id, POST /:id/submit, GET /customer/:customerId

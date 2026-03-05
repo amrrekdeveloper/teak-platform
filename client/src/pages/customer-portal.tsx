@@ -270,8 +270,8 @@ function PaymentSection({ payments, contracts, phone }: { payments: any[]; contr
       const res = await fetch("/api/customer-portal/upload-receipt", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
-          phone,
           contractId: contracts.length > 0 ? contracts[0].id : null,
           amount: receiptData.amount,
           paymentMethod: "bank_transfer",
@@ -393,7 +393,8 @@ function MaintenanceSection({ maintenance, phone }: { maintenance: any[]; phone:
       const res = await fetch("/api/customer-portal/maintenance-request", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone, description }),
+        credentials: "include",
+        body: JSON.stringify({ description }),
       });
       if (res.ok) {
         toast({ title: t("تم", "Done"), description: t("تم تقديم طلب الصيانة", "Maintenance request submitted") });
@@ -478,8 +479,16 @@ export default function CustomerPortal() {
     queryKey: ["/api/customer-portal/my-data", phone],
     queryFn: async () => {
       if (!phone) return null;
-      const res = await fetch(`/api/customer-portal/my-data?phone=${encodeURIComponent(phone)}`);
-      if (!res.ok) throw new Error("Failed to fetch");
+      const res = await fetch("/api/customer-portal/my-data", { credentials: "include" });
+      if (!res.ok) {
+        if (res.status === 401) {
+          sessionStorage.removeItem("portalPhone");
+          sessionStorage.removeItem("portalCustomerName");
+          window.location.href = "/portal/login";
+          return null;
+        }
+        throw new Error("Failed to fetch");
+      }
       return res.json();
     },
     enabled: !!phone,
@@ -491,7 +500,8 @@ export default function CustomerPortal() {
       const res = await fetch(`/api/customer-portal/approve-quotation/${quotationId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone }),
+        credentials: "include",
+        body: JSON.stringify({}),
       });
       if (!res.ok) throw new Error("Failed");
       return res.json();

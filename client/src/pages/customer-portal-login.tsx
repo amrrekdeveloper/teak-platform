@@ -1,18 +1,15 @@
-import { useState, useCallback, useRef, useEffect } from "react";
-import { useLocation } from "wouter";
+import { useState, useCallback } from "react";
 import { useLanguage } from "@/components/language-provider";
-import { auth, RecaptchaVerifier, signInWithPhoneNumber, type ConfirmationResult } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Phone, KeyRound, ArrowLeft, Loader2, Shield } from "lucide-react";
+import { Phone, KeyRound, ArrowLeft, Loader2, Shield, MessageCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import logoAr from "@assets/logo_teak1_1772689915503.png";
 import logoEn from "@assets/logo_teak2_1772689894105.png";
 
 export default function CustomerPortalLogin() {
   const { t, lang } = useLanguage();
-  const [, setLocation] = useLocation();
   const { toast } = useToast();
   const currentLogo = lang === "ar" ? logoAr : logoEn;
 
@@ -20,48 +17,8 @@ export default function CustomerPortalLogin() {
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
-  const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
   const [customerName, setCustomerName] = useState("");
-  const recaptchaRef = useRef<HTMLDivElement>(null);
-  const recaptchaVerifierRef = useRef<RecaptchaVerifier | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (recaptchaVerifierRef.current) {
-        try { recaptchaVerifierRef.current.clear(); } catch (_e) { /* ignore */ }
-      }
-    };
-  }, []);
-
-  const formatPhone = (input: string): string => {
-    let cleaned = input.replace(/[^\d+]/g, "");
-    if (cleaned.startsWith("05")) {
-      cleaned = "+966" + cleaned.substring(1);
-    } else if (cleaned.startsWith("5")) {
-      cleaned = "+966" + cleaned;
-    } else if (cleaned.startsWith("966")) {
-      cleaned = "+" + cleaned;
-    }
-    return cleaned;
-  };
-
-  const verifyPhoneExists = async (phoneNumber: string): Promise<boolean> => {
-    try {
-      const res = await fetch("/api/customer-auth/verify-phone", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: phoneNumber }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setCustomerName(data.name || "");
-        return true;
-      }
-      return false;
-    } catch {
-      return false;
-    }
-  };
+  const [whatsappPhone, setWhatsappPhone] = useState("");
 
   const handleSendOTP = useCallback(async () => {
     if (!phone.trim()) {
@@ -70,75 +27,89 @@ export default function CustomerPortalLogin() {
     }
 
     setLoading(true);
-    const formattedPhone = formatPhone(phone);
-
-    const exists = await verifyPhoneExists(formattedPhone);
-    if (!exists) {
-      toast({
-        title: t("غير مسجل", "Not Registered"),
-        description: t("رقم الجوال غير مسجل في النظام. تواصل مع المبيعات.", "Phone number not registered. Contact sales."),
-        variant: "destructive",
-      });
-      setLoading(false);
-      return;
-    }
-
     try {
-      if (recaptchaVerifierRef.current) {
-        try { recaptchaVerifierRef.current.clear(); } catch (_e) { /* ignore */ }
+      const res = await fetch("/api/customer-auth/send-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: phone.trim() }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        toast({
+          title: t("خطأ", "Error"),
+          description: data.message || data.messageEn || t("حدث خطأ", "An error occurred"),
+          variant: "destructive",
+        });
+        return;
       }
 
-      recaptchaVerifierRef.current = new RecaptchaVerifier(auth, recaptchaRef.current!, {
-        size: "invisible",
-        callback: () => {},
-      });
-
-      const result = await signInWithPhoneNumber(auth, formattedPhone, recaptchaVerifierRef.current);
-      setConfirmationResult(result);
+      setCustomerName(data.name || "");
+      setWhatsappPhone(data.whatsappHint || "");
       setStep("otp");
       toast({
         title: t("تم الإرسال", "Code Sent"),
-        description: t("تم إرسال رمز التحقق إلى جوالك", "Verification code sent to your phone"),
+        description: t("سيتم إرسال رمز التحقق عبر الواتساب", "Verification code will be sent via WhatsApp"),
       });
-    } catch (error: any) {
-      console.error("OTP Error:", error);
-      let errorMessage = t("حدث خطأ في إرسال الرمز", "Error sending verification code");
-      if (error.code === "auth/too-many-requests") {
-        errorMessage = t("محاولات كثيرة. حاول لاحقاً", "Too many attempts. Try later");
-      } else if (error.code === "auth/invalid-phone-number") {
-        errorMessage = t("رقم الجوال غير صالح", "Invalid phone number");
-      }
-      toast({ title: t("خطأ", "Error"), description: errorMessage, variant: "destructive" });
+    } catch (error) {
+      console.error("Send OTP Error:", error);
+      toast({
+        title: t("خطأ", "Error"),
+        description: t("حدث خطأ في إرسال الرمز", "Error sending verification code"),
+        variant: "destructive",
+      });
     } finally {
       setLoading(false);
     }
   }, [phone, toast, t]);
 
   const handleVerifyOTP = useCallback(async () => {
-    if (!otp.trim() || !confirmationResult) return;
+    if (!otp.trim() || otp.length < 6) return;
 
     setLoading(true);
     try {
-      await confirmationResult.confirm(otp);
-      const formattedPhone = formatPhone(phone);
-      sessionStorage.setItem("portalPhone", formattedPhone);
-      sessionStorage.setItem("portalCustomerName", customerName);
+      const res = await fetch("/api/customer-auth/verify-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: phone.trim(), code: otp.trim() }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        toast({
+          title: t("خطأ", "Error"),
+          description: data.message || data.messageEn || t("رمز التحقق غير صحيح", "Invalid verification code"),
+          variant: "destructive",
+        });
+        return;
+      }
+
+      sessionStorage.setItem("portalPhone", phone.trim());
+      sessionStorage.setItem("portalCustomerName", data.name || customerName);
       toast({
         title: t("مرحباً", "Welcome"),
-        description: t(`مرحباً ${customerName}`, `Welcome ${customerName}`),
+        description: t(`مرحباً ${data.name || customerName}`, `Welcome ${data.name || customerName}`),
       });
-      setLocation("/portal");
-    } catch (error: any) {
-      console.error("Verify Error:", error);
+      window.location.href = "/portal";
+    } catch (error) {
+      console.error("Verify OTP Error:", error);
       toast({
         title: t("خطأ", "Error"),
-        description: t("رمز التحقق غير صحيح", "Invalid verification code"),
+        description: t("حدث خطأ في التحقق", "Error verifying code"),
         variant: "destructive",
       });
     } finally {
       setLoading(false);
     }
-  }, [otp, confirmationResult, phone, customerName, toast, t, setLocation]);
+  }, [otp, phone, customerName, toast, t]);
+
+  const whatsappMessage = t(
+    `مرحباً، أحتاج رمز التحقق لبوابة العملاء. رقمي: ${whatsappPhone}`,
+    `Hello, I need my portal verification code. My number: ${whatsappPhone}`
+  );
+  const whatsappLink = `https://wa.me/966558090498?text=${encodeURIComponent(whatsappMessage)}`;
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-muted flex items-center justify-center p-4" dir={lang === "ar" ? "rtl" : "ltr"}>
@@ -204,6 +175,26 @@ export default function CustomerPortalLogin() {
                     <p className="font-semibold text-lg" data-testid="text-customer-name">{customerName}</p>
                   </div>
                 )}
+
+                <div className="bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-lg p-3">
+                  <p className="text-sm text-green-800 dark:text-green-200 text-center mb-2">
+                    {t(
+                      "سيتم إرسال رمز التحقق عبر الواتساب من فريق تيك",
+                      "The verification code will be sent via WhatsApp by the Teak team"
+                    )}
+                  </p>
+                  <a
+                    href={whatsappLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-2 text-sm font-medium text-green-700 dark:text-green-300 hover:underline"
+                    data-testid="link-whatsapp-otp"
+                  >
+                    <MessageCircle className="w-4 h-4" />
+                    {t("تواصل عبر الواتساب لاستلام الرمز", "Contact via WhatsApp to receive code")}
+                  </a>
+                </div>
+
                 <div className="space-y-2">
                   <label className="text-sm font-medium" data-testid="label-otp">
                     {t("رمز التحقق", "Verification Code")}
@@ -224,7 +215,7 @@ export default function CustomerPortalLogin() {
                     />
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    {t("أدخل الرمز المرسل إلى جوالك", "Enter the code sent to your phone")}
+                    {t("أدخل الرمز المكون من 6 أرقام", "Enter the 6-digit code")}
                   </p>
                 </div>
                 <Button
@@ -256,8 +247,6 @@ export default function CustomerPortalLogin() {
           </Button>
         </div>
       </div>
-
-      <div ref={recaptchaRef} id="recaptcha-container" />
     </div>
   );
 }
