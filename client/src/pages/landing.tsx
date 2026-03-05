@@ -1141,7 +1141,7 @@ function ContactSection() {
 }
 
 function Footer() {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
 
   const quickLinks = [
     { href: "/", labelAr: "الرئيسية", labelEn: "Home" },
