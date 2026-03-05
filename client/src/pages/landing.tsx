@@ -158,10 +158,7 @@ function Navbar() {
               data-testid="img-logo"
             />
             <div className="flex flex-col">
-              <span className="text-lg sm:text-xl font-bold leading-tight" data-testid="text-brand-name">
-                {t("تيك للصناعات الخشبية", "Teak Wood Products")}
-              </span>
-              <span className="text-[10px] sm:text-xs text-muted-foreground leading-tight hidden sm:block">
+              <span className="text-[10px] sm:text-xs text-muted-foreground leading-tight hidden sm:block" data-testid="text-brand-name">
                 {t("مطابخ • خزائن • أبواب • ديكورات", "Kitchens • Wardrobes • Doors • Decorations")}
               </span>
             </div>
