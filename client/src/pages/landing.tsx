@@ -25,7 +25,8 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import logoPath from "@assets/Logo_teak_1772471946953.png";
+import logoEN from "@assets/logo_teak2_1772689894105.png";
+import logoAR from "@assets/logo_teak1_1772689915503.png";
 
 const OVERALL_PROGRESS = 40;
 
@@ -141,6 +142,7 @@ function Navbar() {
   const { lang, toggleLang, t } = useLanguage();
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const currentLogo = lang === "ar" ? logoAR : logoEN;
 
   useEffect(() => {
     const handler = () => setScrolled(window.scrollY > 20);
@@ -163,7 +165,7 @@ function Navbar() {
         <div className="flex items-center justify-between gap-4 h-16 sm:h-20">
           <div className="flex items-center gap-3">
             <img
-              src={logoPath}
+              src={currentLogo}
               alt="Teak Logo"
               className="w-10 h-10 sm:w-12 sm:h-12 object-contain"
               data-testid="img-logo"
@@ -281,7 +283,8 @@ function Navbar() {
 }
 
 function HeroSection() {
-  const { t } = useLanguage();
+  const { lang, t } = useLanguage();
+  const currentLogo = lang === "ar" ? logoAR : logoEN;
 
   return (
     <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
@@ -319,7 +322,7 @@ function HeroSection() {
           className="mb-8"
         >
           <img
-            src={logoPath}
+            src={currentLogo}
             alt="Teak Manufacturing Logo"
             className="w-24 h-24 sm:w-32 sm:h-32 lg:w-40 lg:h-40 mx-auto object-contain drop-shadow-2xl"
             data-testid="img-hero-logo"
@@ -829,7 +832,8 @@ function UserTypesSection() {
 }
 
 function Footer() {
-  const { t } = useLanguage();
+  const { lang, t } = useLanguage();
+  const currentLogo = lang === "ar" ? logoAR : logoEN;
 
   return (
     <footer className="border-t border-border bg-card/30 py-12 sm:py-16">
@@ -837,7 +841,7 @@ function Footer() {
         <div className="flex flex-col sm:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-3">
             <img
-              src={logoPath}
+              src={currentLogo}
               alt="Teak Logo"
               className="w-10 h-10 object-contain"
               data-testid="img-footer-logo"
