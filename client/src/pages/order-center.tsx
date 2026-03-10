@@ -147,6 +147,7 @@ export default function OrderCenterPage() {
   const [inspMonth, setInspMonth] = useState<string>("");
   const [inspYear, setInspYear] = useState<string>("");
   const [designPreviewImg, setDesignPreviewImg] = useState<string | null>(null);
+  const [designPreviewBoth, setDesignPreviewBoth] = useState<{ img2d?: string; img3d?: string } | null>(null);
   const now = useElapsedTime();
 
   const { data: quotations = [], isLoading: loadingQuotations } = useQuery<any[]>({
@@ -1015,10 +1016,17 @@ export default function OrderCenterPage() {
                       </span>
                     )}
                     {da.customerApproval === "revision_requested" && (
-                      <span className="text-[10px] font-medium text-amber-700 dark:text-amber-400 bg-amber-100/60 dark:bg-amber-950/30 px-2 py-0.5 rounded-full flex items-center gap-1 w-fit" data-testid="badge-customer-revision-detail">
-                        <AlertCircle className="w-2.5 h-2.5" />
-                        {t("العميل طلب تعديل", "Customer Requested Revision")}
-                      </span>
+                      <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-md p-2 space-y-1">
+                        <span className="text-[10px] font-medium text-amber-700 dark:text-amber-400 flex items-center gap-1" data-testid="badge-customer-revision-detail">
+                          <AlertCircle className="w-2.5 h-2.5" />
+                          {t("العميل طلب تعديل", "Customer Requested Revision")}
+                        </span>
+                        {da.customerApprovalNotes && (
+                          <p className="text-[10px] text-amber-800 dark:text-amber-300 ps-4" data-testid="text-revision-notes">
+                            "{da.customerApprovalNotes}"
+                          </p>
+                        )}
+                      </div>
                     )}
                     {isCompleted && hasImages && (
                       <>
@@ -1048,7 +1056,7 @@ export default function OrderCenterPage() {
                           variant="outline"
                           size="sm"
                           className="w-full"
-                          onClick={() => setDesignPreviewImg(da.sketchImage || da.screenshot3d)}
+                          onClick={() => setDesignPreviewBoth({ img2d: da.sketchImage, img3d: da.screenshot3d })}
                           data-testid="button-view-design"
                         >
                           <Eye className="w-3.5 h-3.5 me-1.5" />
@@ -1113,6 +1121,34 @@ export default function OrderCenterPage() {
                 className="max-w-full max-h-[80vh] object-contain"
                 data-testid="img-design-fullscreen"
               />
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {designPreviewBoth && (
+        <Dialog open onOpenChange={() => setDesignPreviewBoth(null)}>
+          <DialogContent className="max-w-5xl max-h-[90vh] p-4">
+            <DialogHeader>
+              <DialogTitle>{t("استعراض التصميم", "Design Preview")}</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 overflow-y-auto flex-1">
+              {designPreviewBoth.img2d && (
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold text-muted-foreground">{t("المخطط ثنائي الأبعاد", "2D Plan")}</p>
+                  <div className="border rounded-lg bg-white dark:bg-muted/20 p-2 flex items-center justify-center">
+                    <img src={designPreviewBoth.img2d} alt="2D Plan" className="max-w-full max-h-[35vh] object-contain" data-testid="img-preview-2d" />
+                  </div>
+                </div>
+              )}
+              {designPreviewBoth.img3d && (
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold text-muted-foreground">{t("العرض الثلاثي الأبعاد", "3D View")}</p>
+                  <div className="border rounded-lg bg-white dark:bg-muted/20 p-2 flex items-center justify-center">
+                    <img src={designPreviewBoth.img3d} alt="3D View" className="max-w-full max-h-[35vh] object-contain" data-testid="img-preview-3d" />
+                  </div>
+                </div>
+              )}
             </div>
           </DialogContent>
         </Dialog>
