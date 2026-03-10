@@ -702,11 +702,11 @@ export default function OrderCenterPage() {
 
       {viewOrder && (
         <Dialog open onOpenChange={() => { setViewOrder(null); setShowInspectionPicker(false); setInspDay(""); setInspMonth(""); setInspYear(""); }}>
-          <DialogContent className="sm:max-w-lg">
+          <DialogContent className="sm:max-w-lg max-h-[85vh] flex flex-col">
             <DialogHeader>
               <DialogTitle>{t("تفاصيل الطلب", "Order Details")} #{viewOrder.quotationNumber || viewOrder.id}</DialogTitle>
             </DialogHeader>
-            <div className="space-y-4 py-2">
+            <div className="space-y-4 py-2 overflow-y-auto flex-1 pe-1">
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-muted/50 rounded-lg p-3">
                   <p className="text-[11px] text-muted-foreground mb-1">{t("العميل", "Customer")}</p>
@@ -1023,33 +1023,26 @@ export default function OrderCenterPage() {
                     {isCompleted && hasImages && (
                       <div className="grid grid-cols-2 gap-2">
                         {da.sketchImage && (
-                          <div className="space-y-1">
-                            <p className="text-[10px] text-muted-foreground">{t("المخطط ثنائي الأبعاد", "2D Plan")}</p>
-                            <div
-                              className="border rounded-md overflow-hidden cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all bg-white dark:bg-muted/20"
-                              onClick={() => setDesignPreviewImg(da.sketchImage)}
-                              data-testid="img-design-2d-order"
-                            >
-                              <img src={da.sketchImage} alt="2D Plan" className="w-full h-28 object-contain" />
-                            </div>
+                          <div
+                            className="border rounded-md overflow-hidden cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all bg-white dark:bg-muted/20 relative group"
+                            onClick={() => setDesignPreviewImg(da.sketchImage)}
+                            data-testid="img-design-2d-order"
+                          >
+                            <img src={da.sketchImage} alt="2D Plan" className="w-full h-20 object-contain" />
+                            <span className="absolute bottom-0 inset-x-0 bg-black/50 text-white text-[9px] text-center py-0.5">{t("المخطط 2D", "2D Plan")}</span>
                           </div>
                         )}
                         {da.screenshot3d && (
-                          <div className="space-y-1">
-                            <p className="text-[10px] text-muted-foreground">{t("العرض الثلاثي", "3D View")}</p>
-                            <div
-                              className="border rounded-md overflow-hidden cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all bg-white dark:bg-muted/20"
-                              onClick={() => setDesignPreviewImg(da.screenshot3d)}
-                              data-testid="img-design-3d-order"
-                            >
-                              <img src={da.screenshot3d} alt="3D View" className="w-full h-28 object-contain" />
-                            </div>
+                          <div
+                            className="border rounded-md overflow-hidden cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all bg-white dark:bg-muted/20 relative group"
+                            onClick={() => setDesignPreviewImg(da.screenshot3d)}
+                            data-testid="img-design-3d-order"
+                          >
+                            <img src={da.screenshot3d} alt="3D View" className="w-full h-20 object-contain" />
+                            <span className="absolute bottom-0 inset-x-0 bg-black/50 text-white text-[9px] text-center py-0.5">{t("العرض 3D", "3D View")}</span>
                           </div>
                         )}
                       </div>
-                    )}
-                    {da.notes && (
-                      <p className="text-[10px] text-muted-foreground">{da.notes}</p>
                     )}
                   </div>
                 );
