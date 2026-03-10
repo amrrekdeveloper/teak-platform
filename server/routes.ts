@@ -1615,12 +1615,28 @@ export async function registerRoutes(
   app.post("/api/customer-portal/maintenance-request", requirePortalAuth, async (req, res) => {
     try {
       const customer = (req as any).portalCustomer;
-      const { description, images } = req.body;
+      const { description, images, contractId } = req.body;
+
+      if (!contractId) {
+        return res.status(400).json({ message: "يجب اختيار المنتج", messageEn: "Product/contract selection required" });
+      }
+
+      const contract = await storage.getContract(contractId);
+      if (!contract || contract.customerId !== customer.id) {
+        return res.status(403).json({ message: "غير مصرح", messageEn: "Unauthorized - contract not found or not yours" });
+      }
+
+      const workOrders = await storage.getWorkOrders();
+      const contractWO = workOrders.find((wo: any) => wo.contractId === contract.id);
+      if (!contractWO || !["delivered", "installed", "completed"].includes(contractWO.status)) {
+        return res.status(400).json({ message: "لا يمكن تقديم طلب صيانة قبل استلام المنتج", messageEn: "Cannot request maintenance before product delivery" });
+      }
 
       const maintenanceReq = await storage.createMaintenanceRequest({
         customerId: customer.id,
+        contractId: contractId,
         description: description || "",
-        images: images || [],
+        mediaUrls: images || [],
         status: "pending",
       });
 
