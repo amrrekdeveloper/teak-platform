@@ -82,6 +82,8 @@ function DimensionLabel({
   );
 }
 
+const S = 1000;
+
 function BaseCabinet({
   position,
   width,
@@ -98,9 +100,9 @@ function BaseCabinet({
   label?: string;
 }) {
   const color = getMaterialColor(woodType);
-  const w = width / 100;
-  const h = height / 100;
-  const d = depth / 100;
+  const w = width / S;
+  const h = height / S;
+  const d = depth / S;
 
   return (
     <group position={position}>
@@ -124,7 +126,7 @@ function BaseCabinet({
       )}
       <DimensionLabel
         position={[0, -0.06, d / 2 + 0.05]}
-        text={`${width}cm`}
+        text={`${width}mm`}
       />
     </group>
   );
@@ -146,9 +148,9 @@ function WallCabinet({
   label?: string;
 }) {
   const color = getMaterialColor(woodType);
-  const w = width / 100;
-  const h = height / 100;
-  const d = depth / 100;
+  const w = width / S;
+  const h = height / S;
+  const d = depth / S;
 
   return (
     <group position={position}>
@@ -190,9 +192,9 @@ function TallCabinet({
   label?: string;
 }) {
   const color = getMaterialColor(woodType);
-  const w = width / 100;
-  const h = height / 100;
-  const d = depth / 100;
+  const w = width / S;
+  const h = height / S;
+  const d = depth / S;
 
   return (
     <group position={position}>
@@ -239,9 +241,9 @@ function Countertop({
   thickness: number;
   overhang: number;
 }) {
-  const w = width / 100;
-  const d = (depth + overhang) / 100;
-  const t = thickness / 100;
+  const w = width / S;
+  const d = (depth + overhang) / S;
+  const t = thickness / S;
 
   return (
     <mesh position={position} castShadow receiveShadow>
@@ -258,13 +260,13 @@ function KitchenScene({ specs, woodType }: { specs: KitchenSpec; woodType: WoodM
   const tallUnits = specs.units.filter((u) => u.type === "tall");
 
   const totalBaseWidth = baseUnits.reduce((sum, u) => sum + u.width, 0);
-  const startX = -totalBaseWidth / 200;
+  const startX = -totalBaseWidth / (S * 2);
 
   const baseElements: JSX.Element[] = [];
   xOffset = 0;
   for (let i = 0; i < baseUnits.length; i++) {
     const unit = baseUnits[i];
-    const x = startX + xOffset / 100 + unit.width / 200;
+    const x = startX + xOffset / S + unit.width / (S * 2);
     baseElements.push(
       <BaseCabinet
         key={`base-${i}`}
@@ -279,18 +281,18 @@ function KitchenScene({ specs, woodType }: { specs: KitchenSpec; woodType: WoodM
     xOffset += unit.width;
   }
 
-  const countertopY = (baseUnits[0]?.height || 85) / 100;
-  const countertopWidth = totalBaseWidth + (specs.countertopOverhang || 2);
-  const countertopDepth = (baseUnits[0]?.depth || 60);
+  const countertopY = (baseUnits[0]?.height || 850) / S;
+  const countertopWidth = totalBaseWidth + (specs.countertopOverhang || 25);
+  const countertopDepth = (baseUnits[0]?.depth || 600);
 
   const wallElements: JSX.Element[] = [];
   xOffset = 0;
   const wallStartX = wallUnits.length > 0
-    ? -wallUnits.reduce((s, u) => s + u.width, 0) / 200
+    ? -wallUnits.reduce((s, u) => s + u.width, 0) / (S * 2)
     : startX;
   for (let i = 0; i < wallUnits.length; i++) {
     const unit = wallUnits[i];
-    const x = wallStartX + xOffset / 100 + unit.width / 200;
+    const x = wallStartX + xOffset / S + unit.width / (S * 2);
     const wallMountHeight = 1.4;
     wallElements.push(
       <WallCabinet
@@ -307,13 +309,13 @@ function KitchenScene({ specs, woodType }: { specs: KitchenSpec; woodType: WoodM
   }
 
   const tallElements: JSX.Element[] = [];
-  const tallX = startX + totalBaseWidth / 100 + 0.05;
+  const tallX = startX + totalBaseWidth / S + 0.05;
   for (let i = 0; i < tallUnits.length; i++) {
     const unit = tallUnits[i];
     tallElements.push(
       <TallCabinet
         key={`tall-${i}`}
-        position={[tallX + (i * unit.width) / 100, 0, 0]}
+        position={[tallX + (i * unit.width) / S, 0, 0]}
         width={unit.width}
         height={unit.height}
         depth={unit.depth}
@@ -330,16 +332,16 @@ function KitchenScene({ specs, woodType }: { specs: KitchenSpec; woodType: WoodM
       {tallElements}
       {baseUnits.length > 0 && (
         <Countertop
-          position={[0, countertopY + (specs.countertopThickness || 3) / 200, -0.01]}
+          position={[0, countertopY + (specs.countertopThickness || 30) / (S * 2), -0.01]}
           width={countertopWidth}
           depth={countertopDepth}
-          thickness={specs.countertopThickness || 3}
-          overhang={specs.countertopOverhang || 2}
+          thickness={specs.countertopThickness || 30}
+          overhang={specs.countertopOverhang || 25}
         />
       )}
       <DimensionLabel
-        position={[0, -0.12, countertopDepth / 200 + 0.1]}
-        text={`${totalBaseWidth}cm total width`}
+        position={[0, -0.12, countertopDepth / (S * 2) + 0.1]}
+        text={`${totalBaseWidth}mm total width`}
       />
     </group>
   );
@@ -347,9 +349,9 @@ function KitchenScene({ specs, woodType }: { specs: KitchenSpec; woodType: WoodM
 
 function WardrobeScene({ specs, woodType }: { specs: WardrobeSpec; woodType: WoodMaterial }) {
   const color = getMaterialColor(woodType);
-  const w = specs.width / 100;
-  const h = specs.height / 100;
-  const d = specs.depth / 100;
+  const w = specs.width / S;
+  const h = specs.height / S;
+  const d = specs.depth / S;
   const panelThickness = 0.018;
   const sectionWidth = (w - panelThickness * (specs.sections + 1)) / specs.sections;
 
@@ -452,7 +454,7 @@ function WardrobeScene({ specs, woodType }: { specs: WardrobeSpec; woodType: Woo
         </group>
       )}
 
-      <DimensionLabel position={[0, -0.1, d / 2 + 0.08]} text={`${specs.width} x ${specs.height} x ${specs.depth} cm`} />
+      <DimensionLabel position={[0, -0.1, d / 2 + 0.08]} text={`${specs.width} x ${specs.height} x ${specs.depth} mm`} />
       <DimensionLabel position={[0, h + 0.15, 0]} text={`Wardrobe - ${specs.sections} sections`} />
     </group>
   );
@@ -472,9 +474,9 @@ function GenericBoxScene({
   productType: ProductType;
 }) {
   const color = getMaterialColor(woodType);
-  const w = width / 100;
-  const h = height / 100;
-  const d = depth / 100;
+  const w = width / S;
+  const h = height / S;
+  const d = depth / S;
 
   const typeLabels: Record<ProductType, string> = {
     kitchen: "Kitchen Unit",
@@ -501,7 +503,7 @@ function GenericBoxScene({
           </mesh>
         </>
       )}
-      <DimensionLabel position={[0, -0.1, d / 2 + 0.08]} text={`${width} x ${height} x ${depth} cm`} />
+      <DimensionLabel position={[0, -0.1, d / 2 + 0.08]} text={`${width} x ${height} x ${depth} mm`} />
       <DimensionLabel position={[0, h + 0.1, 0]} text={typeLabels[productType]} />
     </group>
   );
@@ -572,13 +574,17 @@ export default function Viewer3D({ specs, onScreenshot, className }: Viewer3DPro
   );
 
   return (
-    <div className={`relative w-full h-full min-h-[400px] ${className || ""}`} data-testid="viewer-3d-container">
+    <div
+      className={`relative w-full ${className || ""}`}
+      style={{ minHeight: 400, background: "linear-gradient(180deg, #f0f4f8 0%, #e2e8f0 100%)" }}
+      data-testid="viewer-3d-container"
+    >
       <Canvas
         ref={canvasRef}
         shadows
-        camera={{ position: [2.5, 2, 3], fov: 50 }}
+        camera={{ position: [2, 1.5, 2.5], fov: 45 }}
         gl={{ preserveDrawingBuffer: true, antialias: true }}
-        style={{ background: "linear-gradient(180deg, #f0f4f8 0%, #e2e8f0 100%)" }}
+        style={{ width: "100%", height: "100%" }}
       >
         <Suspense fallback={null}>
           <ambientLight intensity={0.5} />
@@ -612,8 +618,8 @@ export default function Viewer3D({ specs, onScreenshot, className }: Viewer3DPro
             enableZoom
             enableRotate
             minDistance={0.5}
-            maxDistance={10}
-            target={[0, 0.8, 0]}
+            maxDistance={15}
+            target={[0, 0.5, 0]}
           />
 
           <ScreenshotHelper onCapture={handleCapture} />
