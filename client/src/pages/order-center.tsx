@@ -1021,28 +1021,40 @@ export default function OrderCenterPage() {
                       </span>
                     )}
                     {isCompleted && hasImages && (
-                      <div className="grid grid-cols-2 gap-2">
-                        {da.sketchImage && (
-                          <div
-                            className="border rounded-md overflow-hidden cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all bg-white dark:bg-muted/20 relative group"
-                            onClick={() => setDesignPreviewImg(da.sketchImage)}
-                            data-testid="img-design-2d-order"
-                          >
-                            <img src={da.sketchImage} alt="2D Plan" className="w-full h-20 object-contain" />
-                            <span className="absolute bottom-0 inset-x-0 bg-black/50 text-white text-[9px] text-center py-0.5">{t("المخطط 2D", "2D Plan")}</span>
-                          </div>
-                        )}
-                        {da.screenshot3d && (
-                          <div
-                            className="border rounded-md overflow-hidden cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all bg-white dark:bg-muted/20 relative group"
-                            onClick={() => setDesignPreviewImg(da.screenshot3d)}
-                            data-testid="img-design-3d-order"
-                          >
-                            <img src={da.screenshot3d} alt="3D View" className="w-full h-20 object-contain" />
-                            <span className="absolute bottom-0 inset-x-0 bg-black/50 text-white text-[9px] text-center py-0.5">{t("العرض 3D", "3D View")}</span>
-                          </div>
-                        )}
-                      </div>
+                      <>
+                        <div className="grid grid-cols-2 gap-2">
+                          {da.sketchImage && (
+                            <div
+                              className="border rounded-md overflow-hidden cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all bg-white dark:bg-muted/20 relative group"
+                              onClick={() => setDesignPreviewImg(da.sketchImage)}
+                              data-testid="img-design-2d-order"
+                            >
+                              <img src={da.sketchImage} alt="2D Plan" className="w-full h-20 object-contain" />
+                              <span className="absolute bottom-0 inset-x-0 bg-black/50 text-white text-[9px] text-center py-0.5">{t("المخطط 2D", "2D Plan")}</span>
+                            </div>
+                          )}
+                          {da.screenshot3d && (
+                            <div
+                              className="border rounded-md overflow-hidden cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all bg-white dark:bg-muted/20 relative group"
+                              onClick={() => setDesignPreviewImg(da.screenshot3d)}
+                              data-testid="img-design-3d-order"
+                            >
+                              <img src={da.screenshot3d} alt="3D View" className="w-full h-20 object-contain" />
+                              <span className="absolute bottom-0 inset-x-0 bg-black/50 text-white text-[9px] text-center py-0.5">{t("العرض 3D", "3D View")}</span>
+                            </div>
+                          )}
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full"
+                          onClick={() => setDesignPreviewImg(da.sketchImage || da.screenshot3d)}
+                          data-testid="button-view-design"
+                        >
+                          <Eye className="w-3.5 h-3.5 me-1.5" />
+                          {t("استعراض التصميم", "View Design")}
+                        </Button>
+                      </>
                     )}
                   </div>
                 );
@@ -1052,22 +1064,6 @@ export default function OrderCenterPage() {
               <Button variant="outline" onClick={() => setViewOrder(null)} data-testid="button-close-view">
                 {t("إغلاق", "Close")}
               </Button>
-              {(() => {
-                const da = designAssignments.find((d: any) => d.quotationId === viewOrder.id);
-                if (da?.status === "completed" && (da.sketchImage || da.screenshot3d)) {
-                  return (
-                    <Button
-                      variant="default"
-                      onClick={() => setDesignPreviewImg(da.sketchImage || da.screenshot3d)}
-                      data-testid="button-view-design"
-                    >
-                      <Eye className="w-3.5 h-3.5 me-1.5" />
-                      {t("استعراض التصميم", "View Design")}
-                    </Button>
-                  );
-                }
-                return null;
-              })()}
               {viewOrder.assignedTo && (
                 viewOrder.inspectionDate ? (
                   <Button
