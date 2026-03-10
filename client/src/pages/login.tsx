@@ -12,10 +12,10 @@ import teakLogo from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
 const demoAccounts = [
   { username: "admin", password: "123456", roleAr: "مدير النظام", roleEn: "System Admin" },
   { username: "k.asiri", password: "123456", roleAr: "المالك", roleEn: "Owner" },
-  { username: "hadi", password: "123456", roleAr: "المبيعات", roleEn: "Sales" },
-  { username: "mohsen", password: "123456", roleAr: "المصمم", roleEn: "Designer" },
+  { username: "hadi", password: "123456", roleAr: "المبيعات والتصميم", roleEn: "Sales & Design" },
+  { username: "mohsen", password: "123456", roleAr: "المبيعات والتصميم", roleEn: "Sales & Design" },
   { username: "hamdi", password: "123456", roleAr: "الإنتاج", roleEn: "Production" },
-  { username: "ismail", password: "123456", roleAr: "المحاسبة", roleEn: "Accounting" },
+  { username: "ismail", password: "123456", roleAr: "تأكيد المدفوعات", roleEn: "Payment Verification" },
 ];
 
 export default function LoginPage() {
