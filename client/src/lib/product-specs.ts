@@ -180,6 +180,29 @@ export interface WardrobeUnitSpec {
   doorCount: number;
 }
 
+export type DoorPattern = "plain" | "classic_raised" | "shaker" | "cathedral" | "geometric" | "islamic_arch" | "modern_lines" | "french" | "louver" | "glass_insert";
+
+export interface DoorPatternInfo {
+  value: DoorPattern;
+  labelAr: string;
+  labelEn: string;
+  descAr: string;
+  descEn: string;
+}
+
+export const DOOR_PATTERNS: DoorPatternInfo[] = [
+  { value: "plain", labelAr: "سادة", labelEn: "Plain", descAr: "سطح أملس بدون نقش", descEn: "Smooth flat surface" },
+  { value: "classic_raised", labelAr: "كلاسيك بارز", labelEn: "Classic Raised", descAr: "لوحة بارزة وسط إطار", descEn: "Raised center panel with frame" },
+  { value: "shaker", labelAr: "شيكر", labelEn: "Shaker", descAr: "إطار بسيط مع لوحة مسطحة", descEn: "Simple frame with flat panel" },
+  { value: "cathedral", labelAr: "قوس كاتدرائي", labelEn: "Cathedral", descAr: "قوس علوي كلاسيكي", descEn: "Arched top classic design" },
+  { value: "geometric", labelAr: "هندسي", labelEn: "Geometric", descAr: "أشكال هندسية منقوشة", descEn: "Geometric carved patterns" },
+  { value: "islamic_arch", labelAr: "قوس إسلامي", labelEn: "Islamic Arch", descAr: "قوس مغربي أو إسلامي تقليدي", descEn: "Traditional Moorish/Islamic arch" },
+  { value: "modern_lines", labelAr: "خطوط عصرية", labelEn: "Modern Lines", descAr: "خطوط أفقية أو عمودية حديثة", descEn: "Modern horizontal/vertical lines" },
+  { value: "french", labelAr: "فرنسي", labelEn: "French", descAr: "نقش فرنسي كلاسيكي متعدد اللوحات", descEn: "Classic French multi-panel design" },
+  { value: "louver", labelAr: "لوفر (شرائح)", labelEn: "Louver", descAr: "شرائح أفقية للتهوية", descEn: "Horizontal slats for ventilation" },
+  { value: "glass_insert", labelAr: "مع زجاج", labelEn: "Glass Insert", descAr: "فتحة زجاجية وسط الباب", descEn: "Glass panel insert in center" },
+];
+
 export interface DoorSpec {
   id: string;
   designWidth: number;
@@ -188,6 +211,7 @@ export interface DoorSpec {
   panelThickness: number;
   frameWidth: number;
   isDouble: boolean;
+  pattern: DoorPattern;
 }
 
 export interface DecorationSpec {
@@ -548,6 +572,7 @@ export function getDefaultDoorSpec(): DoorSpec {
     panelThickness: 18,
     frameWidth: DOOR_STANDARDS.frameWidth,
     isDouble: false,
+    pattern: "classic_raised",
   };
 }
 

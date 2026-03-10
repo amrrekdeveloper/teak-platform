@@ -149,9 +149,15 @@ function GridBackground({
 function DimensionLine({
   element,
   scale,
+  onSelect,
+  onDragEnd,
+  isDraggable,
 }: {
   element: SketchElement;
   scale: number;
+  onSelect?: () => void;
+  onDragEnd?: (id: string, deltaX: number, deltaY: number) => void;
+  isDraggable?: boolean;
 }) {
   if (!element.points || element.points.length < 4) return null;
   const [x1, y1, x2, y2] = element.points;
@@ -171,7 +177,19 @@ function DimensionLine({
   const arrowLen = 8 / scale;
 
   return (
-    <Group>
+    <Group
+      id={element.id}
+      draggable={isDraggable}
+      onClick={onSelect}
+      onTap={onSelect}
+      onDragEnd={(e) => {
+        if (onDragEnd) {
+          onDragEnd(element.id, e.target.x(), e.target.y());
+          e.target.x(0);
+          e.target.y(0);
+        }
+      }}
+    >
       <Arrow
         points={[x1, y1, x2, y2]}
         stroke={element.color}
@@ -181,6 +199,7 @@ function DimensionLine({
         pointerWidth={arrowLen * 0.6}
         pointerAtBeginning
         pointerAtEnding
+        hitStrokeWidth={12}
       />
       <Line
         points={[
@@ -191,6 +210,7 @@ function DimensionLine({
         ]}
         stroke={element.color}
         strokeWidth={element.strokeWidth / scale}
+        listening={false}
       />
       <Line
         points={[
@@ -201,6 +221,7 @@ function DimensionLine({
         ]}
         stroke={element.color}
         strokeWidth={element.strokeWidth / scale}
+        listening={false}
       />
       <Text
         x={textX}
@@ -214,6 +235,7 @@ function DimensionLine({
         offsetX={0}
         offsetY={6 / scale}
         rotation={(angle * 180) / Math.PI}
+        listening={false}
       />
     </Group>
   );
@@ -688,30 +710,71 @@ export default function SketchCanvas2D({
     const node = stage.findOne(`#${id}`);
     if (!node) return;
 
+    const scaleX = node.scaleX();
+    const scaleY = node.scaleY();
+    const newX = Math.round(node.x());
+    const newY = Math.round(node.y());
+    const newRotation = Math.round(node.rotation());
+
     const newEls = elements.map(el => {
       if (el.id !== id) return el;
+
       if (el.type === "cabinet") {
-        const scaleX = node.scaleX();
-        const scaleY = node.scaleY();
         const newW = Math.round((el.width || 0) * scaleX);
         const newH = Math.round((el.height || 0) * scaleY);
         node.scaleX(1);
         node.scaleY(1);
         return {
           ...el,
-          x: Math.round(node.x()),
-          y: Math.round(node.y()),
+          x: newX,
+          y: newY,
           width: newW,
           height: newH,
-          rotation: Math.round(node.rotation()),
+          rotation: newRotation,
           label: `${formatDimension(newW)} x ${formatDimension(newH)}`,
         };
       }
+
+      if (el.type === "text") {
+        const newFontSize = Math.round((el.fontSize || 14) * scaleY);
+        node.scaleX(1);
+        node.scaleY(1);
+        return {
+          ...el,
+          x: newX,
+          y: newY,
+          fontSize: Math.max(8, newFontSize),
+          rotation: newRotation,
+        };
+      }
+
+      if ((el.type === "wall" || el.type === "line" || el.type === "dimension" || el.type === "freehand") && el.points) {
+        const avgX = scaleX !== 1 || scaleY !== 1 ? true : false;
+        if (avgX) {
+          const newPoints = [];
+          for (let i = 0; i < el.points.length; i += 2) {
+            newPoints.push(Math.round(el.points[i] * scaleX));
+            newPoints.push(Math.round(el.points[i + 1] * scaleY));
+          }
+          node.scaleX(1);
+          node.scaleY(1);
+          return {
+            ...el,
+            points: newPoints,
+            x: newX,
+            y: newY,
+            rotation: newRotation,
+          };
+        }
+      }
+
+      node.scaleX(1);
+      node.scaleY(1);
       return {
         ...el,
-        x: Math.round(node.x()),
-        y: Math.round(node.y()),
-        rotation: Math.round(node.rotation()),
+        x: newX,
+        y: newY,
+        rotation: newRotation,
       };
     });
     setElements(newEls);
@@ -726,6 +789,19 @@ export default function SketchCanvas2D({
     pushHistory(newEls);
   };
 
+  const handlePointsDragEnd = (id: string, deltaX: number, deltaY: number) => {
+    const dx = snapEnabled ? snapToGrid(deltaX, gridSize) : Math.round(deltaX);
+    const dy = snapEnabled ? snapToGrid(deltaY, gridSize) : Math.round(deltaY);
+    if (dx === 0 && dy === 0) return;
+    const newEls = elements.map(el => {
+      if (el.id !== id || !el.points) return el;
+      const newPoints = el.points.map((v, i) => v + (i % 2 === 0 ? dx : dy));
+      return { ...el, points: newPoints, x: el.x + dx, y: el.y + dy };
+    });
+    setElements(newEls);
+    pushHistory(newEls);
+  };
+
   const renderElement = (el: SketchElement) => {
     const isSelected = selectedId === el.id;
 
@@ -733,17 +809,25 @@ export default function SketchCanvas2D({
       case "wall":
         if (!el.points || el.points.length < 4) return null;
         return (
-          <Group key={el.id}>
+          <Group
+            key={el.id}
+            id={el.id}
+            draggable={tool === "select"}
+            onClick={() => tool === "select" && setSelectedId(el.id)}
+            onTap={() => tool === "select" && setSelectedId(el.id)}
+            onDragEnd={(e) => {
+              handlePointsDragEnd(el.id, e.target.x(), e.target.y());
+              e.target.x(0);
+              e.target.y(0);
+            }}
+          >
             <Line
-              id={el.id}
               points={el.points}
               stroke={el.color}
               strokeWidth={el.strokeWidth}
               lineCap="round"
               lineJoin="round"
               hitStrokeWidth={12}
-              onClick={() => tool === "select" && setSelectedId(el.id)}
-              onTap={() => tool === "select" && setSelectedId(el.id)}
             />
             {el.label && (
               <Text
@@ -813,21 +897,39 @@ export default function SketchCanvas2D({
       case "line":
         if (!el.points || el.points.length < 4) return null;
         return (
-          <Line
+          <Group
             key={el.id}
             id={el.id}
-            points={el.points}
-            stroke={el.color}
-            strokeWidth={el.strokeWidth}
-            lineCap="round"
-            hitStrokeWidth={10}
+            draggable={tool === "select"}
             onClick={() => tool === "select" && setSelectedId(el.id)}
             onTap={() => tool === "select" && setSelectedId(el.id)}
-          />
+            onDragEnd={(e) => {
+              handlePointsDragEnd(el.id, e.target.x(), e.target.y());
+              e.target.x(0);
+              e.target.y(0);
+            }}
+          >
+            <Line
+              points={el.points}
+              stroke={el.color}
+              strokeWidth={el.strokeWidth}
+              lineCap="round"
+              hitStrokeWidth={10}
+            />
+          </Group>
         );
 
       case "dimension":
-        return <DimensionLine key={el.id} element={el} scale={stageScale} />;
+        return (
+          <DimensionLine
+            key={el.id}
+            element={el}
+            scale={stageScale}
+            isDraggable={tool === "select"}
+            onSelect={() => tool === "select" && setSelectedId(el.id)}
+            onDragEnd={handlePointsDragEnd}
+          />
+        );
 
       case "text":
         return (
@@ -840,29 +942,40 @@ export default function SketchCanvas2D({
             fontSize={(el.fontSize || 14)}
             fill={el.color}
             fontFamily="sans-serif"
+            rotation={el.rotation || 0}
             draggable={tool === "select"}
             onClick={() => tool === "select" && setSelectedId(el.id)}
             onTap={() => tool === "select" && setSelectedId(el.id)}
             onDragEnd={(e) => handleDragEnd(el.id, e.target.x(), e.target.y())}
+            onTransformEnd={() => handleTransformEnd(el.id)}
           />
         );
 
       case "freehand":
         if (!el.points || el.points.length < 4) return null;
         return (
-          <Line
+          <Group
             key={el.id}
             id={el.id}
-            points={el.points}
-            stroke={el.color}
-            strokeWidth={el.strokeWidth}
-            lineCap="round"
-            lineJoin="round"
-            tension={0.5}
-            hitStrokeWidth={10}
+            draggable={tool === "select"}
             onClick={() => tool === "select" && setSelectedId(el.id)}
             onTap={() => tool === "select" && setSelectedId(el.id)}
-          />
+            onDragEnd={(e) => {
+              handlePointsDragEnd(el.id, e.target.x(), e.target.y());
+              e.target.x(0);
+              e.target.y(0);
+            }}
+          >
+            <Line
+              points={el.points}
+              stroke={el.color}
+              strokeWidth={el.strokeWidth}
+              lineCap="round"
+              lineJoin="round"
+              tension={0.5}
+              hitStrokeWidth={10}
+            />
+          </Group>
         );
 
       default:

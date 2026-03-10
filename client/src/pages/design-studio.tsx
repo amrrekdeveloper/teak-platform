@@ -46,6 +46,7 @@ import {
   type WoodMaterial,
   type CabinetType,
   type WardrobeType,
+  type DoorPattern,
   type KitchenUnitSpec,
   type WardrobeUnitSpec,
   type DoorSpec,
@@ -55,6 +56,7 @@ import {
   PANEL_THICKNESSES,
   DOOR_STANDARD_WIDTHS,
   DOOR_STANDARDS,
+  DOOR_PATTERNS,
   getDefaultKitchenUnit,
   getDefaultWardrobeUnit,
   getDefaultDoorSpec,
@@ -293,6 +295,8 @@ export default function DesignStudioPage() {
             specs.productType === "decoration" ? specs.decorationSpec.designHeight : undefined,
     depth: specs.productType === "door" ? (specs.doorSpec.panelThickness || 40) :
            specs.productType === "decoration" ? specs.decorationSpec.designDepth : undefined,
+    doorPattern: specs.productType === "door" ? specs.doorSpec.pattern : undefined,
+    isDoubleDoor: specs.productType === "door" ? specs.doorSpec.isDouble : undefined,
   };
 
   if (daLoading) {
@@ -574,7 +578,7 @@ function ProductDetailsTab({ specs, setSpecs, notes, setNotes, mfgDimensions, up
         )}
       </div>
 
-      <div>
+      <div className="space-y-4">
         <Card className="sticky top-20">
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
@@ -586,7 +590,7 @@ function ProductDetailsTab({ specs, setSpecs, notes, setNotes, mfgDimensions, up
             {mfgDimensions && mfgDimensions.length > 0 ? (
               <div className="space-y-2">
                 {mfgDimensions.map((dim: any, idx: number) => (
-                  <div key={idx} className="bg-muted/50 rounded-lg p-3 space-y-1.5">
+                  <div key={idx} className="bg-muted/50 rounded-lg p-3 space-y-1.5" data-testid={`mfg-dim-${idx}`}>
                     <p className="text-xs font-semibold text-primary">{lang === "ar" ? dim.labelAr : dim.labelEn}</p>
                     <div className="flex items-center justify-between text-xs">
                       <div>
@@ -613,6 +617,8 @@ function ProductDetailsTab({ specs, setSpecs, notes, setNotes, mfgDimensions, up
             )}
           </CardContent>
         </Card>
+
+        <MfgReferenceGuide t={t} lang={lang} />
       </div>
     </div>
   );
@@ -778,6 +784,42 @@ function DoorEditor({ spec, material, onChange, t, lang }: any) {
             <Label className="text-xs">{t("باب مزدوج", "Double Door")}</Label>
           </div>
         </div>
+
+        <Separator />
+
+        <div>
+          <Label className="text-xs font-medium mb-2 block">{t("نقشة الباب", "Door Pattern")}</Label>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
+            {DOOR_PATTERNS.map(p => (
+              <button
+                key={p.value}
+                onClick={() => update("pattern", p.value)}
+                className={`border rounded-lg p-2 text-center transition-all hover:border-primary/50 ${
+                  spec.pattern === p.value ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border"
+                }`}
+                data-testid={`button-door-pattern-${p.value}`}
+              >
+                <div className="w-full h-12 bg-muted/50 rounded mb-1.5 flex items-center justify-center text-lg">
+                  {p.value === "plain" ? "▬" :
+                   p.value === "classic_raised" ? "◻" :
+                   p.value === "shaker" ? "⬜" :
+                   p.value === "cathedral" ? "⌂" :
+                   p.value === "geometric" ? "◇" :
+                   p.value === "islamic_arch" ? "☪" :
+                   p.value === "modern_lines" ? "≡" :
+                   p.value === "french" ? "⊞" :
+                   p.value === "louver" ? "☰" :
+                   "◫"}
+                </div>
+                <p className="text-[10px] font-medium leading-tight">{lang === "ar" ? p.labelAr : p.labelEn}</p>
+                <p className="text-[8px] text-muted-foreground leading-tight mt-0.5">{lang === "ar" ? p.descAr : p.descEn}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <Separator />
+
         <div>
           <Label className="text-xs mb-1.5 block">{t("مقاسات قياسية سريعة", "Quick Standard Sizes")}</Label>
           <div className="flex gap-2 flex-wrap">
@@ -841,6 +883,81 @@ function DecorationEditor({ spec, material, onChange, t, lang }: any) {
           />
         </div>
       </CardContent>
+    </Card>
+  );
+}
+
+function MfgReferenceGuide({ t, lang }: { t: (ar: string, en: string) => string; lang: string }) {
+  const [open, setOpen] = useState(false);
+
+  const refData = [
+    {
+      titleAr: "سماكات الألواح القياسية",
+      titleEn: "Standard Panel Thicknesses",
+      items: [
+        { ar: "شيبورد / MDF: 18 مم", en: "Chipboard / MDF: 18mm" },
+        { ar: "خشب زان / بلوط صولد: 20 مم", en: "Solid Beech / Oak: 20mm" },
+        { ar: "HPL / PVC: 18 مم", en: "HPL / PVC: 18mm" },
+      ],
+    },
+    {
+      titleAr: "خلوصات التجميع",
+      titleEn: "Assembly Clearances",
+      items: [
+        { ar: "شريط حافة (Edge Banding): 0.5 مم لكل جانب", en: "Edge Banding: 0.5mm per side" },
+        { ar: "خلوص سكة الدرج: 13 مم لكل جانب", en: "Drawer Runner Clearance: 13mm per side" },
+        { ar: "خلوص مفصل الباب: 3 مم", en: "Door Hinge Clearance: 3mm" },
+        { ar: "خلوص سكة الانزلاق: 15 مم", en: "Sliding Track Clearance: 15mm" },
+        { ar: "فجوة التجميع: 1 مم", en: "Assembly Gap: 1mm" },
+      ],
+    },
+    {
+      titleAr: "معادلات الحساب",
+      titleEn: "Calculation Formulas",
+      items: [
+        { ar: "العرض الداخلي = العرض التصميمي - (سماكة اللوح × 2)", en: "Internal Width = Design Width - (Panel Thickness × 2)" },
+        { ar: "العمق الداخلي = العمق التصميمي - سماكة اللوح - شريط حافة", en: "Internal Depth = Design Depth - Panel Thickness - Edge Banding" },
+        { ar: "عرض الرف = العرض الداخلي - (شريط حافة × 2)", en: "Shelf Width = Internal Width - (Edge Banding × 2)" },
+        { ar: "عرض الدرج = العرض الداخلي - (خلوص سكة × 2) - خلوص تركيب", en: "Drawer Width = Internal Width - (Runner Clearance × 2) - Fitting Clearance" },
+      ],
+    },
+    {
+      titleAr: "مقاسات الأبواب القياسية",
+      titleEn: "Standard Door Sizes",
+      items: [
+        { ar: "الارتفاع القياسي: 2100 مم", en: "Standard Height: 2100mm" },
+        { ar: "عرض الإطار: 100 مم", en: "Frame Width: 100mm" },
+        { ar: "فجوة أسفل الباب: 10 مم", en: "Bottom Gap: 10mm" },
+        { ar: "فجوة أعلى الباب: 3 مم", en: "Top Gap: 3mm" },
+      ],
+    },
+  ];
+
+  return (
+    <Card>
+      <CardHeader className="pb-2 cursor-pointer" onClick={() => setOpen(!open)}>
+        <CardTitle className="text-sm flex items-center gap-2">
+          <Ruler className="w-4 h-4 text-blue-500" />
+          {t("دليل الأبعاد التصنيعية", "Manufacturing Dimensions Guide")}
+          {open ? <ChevronRight className="w-3 h-3 ms-auto rotate-90 transition-transform" /> : <ChevronRight className="w-3 h-3 ms-auto rtl:rotate-180 transition-transform" />}
+        </CardTitle>
+      </CardHeader>
+      {open && (
+        <CardContent className="space-y-3 pt-0">
+          {refData.map((section, si) => (
+            <div key={si} className="space-y-1">
+              <p className="text-[11px] font-semibold text-primary">{lang === "ar" ? section.titleAr : section.titleEn}</p>
+              <div className="bg-muted/30 rounded p-2 space-y-0.5">
+                {section.items.map((item, ii) => (
+                  <p key={ii} className="text-[10px] text-muted-foreground font-mono">
+                    • {lang === "ar" ? item.ar : item.en}
+                  </p>
+                ))}
+              </div>
+            </div>
+          ))}
+        </CardContent>
+      )}
     </Card>
   );
 }

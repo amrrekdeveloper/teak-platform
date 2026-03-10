@@ -33,6 +33,8 @@ export interface KitchenSpec {
   countertopOverhang: number;
 }
 
+export type DoorPatternType = "plain" | "classic_raised" | "shaker" | "cathedral" | "geometric" | "islamic_arch" | "modern_lines" | "french" | "louver" | "glass_insert";
+
 export interface ProductSpecs {
   productType: ProductType;
   woodType: WoodMaterial;
@@ -41,6 +43,8 @@ export interface ProductSpecs {
   width?: number;
   height?: number;
   depth?: number;
+  doorPattern?: DoorPatternType;
+  isDoubleDoor?: boolean;
 }
 
 const MATERIAL_COLORS: Record<WoodMaterial, string> = {
@@ -460,18 +464,202 @@ function WardrobeScene({ specs, woodType }: { specs: WardrobeSpec; woodType: Woo
   );
 }
 
+function DoorPatternGeometry({
+  w,
+  h,
+  d,
+  pattern,
+  color,
+  isDouble,
+}: {
+  w: number;
+  h: number;
+  d: number;
+  pattern: DoorPatternType;
+  color: THREE.Color;
+  isDouble?: boolean;
+}) {
+  const panelZ = d / 2 + 0.003;
+  const frameW = w * 0.08;
+  const darkerColor = color.clone().multiplyScalar(0.85);
+  const lighterColor = color.clone().multiplyScalar(1.1);
+
+  const renderLeaf = (offsetX: number, leafW: number) => {
+    const elements: JSX.Element[] = [];
+    const key = `leaf-${offsetX}`;
+
+    switch (pattern) {
+      case "classic_raised":
+        elements.push(
+          <mesh key={`${key}-frame`} position={[offsetX, h / 2, panelZ]}>
+            <boxGeometry args={[leafW, h * 0.95, 0.004]} />
+            <meshStandardMaterial color={darkerColor} />
+          </mesh>,
+          <mesh key={`${key}-panel`} position={[offsetX, h / 2, panelZ + 0.005]}>
+            <boxGeometry args={[leafW * 0.7, h * 0.75, 0.006]} />
+            <meshStandardMaterial color={lighterColor} />
+          </mesh>
+        );
+        break;
+      case "shaker":
+        elements.push(
+          <mesh key={`${key}-bg`} position={[offsetX, h / 2, panelZ]}>
+            <boxGeometry args={[leafW, h * 0.95, 0.004]} />
+            <meshStandardMaterial color={color} />
+          </mesh>,
+          <mesh key={`${key}-inner`} position={[offsetX, h / 2, panelZ + 0.003]}>
+            <boxGeometry args={[leafW * 0.75, h * 0.8, 0.003]} />
+            <meshStandardMaterial color={darkerColor} />
+          </mesh>
+        );
+        break;
+      case "modern_lines":
+        elements.push(
+          <mesh key={`${key}-bg`} position={[offsetX, h / 2, panelZ]}>
+            <boxGeometry args={[leafW, h * 0.95, 0.004]} />
+            <meshStandardMaterial color={color} />
+          </mesh>
+        );
+        for (let i = 0; i < 4; i++) {
+          const lineY = h * 0.2 + (h * 0.6 / 3) * i;
+          elements.push(
+            <mesh key={`${key}-line-${i}`} position={[offsetX, lineY, panelZ + 0.004]}>
+              <boxGeometry args={[leafW * 0.85, 0.003, 0.002]} />
+              <meshStandardMaterial color={darkerColor} />
+            </mesh>
+          );
+        }
+        break;
+      case "french":
+        elements.push(
+          <mesh key={`${key}-bg`} position={[offsetX, h / 2, panelZ]}>
+            <boxGeometry args={[leafW, h * 0.95, 0.004]} />
+            <meshStandardMaterial color={darkerColor} />
+          </mesh>,
+          <mesh key={`${key}-top`} position={[offsetX, h * 0.72, panelZ + 0.005]}>
+            <boxGeometry args={[leafW * 0.7, h * 0.35, 0.005]} />
+            <meshStandardMaterial color={lighterColor} />
+          </mesh>,
+          <mesh key={`${key}-bot`} position={[offsetX, h * 0.3, panelZ + 0.005]}>
+            <boxGeometry args={[leafW * 0.7, h * 0.35, 0.005]} />
+            <meshStandardMaterial color={lighterColor} />
+          </mesh>
+        );
+        break;
+      case "louver":
+        elements.push(
+          <mesh key={`${key}-bg`} position={[offsetX, h / 2, panelZ]}>
+            <boxGeometry args={[leafW, h * 0.95, 0.004]} />
+            <meshStandardMaterial color={color} />
+          </mesh>
+        );
+        const slatCount = Math.floor(h / 0.025);
+        for (let i = 0; i < Math.min(slatCount, 30); i++) {
+          const slatY = h * 0.08 + (h * 0.84 / slatCount) * i;
+          elements.push(
+            <mesh key={`${key}-slat-${i}`} position={[offsetX, slatY, panelZ + 0.004]} rotation={[0.15, 0, 0]}>
+              <boxGeometry args={[leafW * 0.85, 0.008, 0.003]} />
+              <meshStandardMaterial color={darkerColor} />
+            </mesh>
+          );
+        }
+        break;
+      case "glass_insert":
+        elements.push(
+          <mesh key={`${key}-bg`} position={[offsetX, h / 2, panelZ]}>
+            <boxGeometry args={[leafW, h * 0.95, 0.004]} />
+            <meshStandardMaterial color={color} />
+          </mesh>,
+          <mesh key={`${key}-glass`} position={[offsetX, h * 0.55, panelZ + 0.003]}>
+            <boxGeometry args={[leafW * 0.65, h * 0.5, 0.003]} />
+            <meshStandardMaterial color="#b8d4e3" opacity={0.4} transparent metalness={0.3} roughness={0.1} />
+          </mesh>
+        );
+        break;
+      case "geometric":
+        elements.push(
+          <mesh key={`${key}-bg`} position={[offsetX, h / 2, panelZ]}>
+            <boxGeometry args={[leafW, h * 0.95, 0.004]} />
+            <meshStandardMaterial color={color} />
+          </mesh>,
+          <mesh key={`${key}-diamond`} position={[offsetX, h * 0.5, panelZ + 0.005]} rotation={[0, 0, Math.PI / 4]}>
+            <boxGeometry args={[leafW * 0.4, leafW * 0.4, 0.004]} />
+            <meshStandardMaterial color={darkerColor} />
+          </mesh>
+        );
+        break;
+      case "islamic_arch":
+        elements.push(
+          <mesh key={`${key}-bg`} position={[offsetX, h / 2, panelZ]}>
+            <boxGeometry args={[leafW, h * 0.95, 0.004]} />
+            <meshStandardMaterial color={darkerColor} />
+          </mesh>,
+          <mesh key={`${key}-arch-body`} position={[offsetX, h * 0.4, panelZ + 0.005]}>
+            <boxGeometry args={[leafW * 0.65, h * 0.55, 0.005]} />
+            <meshStandardMaterial color={lighterColor} />
+          </mesh>,
+          <mesh key={`${key}-arch-top`} position={[offsetX, h * 0.72, panelZ + 0.005]}>
+            <cylinderGeometry args={[leafW * 0.325, leafW * 0.325, 0.005, 16, 1, false, 0, Math.PI]} />
+            <meshStandardMaterial color={lighterColor} />
+          </mesh>
+        );
+        break;
+      case "cathedral":
+        elements.push(
+          <mesh key={`${key}-bg`} position={[offsetX, h / 2, panelZ]}>
+            <boxGeometry args={[leafW, h * 0.95, 0.004]} />
+            <meshStandardMaterial color={darkerColor} />
+          </mesh>,
+          <mesh key={`${key}-lower`} position={[offsetX, h * 0.35, panelZ + 0.005]}>
+            <boxGeometry args={[leafW * 0.7, h * 0.45, 0.005]} />
+            <meshStandardMaterial color={lighterColor} />
+          </mesh>,
+          <mesh key={`${key}-upper`} position={[offsetX, h * 0.72, panelZ + 0.005]}>
+            <boxGeometry args={[leafW * 0.6, h * 0.2, 0.005]} />
+            <meshStandardMaterial color={lighterColor} />
+          </mesh>
+        );
+        break;
+      default:
+        elements.push(
+          <mesh key={`${key}-plain`} position={[offsetX, h / 2, panelZ]}>
+            <boxGeometry args={[leafW * 0.95, h * 0.95, 0.005]} />
+            <meshStandardMaterial color={color} toneMapped={false} />
+          </mesh>
+        );
+    }
+    return elements;
+  };
+
+  if (isDouble) {
+    const leafW = w * 0.48;
+    return (
+      <group>
+        {renderLeaf(-leafW / 2 - 0.002, leafW)}
+        {renderLeaf(leafW / 2 + 0.002, leafW)}
+      </group>
+    );
+  }
+
+  return <group>{renderLeaf(0, w * 0.95)}</group>;
+}
+
 function GenericBoxScene({
   width,
   height,
   depth,
   woodType,
   productType,
+  doorPattern,
+  isDoubleDoor,
 }: {
   width: number;
   height: number;
   depth: number;
   woodType: WoodMaterial;
   productType: ProductType;
+  doorPattern?: DoorPatternType;
+  isDoubleDoor?: boolean;
 }) {
   const color = getMaterialColor(woodType);
   const w = width / S;
@@ -493,14 +681,24 @@ function GenericBoxScene({
       </mesh>
       {productType === "door" && (
         <>
-          <mesh position={[0, h / 2, d / 2 + 0.003]}>
-            <boxGeometry args={[w * 0.85, h * 0.9, 0.005]} />
-            <meshStandardMaterial color={color} toneMapped={false} />
-          </mesh>
-          <mesh position={[w * 0.35, h * 0.5, d / 2 + 0.015]}>
-            <sphereGeometry args={[0.02, 16, 16]} />
+          <DoorPatternGeometry
+            w={w}
+            h={h}
+            d={d}
+            pattern={doorPattern || "plain"}
+            color={color}
+            isDouble={isDoubleDoor}
+          />
+          <mesh position={[isDoubleDoor ? 0 : w * 0.35, h * 0.5, d / 2 + 0.02]}>
+            <sphereGeometry args={[0.015, 16, 16]} />
             <meshStandardMaterial color={HANDLE_COLOR} metalness={0.8} roughness={0.2} />
           </mesh>
+          {isDoubleDoor && (
+            <mesh position={[0, h * 0.5, d / 2 + 0.02]}>
+              <boxGeometry args={[0.004, h * 0.9, 0.004]} />
+              <meshStandardMaterial color={HANDLE_COLOR} metalness={0.6} roughness={0.3} />
+            </mesh>
+          )}
         </>
       )}
       <DimensionLabel position={[0, -0.1, d / 2 + 0.08]} text={`${width} x ${height} x ${depth} mm`} />
@@ -520,11 +718,13 @@ function SceneContent({ specs }: { specs: ProductSpecs }) {
 
   return (
     <GenericBoxScene
-      width={specs.width || 80}
-      height={specs.height || 210}
-      depth={specs.depth || 10}
+      width={specs.width || 800}
+      height={specs.height || 2100}
+      depth={specs.depth || 40}
       woodType={specs.woodType}
       productType={specs.productType}
+      doorPattern={specs.doorPattern}
+      isDoubleDoor={specs.isDoubleDoor}
     />
   );
 }
