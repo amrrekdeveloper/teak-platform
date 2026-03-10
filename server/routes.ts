@@ -1350,6 +1350,26 @@ export async function registerRoutes(
     } catch (error) { res.status(500).json({ message: "حدث خطأ", messageEn: "Error fetching design assignments" }); }
   });
 
+  app.get("/api/design-assignments/quotation/:quotationId", requireRole("owner", "assistant", "sales", "designer"), async (req, res) => {
+    try {
+      const quotationId = parseInt(req.params.quotationId);
+      const all = await storage.getDesignAssignments();
+      const existing = all.find((da: any) => da.quotationId === quotationId);
+      if (existing) return res.json(existing);
+      const quotation = await storage.getQuotation(quotationId);
+      if (!quotation) return res.status(404).json({ message: "عرض السعر غير موجود", messageEn: "Quotation not found" });
+      const created = await storage.createDesignAssignment({
+        customerId: quotation.customerId,
+        quotationId: quotationId,
+        assignedTo: quotation.assignedTo || req.session.userId!,
+        status: "pending",
+        createdBy: req.session.userId!,
+        productDescription: quotation.notes || "",
+      });
+      res.status(201).json(created);
+    } catch (error) { console.error(error); res.status(500).json({ message: "حدث خطأ", messageEn: "Error" }); }
+  });
+
   app.post("/api/design-assignments", requireRole("owner", "assistant", "sales"), async (req, res) => {
     try {
       const data = { ...req.body, createdBy: req.session.userId };
@@ -1372,7 +1392,13 @@ export async function registerRoutes(
 
   app.patch("/api/design-assignments/:id", requireRole("owner", "assistant", "sales", "designer"), async (req, res) => {
     try {
-      const updated = await storage.updateDesignAssignment(parseInt(req.params.id), req.body);
+      const da = await storage.getDesignAssignment(parseInt(req.params.id));
+      if (!da) return res.status(404).json({ message: "غير موجود", messageEn: "Not found" });
+      const user = await storage.getUser(req.session.userId!);
+      if (user && !["owner", "assistant"].includes(user.role) && da.assignedTo !== req.session.userId && da.createdBy !== req.session.userId) {
+        return res.status(403).json({ message: "غير مصرح", messageEn: "Not authorized" });
+      }
+      const updated = await storage.updateDesignAssignment(da.id, req.body);
       if (!updated) return res.status(404).json({ message: "غير موجود", messageEn: "Not found" });
       res.json(updated);
     } catch (error) { res.status(500).json({ message: "حدث خطأ", messageEn: "Error updating design assignment" }); }

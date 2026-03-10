@@ -45,6 +45,7 @@ import {
   User,
   FileText,
   Clock,
+  Pencil,
 } from "lucide-react";
 
 function useElapsedTime() {
@@ -606,6 +607,16 @@ export default function OrderCenterPage() {
               <Button variant="outline" onClick={() => setViewOrder(null)} data-testid="button-close-view">
                 {t("إغلاق", "Close")}
               </Button>
+              {viewOrder.assignedTo && (
+                <Button
+                  variant="secondary"
+                  onClick={() => { window.location.href = `/dashboard/design-studio/${viewOrder.id}`; }}
+                  data-testid="button-open-design-studio"
+                >
+                  <Pencil className="w-3.5 h-3.5 me-1.5" />
+                  {t("استوديو التصميم", "Design Studio")}
+                </Button>
+              )}
               <Button onClick={() => { setViewOrder(null); setAssignDialog(viewOrder); }} data-testid="button-assign-from-view">
                 <Forward className="w-3.5 h-3.5 me-1.5" />
                 {t("تحويل", "Assign")}
