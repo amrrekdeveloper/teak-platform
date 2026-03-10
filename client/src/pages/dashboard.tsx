@@ -10,7 +10,7 @@ import {
   Factory, Package, AlertTriangle, Truck, Wrench,
   Shield, UserCheck, TrendingUp, DollarSign, Clock,
   CheckCircle2, ArrowLeft, ArrowRight, ClipboardList, Sparkles,
-  CalendarCheck, CalendarDays
+  CalendarCheck, CalendarDays, Palette, MessageSquare,
 } from "lucide-react";
 import teakLogo from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
 
@@ -37,6 +37,10 @@ export default function DashboardPage() {
 
   const { data: inspections } = useQuery<any[]>({
     queryKey: ["/api/inspections"],
+  });
+
+  const { data: designAssignments } = useQuery<any[]>({
+    queryKey: ["/api/design-assignments"],
   });
 
   if (isLoading) {
@@ -155,6 +159,8 @@ export default function DashboardPage() {
       </div>
 
       <InspectionScheduleSection inspections={inspections || []} t={t} lang={lang} />
+
+      <DesignApprovalSection designAssignments={designAssignments || []} t={t} lang={lang} />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card>
@@ -422,6 +428,74 @@ function InspectionScheduleSection({ inspections, t, lang }: { inspections: any[
             {t("عرض مركز الطلبات", "View Order Center")} {lang === "ar" ? <ArrowLeft className="w-4 h-4 ms-1" /> : <ArrowRight className="w-4 h-4 ms-1" />}
           </Button>
         </Link>
+      </CardContent>
+    </Card>
+  );
+}
+
+function DesignApprovalSection({ designAssignments, t, lang }: { designAssignments: any[]; t: (ar: string, en: string) => string; lang: string }) {
+  const recentDesigns = designAssignments
+    .filter((da: any) => da.status === "completed" || da.customerApproval)
+    .sort((a: any, b: any) => new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime())
+    .slice(0, 6);
+
+  if (recentDesigns.length === 0) return null;
+
+  const approved = recentDesigns.filter((d: any) => d.customerApproval === "approved").length;
+  const revisions = recentDesigns.filter((d: any) => d.customerApproval === "revision_requested").length;
+  const pending = recentDesigns.filter((d: any) => d.status === "completed" && !d.customerApproval).length;
+
+  return (
+    <Card data-testid="card-design-approvals">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base flex items-center gap-2">
+          <Palette className="w-5 h-5 text-primary" />
+          {t("اعتمادات التصميم", "Design Approvals")}
+          <div className="flex gap-1.5 ms-auto">
+            {approved > 0 && (
+              <Badge className="bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400 text-[10px]" data-testid="badge-designs-approved">
+                <CheckCircle2 className="w-3 h-3 me-0.5" /> {approved}
+              </Badge>
+            )}
+            {pending > 0 && (
+              <Badge className="bg-yellow-100 text-yellow-700 dark:bg-yellow-950 dark:text-yellow-400 text-[10px]" data-testid="badge-designs-pending">
+                <Clock className="w-3 h-3 me-0.5" /> {pending}
+              </Badge>
+            )}
+            {revisions > 0 && (
+              <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400 text-[10px]" data-testid="badge-designs-revisions">
+                <MessageSquare className="w-3 h-3 me-0.5" /> {revisions}
+              </Badge>
+            )}
+          </div>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="pb-4">
+        <div className="space-y-2">
+          {recentDesigns.map((da: any) => (
+            <div key={da.id} className="flex items-center justify-between text-xs border rounded-lg px-3 py-2" data-testid={`design-approval-row-${da.id}`}>
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="font-mono font-bold text-muted-foreground">#{da.quotationId || da.id}</span>
+                <span className="truncate">{da.productDescription || "—"}</span>
+              </div>
+              <div>
+                {da.customerApproval === "approved" ? (
+                  <span className="text-[10px] font-medium text-green-700 dark:text-green-400 bg-green-100 dark:bg-green-950/40 px-2 py-0.5 rounded-full">
+                    {t("معتمد", "Approved")}
+                  </span>
+                ) : da.customerApproval === "revision_requested" ? (
+                  <span className="text-[10px] font-medium text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-950/40 px-2 py-0.5 rounded-full">
+                    {t("طلب تعديل", "Revision")}
+                  </span>
+                ) : da.status === "completed" ? (
+                  <span className="text-[10px] font-medium text-yellow-700 dark:text-yellow-400 bg-yellow-100 dark:bg-yellow-950/40 px-2 py-0.5 rounded-full">
+                    {t("بانتظار الاعتماد", "Pending")}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+          ))}
+        </div>
       </CardContent>
     </Card>
   );

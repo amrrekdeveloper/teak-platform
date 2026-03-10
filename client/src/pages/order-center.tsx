@@ -55,6 +55,7 @@ import {
   CalendarCheck,
   RotateCcw,
   Plus,
+  AlertCircle,
 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -155,6 +156,7 @@ export default function OrderCenterPage() {
   const { data: workOrders = [] } = useQuery<any[]>({ queryKey: ["/api/work-orders"] });
   const { data: contracts = [] } = useQuery<any[]>({ queryKey: ["/api/contracts"] });
   const { data: inspections = [] } = useQuery<any[]>({ queryKey: ["/api/inspections"] });
+  const { data: designAssignments = [] } = useQuery<any[]>({ queryKey: ["/api/design-assignments"] });
 
   const [inspectionsOpen, setInspectionsOpen] = useState(true);
   const [newOrderDialog, setNewOrderDialog] = useState(false);
@@ -555,7 +557,32 @@ export default function OrderCenterPage() {
                           )}
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap">
-                          <StatusBadge stage={order.stage} />
+                          <div className="flex flex-col gap-1">
+                            <StatusBadge stage={order.stage} />
+                            {(() => {
+                              const da = designAssignments.find((d: any) => d.quotationId === order.id);
+                              if (!da) return null;
+                              if (da.customerApproval === "approved") return (
+                                <span className="text-[9px] font-medium text-green-700 dark:text-green-400 bg-green-100 dark:bg-green-950/40 px-1.5 py-0.5 rounded-full flex items-center gap-0.5 w-fit" data-testid={`badge-design-approved-${order.id}`}>
+                                  <CheckCircle2 className="w-2.5 h-2.5" />
+                                  {t("تصميم معتمد", "Design Approved")}
+                                </span>
+                              );
+                              if (da.customerApproval === "revision_requested") return (
+                                <span className="text-[9px] font-medium text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-950/40 px-1.5 py-0.5 rounded-full flex items-center gap-0.5 w-fit" data-testid={`badge-design-revision-${order.id}`}>
+                                  <AlertCircle className="w-2.5 h-2.5" />
+                                  {t("طلب تعديل", "Revision")}
+                                </span>
+                              );
+                              if (da.status === "completed") return (
+                                <span className="text-[9px] font-medium text-yellow-700 dark:text-yellow-400 bg-yellow-100 dark:bg-yellow-950/40 px-1.5 py-0.5 rounded-full flex items-center gap-0.5 w-fit" data-testid={`badge-design-pending-${order.id}`}>
+                                  <Clock className="w-2.5 h-2.5" />
+                                  {t("بانتظار اعتماد", "Awaiting Approval")}
+                                </span>
+                              );
+                              return null;
+                            })()}
+                          </div>
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap text-xs">
                           {order.assignedUser ? (

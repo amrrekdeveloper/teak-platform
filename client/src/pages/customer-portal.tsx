@@ -13,7 +13,10 @@ import {
   Calendar, Sun, Moon, Share2, Printer,
   AlertCircle, X, ClipboardList, ChevronDown, ChevronUp,
   User, MapPin, Phone, Package, CalendarPlus,
+  Palette, ThumbsUp, MessageSquare, Maximize, Image,
 } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { apiRequest } from "@/lib/queryClient";
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
 } from "@/components/ui/sheet";
@@ -379,6 +382,189 @@ function InspectionAppointmentCard({ inspectionDate, orderId }: { inspectionDate
   );
 }
 
+function DesignViewSection({ design, quotationId }: { design: any; quotationId: number }) {
+  const { t } = useLanguage();
+  const { toast } = useToast();
+  const [fullscreenImg, setFullscreenImg] = useState<string | null>(null);
+  const [showRevision, setShowRevision] = useState(false);
+  const [revisionNotes, setRevisionNotes] = useState("");
+
+  const approveMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/customer-portal/approve-design/${design.id}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: t("تم اعتماد التصميم بنجاح", "Design approved successfully") });
+      queryClient.invalidateQueries({ queryKey: ["/api/customer-portal/my-data"] });
+    },
+    onError: () => {
+      toast({ title: t("حدث خطأ", "Error"), variant: "destructive" });
+    },
+  });
+
+  const revisionMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/customer-portal/request-revision/${design.id}`, { notes: revisionNotes });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: t("تم إرسال طلب التعديل", "Revision request sent") });
+      setShowRevision(false);
+      setRevisionNotes("");
+      queryClient.invalidateQueries({ queryKey: ["/api/customer-portal/my-data"] });
+    },
+    onError: () => {
+      toast({ title: t("حدث خطأ", "Error"), variant: "destructive" });
+    },
+  });
+
+  const isApproved = design.customerApproval === "approved";
+  const isRevisionRequested = design.customerApproval === "revision_requested";
+  const canAct = !isApproved && design.status === "completed";
+
+  return (
+    <div className="mt-3 border rounded-lg p-3 bg-muted/30 space-y-3" data-testid={`design-section-${quotationId}`}>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1.5">
+          <Palette className="w-4 h-4 text-primary" />
+          <span className="text-xs font-semibold">{t("التصميم", "Design")}</span>
+        </div>
+        {isApproved && (
+          <span className="text-[10px] font-medium text-green-700 dark:text-green-400 bg-green-100 dark:bg-green-950/40 px-2 py-0.5 rounded-full flex items-center gap-1" data-testid={`badge-design-approved-${quotationId}`}>
+            <CheckCircle2 className="w-3 h-3" />
+            {t("تم الاعتماد", "Approved")}
+          </span>
+        )}
+        {isRevisionRequested && (
+          <span className="text-[10px] font-medium text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-950/40 px-2 py-0.5 rounded-full flex items-center gap-1" data-testid={`badge-design-revision-${quotationId}`}>
+            <MessageSquare className="w-3 h-3" />
+            {t("طلب تعديل", "Revision Requested")}
+          </span>
+        )}
+      </div>
+
+      {design.sketchImage && (
+        <div className="relative group">
+          <p className="text-[10px] text-muted-foreground mb-1">{t("المخطط ثنائي الأبعاد", "2D Sketch")}</p>
+          <img
+            src={design.sketchImage}
+            alt="2D Design"
+            className="w-full rounded cursor-pointer hover:opacity-90 transition-opacity"
+            onClick={() => setFullscreenImg(design.sketchImage)}
+            data-testid={`img-design-2d-${quotationId}`}
+          />
+          <button
+            onClick={() => setFullscreenImg(design.sketchImage)}
+            className="absolute top-2 end-2 bg-black/50 text-white rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity"
+            data-testid={`button-fullscreen-2d-${quotationId}`}
+          >
+            <Maximize className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {design.screenshot3d && (
+        <div className="relative group">
+          <p className="text-[10px] text-muted-foreground mb-1">{t("العرض ثلاثي الأبعاد", "3D View")}</p>
+          <img
+            src={design.screenshot3d}
+            alt="3D View"
+            className="w-full rounded cursor-pointer hover:opacity-90 transition-opacity"
+            onClick={() => setFullscreenImg(design.screenshot3d)}
+            data-testid={`img-design-3d-${quotationId}`}
+          />
+          <button
+            onClick={() => setFullscreenImg(design.screenshot3d)}
+            className="absolute top-2 end-2 bg-black/50 text-white rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity"
+            data-testid={`button-fullscreen-3d-${quotationId}`}
+          >
+            <Maximize className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {design.notes && <p className="text-xs text-muted-foreground">{design.notes}</p>}
+
+      {design.customerApprovalNotes && isRevisionRequested && (
+        <div className="bg-amber-50 dark:bg-amber-950/20 rounded-md p-2.5 text-xs">
+          <p className="font-semibold text-amber-800 dark:text-amber-300 mb-0.5">{t("ملاحظات التعديل", "Revision Notes")}</p>
+          <p className="text-amber-700 dark:text-amber-400">{design.customerApprovalNotes}</p>
+        </div>
+      )}
+
+      {canAct && (
+        <div className="space-y-2">
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              onClick={() => approveMutation.mutate()}
+              disabled={approveMutation.isPending}
+              className="h-9 text-xs bg-green-600 hover:bg-green-700"
+              data-testid={`button-approve-design-${quotationId}`}
+            >
+              {approveMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin me-1" /> : <ThumbsUp className="w-3.5 h-3.5 me-1" />}
+              {t("اعتماد التصميم", "Approve Design")}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => setShowRevision(!showRevision)}
+              className="h-9 text-xs"
+              data-testid={`button-request-revision-${quotationId}`}
+            >
+              <MessageSquare className="w-3.5 h-3.5 me-1" />
+              {t("طلب تعديلات", "Request Changes")}
+            </Button>
+          </div>
+
+          {showRevision && (
+            <div className="space-y-2">
+              <Textarea
+                placeholder={t("اكتب ملاحظاتك للتعديل...", "Write your revision notes...")}
+                value={revisionNotes}
+                onChange={(e) => setRevisionNotes(e.target.value)}
+                className="text-xs min-h-[60px]"
+                data-testid={`textarea-revision-notes-${quotationId}`}
+              />
+              <Button
+                onClick={() => revisionMutation.mutate()}
+                disabled={revisionMutation.isPending || !revisionNotes.trim()}
+                size="sm"
+                className="w-full h-8 text-xs"
+                data-testid={`button-submit-revision-${quotationId}`}
+              >
+                {revisionMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin me-1" /> : null}
+                {t("إرسال طلب التعديل", "Submit Revision Request")}
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {fullscreenImg && (
+        <div
+          className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center p-4"
+          onClick={() => setFullscreenImg(null)}
+          data-testid="modal-fullscreen-design"
+        >
+          <button
+            className="absolute top-4 end-4 text-white bg-black/50 rounded-full p-2"
+            onClick={() => setFullscreenImg(null)}
+            data-testid="button-close-fullscreen"
+          >
+            <X className="w-5 h-5" />
+          </button>
+          <img
+            src={fullscreenImg}
+            alt="Design fullscreen"
+            className="max-w-full max-h-[90vh] object-contain rounded"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function OrdersTab({ quotations, contracts, production, designs }: {
   quotations: any[]; contracts: any[]; production: any[]; designs: any[];
 }) {
@@ -396,7 +582,7 @@ function OrdersTab({ quotations, contracts, production, designs }: {
         const isRejected = q.status === "rejected";
         const isExpired = q.status === "expired";
         const isExpanded = expandedOrder === q.id;
-        const design = designs.find((d: any) => d.customerId === q.customerId && d.status === "completed");
+        const design = designs.find((d: any) => d.quotationId === q.id && (d.status === "completed" || d.customerApproval));
         const currentStage = stageIdx >= 0 ? orderStages[stageIdx] : null;
         const itemDesc = q.items?.[0]?.description || q.productDescription;
 
@@ -484,12 +670,8 @@ function OrdersTab({ quotations, contracts, production, designs }: {
                     })}
                   </div>
 
-                  {design?.sketchImage && (
-                    <div className="mt-3 border rounded-lg p-2 bg-muted/30">
-                      <p className="text-[11px] text-muted-foreground mb-1.5">{t("المخطط", "Design")}</p>
-                      <img src={design.sketchImage} alt="Design" className="w-full rounded" data-testid={`img-design-${q.id}`} />
-                      {design.notes && <p className="text-xs text-muted-foreground mt-1.5">{design.notes}</p>}
-                    </div>
+                  {design && (design.sketchImage || design.screenshot3d) && (
+                    <DesignViewSection design={design} quotationId={q.id} />
                   )}
                 </div>
               )}
@@ -529,7 +711,7 @@ function QuotationsTab({ quotations, designs, onApprove, approving }: {
     <>
       <div className="space-y-3 md:grid md:grid-cols-2 md:gap-4 md:space-y-0">
         {sorted.map((q: any) => {
-          const design = designs.find((d: any) => d.customerId === q.customerId && d.status === "completed");
+          const design = designs.find((d: any) => d.quotationId === q.id && (d.status === "completed" || d.customerApproval));
           const isApproved = q.status === "approved";
 
           return (
@@ -589,22 +771,21 @@ function QuotationsTab({ quotations, designs, onApprove, approving }: {
                     {t("استعراض عرض السعر", "View Quotation")}
                   </Button>
 
-                  {design?.sketchImage && (
-                    <button
-                      onClick={() => setViewDesign(viewDesign === q.id ? null : q.id)}
-                      className="text-xs text-primary flex items-center gap-1 hover:underline w-full justify-center"
-                      data-testid={`button-toggle-design-${q.id}`}
-                    >
-                      <Eye className="w-3 h-3" />
-                      {t("عرض المخططات", "View Designs")}
-                    </button>
-                  )}
-
-                  {viewDesign === q.id && design?.sketchImage && (
-                    <div className="border rounded-lg p-2 bg-muted/30">
-                      <img src={design.sketchImage} alt="Design" className="w-full rounded" data-testid={`img-design-${q.id}`} />
-                      {design.notes && <p className="text-xs text-muted-foreground mt-1.5">{design.notes}</p>}
-                    </div>
+                  {design && (design.sketchImage || design.screenshot3d) && (
+                    <>
+                      <button
+                        onClick={() => setViewDesign(viewDesign === q.id ? null : q.id)}
+                        className="text-xs text-primary flex items-center gap-1 hover:underline w-full justify-center"
+                        data-testid={`button-toggle-design-${q.id}`}
+                      >
+                        <Palette className="w-3 h-3" />
+                        {t("عرض التصميم", "View Design")}
+                        {design.customerApproval === "approved" && <CheckCircle2 className="w-3 h-3 text-green-600" />}
+                      </button>
+                      {viewDesign === q.id && (
+                        <DesignViewSection design={design} quotationId={q.id} />
+                      )}
+                    </>
                   )}
 
                   {(q.status === "sent" || q.status === "draft") && (

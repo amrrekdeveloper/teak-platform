@@ -716,6 +716,8 @@ export const designAssignments = pgTable("design_assignments", {
   designFiles: text("design_files").array(),
   notes: text("notes"),
   productDescription: text("product_description"),
+  customerApproval: text("customer_approval"),
+  customerApprovalNotes: text("customer_approval_notes"),
   createdBy: integer("created_by").references(() => users.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),

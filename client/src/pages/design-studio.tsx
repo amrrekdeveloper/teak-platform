@@ -41,6 +41,10 @@ import {
   Calculator,
   DoorOpen,
   ChevronDown,
+  Search,
+  Wrench,
+  Layers,
+  Package,
 } from "lucide-react";
 import type { DesignAssignment } from "@shared/schema";
 import {
@@ -1115,51 +1119,342 @@ function DecorationEditor({ spec, material, onChange, t, lang }: any) {
   );
 }
 
+interface MfgRefSection {
+  categoryAr: string;
+  categoryEn: string;
+  icon: typeof Ruler;
+  sections: {
+    titleAr: string;
+    titleEn: string;
+    items: { ar: string; en: string; highlight?: boolean }[];
+  }[];
+}
+
+const MFG_REFERENCE_DATA: MfgRefSection[] = [
+  {
+    categoryAr: "مطبخ",
+    categoryEn: "Kitchen",
+    icon: Package,
+    sections: [
+      {
+        titleAr: "أبعاد الكابينة الأرضية القياسية",
+        titleEn: "Base Cabinet Standard Dimensions",
+        items: [
+          { ar: "الارتفاع القياسي: 850 مم (شامل السطح)", en: "Standard Height: 850mm (incl. countertop)", highlight: true },
+          { ar: "العمق القياسي: 600 مم", en: "Standard Depth: 600mm", highlight: true },
+          { ar: "العروض القياسية: 300, 400, 450, 500, 600, 800, 900, 1000, 1200 مم", en: "Standard Widths: 300, 400, 450, 500, 600, 800, 900, 1000, 1200mm" },
+          { ar: "الحد الأدنى للعرض: 150 مم | الحد الأقصى: 1200 مم", en: "Min Width: 150mm | Max Width: 1200mm" },
+          { ar: "ارتفاع القاعدة (الأرجل): 100-150 مم", en: "Plinth (Legs) Height: 100-150mm" },
+        ],
+      },
+      {
+        titleAr: "أبعاد الكابينة العلوية القياسية",
+        titleEn: "Wall Cabinet Standard Dimensions",
+        items: [
+          { ar: "الارتفاع القياسي: 720 مم", en: "Standard Height: 720mm", highlight: true },
+          { ar: "العمق القياسي: 350 مم", en: "Standard Depth: 350mm", highlight: true },
+          { ar: "العروض القياسية: 300, 400, 450, 500, 600, 800, 900 مم", en: "Standard Widths: 300, 400, 450, 500, 600, 800, 900mm" },
+          { ar: "المسافة من سطح العمل: 500-600 مم", en: "Distance from Countertop: 500-600mm" },
+        ],
+      },
+      {
+        titleAr: "أبعاد الكابينة الطويلة القياسية",
+        titleEn: "Tall Cabinet Standard Dimensions",
+        items: [
+          { ar: "الارتفاع القياسي: 2100 مم", en: "Standard Height: 2100mm", highlight: true },
+          { ar: "العمق القياسي: 600 مم", en: "Standard Depth: 600mm", highlight: true },
+          { ar: "العروض القياسية: 450, 500, 600, 800, 900 مم", en: "Standard Widths: 450, 500, 600, 800, 900mm" },
+        ],
+      },
+      {
+        titleAr: "أسطح العمل",
+        titleEn: "Countertops",
+        items: [
+          { ar: "سمك الجرانيت/الرخام: 20-30 مم", en: "Granite/Marble Thickness: 20-30mm" },
+          { ar: "سمك الكوارتز: 20 مم", en: "Quartz Thickness: 20mm" },
+          { ar: "سمك الكوريان: 12 مم", en: "Corian Thickness: 12mm" },
+          { ar: "بروز سطح العمل: 25 مم", en: "Countertop Overhang: 25mm" },
+          { ar: "فتحة الحوض: حسب موديل الحوض", en: "Sink Cutout: Per sink model" },
+        ],
+      },
+    ],
+  },
+  {
+    categoryAr: "خزانة ملابس",
+    categoryEn: "Wardrobe",
+    icon: Layers,
+    sections: [
+      {
+        titleAr: "خزانة بأبواب مفصلية",
+        titleEn: "Hinged Door Wardrobe",
+        items: [
+          { ar: "العمق القياسي: 600 مم", en: "Standard Depth: 600mm", highlight: true },
+          { ar: "الحد الأدنى للعرض: 600 مم | الأقصى: 3600 مم", en: "Min Width: 600mm | Max: 3600mm" },
+          { ar: "ارتفاع قضيب التعليق: 1600 مم", en: "Hanging Rail Height: 1600mm", highlight: true },
+          { ar: "تعليق مزدوج: 900 مم لكل قسم", en: "Double Hanging: 900mm per section" },
+          { ar: "تباعد الأرفف القياسي: 350 مم", en: "Standard Shelf Spacing: 350mm" },
+        ],
+      },
+      {
+        titleAr: "خزانة بأبواب منزلقة",
+        titleEn: "Sliding Door Wardrobe",
+        items: [
+          { ar: "الحد الأدنى للعرض: 1200 مم | الأقصى: 4000 مم", en: "Min Width: 1200mm | Max: 4000mm" },
+          { ar: "تداخل الأبواب: +30 مم لكل باب", en: "Door Overlap: +30mm per door", highlight: true },
+          { ar: "خلوص سكة الانزلاق: 15 مم", en: "Sliding Track Clearance: 15mm", highlight: true },
+          { ar: "عمق السكة: 15-20 مم (علوي وسفلي)", en: "Track Depth: 15-20mm (top & bottom)" },
+        ],
+      },
+      {
+        titleAr: "غرفة ملابس (Walk-in)",
+        titleEn: "Walk-in Closet",
+        items: [
+          { ar: "الحد الأدنى للعرض: 1500 مم | الأقصى: 6000 مم", en: "Min Width: 1500mm | Max: 6000mm" },
+          { ar: "ممر الحركة الأدنى: 900 مم", en: "Minimum Aisle Width: 900mm" },
+          { ar: "عمق الأرفف المفتوحة: 400-500 مم", en: "Open Shelf Depth: 400-500mm" },
+        ],
+      },
+    ],
+  },
+  {
+    categoryAr: "أبواب",
+    categoryEn: "Doors",
+    icon: DoorOpen,
+    sections: [
+      {
+        titleAr: "مقاسات الأبواب القياسية",
+        titleEn: "Standard Door Sizes",
+        items: [
+          { ar: "الارتفاع القياسي: 2100 مم", en: "Standard Height: 2100mm", highlight: true },
+          { ar: "العروض القياسية: 70, 80, 90, 100 سم", en: "Standard Widths: 70, 80, 90, 100cm", highlight: true },
+          { ar: "عرض الإطار: 100 مم", en: "Frame Width: 100mm" },
+          { ar: "عمق الإطار: 40 مم", en: "Frame Depth: 40mm" },
+          { ar: "فجوة أسفل الباب: 10 مم", en: "Bottom Gap: 10mm" },
+          { ar: "فجوة أعلى الباب: 3 مم", en: "Top Gap: 3mm" },
+          { ar: "خلوص المفصل: 3 مم", en: "Hinge Clearance: 3mm" },
+          { ar: "خلوص القفل: 5 مم", en: "Lock Clearance: 5mm" },
+        ],
+      },
+      {
+        titleAr: "أنواع النقشات",
+        titleEn: "Door Patterns",
+        items: [
+          { ar: "سادة - سطح أملس بدون نقش", en: "Plain - Smooth flat surface" },
+          { ar: "كلاسيك بارز - لوحة بارزة وسط إطار", en: "Classic Raised - Raised center panel" },
+          { ar: "شيكر - إطار بسيط مع لوحة مسطحة", en: "Shaker - Simple frame, flat panel" },
+          { ar: "قوس كاتدرائي - قوس علوي كلاسيكي", en: "Cathedral - Arched top classic" },
+          { ar: "هندسي - أشكال هندسية منقوشة", en: "Geometric - Carved geometric patterns" },
+          { ar: "قوس إسلامي - قوس مغربي تقليدي", en: "Islamic Arch - Traditional Moorish arch" },
+          { ar: "خطوط عصرية - خطوط أفقية/عمودية حديثة", en: "Modern Lines - Horizontal/vertical lines" },
+          { ar: "فرنسي - نقش فرنسي كلاسيكي متعدد اللوحات", en: "French - Classic multi-panel design" },
+          { ar: "لوفر (شرائح) - شرائح أفقية للتهوية", en: "Louver - Horizontal slats for ventilation" },
+          { ar: "مع زجاج - فتحة زجاجية وسط الباب", en: "Glass Insert - Glass panel in center" },
+        ],
+      },
+    ],
+  },
+  {
+    categoryAr: "ديكور",
+    categoryEn: "Decoration",
+    icon: Box,
+    sections: [
+      {
+        titleAr: "معايير الديكور العامة",
+        titleEn: "General Decoration Standards",
+        items: [
+          { ar: "سمك اللوح الجانبي: حسب الخامة (18-20 مم)", en: "Side Panel Thickness: Per material (18-20mm)" },
+          { ar: "عمق الأرفف الديكورية: 200-400 مم", en: "Decorative Shelf Depth: 200-400mm" },
+          { ar: "بروز الرف: 2-5 مم من الأمام", en: "Shelf Overhang: 2-5mm front" },
+          { ar: "أقصى فتحة بدون دعامة: 800 مم", en: "Max Span Without Support: 800mm" },
+        ],
+      },
+    ],
+  },
+  {
+    categoryAr: "عتاد ومكونات",
+    categoryEn: "Hardware & Components",
+    icon: Wrench,
+    sections: [
+      {
+        titleAr: "المفصلات (Hinges)",
+        titleEn: "Hinges",
+        items: [
+          { ar: "مفصل عادي 90°: للأبواب العادية", en: "Standard 90° Hinge: For regular doors" },
+          { ar: "مفصل 110°: للأبواب كاملة التغطية (Full Overlay)", en: "110° Hinge: For full overlay doors" },
+          { ar: "مفصل 170°: للأبواب الزاوية (Bi-fold)", en: "170° Hinge: For corner bi-fold doors" },
+          { ar: "مفصل هيدروليكي (Soft-Close): إغلاق هادئ", en: "Hydraulic Soft-Close Hinge: Quiet closing" },
+          { ar: "قطر فتحة المفصل: 35 مم (قياسي)", en: "Hinge Bore Diameter: 35mm (standard)", highlight: true },
+          { ar: "المسافة من حافة الباب: 3-5 مم", en: "Distance from Door Edge: 3-5mm" },
+          { ar: "عدد المفصلات: باب < 1000 مم = 2 | < 1500 مم = 3 | < 2000 مم = 4", en: "Hinge Count: Door < 1000mm = 2 | < 1500mm = 3 | < 2000mm = 4" },
+        ],
+      },
+      {
+        titleAr: "سكك الأدراج (Drawer Runners)",
+        titleEn: "Drawer Runners",
+        items: [
+          { ar: "سكة جانبية (Roller): اقتصادية - حمل حتى 25 كجم", en: "Side Mount Roller: Economy - up to 25kg load" },
+          { ar: "سكة كاملة السحب (Full Extension): حمل حتى 45 كجم", en: "Full Extension Slide: Up to 45kg load" },
+          { ar: "سكة تحتية (Undermount): مخفية - حمل حتى 50 كجم", en: "Undermount Slide: Hidden - up to 50kg load" },
+          { ar: "سكة Tandem / Tandembox: فاخرة - حمل حتى 65 كجم", en: "Tandem / Tandembox: Premium - up to 65kg load" },
+          { ar: "خلوص السكة: 13 مم لكل جانب (قياسي)", en: "Runner Clearance: 13mm per side (standard)", highlight: true },
+          { ar: "الأطوال المتاحة: 250, 300, 350, 400, 450, 500, 550, 600 مم", en: "Available Lengths: 250, 300, 350, 400, 450, 500, 550, 600mm" },
+        ],
+      },
+      {
+        titleAr: "المقابض والإكسسوارات",
+        titleEn: "Handles & Accessories",
+        items: [
+          { ar: "مقبض T-Bar: تباعد المسامير 96, 128, 160, 192, 224, 256 مم", en: "T-Bar Handle: Hole spacing 96, 128, 160, 192, 224, 256mm" },
+          { ar: "مقبض كوب (Cup Pull): تباعد 76 أو 96 مم", en: "Cup Pull Handle: 76 or 96mm spacing" },
+          { ar: "مقبض Knob: مسمار واحد", en: "Knob Handle: Single screw" },
+          { ar: "نظام Push-to-Open: بدون مقبض", en: "Push-to-Open System: Handle-free" },
+          { ar: "مقبض J-Profile (ألمنيوم): مدمج مع اللوح", en: "J-Profile (Aluminum): Integrated with panel" },
+          { ar: "ارتفاع المقبض على الأبواب الأرضية: 850-1000 مم من الأرض", en: "Handle Height on Base Doors: 850-1000mm from floor" },
+        ],
+      },
+      {
+        titleAr: "رافعات الأبواب (Lift Systems)",
+        titleEn: "Door Lift Systems",
+        items: [
+          { ar: "رافعة Aventos HK-XS: أبواب صغيرة خفيفة", en: "Aventos HK-XS: Small light doors" },
+          { ar: "رافعة Aventos HF (Bi-Fold): أبواب مطوية", en: "Aventos HF (Bi-Fold): Folding doors" },
+          { ar: "رافعة Aventos HL: رفع متوازي", en: "Aventos HL: Parallel lift" },
+          { ar: "رافعة Aventos HS: رفع علوي كامل", en: "Aventos HS: Full lift up" },
+        ],
+      },
+    ],
+  },
+  {
+    categoryAr: "الخامات والمواصفات",
+    categoryEn: "Materials & Specifications",
+    icon: Layers,
+    sections: [
+      {
+        titleAr: "سماكات الألواح القياسية",
+        titleEn: "Standard Panel Thicknesses",
+        items: [
+          { ar: "شيبورد: 18 مم | الكثافة: ~650 كجم/م³", en: "Chipboard: 18mm | Density: ~650 kg/m³", highlight: true },
+          { ar: "MDF: 16 أو 18 مم | الكثافة: ~750 كجم/م³", en: "MDF: 16 or 18mm | Density: ~750 kg/m³", highlight: true },
+          { ar: "خشب زان صولد: 20 مم | الكثافة: ~720 كجم/م³", en: "Solid Beech: 20mm | Density: ~720 kg/m³" },
+          { ar: "خشب بلوط صولد: 20 مم | الكثافة: ~760 كجم/م³", en: "Solid Oak: 20mm | Density: ~760 kg/m³" },
+          { ar: "HPL: 18 مم | سطح عالي الضغط مقاوم للخدش", en: "HPL: 18mm | High-pressure scratch-resistant surface" },
+          { ar: "PVC: 18 مم | مقاوم للرطوبة", en: "PVC: 18mm | Moisture resistant" },
+        ],
+      },
+      {
+        titleAr: "الوزن لكل متر مربع",
+        titleEn: "Weight per Square Meter",
+        items: [
+          { ar: "شيبورد 18 مم: ~11.7 كجم/م²", en: "Chipboard 18mm: ~11.7 kg/m²" },
+          { ar: "MDF 18 مم: ~13.5 كجم/م²", en: "MDF 18mm: ~13.5 kg/m²" },
+          { ar: "MDF 16 مم: ~12.0 كجم/م²", en: "MDF 16mm: ~12.0 kg/m²" },
+          { ar: "خشب زان 20 مم: ~14.4 كجم/م²", en: "Solid Beech 20mm: ~14.4 kg/m²" },
+          { ar: "خشب بلوط 20 مم: ~15.2 كجم/م²", en: "Solid Oak 20mm: ~15.2 kg/m²" },
+        ],
+      },
+      {
+        titleAr: "أنصاف أقطار الثني والتشكيل",
+        titleEn: "Bend Radius & Forming",
+        items: [
+          { ar: "MDF مرن (Flex MDF): أدنى نصف قطر 100 مم", en: "Flex MDF: Min bend radius 100mm" },
+          { ar: "شيبورد: غير قابل للثني", en: "Chipboard: Not bendable" },
+          { ar: "HPL: أدنى نصف قطر 150 مم (بالحرارة)", en: "HPL: Min bend radius 150mm (with heat)" },
+          { ar: "PVC: أدنى نصف قطر 50 مم (بالحرارة)", en: "PVC: Min bend radius 50mm (with heat)" },
+        ],
+      },
+      {
+        titleAr: "شريط الحافة (Edge Banding)",
+        titleEn: "Edge Banding",
+        items: [
+          { ar: "سمك شريط PVC: 0.5, 1, 2 مم", en: "PVC Edge Band Thickness: 0.5, 1, 2mm" },
+          { ar: "سمك شريط ABS: 0.5, 1, 2 مم", en: "ABS Edge Band Thickness: 0.5, 1, 2mm" },
+          { ar: "الخلوص التصنيعي: 0.5 مم لكل جانب (قياسي)", en: "Manufacturing Clearance: 0.5mm per side (standard)", highlight: true },
+          { ar: "درجة حرارة اللصق: 180-200 °C", en: "Gluing Temperature: 180-200°C" },
+        ],
+      },
+    ],
+  },
+  {
+    categoryAr: "خلوصات ومعادلات",
+    categoryEn: "Clearances & Formulas",
+    icon: Calculator,
+    sections: [
+      {
+        titleAr: "خلوصات التجميع",
+        titleEn: "Assembly Clearances",
+        items: [
+          { ar: "شريط حافة: 0.5 مم لكل جانب", en: "Edge Banding: 0.5mm per side", highlight: true },
+          { ar: "خلوص سكة الدرج: 13 مم لكل جانب", en: "Drawer Runner Clearance: 13mm per side", highlight: true },
+          { ar: "خلوص مفصل الباب: 3 مم", en: "Door Hinge Clearance: 3mm", highlight: true },
+          { ar: "خلوص سكة الانزلاق: 15 مم", en: "Sliding Track Clearance: 15mm", highlight: true },
+          { ar: "فجوة التجميع: 1 مم", en: "Assembly Gap: 1mm" },
+          { ar: "فجوة بين الأبواب: 2-3 مم", en: "Gap Between Doors: 2-3mm" },
+          { ar: "خلوص الظهر (Back Panel): 3-5 مم مجرى", en: "Back Panel Groove: 3-5mm channel" },
+        ],
+      },
+      {
+        titleAr: "معادلات حساب المطبخ",
+        titleEn: "Kitchen Calculation Formulas",
+        items: [
+          { ar: "العرض الداخلي = العرض التصميمي - (سماكة اللوح × 2)", en: "Internal Width = Design Width - (Panel Thickness × 2)" },
+          { ar: "العمق الداخلي = العمق - سماكة اللوح - شريط حافة", en: "Internal Depth = Depth - Panel Thickness - Edge Banding" },
+          { ar: "عرض الرف = العرض الداخلي - (شريط حافة × 2)", en: "Shelf Width = Internal Width - (Edge Banding × 2)" },
+          { ar: "عرض الدرج = العرض الداخلي - (خلوص سكة × 2) - خلوص تركيب", en: "Drawer Width = Internal Width - (Runner × 2) - Fitting Clearance" },
+          { ar: "عرض الباب = العرض التصميمي - خلوص المفصل", en: "Door Width = Design Width - Hinge Clearance" },
+        ],
+      },
+      {
+        titleAr: "معادلات حساب الخزانة",
+        titleEn: "Wardrobe Calculation Formulas",
+        items: [
+          { ar: "عرض الباب المنزلق = (العرض ÷ عدد الأبواب) + 30 مم", en: "Sliding Door Width = (Width ÷ Door Count) + 30mm" },
+          { ar: "ارتفاع الباب المنزلق = الارتفاع - 15 مم (خلوص سكة)", en: "Sliding Door Height = Height - 15mm (track clearance)" },
+          { ar: "عرض الباب المفصلي = (العرض ÷ عدد الأبواب) - 3 مم", en: "Hinged Door Width = (Width ÷ Door Count) - 3mm" },
+          { ar: "طول قضيب التعليق = العرض الداخلي - 20 مم", en: "Hanging Rail Length = Internal Width - 20mm" },
+        ],
+      },
+      {
+        titleAr: "معادلات حساب الباب",
+        titleEn: "Door Calculation Formulas",
+        items: [
+          { ar: "عرض ورقة الباب = العرض - 3 مم (مفصل) - 5 مم (قفل)", en: "Leaf Width = Width - 3mm (hinge) - 5mm (lock)" },
+          { ar: "ارتفاع ورقة الباب = الارتفاع - 10 مم (أسفل) - 3 مم (أعلى)", en: "Leaf Height = Height - 10mm (bottom) - 3mm (top)" },
+          { ar: "عرض ورقة باب مزدوج = (العرض ÷ 2) - 3 مم", en: "Double Door Leaf Width = (Width ÷ 2) - 3mm" },
+          { ar: "الفتحة الداخلية = العرض/الارتفاع - (عرض الإطار × 2)", en: "Internal Opening = Width/Height - (Frame Width × 2)" },
+        ],
+      },
+    ],
+  },
+];
+
 function MfgReferenceGuide({ t, lang }: { t: (ar: string, en: string) => string; lang: string }) {
   const [open, setOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
 
-  const refData = [
-    {
-      titleAr: "سماكات الألواح القياسية",
-      titleEn: "Standard Panel Thicknesses",
-      items: [
-        { ar: "شيبورد / MDF: 18 مم", en: "Chipboard / MDF: 18mm" },
-        { ar: "خشب زان / بلوط صولد: 20 مم", en: "Solid Beech / Oak: 20mm" },
-        { ar: "HPL / PVC: 18 مم", en: "HPL / PVC: 18mm" },
-      ],
-    },
-    {
-      titleAr: "خلوصات التجميع",
-      titleEn: "Assembly Clearances",
-      items: [
-        { ar: "شريط حافة (Edge Banding): 0.5 مم لكل جانب", en: "Edge Banding: 0.5mm per side" },
-        { ar: "خلوص سكة الدرج: 13 مم لكل جانب", en: "Drawer Runner Clearance: 13mm per side" },
-        { ar: "خلوص مفصل الباب: 3 مم", en: "Door Hinge Clearance: 3mm" },
-        { ar: "خلوص سكة الانزلاق: 15 مم", en: "Sliding Track Clearance: 15mm" },
-        { ar: "فجوة التجميع: 1 مم", en: "Assembly Gap: 1mm" },
-      ],
-    },
-    {
-      titleAr: "معادلات الحساب",
-      titleEn: "Calculation Formulas",
-      items: [
-        { ar: "العرض الداخلي = العرض التصميمي - (سماكة اللوح × 2)", en: "Internal Width = Design Width - (Panel Thickness × 2)" },
-        { ar: "العمق الداخلي = العمق التصميمي - سماكة اللوح - شريط حافة", en: "Internal Depth = Design Depth - Panel Thickness - Edge Banding" },
-        { ar: "عرض الرف = العرض الداخلي - (شريط حافة × 2)", en: "Shelf Width = Internal Width - (Edge Banding × 2)" },
-        { ar: "عرض الدرج = العرض الداخلي - (خلوص سكة × 2) - خلوص تركيب", en: "Drawer Width = Internal Width - (Runner Clearance × 2) - Fitting Clearance" },
-      ],
-    },
-    {
-      titleAr: "مقاسات الأبواب القياسية",
-      titleEn: "Standard Door Sizes",
-      items: [
-        { ar: "الارتفاع القياسي: 2100 مم", en: "Standard Height: 2100mm" },
-        { ar: "عرض الإطار: 100 مم", en: "Frame Width: 100mm" },
-        { ar: "فجوة أسفل الباب: 10 مم", en: "Bottom Gap: 10mm" },
-        { ar: "فجوة أعلى الباب: 3 مم", en: "Top Gap: 3mm" },
-      ],
-    },
-  ];
+  const toggleSection = (key: string) => {
+    setExpandedSections(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const filteredData = MFG_REFERENCE_DATA.map(category => {
+    if (!searchQuery.trim()) return category;
+    const q = searchQuery.toLowerCase();
+    const filteredSections = category.sections
+      .map(section => {
+        const titleMatch =
+          section.titleAr.toLowerCase().includes(q) ||
+          section.titleEn.toLowerCase().includes(q);
+        const filteredItems = section.items.filter(
+          item => item.ar.toLowerCase().includes(q) || item.en.toLowerCase().includes(q)
+        );
+        if (titleMatch) return section;
+        if (filteredItems.length > 0) return { ...section, items: filteredItems };
+        return null;
+      })
+      .filter(Boolean) as typeof category.sections;
+    if (filteredSections.length === 0) return null;
+    return { ...category, sections: filteredSections };
+  }).filter(Boolean) as MfgRefSection[];
 
   return (
     <Card>
@@ -1167,23 +1462,67 @@ function MfgReferenceGuide({ t, lang }: { t: (ar: string, en: string) => string;
         <CardTitle className="text-sm flex items-center gap-2">
           <Ruler className="w-4 h-4 text-blue-500" />
           {t("دليل الأبعاد التصنيعية", "Manufacturing Dimensions Guide")}
-          {open ? <ChevronRight className="w-3 h-3 ms-auto rotate-90 transition-transform" /> : <ChevronRight className="w-3 h-3 ms-auto rtl:rotate-180 transition-transform" />}
+          <ChevronRight className={`w-3 h-3 ms-auto transition-transform ${open ? "rotate-90" : "rtl:rotate-180"}`} />
         </CardTitle>
       </CardHeader>
       {open && (
         <CardContent className="space-y-3 pt-0">
-          {refData.map((section, si) => (
-            <div key={si} className="space-y-1">
-              <p className="text-[11px] font-semibold text-primary">{lang === "ar" ? section.titleAr : section.titleEn}</p>
-              <div className="bg-muted/30 rounded p-2 space-y-0.5">
-                {section.items.map((item, ii) => (
-                  <p key={ii} className="text-[10px] text-muted-foreground font-mono">
-                    • {lang === "ar" ? item.ar : item.en}
+          <div className="relative">
+            <Search className="absolute start-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+            <Input
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder={t("بحث في الدليل... (عربي / English)", "Search guide... (Arabic / English)")}
+              className="ps-8 text-xs"
+              data-testid="input-mfg-guide-search"
+            />
+          </div>
+
+          {filteredData.length === 0 && (
+            <p className="text-xs text-muted-foreground text-center py-4" data-testid="text-mfg-no-results">
+              {t("لا توجد نتائج", "No results found")}
+            </p>
+          )}
+
+          {filteredData.map((category, ci) => {
+            const Icon = category.icon;
+            return (
+              <div key={ci} className="space-y-1.5">
+                <div className="flex items-center gap-1.5">
+                  <Icon className="w-3.5 h-3.5 text-primary" />
+                  <p className="text-[11px] font-bold text-foreground">
+                    {lang === "ar" ? category.categoryAr : category.categoryEn}
                   </p>
-                ))}
+                </div>
+                {category.sections.map((section, si) => {
+                  const sectionKey = `${ci}-${si}`;
+                  const isExpanded = searchQuery.trim() ? true : (expandedSections[sectionKey] ?? false);
+                  return (
+                    <Collapsible key={si} open={isExpanded} onOpenChange={() => toggleSection(sectionKey)}>
+                      <CollapsibleTrigger className="flex items-center gap-1.5 w-full text-start py-1 px-2 rounded hover-elevate" data-testid={`button-mfg-section-${ci}-${si}`}>
+                        <ChevronRight className={`w-3 h-3 text-muted-foreground shrink-0 transition-transform ${isExpanded ? "rotate-90" : "rtl:rotate-180"}`} />
+                        <span className="text-[11px] font-semibold text-primary">
+                          {lang === "ar" ? section.titleAr : section.titleEn}
+                        </span>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <div className="bg-muted/30 rounded p-2 space-y-0.5 ms-4">
+                          {section.items.map((item, ii) => (
+                            <p key={ii} className={`text-[10px] font-mono ${item.highlight ? "text-foreground font-semibold" : "text-muted-foreground"}`}>
+                              {item.highlight && <span className="inline-block w-1.5 h-1.5 rounded-full bg-primary me-1.5 align-middle" />}
+                              {!item.highlight && "• "}
+                              {lang === "ar" ? item.ar : item.en}
+                            </p>
+                          ))}
+                        </div>
+                      </CollapsibleContent>
+                    </Collapsible>
+                  );
+                })}
+                {ci < filteredData.length - 1 && <Separator className="my-1" />}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </CardContent>
       )}
     </Card>

@@ -1,9 +1,10 @@
-import { useRef, useCallback, Suspense } from "react";
-import { Canvas, useThree } from "@react-three/fiber";
-import { OrbitControls, Text, Grid } from "@react-three/drei";
+import { useRef, useCallback, useState, useEffect, Suspense } from "react";
+import { Canvas, useThree, useFrame } from "@react-three/fiber";
+import { OrbitControls, Text, Grid, ContactShadows } from "@react-three/drei";
 import * as THREE from "three";
 import { Button } from "@/components/ui/button";
-import { Camera } from "lucide-react";
+import { Camera, Maximize, RotateCcw, Eye, ArrowUp, ArrowRight, Palette } from "lucide-react";
+import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 
 export type WoodMaterial = "oak" | "beech" | "mdf" | "walnut" | "cherry" | "chipboard";
 export type ProductType = "kitchen" | "wardrobe" | "door" | "decoration";
@@ -729,6 +730,66 @@ function SceneContent({ specs }: { specs: ProductSpecs }) {
   );
 }
 
+type CameraPreset = "front" | "side" | "top" | "panoramic";
+
+const CAMERA_PRESETS: Record<Exclude<CameraPreset, "panoramic">, { position: [number, number, number]; target: [number, number, number] }> = {
+  front: { position: [0, 1, 3], target: [0, 0.5, 0] },
+  side: { position: [3, 1, 0], target: [0, 0.5, 0] },
+  top: { position: [0, 4, 0.01], target: [0, 0.5, 0] },
+};
+
+function CameraController({
+  preset,
+  autoRotate,
+  controlsRef,
+}: {
+  preset: CameraPreset | null;
+  autoRotate: boolean;
+  controlsRef: React.RefObject<OrbitControlsImpl | null>;
+}) {
+  const { camera } = useThree();
+  const animating = useRef(false);
+  const animStart = useRef(0);
+  const startPos = useRef(new THREE.Vector3());
+  const endPos = useRef(new THREE.Vector3());
+
+  useEffect(() => {
+    if (!preset || preset === "panoramic") return;
+    const target = CAMERA_PRESETS[preset];
+    startPos.current.copy(camera.position);
+    endPos.current.set(...target.position);
+    animStart.current = performance.now();
+    animating.current = true;
+    if (controlsRef.current) {
+      controlsRef.current.target.set(...target.target);
+    }
+  }, [preset, camera, controlsRef]);
+
+  useFrame(() => {
+    if (animating.current) {
+      const elapsed = (performance.now() - animStart.current) / 600;
+      const t = Math.min(elapsed, 1);
+      const eased = 1 - Math.pow(1 - t, 3);
+      camera.position.lerpVectors(startPos.current, endPos.current, eased);
+      if (t >= 1) animating.current = false;
+      controlsRef.current?.update();
+    }
+  });
+
+  return null;
+}
+
+function AutoRotator({ active, controlsRef }: { active: boolean; controlsRef: React.RefObject<OrbitControlsImpl | null> }) {
+  useFrame(() => {
+    if (!active || !controlsRef.current) return;
+    const controls = controlsRef.current;
+    const azimuth = controls.getAzimuthalAngle();
+    controls.setAzimuthalAngle(azimuth + 0.005);
+    controls.update();
+  });
+  return null;
+}
+
 function ScreenshotHelper({ onCapture }: { onCapture: (dataUrl: string) => void }) {
   const { gl, scene, camera } = useThree();
 
@@ -751,6 +812,25 @@ interface Viewer3DProps {
 
 export default function Viewer3D({ specs, onScreenshot, className }: Viewer3DProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const controlsRef = useRef<OrbitControlsImpl>(null);
+  const [cameraPreset, setCameraPreset] = useState<CameraPreset | null>(null);
+  const [autoRotate, setAutoRotate] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [materialIndex, setMaterialIndex] = useState(0);
+
+  const woodTypes: WoodMaterial[] = ["oak", "beech", "mdf", "walnut", "cherry", "chipboard"];
+  const currentWoodOverride = woodTypes[materialIndex % woodTypes.length];
+
+  const handlePreset = useCallback((preset: CameraPreset) => {
+    if (preset === "panoramic") {
+      setAutoRotate((prev) => !prev);
+      setCameraPreset(null);
+    } else {
+      setAutoRotate(false);
+      setCameraPreset(preset);
+    }
+  }, []);
 
   const handleScreenshot = useCallback(() => {
     const captureFn = (window as any).__viewer3dCapture;
@@ -773,8 +853,31 @@ export default function Viewer3D({ specs, onScreenshot, className }: Viewer3DPro
     [onScreenshot]
   );
 
+  const toggleFullscreen = useCallback(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    if (!document.fullscreenElement) {
+      el.requestFullscreen?.().then(() => setIsFullscreen(true)).catch(() => {});
+    } else {
+      document.exitFullscreen?.().then(() => setIsFullscreen(false)).catch(() => {});
+    }
+  }, []);
+
+  useEffect(() => {
+    const handler = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", handler);
+    return () => document.removeEventListener("fullscreenchange", handler);
+  }, []);
+
+  const cycleMaterial = useCallback(() => {
+    setMaterialIndex((prev) => prev + 1);
+  }, []);
+
+  const displaySpecs = { ...specs, woodType: currentWoodOverride };
+
   return (
     <div
+      ref={containerRef}
       className={`relative w-full ${className || ""}`}
       style={{ minHeight: 400, background: "linear-gradient(180deg, #f0f4f8 0%, #e2e8f0 100%)" }}
       data-testid="viewer-3d-container"
@@ -787,17 +890,28 @@ export default function Viewer3D({ specs, onScreenshot, className }: Viewer3DPro
         style={{ width: "100%", height: "100%" }}
       >
         <Suspense fallback={null}>
-          <ambientLight intensity={0.5} />
+          <ambientLight intensity={0.6} />
+          <hemisphereLight intensity={0.4} color="#ffffff" groundColor="#8d7c6a" />
           <directionalLight
             position={[5, 8, 5]}
-            intensity={1}
+            intensity={1.2}
             castShadow
             shadow-mapSize-width={2048}
             shadow-mapSize-height={2048}
+            shadow-bias={-0.0001}
           />
-          <directionalLight position={[-3, 4, -2]} intensity={0.3} />
+          <directionalLight position={[-3, 4, -2]} intensity={0.4} />
+          <pointLight position={[0, 3, 3]} intensity={0.3} color="#ffeedd" />
 
-          <SceneContent specs={specs} />
+          <SceneContent specs={displaySpecs} />
+
+          <ContactShadows
+            position={[0, -0.01, 0]}
+            opacity={0.4}
+            scale={10}
+            blur={2}
+            far={4}
+          />
 
           <Grid
             position={[0, -0.001, 0]}
@@ -813,6 +927,7 @@ export default function Viewer3D({ specs, onScreenshot, className }: Viewer3DPro
           />
 
           <OrbitControls
+            ref={controlsRef}
             makeDefault
             enablePan
             enableZoom
@@ -820,13 +935,58 @@ export default function Viewer3D({ specs, onScreenshot, className }: Viewer3DPro
             minDistance={0.5}
             maxDistance={15}
             target={[0, 0.5, 0]}
+            enableDamping
+            dampingFactor={0.1}
+            touches={{ ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN }}
           />
+
+          <CameraController preset={cameraPreset} autoRotate={autoRotate} controlsRef={controlsRef} />
+          <AutoRotator active={autoRotate} controlsRef={controlsRef} />
 
           <ScreenshotHelper onCapture={handleCapture} />
         </Suspense>
       </Canvas>
 
-      <div className="absolute top-3 right-3 flex flex-col gap-2">
+      <div className="absolute top-3 left-3 flex flex-col gap-1" data-testid="camera-presets-panel">
+        <Button
+          size="icon"
+          variant="secondary"
+          onClick={() => handlePreset("front")}
+          title="Front View"
+          data-testid="button-camera-front"
+        >
+          <Eye className="h-4 w-4" />
+        </Button>
+        <Button
+          size="icon"
+          variant="secondary"
+          onClick={() => handlePreset("side")}
+          title="Side View"
+          data-testid="button-camera-side"
+        >
+          <ArrowRight className="h-4 w-4" />
+        </Button>
+        <Button
+          size="icon"
+          variant="secondary"
+          onClick={() => handlePreset("top")}
+          title="Top View"
+          data-testid="button-camera-top"
+        >
+          <ArrowUp className="h-4 w-4" />
+        </Button>
+        <Button
+          size="icon"
+          variant={autoRotate ? "default" : "secondary"}
+          onClick={() => handlePreset("panoramic")}
+          title="Panoramic (360° Auto-Rotate)"
+          data-testid="button-camera-panoramic"
+        >
+          <RotateCcw className="h-4 w-4" />
+        </Button>
+      </div>
+
+      <div className="absolute top-3 right-3 flex flex-col gap-1">
         <Button
           size="icon"
           variant="secondary"
@@ -835,6 +995,34 @@ export default function Viewer3D({ specs, onScreenshot, className }: Viewer3DPro
         >
           <Camera className="h-4 w-4" />
         </Button>
+        <Button
+          size="icon"
+          variant="secondary"
+          onClick={cycleMaterial}
+          title={`Material: ${currentWoodOverride}`}
+          data-testid="button-cycle-material"
+        >
+          <Palette className="h-4 w-4" />
+        </Button>
+        <Button
+          size="icon"
+          variant="secondary"
+          onClick={toggleFullscreen}
+          title="Fullscreen"
+          data-testid="button-fullscreen-3d"
+        >
+          <Maximize className="h-4 w-4" />
+        </Button>
+      </div>
+
+      {autoRotate && (
+        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-background/80 backdrop-blur-sm rounded-md px-3 py-1 text-xs text-muted-foreground" data-testid="text-panoramic-indicator">
+          360° Panoramic View
+        </div>
+      )}
+
+      <div className="absolute bottom-3 right-3 bg-background/80 backdrop-blur-sm rounded-md px-2 py-1 text-xs text-muted-foreground" data-testid="text-material-label">
+        {currentWoodOverride.charAt(0).toUpperCase() + currentWoodOverride.slice(1)}
       </div>
     </div>
   );

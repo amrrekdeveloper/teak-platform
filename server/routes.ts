@@ -1517,7 +1517,11 @@ export async function registerRoutes(
     try {
       const da = await storage.getDesignAssignment(parseInt(req.params.id));
       if (!da) return res.status(404).json({ message: "غير موجود", messageEn: "Not found" });
-      const updated = await storage.updateDesignAssignment(da.id, { status: "completed" });
+      const updated = await storage.updateDesignAssignment(da.id, {
+        status: "completed",
+        customerApproval: null,
+        customerApprovalNotes: null,
+      } as any);
       if (da.createdBy) {
         await storage.createNotification({
           userId: da.createdBy,
@@ -1834,6 +1838,75 @@ export async function registerRoutes(
       if (invoice.customerId !== customer.id) return res.status(403).json({ message: "غير مصرح", messageEn: "Unauthorized" });
       res.json(invoice);
     } catch (error) { console.error(error); res.status(500).json({ message: "حدث خطأ", messageEn: "Error fetching invoice" }); }
+  });
+
+  app.post("/api/customer-portal/approve-design/:id", requirePortalAuth, async (req, res) => {
+    try {
+      const customer = (req as any).portalCustomer;
+      const da = await storage.getDesignAssignment(parseInt(req.params.id));
+      if (!da) return res.status(404).json({ message: "التصميم غير موجود" });
+      if (da.customerId !== customer.id) return res.status(403).json({ message: "غير مصرح" });
+      if (da.status !== "completed") return res.status(400).json({ message: "التصميم غير مكتمل", messageEn: "Design is not completed yet" });
+      if (da.customerApproval === "approved") return res.status(400).json({ message: "تم الاعتماد مسبقاً", messageEn: "Already approved" });
+
+      const updated = await storage.updateDesignAssignment(da.id, {
+        customerApproval: "approved",
+        customerApprovalNotes: null,
+      } as any);
+
+      const staffUsers = (await storage.getUsers()).filter(u => ["owner", "assistant", "sales", "designer"].includes(u.role));
+      for (const staff of staffUsers) {
+        if (staff.id === da.assignedTo || staff.role === "owner" || staff.role === "assistant") {
+          await storage.createNotification({
+            userId: staff.id,
+            titleAr: "العميل اعتمد التصميم ✓",
+            titleEn: "Customer Approved Design ✓",
+            messageAr: `العميل ${customer.fullName} اعتمد التصميم للطلب #${da.quotationId || da.id}`,
+            messageEn: `Customer ${customer.fullName} approved design for order #${da.quotationId || da.id}`,
+            type: "success",
+            relatedEntity: "quotation",
+            relatedId: da.quotationId || da.id,
+            isRead: false,
+          });
+        }
+      }
+
+      res.json({ message: "تم اعتماد التصميم بنجاح", messageEn: "Design approved successfully", design: updated });
+    } catch (error) { console.error(error); res.status(500).json({ message: "حدث خطأ" }); }
+  });
+
+  app.post("/api/customer-portal/request-revision/:id", requirePortalAuth, async (req, res) => {
+    try {
+      const customer = (req as any).portalCustomer;
+      const { notes } = req.body;
+      const da = await storage.getDesignAssignment(parseInt(req.params.id));
+      if (!da) return res.status(404).json({ message: "التصميم غير موجود" });
+      if (da.customerId !== customer.id) return res.status(403).json({ message: "غير مصرح" });
+      if (da.status !== "completed") return res.status(400).json({ message: "التصميم غير مكتمل" });
+
+      const updated = await storage.updateDesignAssignment(da.id, {
+        customerApproval: "revision_requested",
+        customerApprovalNotes: notes || "",
+        status: "revision",
+      } as any);
+
+      const staffUsers = (await storage.getUsers()).filter(u => u.id === da.assignedTo || u.role === "owner" || u.role === "assistant");
+      for (const staff of staffUsers) {
+        await storage.createNotification({
+          userId: staff.id,
+          titleAr: "العميل طلب تعديل التصميم",
+          titleEn: "Customer Requested Design Revision",
+          messageAr: `العميل ${customer.fullName} طلب تعديل التصميم: ${notes || "—"}`,
+          messageEn: `Customer ${customer.fullName} requested design revision: ${notes || "—"}`,
+          type: "warning",
+          relatedEntity: "quotation",
+          relatedId: da.quotationId || da.id,
+          isRead: false,
+        });
+      }
+
+      res.json({ message: "تم إرسال طلب التعديل", messageEn: "Revision request sent", design: updated });
+    } catch (error) { console.error(error); res.status(500).json({ message: "حدث خطأ" }); }
   });
 
   // ==================== PRODUCTION-WAREHOUSE LINK ====================
