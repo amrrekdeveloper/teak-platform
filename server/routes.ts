@@ -516,7 +516,16 @@ export async function registerRoutes(
 
   app.patch("/api/quotations/:id", requireRole("owner", "assistant", "sales"), async (req, res) => {
     try {
-      const updated = await storage.updateQuotation(parseInt(req.params.id), req.body);
+      const data = { ...req.body };
+      if (data.assignedTo) {
+        const existing = await storage.getQuotation(parseInt(req.params.id));
+        if (existing && existing.assignedTo !== data.assignedTo) {
+          data.assignedAt = new Date();
+        }
+      }
+      delete data.id;
+      delete data.createdAt;
+      const updated = await storage.updateQuotation(parseInt(req.params.id), data);
       if (!updated) return res.status(404).json({ message: "عرض السعر غير موجود" });
       res.json(updated);
     } catch (error) {

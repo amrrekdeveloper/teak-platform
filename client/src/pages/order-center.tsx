@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLanguage } from "@/components/language-provider";
 import { useAuth } from "@/hooks/use-auth";
@@ -43,7 +43,28 @@ import {
   Calendar,
   User,
   FileText,
+  Clock,
 } from "lucide-react";
+
+function useElapsedTime() {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 60000);
+    return () => clearInterval(timer);
+  }, []);
+  return now;
+}
+
+function formatElapsed(fromDate: string | Date, now: number, t: (ar: string, en: string) => string): string {
+  const ms = now - new Date(fromDate).getTime();
+  if (ms < 0) return "";
+  const mins = Math.floor(ms / 60000);
+  const hours = Math.floor(mins / 60);
+  const days = Math.floor(hours / 24);
+  if (days > 0) return t(`${days} يوم ${hours % 24} ساعة`, `${days}d ${hours % 24}h`);
+  if (hours > 0) return t(`${hours} ساعة ${mins % 60} دقيقة`, `${hours}h ${mins % 60}m`);
+  return t(`${mins} دقيقة`, `${mins}m`);
+}
 
 type StageFilter = "all" | "new" | "sales" | "sent" | "approved" | "production" | "completed" | "cancelled";
 
@@ -101,6 +122,7 @@ export default function OrderCenterPage() {
   const [assignDialog, setAssignDialog] = useState<any | null>(null);
   const [selectedSalesUser, setSelectedSalesUser] = useState<string>("");
   const [viewOrder, setViewOrder] = useState<any | null>(null);
+  const now = useElapsedTime();
 
   const { data: quotations = [], isLoading: loadingQuotations } = useQuery<any[]>({
     queryKey: ["/api/quotations"],
@@ -343,10 +365,18 @@ export default function OrderCenterPage() {
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap text-xs">
                           {order.assignedUser ? (
-                            <span className="flex items-center gap-1">
-                              <User className="w-3 h-3 text-muted-foreground" />
-                              {t(order.assignedUser.fullNameAr, order.assignedUser.fullNameEn)}
-                            </span>
+                            <div className="flex flex-col gap-0.5">
+                              <span className="flex items-center gap-1 font-medium">
+                                <User className="w-3 h-3 text-muted-foreground" />
+                                {t(order.assignedUser.fullNameAr, order.assignedUser.fullNameEn)}
+                              </span>
+                              {order.assignedAt && (
+                                <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                                  <Clock className="w-2.5 h-2.5" />
+                                  {t("منذ", "Since")} {formatElapsed(order.assignedAt, now, t)}
+                                </span>
+                              )}
+                            </div>
                           ) : (
                             <span className="text-muted-foreground">{t("غير مُعيّن", "Unassigned")}</span>
                           )}
@@ -481,12 +511,24 @@ export default function OrderCenterPage() {
               </div>
 
               {viewOrder.assignedUser && (
-                <div className="bg-muted/50 rounded-lg p-3">
-                  <p className="text-[11px] text-muted-foreground mb-1">{t("المسؤول", "Assigned To")}</p>
-                  <p className="text-sm font-medium flex items-center gap-1.5">
-                    <User className="w-3.5 h-3.5 text-muted-foreground" />
+                <div className="bg-blue-50/50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900 rounded-lg p-3">
+                  <p className="text-[11px] text-blue-600 dark:text-blue-400 font-medium mb-1.5">{t("تم التحويل للمبيعات", "Assigned to Sales")}</p>
+                  <p className="text-sm font-semibold flex items-center gap-1.5">
+                    <User className="w-3.5 h-3.5 text-blue-500" />
                     {t(viewOrder.assignedUser.fullNameAr, viewOrder.assignedUser.fullNameEn)}
                   </p>
+                  {viewOrder.assignedAt && (
+                    <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
+                      <span className="flex items-center gap-1">
+                        <Calendar className="w-3 h-3" />
+                        {new Date(viewOrder.assignedAt).toLocaleDateString(lang === "ar" ? "ar-SA" : "en-US", { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                      <span className="flex items-center gap-1 font-medium text-blue-600 dark:text-blue-400">
+                        <Clock className="w-3 h-3" />
+                        {t("منذ", "Since")} {formatElapsed(viewOrder.assignedAt, now, t)}
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
 
