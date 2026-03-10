@@ -6,6 +6,7 @@ import { Phone, KeyRound, Loader2, Shield, AlertCircle, ArrowRight, RotateCcw } 
 import { useToast } from "@/hooks/use-toast";
 import { auth, RecaptchaVerifier, signInWithPhoneNumber, type ConfirmationResult } from "@/lib/firebase";
 import teakLogo from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
+import { LoadingTransition } from "@/components/loading-transition";
 
 export default function CustomerPortalLogin() {
   const { t, lang } = useLanguage();
@@ -19,6 +20,7 @@ export default function CustomerPortalLogin() {
   const [customerName, setCustomerName] = useState("");
   const [error, setError] = useState("");
   const [countdown, setCountdown] = useState(0);
+  const [showTransition, setShowTransition] = useState(false);
 
   const confirmationRef = useRef<ConfirmationResult | null>(null);
   const recaptchaRef = useRef<RecaptchaVerifier | null>(null);
@@ -163,7 +165,7 @@ export default function CustomerPortalLogin() {
         title: t("مرحباً", "Welcome"),
         description: t(`مرحباً ${data.name || customerName}`, `Welcome ${data.name || customerName}`),
       });
-      window.location.href = "/portal";
+      setShowTransition(true);
     } catch (error: any) {
       console.error("Firebase verify OTP error:", error);
       let msg = t("رمز التحقق غير صحيح", "Invalid verification code");
@@ -192,6 +194,13 @@ export default function CustomerPortalLogin() {
       className="min-h-[100dvh] bg-gradient-to-b from-background via-background to-muted/50 flex flex-col items-center justify-center px-4 py-6"
       dir={isRTL ? "rtl" : "ltr"}
     >
+      <LoadingTransition
+        show={showTransition}
+        message={t("جاري تسجيل الدخول...", "Signing you in...")}
+        subMessage={t("يتم تجهيز بوابتك الآن", "Preparing your portal")}
+        duration={1500}
+        onComplete={() => { window.location.href = "/portal"; }}
+      />
       <div className="w-full max-w-sm space-y-5">
         <div className="text-center space-y-1.5">
           <img

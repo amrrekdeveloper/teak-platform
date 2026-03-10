@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, ArrowRight, Loader2, Printer } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import teakLogo from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
+import { LoadingTransition } from "@/components/loading-transition";
 
 function ZatcaQRCode({ data, size = 160 }: { data: string; size?: number }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -44,9 +45,10 @@ export default function InvoiceViewPage() {
     enabled: !!id,
   });
 
+  const [showPrintTransition, setShowPrintTransition] = useState(false);
   const fmtNum = (v: any) => parseFloat(v || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-  const handlePrint = () => {
+  const doPrint = () => {
     const content = document.getElementById("invoice-receipt");
     if (!content) { window.print(); return; }
     const pw = window.open("", "_blank");
@@ -71,6 +73,10 @@ export default function InvoiceViewPage() {
     setTimeout(() => { pw.print(); pw.close(); }, 500);
   };
 
+  const handlePrint = () => {
+    setShowPrintTransition(true);
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -92,6 +98,13 @@ export default function InvoiceViewPage() {
 
   return (
     <div className="max-w-md mx-auto">
+      <LoadingTransition
+        show={showPrintTransition}
+        message={t("جاري تجهيز الفاتورة...", "Preparing invoice...")}
+        subMessage={t("يتم تجهيز المستند للطباعة", "Preparing document for printing")}
+        duration={1000}
+        onComplete={() => { setShowPrintTransition(false); doPrint(); }}
+      />
       <div className="flex items-center justify-between mb-4 print:hidden">
         <div className="flex items-center gap-3">
           <Link href="/invoices">

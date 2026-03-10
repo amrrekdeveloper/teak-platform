@@ -1,9 +1,10 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLanguage } from "@/components/language-provider";
 import { useAuth } from "@/hooks/use-auth";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { LoadingTransition } from "@/components/loading-transition";
 import { Link } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -122,6 +123,7 @@ export default function OrderCenterPage() {
   const [assignDialog, setAssignDialog] = useState<any | null>(null);
   const [selectedSalesUser, setSelectedSalesUser] = useState<string>("");
   const [viewOrder, setViewOrder] = useState<any | null>(null);
+  const [showAssignTransition, setShowAssignTransition] = useState(false);
   const now = useElapsedTime();
 
   const { data: quotations = [], isLoading: loadingQuotations } = useQuery<any[]>({
@@ -155,7 +157,7 @@ export default function OrderCenterPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/quotations"] });
       setAssignDialog(null);
       setSelectedSalesUser("");
-      toast({ title: t("تم التحويل بنجاح", "Assigned successfully") });
+      setShowAssignTransition(true);
     },
     onError: () => {
       toast({ title: t("فشل التحويل", "Assignment failed"), variant: "destructive" });
@@ -214,6 +216,16 @@ export default function OrderCenterPage() {
 
   return (
     <div className="space-y-5" data-testid="page-order-center">
+      <LoadingTransition
+        show={showAssignTransition}
+        message={t("جاري تحويل الطلب...", "Assigning order...")}
+        subMessage={t("يتم تحديث حالة الطلب", "Updating order status")}
+        duration={1200}
+        onComplete={() => {
+          setShowAssignTransition(false);
+          toast({ title: t("تم التحويل بنجاح", "Assigned successfully") });
+        }}
+      />
       <div>
         <h1 className="text-xl font-bold" data-testid="text-order-center-title">
           {t("مركز الطلبات", "Order Center")}

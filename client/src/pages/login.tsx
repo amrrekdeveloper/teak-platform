@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { useLanguage } from "@/components/language-provider";
+import { useLoadingTransition } from "@/components/loading-transition";
 import { useTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,13 +29,17 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
-
+  const { startTransition, TransitionComponent } = useLoadingTransition(1500);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     try {
       await login({ username, password });
+      await startTransition(
+        t("جاري التحقق من البيانات...", "Verifying credentials..."),
+        t("يتم تجهيز لوحة التحكم", "Preparing your dashboard")
+      );
       setLocation("/dashboard");
     } catch (err: any) {
       try {
@@ -56,6 +61,7 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-background via-background to-primary/5 p-4">
+      {TransitionComponent}
       <div className="absolute top-4 end-4 flex items-center gap-2">
         <Button
           size="icon"

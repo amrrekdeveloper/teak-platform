@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useLanguage } from "@/components/language-provider";
+import { LoadingTransition } from "@/components/loading-transition";
 import { useTheme } from "@/components/theme-provider";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,7 @@ export default function RequestQuotePage() {
   const { theme, toggleTheme } = useTheme();
   const { toast } = useToast();
   const [submitted, setSubmitted] = useState(false);
+  const [showTransition, setShowTransition] = useState(false);
   const [geoLoading, setGeoLoading] = useState(false);
 
   const [form, setForm] = useState({
@@ -107,7 +109,7 @@ export default function RequestQuotePage() {
       if (!res.ok) throw new Error("Failed");
       return res.json();
     },
-    onSuccess: () => setSubmitted(true),
+    onSuccess: () => setShowTransition(true),
   });
 
   const handleDetectCity = () => {
@@ -187,6 +189,13 @@ export default function RequestQuotePage() {
 
   return (
     <div className="min-h-screen bg-background" dir={isRTL ? "rtl" : "ltr"}>
+      <LoadingTransition
+        show={showTransition}
+        message={t("جاري إرسال طلبك...", "Submitting your request...")}
+        subMessage={t("يتم حفظ بيانات الطلب", "Saving your request details")}
+        duration={1500}
+        onComplete={() => { setShowTransition(false); setSubmitted(true); }}
+      />
       <nav className="sticky top-0 z-50 bg-background/80 backdrop-blur-xl border-b border-border">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">

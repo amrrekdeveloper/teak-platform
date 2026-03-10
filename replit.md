@@ -34,6 +34,7 @@ Integrated Manufacturing + CRM + Project Management platform for a Saudi wood pr
 - `client/src/components/language-provider.tsx` — AR/EN language switching
 - `client/src/components/theme-provider.tsx` — Dark/light mode
 - `client/src/hooks/use-auth.ts` — Auth hook with login/logout/me
+- `client/src/components/loading-transition.tsx` — Reusable branded loading overlay (artificial delay / fake loading) with Teak logo, animated spinner, bouncing dots, fade-in/out. Used across login, portal login, order assignment, quote request, invoice print, dashboard loading
 
 ## Routing (wouter v3)
 - Public routes: `/`, `/login`, `/products`, `/request-quote`, `/track-order`, `/portal/login`, `/portal`

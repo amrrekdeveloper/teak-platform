@@ -11,6 +11,7 @@ import {
   Shield, UserCheck, TrendingUp, DollarSign, Clock,
   CheckCircle2, ArrowLeft, ArrowRight, ClipboardList, Sparkles
 } from "lucide-react";
+import teakLogo from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
 
 const stageLabels: Record<string, { ar: string; en: string }> = {
   deposit: { ar: "عربون", en: "Deposit" },
@@ -35,8 +36,12 @@ export default function DashboardPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      <div className="flex flex-col items-center justify-center min-h-[400px] gap-4">
+        <div className="relative">
+          <div className="w-16 h-16 rounded-full border-[3px] border-muted border-t-primary animate-spin absolute inset-0" />
+          <img src={teakLogo} alt="Teak" className="w-16 h-16 object-contain logo-auto animate-pulse" />
+        </div>
+        <p className="text-sm text-muted-foreground animate-pulse">{t("جاري تحميل لوحة التحكم...", "Loading dashboard...")}</p>
       </div>
     );
   }
