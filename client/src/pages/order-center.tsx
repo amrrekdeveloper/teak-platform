@@ -100,6 +100,7 @@ export default function OrderCenterPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [assignDialog, setAssignDialog] = useState<any | null>(null);
   const [selectedSalesUser, setSelectedSalesUser] = useState<string>("");
+  const [viewOrder, setViewOrder] = useState<any | null>(null);
 
   const { data: quotations = [], isLoading: loadingQuotations } = useQuery<any[]>({
     queryKey: ["/api/quotations"],
@@ -369,11 +370,15 @@ export default function OrderCenterPage() {
                               <Forward className="w-3.5 h-3.5 me-1" />
                               {t("تحويل", "Assign")}
                             </Button>
-                            <Link href={`/quotations`}>
-                              <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" data-testid={`button-view-${order.id}`}>
-                                <Eye className="w-3.5 h-3.5" />
-                              </Button>
-                            </Link>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 px-2 text-xs"
+                              onClick={() => setViewOrder(order)}
+                              data-testid={`button-view-${order.id}`}
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                            </Button>
                           </div>
                         </td>
                       </tr>
@@ -442,6 +447,111 @@ export default function OrderCenterPage() {
           )}
         </CardContent>
       </Card>
+
+      {viewOrder && (
+        <Dialog open onOpenChange={() => setViewOrder(null)}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>{t("تفاصيل الطلب", "Order Details")} #{viewOrder.quotationNumber || viewOrder.id}</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-muted/50 rounded-lg p-3">
+                  <p className="text-[11px] text-muted-foreground mb-1">{t("العميل", "Customer")}</p>
+                  <p className="text-sm font-semibold">{viewOrder.customer?.fullName || "—"}</p>
+                  {viewOrder.customer?.phone && (
+                    <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1" dir="ltr">
+                      <Phone className="w-3 h-3" /> {viewOrder.customer.phone}
+                    </p>
+                  )}
+                  {viewOrder.customer?.city && (
+                    <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
+                      <MapPin className="w-3 h-3" /> {viewOrder.customer.city}
+                    </p>
+                  )}
+                </div>
+                <div className="bg-muted/50 rounded-lg p-3">
+                  <p className="text-[11px] text-muted-foreground mb-1">{t("الحالة", "Status")}</p>
+                  <StatusBadge stage={viewOrder.stage} />
+                  <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
+                    <Calendar className="w-3 h-3" />
+                    {viewOrder.createdAt ? new Date(viewOrder.createdAt).toLocaleDateString(lang === "ar" ? "ar-SA" : "en-US", { year: "numeric", month: "long", day: "numeric" }) : "—"}
+                  </p>
+                </div>
+              </div>
+
+              {viewOrder.assignedUser && (
+                <div className="bg-muted/50 rounded-lg p-3">
+                  <p className="text-[11px] text-muted-foreground mb-1">{t("المسؤول", "Assigned To")}</p>
+                  <p className="text-sm font-medium flex items-center gap-1.5">
+                    <User className="w-3.5 h-3.5 text-muted-foreground" />
+                    {t(viewOrder.assignedUser.fullNameAr, viewOrder.assignedUser.fullNameEn)}
+                  </p>
+                </div>
+              )}
+
+              {viewOrder.items && viewOrder.items.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold mb-2">{t("المنتجات", "Products")}</p>
+                  <div className="border rounded-lg overflow-hidden">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="bg-muted/50">
+                          <th className="text-start px-3 py-2 font-medium">{t("الوصف", "Description")}</th>
+                          <th className="text-start px-3 py-2 font-medium">{t("الكمية", "Qty")}</th>
+                          <th className="text-start px-3 py-2 font-medium">{t("السعر", "Price")}</th>
+                          <th className="text-start px-3 py-2 font-medium">{t("الإجمالي", "Total")}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {viewOrder.items.map((item: any, idx: number) => (
+                          <tr key={idx} className="border-t">
+                            <td className="px-3 py-2">{item.description || item.productType || "—"}</td>
+                            <td className="px-3 py-2">{item.quantity || 1}</td>
+                            <td className="px-3 py-2">{Number(item.unitPrice || 0).toLocaleString()}</td>
+                            <td className="px-3 py-2">{Number(item.amount || 0).toLocaleString()}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="bg-muted/50 rounded-lg p-2">
+                  <p className="text-[10px] text-muted-foreground">{t("الإجمالي قبل الضريبة", "Subtotal")}</p>
+                  <p className="text-sm font-bold">{Number(viewOrder.subtotal || 0).toLocaleString()}</p>
+                </div>
+                <div className="bg-muted/50 rounded-lg p-2">
+                  <p className="text-[10px] text-muted-foreground">{t("الضريبة", "VAT")} {viewOrder.vatRate || 15}%</p>
+                  <p className="text-sm font-bold">{Number(viewOrder.vatAmount || 0).toLocaleString()}</p>
+                </div>
+                <div className="bg-primary/10 rounded-lg p-2">
+                  <p className="text-[10px] text-primary">{t("الإجمالي النهائي", "Final Total")}</p>
+                  <p className="text-sm font-bold text-primary">{Number(viewOrder.finalPrice || viewOrder.totalPrice || 0).toLocaleString()} {t("ر.س", "SAR")}</p>
+                </div>
+              </div>
+
+              {viewOrder.notes && (
+                <div className="bg-muted/50 rounded-lg p-3">
+                  <p className="text-[11px] text-muted-foreground mb-1">{t("ملاحظات", "Notes")}</p>
+                  <p className="text-xs">{viewOrder.notes}</p>
+                </div>
+              )}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setViewOrder(null)} data-testid="button-close-view">
+                {t("إغلاق", "Close")}
+              </Button>
+              <Button onClick={() => { setViewOrder(null); setAssignDialog(viewOrder); }} data-testid="button-assign-from-view">
+                <Forward className="w-3.5 h-3.5 me-1.5" />
+                {t("تحويل", "Assign")}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {assignDialog && (
         <Dialog open onOpenChange={() => { setAssignDialog(null); setSelectedSalesUser(""); }}>
