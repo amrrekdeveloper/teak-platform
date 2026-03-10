@@ -212,6 +212,7 @@ export const quotations = pgTable("quotations", {
   assignedAt: timestamp("assigned_at"),
   designFile: text("design_file"),
   validUntil: date("valid_until"),
+  inspectionDate: date("inspection_date"),
   notes: text("notes"),
   createdBy: integer("created_by").references(() => users.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),

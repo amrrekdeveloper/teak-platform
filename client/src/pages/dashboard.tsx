@@ -9,7 +9,8 @@ import {
   Users, FileText, FolderOpen, CreditCard, Loader2,
   Factory, Package, AlertTriangle, Truck, Wrench,
   Shield, UserCheck, TrendingUp, DollarSign, Clock,
-  CheckCircle2, ArrowLeft, ArrowRight, ClipboardList, Sparkles
+  CheckCircle2, ArrowLeft, ArrowRight, ClipboardList, Sparkles,
+  CalendarCheck, CalendarDays
 } from "lucide-react";
 import teakLogo from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
 
@@ -32,6 +33,10 @@ export default function DashboardPage() {
 
   const { data: stats, isLoading } = useQuery<any>({
     queryKey: ["/api/dashboard/stats"],
+  });
+
+  const { data: inspections } = useQuery<any[]>({
+    queryKey: ["/api/inspections"],
   });
 
   if (isLoading) {
@@ -148,6 +153,8 @@ export default function DashboardPage() {
         <MiniCard icon={Wrench} value={stats?.pendingMaintenance || 0} label={t("صيانة معلقة", "Pending Maintenance")} color="text-red-500" testId="mini-maintenance" />
         <MiniCard icon={Shield} value={`${stats?.qualityPassRate || 0}%`} label={t("نسبة النجاح", "Pass Rate")} color="text-green-600" testId="mini-quality" />
       </div>
+
+      <InspectionScheduleSection inspections={inspections || []} t={t} lang={lang} />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card>
@@ -292,6 +299,129 @@ function MiniCard({ icon: Icon, value, label, color, testId }: {
         <Icon className={`w-5 h-5 mx-auto mb-1 ${color}`} />
         <p className="text-lg font-bold">{value}</p>
         <p className="text-[10px] md:text-xs text-muted-foreground">{label}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function InspectionScheduleSection({ inspections, t, lang }: { inspections: any[]; t: (ar: string, en: string) => string; lang: string }) {
+  const now = new Date();
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const weekEnd = new Date(now);
+  weekEnd.setDate(weekEnd.getDate() + 7);
+  const weekEndStr = `${weekEnd.getFullYear()}-${String(weekEnd.getMonth() + 1).padStart(2, "0")}-${String(weekEnd.getDate()).padStart(2, "0")}`;
+
+  const upcoming = inspections.filter(i => i.inspectionDate >= todayStr);
+  const todayInspections = upcoming.filter(i => i.inspectionDate === todayStr);
+  const thisWeekInspections = upcoming.filter(i => i.inspectionDate <= weekEndStr);
+
+  const dayNames: Record<string, { ar: string; en: string }> = {
+    "0": { ar: "الأحد", en: "Sunday" },
+    "1": { ar: "الإثنين", en: "Monday" },
+    "2": { ar: "الثلاثاء", en: "Tuesday" },
+    "3": { ar: "الأربعاء", en: "Wednesday" },
+    "4": { ar: "الخميس", en: "Thursday" },
+    "5": { ar: "الجمعة", en: "Friday" },
+    "6": { ar: "السبت", en: "Saturday" },
+  };
+
+  const monthNames: Record<number, { ar: string; en: string }> = {
+    0: { ar: "يناير", en: "January" },
+    1: { ar: "فبراير", en: "February" },
+    2: { ar: "مارس", en: "March" },
+    3: { ar: "أبريل", en: "April" },
+    4: { ar: "مايو", en: "May" },
+    5: { ar: "يونيو", en: "June" },
+    6: { ar: "يوليو", en: "July" },
+    7: { ar: "أغسطس", en: "August" },
+    8: { ar: "سبتمبر", en: "September" },
+    9: { ar: "أكتوبر", en: "October" },
+    10: { ar: "نوفمبر", en: "November" },
+    11: { ar: "ديسمبر", en: "December" },
+  };
+
+  const formatDate = (dateStr: string) => {
+    const d = new Date(dateStr + "T00:00:00");
+    const dayName = dayNames[d.getDay().toString()];
+    const month = monthNames[d.getMonth()];
+    return t(
+      `${dayName.ar} ${d.getDate()} ${month.ar} ${d.getFullYear()}`,
+      `${dayName.en}, ${month.en} ${d.getDate()}, ${d.getFullYear()}`
+    );
+  };
+
+  return (
+    <Card data-testid="card-inspection-schedule">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base flex items-center gap-2">
+          <CalendarCheck className="w-5 h-5 text-primary" />
+          {t("جدول المعاينات", "Inspection Schedule")}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="pb-4">
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          <div className="text-center p-3 rounded-lg bg-primary/10">
+            <p className="text-2xl font-bold" data-testid="text-inspections-today">{todayInspections.length}</p>
+            <p className="text-xs text-muted-foreground">{t("معاينات اليوم", "Today's Inspections")}</p>
+          </div>
+          <div className="text-center p-3 rounded-lg bg-muted/50">
+            <p className="text-2xl font-bold" data-testid="text-inspections-week">{thisWeekInspections.length}</p>
+            <p className="text-xs text-muted-foreground">{t("هذا الأسبوع", "This Week")}</p>
+          </div>
+        </div>
+
+        {todayInspections.length > 0 && (
+          <div className="mb-4">
+            <p className="text-sm font-semibold mb-2 flex items-center gap-1.5">
+              <CalendarDays className="w-4 h-4 text-primary" />
+              {t("معاينات اليوم", "Today's Inspections")}
+            </p>
+            <div className="space-y-2">
+              {todayInspections.map((insp: any) => (
+                <div key={insp.quotationId} className="flex items-center justify-between gap-2 p-2.5 rounded-lg bg-primary/5 border border-primary/10" data-testid={`inspection-today-${insp.quotationId}`}>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-sm truncate">
+                      {insp.customer?.fullName || "—"}
+                    </p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {t(insp.assignedUser?.fullNameAr || "", insp.assignedUser?.fullNameEn || "")}
+                    </p>
+                  </div>
+                  <Badge variant="default" className="shrink-0">{t("اليوم", "Today")}</Badge>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {upcoming.length > 0 ? (
+          <div>
+            <p className="text-sm font-semibold mb-2">{t("المعاينات القادمة", "Upcoming Inspections")}</p>
+            <div className="space-y-2">
+              {upcoming.filter(i => i.inspectionDate !== todayStr).slice(0, 5).map((insp: any) => (
+                <div key={insp.quotationId} className="flex items-center justify-between gap-2 text-sm" data-testid={`inspection-upcoming-${insp.quotationId}`}>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium truncate">
+                      {insp.customer?.fullName || "—"}
+                    </p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {t(insp.assignedUser?.fullNameAr || "", insp.assignedUser?.fullNameEn || "")}
+                    </p>
+                  </div>
+                  <span className="text-xs text-muted-foreground shrink-0">{formatDate(insp.inspectionDate)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground text-center py-2">{t("لا توجد معاينات قادمة", "No upcoming inspections")}</p>
+        )}
+
+        <Link href="/order-center">
+          <Button variant="ghost" size="sm" className="w-full mt-3" data-testid="link-view-inspections">
+            {t("عرض مركز الطلبات", "View Order Center")} {lang === "ar" ? <ArrowLeft className="w-4 h-4 ms-1" /> : <ArrowRight className="w-4 h-4 ms-1" />}
+          </Button>
+        </Link>
       </CardContent>
     </Card>
   );

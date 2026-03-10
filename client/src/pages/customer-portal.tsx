@@ -12,7 +12,7 @@ import {
   Clock, Eye, Loader2,
   Calendar, Sun, Moon, Share2, Printer,
   AlertCircle, X, ClipboardList, ChevronDown, ChevronUp,
-  User, MapPin, Phone, Package,
+  User, MapPin, Phone, Package, CalendarPlus,
 } from "lucide-react";
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
@@ -296,6 +296,89 @@ function getOrderStageIndex(quotation: any, contracts: any[], production: any[])
   return 0;
 }
 
+function formatInspectionDate(dateStr: string, lang: string) {
+  const date = new Date(dateStr + "T00:00:00");
+  const dayNames: Record<string, { ar: string; en: string }> = {
+    "0": { ar: "الأحد", en: "Sunday" },
+    "1": { ar: "الاثنين", en: "Monday" },
+    "2": { ar: "الثلاثاء", en: "Tuesday" },
+    "3": { ar: "الأربعاء", en: "Wednesday" },
+    "4": { ar: "الخميس", en: "Thursday" },
+    "5": { ar: "الجمعة", en: "Friday" },
+    "6": { ar: "السبت", en: "Saturday" },
+  };
+  const dayName = dayNames[String(date.getDay())];
+  const formatted = date.toLocaleDateString(lang === "ar" ? "ar-SA" : "en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+  return `${lang === "ar" ? dayName.ar : dayName.en} ${formatted}`;
+}
+
+function generateIcsFile(dateStr: string, lang: string) {
+  const date = dateStr.replace(/-/g, "");
+  const nextDay = new Date(dateStr + "T00:00:00");
+  nextDay.setDate(nextDay.getDate() + 1);
+  const endDate = nextDay.toISOString().split("T")[0].replace(/-/g, "");
+  const title = lang === "ar" ? "معاينة تيك للتصنيع" : "Teak Manufacturing Inspection";
+  const description = lang === "ar" ? "موعد المعاينة مع مصنع تيك" : "Inspection appointment with Teak Manufacturing";
+
+  const icsContent = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//Teak//Portal//EN",
+    "BEGIN:VEVENT",
+    `DTSTART;VALUE=DATE:${date}`,
+    `DTEND;VALUE=DATE:${endDate}`,
+    `SUMMARY:${title}`,
+    `DESCRIPTION:${description}`,
+    "STATUS:CONFIRMED",
+    `UID:teak-inspection-${dateStr}@teak.sa`,
+    "END:VEVENT",
+    "END:VCALENDAR",
+  ].join("\r\n");
+
+  const blob = new Blob([icsContent], { type: "text/calendar;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `teak-inspection-${dateStr}.ics`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+function InspectionAppointmentCard({ inspectionDate, orderId }: { inspectionDate: string; orderId: number }) {
+  const { t, lang } = useLanguage();
+  const formattedDate = formatInspectionDate(inspectionDate, lang);
+
+  return (
+    <div className="border rounded-lg p-3 bg-blue-50/50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-900" data-testid={`card-inspection-${orderId}`}>
+      <div className="flex items-center gap-2 mb-2">
+        <Calendar className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+        <span className="text-xs font-semibold text-blue-700 dark:text-blue-300">
+          {t("موعد المعاينة", "Inspection Appointment")}
+        </span>
+      </div>
+      <p className="text-sm font-bold mb-2.5" data-testid={`text-inspection-date-${orderId}`}>
+        {formattedDate}
+      </p>
+      <Button
+        variant="outline"
+        size="sm"
+        className="w-full text-xs"
+        onClick={() => generateIcsFile(inspectionDate, lang)}
+        data-testid={`button-add-to-calendar-${orderId}`}
+      >
+        <CalendarPlus className="w-3.5 h-3.5 me-1.5" />
+        {t("إضافة للتقويم", "Add to Calendar")}
+      </Button>
+    </div>
+  );
+}
+
 function OrdersTab({ quotations, contracts, production, designs }: {
   quotations: any[]; contracts: any[]; production: any[]; designs: any[];
 }) {
@@ -366,6 +449,11 @@ function OrdersTab({ quotations, contracts, production, designs }: {
 
               {isExpanded && !isRejected && !isExpired && stageIdx >= 0 && (
                 <div className="px-4 pb-4 border-t pt-3">
+                  {q.inspectionDate && (
+                    <div className="mb-3">
+                      <InspectionAppointmentCard inspectionDate={q.inspectionDate} orderId={q.id} />
+                    </div>
+                  )}
                   <p className="text-xs font-semibold mb-3 text-muted-foreground">{t("مراحل الطلب", "Order Stages")}</p>
                   <div className="space-y-0">
                     {orderStages.map((stage, idx) => {
@@ -407,7 +495,10 @@ function OrdersTab({ quotations, contracts, production, designs }: {
               )}
 
               {isExpanded && (isRejected || isExpired) && (
-                <div className="px-4 pb-3 border-t pt-3">
+                <div className="px-4 pb-3 border-t pt-3 space-y-3">
+                  {q.inspectionDate && (
+                    <InspectionAppointmentCard inspectionDate={q.inspectionDate} orderId={q.id} />
+                  )}
                   <p className="text-xs text-muted-foreground text-center">
                     {isRejected
                       ? t("تم رفض عرض السعر لهذا الطلب", "The quotation for this order was rejected")

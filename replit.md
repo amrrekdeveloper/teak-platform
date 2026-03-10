@@ -45,6 +45,12 @@ The application follows a modern full-stack architecture.
 -   **3D Viewer:** Three.js.
 
 ## Recent Features
+-   **Inspection Scheduling:** Quotations table has `inspectionDate` (date, nullable) column. Sales users schedule inspections via `PATCH /api/quotations/:id/inspection-date` with server-side date validation. Design Studio button is disabled until inspection is booked. `GET /api/inspections` returns upcoming inspections with customer/user data, role-filtered.
+-   **Upcoming Inspections (Order Center):** Collapsible section showing inspection cards sorted by date, with customer info, phone, product, assigned salesperson. Today's inspections highlighted.
+-   **Inspection Dashboard (Admin):** Owner dashboard shows today's inspections count, this week count, and upcoming inspections list.
+-   **Customer Portal Inspections:** Shows inspection appointment card with formatted date and "Add to Calendar" (.ics download) button.
+-   **Direct Sales Order Creation:** Sales users create orders for walk-in customers via "New Order" button → dialog (name, phone, product). `POST /api/orders/create-direct` creates/finds customer and quotation.
+-   **Designer Board Removed from Sidebar:** Design Studio is now only accessible from within order detail cards.
 -   **User Profile System:** Users table has `profileImage` column (base64 TEXT). Dashboard header includes a clickable avatar that opens a professional profile popover (name, role, email, phone, username). "Edit Profile" dialog allows profile image upload and password change via `PATCH /api/users/profile/me`.
 -   **Customer Portal Profile:** Mobile-optimized bottom sheet profile view with customer info and logout.
 -   **Design Studio Mobile:** Fully responsive layout with horizontally scrollable tabs, stacking grids, responsive canvas heights, and `xs: 480px` Tailwind breakpoint.

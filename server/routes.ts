@@ -591,6 +591,77 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/orders/create-direct", requireRole("owner", "assistant", "sales"), async (req, res) => {
+    try {
+      const { fullName, phone, productDescription, notes } = req.body;
+      if (!fullName || !phone || !productDescription) {
+        return res.status(400).json({
+          message: "الاسم ورقم الجوال ووصف المنتج مطلوبة",
+          messageEn: "Name, phone, and product description are required",
+        });
+      }
+      const namePattern = /^[\u0600-\u06FF\u0750-\u077Fa-zA-Z\s\-']+$/;
+      if (!namePattern.test(fullName)) {
+        return res.status(400).json({ message: "الاسم يجب أن يحتوي على حروف فقط", messageEn: "Name must contain letters only" });
+      }
+      const normalizedPhone = phone.replace(/\D/g, "");
+      if (!/^05\d{8}$/.test(normalizedPhone)) {
+        return res.status(400).json({ message: "رقم جوال غير صحيح", messageEn: "Invalid phone number" });
+      }
+
+      let customer;
+      const existing = await storage.getCustomerByPhone(normalizedPhone);
+      if (existing) {
+        customer = existing;
+      } else {
+        customer = await storage.createCustomer({
+          fullName,
+          phone: normalizedPhone,
+          source: "walk_in",
+          notes: notes || "",
+        });
+      }
+
+      const items = [{ description: productDescription, quantity: 1, unitPrice: 0, amount: 0 }];
+      const quotation = await storage.createQuotation({
+        customerId: customer.id,
+        items,
+        subtotal: "0",
+        vatRate: "15",
+        vatAmount: "0",
+        totalPrice: "0",
+        finalPrice: "0",
+        status: "draft",
+        assignedTo: req.session.userId,
+        assignedAt: new Date(),
+        notes: [
+          `المنتج: ${productDescription}`,
+          notes ? `ملاحظات: ${notes}` : "",
+        ].filter(Boolean).join(" | "),
+      });
+
+      const ownerUsers = (await storage.getUsers()).filter(u => u.role === "owner");
+      for (const owner of ownerUsers) {
+        await storage.createNotification({
+          userId: owner.id,
+          titleAr: "طلب جديد من المبيعات",
+          titleEn: "New Order from Sales",
+          messageAr: `طلب جديد من ${fullName} - ${normalizedPhone} - ${productDescription}`,
+          messageEn: `New order from ${fullName} - ${normalizedPhone} - ${productDescription}`,
+          type: "action",
+          relatedEntity: "customer",
+          relatedId: customer.id,
+          isRead: false,
+        });
+      }
+
+      res.status(201).json({ message: "تم إنشاء الطلب بنجاح", messageEn: "Order created successfully", customer, quotation });
+    } catch (error) {
+      console.error("Create direct order error:", error);
+      res.status(500).json({ message: "حدث خطأ في إنشاء الطلب", messageEn: "Error creating order" });
+    }
+  });
+
   app.get("/api/contracts", requireAuth, async (_req, res) => {
     try {
       res.json(await storage.getContracts());
@@ -1827,6 +1898,96 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Material request error:", error);
       res.status(500).json({ message: "حدث خطأ في إنشاء طلب المواد", messageEn: "Error creating material request" });
+    }
+  });
+
+  app.patch("/api/quotations/:id/inspection-date", requireRole("owner", "assistant", "sales"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { inspectionDate } = req.body;
+      if (!inspectionDate) return res.status(400).json({ message: "التاريخ مطلوب", messageEn: "Date is required" });
+
+      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+      if (!dateRegex.test(inspectionDate)) {
+        return res.status(400).json({ message: "صيغة التاريخ غير صحيحة", messageEn: "Invalid date format" });
+      }
+      const parsedDate = new Date(inspectionDate + "T00:00:00");
+      if (isNaN(parsedDate.getTime())) {
+        return res.status(400).json({ message: "تاريخ غير صالح", messageEn: "Invalid date" });
+      }
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (parsedDate < today) {
+        return res.status(400).json({ message: "لا يمكن اختيار تاريخ سابق", messageEn: "Cannot select a past date" });
+      }
+
+      const quotation = await storage.getQuotation(id);
+      if (!quotation) return res.status(404).json({ message: "الطلب غير موجود" });
+
+      const userId = req.session.userId!;
+      const user = await storage.getUser(userId);
+      if (user?.role !== "owner" && user?.role !== "assistant" && quotation.assignedTo !== userId) {
+        return res.status(403).json({ message: "غير مصرح لك" });
+      }
+
+      const updated = await storage.updateQuotation(id, { inspectionDate } as any);
+
+      const customer = await storage.getCustomer(quotation.customerId);
+      const ownerUsers = (await storage.getUsers()).filter(u => u.role === "owner" || u.role === "assistant");
+      for (const owner of ownerUsers) {
+        if (owner.id !== userId) {
+          await storage.createNotification({
+            userId: owner.id,
+            titleAr: "موعد معاينة جديد",
+            titleEn: "New Inspection Scheduled",
+            messageAr: `تم حجز موعد معاينة للعميل ${customer?.fullName || "—"} بتاريخ ${inspectionDate} بواسطة ${user?.fullNameAr || ""}`,
+            messageEn: `Inspection scheduled for ${customer?.fullName || "—"} on ${inspectionDate} by ${user?.fullNameEn || ""}`,
+            type: "info",
+            relatedEntity: "quotation",
+            relatedId: id,
+            isRead: false,
+          });
+        }
+      }
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Inspection date error:", error);
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  app.get("/api/inspections", requireAuth, async (req, res) => {
+    try {
+      const quotations = await storage.getQuotations();
+      const customers = await storage.getCustomers();
+      const users = await storage.getUsers();
+
+      const inspections = quotations
+        .filter(q => q.inspectionDate)
+        .map(q => ({
+          quotationId: q.id,
+          quotationNumber: q.quotationNumber,
+          inspectionDate: q.inspectionDate,
+          customerId: q.customerId,
+          customer: customers.find(c => c.id === q.customerId),
+          assignedTo: q.assignedTo,
+          assignedUser: users.find(u => u.id === q.assignedTo),
+          items: q.items,
+          notes: q.notes,
+          status: q.status,
+        }))
+        .sort((a, b) => new Date(a.inspectionDate!).getTime() - new Date(b.inspectionDate!).getTime());
+
+      const userId = req.session.userId!;
+      const user = await storage.getUser(userId);
+      if (user?.role === "owner" || user?.role === "assistant") {
+        res.json(inspections);
+      } else {
+        res.json(inspections.filter(i => i.assignedTo === userId));
+      }
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ" });
     }
   });
 

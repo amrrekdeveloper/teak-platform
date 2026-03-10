@@ -25,6 +25,11 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
   Loader2,
   Search,
   ClipboardList,
@@ -37,6 +42,7 @@ import {
   XCircle,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Eye,
   Forward,
   Phone,
@@ -46,7 +52,17 @@ import {
   FileText,
   Clock,
   Pencil,
+  CalendarCheck,
+  RotateCcw,
+  Plus,
 } from "lucide-react";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 function useElapsedTime() {
   const [now, setNow] = useState(Date.now());
@@ -125,6 +141,10 @@ export default function OrderCenterPage() {
   const [selectedSalesUser, setSelectedSalesUser] = useState<string>("");
   const [viewOrder, setViewOrder] = useState<any | null>(null);
   const [showAssignTransition, setShowAssignTransition] = useState(false);
+  const [showInspectionPicker, setShowInspectionPicker] = useState(false);
+  const [inspDay, setInspDay] = useState<string>("");
+  const [inspMonth, setInspMonth] = useState<string>("");
+  const [inspYear, setInspYear] = useState<string>("");
   const now = useElapsedTime();
 
   const { data: quotations = [], isLoading: loadingQuotations } = useQuery<any[]>({
@@ -134,6 +154,24 @@ export default function OrderCenterPage() {
   const { data: usersData = [] } = useQuery<any[]>({ queryKey: ["/api/users"] });
   const { data: workOrders = [] } = useQuery<any[]>({ queryKey: ["/api/work-orders"] });
   const { data: contracts = [] } = useQuery<any[]>({ queryKey: ["/api/contracts"] });
+  const { data: inspections = [] } = useQuery<any[]>({ queryKey: ["/api/inspections"] });
+
+  const [inspectionsOpen, setInspectionsOpen] = useState(true);
+  const [newOrderDialog, setNewOrderDialog] = useState(false);
+  const [newOrderForm, setNewOrderForm] = useState({ fullName: "", phone: "", productDescription: "", notes: "" });
+  const [showNewOrderTransition, setShowNewOrderTransition] = useState(false);
+
+  const upcomingInspections = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return inspections
+      .filter((insp: any) => {
+        const d = new Date(insp.inspectionDate);
+        d.setHours(0, 0, 0, 0);
+        return d >= today;
+      })
+      .sort((a: any, b: any) => new Date(a.inspectionDate).getTime() - new Date(b.inspectionDate).getTime());
+  }, [inspections]);
 
   const workOrdersWithContract = useMemo(() => {
     return workOrders.map((wo: any) => ({
@@ -162,6 +200,37 @@ export default function OrderCenterPage() {
     },
     onError: () => {
       toast({ title: t("فشل التحويل", "Assignment failed"), variant: "destructive" });
+    },
+  });
+
+  const inspectionMutation = useMutation({
+    mutationFn: async ({ id, inspectionDate }: { id: number; inspectionDate: string }) => {
+      return apiRequest("PATCH", `/api/quotations/${id}/inspection-date`, { inspectionDate });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/quotations"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inspections"] });
+      setShowInspectionPicker(false);
+      toast({ title: t("تم حفظ موعد المعاينة", "Inspection date saved") });
+    },
+    onError: () => {
+      toast({ title: t("فشل حفظ الموعد", "Failed to save date"), variant: "destructive" });
+    },
+  });
+
+  const createOrderMutation = useMutation({
+    mutationFn: async (data: { fullName: string; phone: string; productDescription: string; notes: string }) => {
+      return apiRequest("POST", "/api/orders/create-direct", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/quotations"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
+      setNewOrderDialog(false);
+      setNewOrderForm({ fullName: "", phone: "", productDescription: "", notes: "" });
+      setShowNewOrderTransition(true);
+    },
+    onError: (error: any) => {
+      toast({ title: error?.message || t("فشل إنشاء الطلب", "Failed to create order"), variant: "destructive" });
     },
   });
 
@@ -227,13 +296,31 @@ export default function OrderCenterPage() {
           toast({ title: t("تم التحويل بنجاح", "Assigned successfully") });
         }}
       />
-      <div>
-        <h1 className="text-xl font-bold" data-testid="text-order-center-title">
-          {t("مركز الطلبات", "Order Center")}
-        </h1>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          {t("إدارة ومتابعة جميع الطلبات من مكان واحد", "Manage and track all orders from one place")}
-        </p>
+      <LoadingTransition
+        show={showNewOrderTransition}
+        message={t("جاري إنشاء الطلب...", "Creating order...")}
+        subMessage={t("يتم تسجيل الطلب والعميل", "Registering order and customer")}
+        duration={1200}
+        onComplete={() => {
+          setShowNewOrderTransition(false);
+          toast({ title: t("تم إنشاء الطلب بنجاح", "Order created successfully") });
+        }}
+      />
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div>
+          <h1 className="text-xl font-bold" data-testid="text-order-center-title">
+            {t("مركز الطلبات", "Order Center")}
+          </h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            {t("إدارة ومتابعة جميع الطلبات من مكان واحد", "Manage and track all orders from one place")}
+          </p>
+        </div>
+        {(user?.role === "owner" || user?.role === "sales" || user?.role === "assistant") && (
+          <Button onClick={() => setNewOrderDialog(true)} data-testid="button-new-order">
+            <Plus className="w-4 h-4 me-1.5" />
+            {t("طلب جديد", "New Order")}
+          </Button>
+        )}
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-2">
@@ -264,6 +351,98 @@ export default function OrderCenterPage() {
           );
         })}
       </div>
+
+      {upcomingInspections.length > 0 && (
+        <Collapsible open={inspectionsOpen} onOpenChange={setInspectionsOpen}>
+          <Card>
+            <CollapsibleTrigger asChild>
+              <button
+                className="flex items-center justify-between gap-2 w-full px-4 py-3 text-start"
+                data-testid="button-toggle-inspections"
+              >
+                <div className="flex items-center gap-2">
+                  <CalendarCheck className="w-4 h-4 text-primary" />
+                  <span className="text-sm font-semibold">
+                    {t("مواعيد المعاينة القادمة", "Upcoming Inspections")}
+                  </span>
+                  <Badge variant="secondary" className="text-[10px]">
+                    {upcomingInspections.length}
+                  </Badge>
+                </div>
+                <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${inspectionsOpen ? "rotate-180" : ""}`} />
+              </button>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <CardContent className="px-4 pb-4 pt-0">
+                <div className="flex gap-3 overflow-x-auto pb-1" data-testid="list-upcoming-inspections">
+                  {upcomingInspections.map((insp: any) => {
+                    const inspDate = new Date(insp.inspectionDate);
+                    const isToday = (() => {
+                      const today = new Date();
+                      return inspDate.getFullYear() === today.getFullYear() &&
+                        inspDate.getMonth() === today.getMonth() &&
+                        inspDate.getDate() === today.getDate();
+                    })();
+                    const dayName = inspDate.toLocaleDateString(lang === "ar" ? "ar-SA" : "en-US", { weekday: "long" });
+                    const dateStr = inspDate.toLocaleDateString(lang === "ar" ? "ar-SA" : "en-US", {
+                      year: "numeric",
+                      month: "short",
+                      day: "numeric",
+                    });
+                    return (
+                      <div
+                        key={insp.quotationId}
+                        className={`flex-shrink-0 w-[220px] border rounded-lg p-3 space-y-2 ${
+                          isToday
+                            ? "border-primary bg-primary/5"
+                            : "border-border"
+                        }`}
+                        data-testid={`card-inspection-${insp.quotationId}`}
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <Calendar className={`w-3.5 h-3.5 ${isToday ? "text-primary" : "text-muted-foreground"}`} />
+                          <span className={`text-xs font-semibold ${isToday ? "text-primary" : ""}`}>
+                            {dayName}
+                          </span>
+                          {isToday && (
+                            <Badge variant="default" className="text-[9px] px-1.5 py-0">
+                              {t("اليوم", "Today")}
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-muted-foreground">{dateStr}</p>
+                        <div className="space-y-1">
+                          <p className="text-xs font-medium truncate flex items-center gap-1">
+                            <User className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+                            {insp.customer?.fullName || "—"}
+                          </p>
+                          {insp.customer?.phone && (
+                            <p className="text-[11px] text-muted-foreground flex items-center gap-1" dir="ltr">
+                              <Phone className="w-3 h-3 flex-shrink-0" />
+                              {insp.customer.phone}
+                            </p>
+                          )}
+                          {insp.items?.[0]?.description && (
+                            <p className="text-[11px] text-muted-foreground truncate" title={insp.items[0].description}>
+                              {insp.items[0].description}
+                            </p>
+                          )}
+                          {insp.assignedUser && (
+                            <p className="text-[11px] text-blue-600 dark:text-blue-400 flex items-center gap-1 mt-1">
+                              <UserCheck className="w-3 h-3 flex-shrink-0" />
+                              {lang === "ar" ? insp.assignedUser.fullNameAr : insp.assignedUser.fullNameEn}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </CollapsibleContent>
+          </Card>
+        </Collapsible>
+      )}
 
       <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
         <div className="relative flex-1">
@@ -494,7 +673,7 @@ export default function OrderCenterPage() {
       </Card>
 
       {viewOrder && (
-        <Dialog open onOpenChange={() => setViewOrder(null)}>
+        <Dialog open onOpenChange={() => { setViewOrder(null); setShowInspectionPicker(false); setInspDay(""); setInspMonth(""); setInspYear(""); }}>
           <DialogContent className="sm:max-w-lg">
             <DialogHeader>
               <DialogTitle>{t("تفاصيل الطلب", "Order Details")} #{viewOrder.quotationNumber || viewOrder.id}</DialogTitle>
@@ -553,6 +732,180 @@ export default function OrderCenterPage() {
                 </div>
               )}
 
+              {(() => {
+                const existingInspDate = viewOrder.inspectionDate;
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+
+                const monthNames = {
+                  ar: ["يناير","فبراير","مارس","أبريل","مايو","يونيو","يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر"],
+                  en: ["January","February","March","April","May","June","July","August","September","October","November","December"],
+                };
+                const dayNames = {
+                  ar: ["الأحد","الإثنين","الثلاثاء","الأربعاء","الخميس","الجمعة","السبت"],
+                  en: ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"],
+                };
+
+                const currentYear = today.getFullYear();
+                const yearOptions = [currentYear, currentYear + 1, currentYear + 2];
+
+                const selectedYear = inspYear ? Number(inspYear) : 0;
+                const selectedMonth = inspMonth ? Number(inspMonth) : 0;
+                const daysInMonth = selectedYear && selectedMonth ? new Date(selectedYear, selectedMonth, 0).getDate() : 31;
+
+                const isDateValid = inspDay && inspMonth && inspYear && (() => {
+                  const d = new Date(Number(inspYear), Number(inspMonth) - 1, Number(inspDay));
+                  return d >= today;
+                })();
+
+                const selectedFullDate = inspDay && inspMonth && inspYear
+                  ? new Date(Number(inspYear), Number(inspMonth) - 1, Number(inspDay))
+                  : null;
+
+                const formatFullDate = (dateStr: string | Date) => {
+                  const d = new Date(dateStr);
+                  const dayName = lang === "ar" ? dayNames.ar[d.getDay()] : dayNames.en[d.getDay()];
+                  const monthName = lang === "ar" ? monthNames.ar[d.getMonth()] : monthNames.en[d.getMonth()];
+                  return `${dayName} ${d.getDate()} ${monthName} ${d.getFullYear()}`;
+                };
+
+                const isDayDisabled = (day: number) => {
+                  if (!inspMonth || !inspYear) return false;
+                  const d = new Date(Number(inspYear), Number(inspMonth) - 1, day);
+                  return d < today;
+                };
+
+                return (
+                  <div className="border rounded-lg p-3" data-testid="section-inspection-scheduling">
+                    {existingInspDate && !showInspectionPicker ? (
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <div className="flex items-center gap-2">
+                          <CalendarCheck className="w-4 h-4 text-green-600" />
+                          <div>
+                            <p className="text-[11px] text-muted-foreground">{t("موعد المعاينة", "Inspection Date")}</p>
+                            <p className="text-sm font-semibold">{formatFullDate(existingInspDate)}</p>
+                          </div>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            const d = new Date(existingInspDate);
+                            setInspDay(String(d.getDate()));
+                            setInspMonth(String(d.getMonth() + 1));
+                            setInspYear(String(d.getFullYear()));
+                            setShowInspectionPicker(true);
+                          }}
+                          data-testid="button-reschedule-inspection"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5 me-1" />
+                          {t("إعادة جدولة", "Reschedule")}
+                        </Button>
+                      </div>
+                    ) : showInspectionPicker ? (
+                      <div className="space-y-3">
+                        <p className="text-xs font-semibold flex items-center gap-1.5">
+                          <CalendarCheck className="w-3.5 h-3.5" />
+                          {t("تحديد موعد المعاينة", "Schedule Inspection")}
+                        </p>
+                        <div className="grid grid-cols-3 gap-2">
+                          <Select value={inspYear} onValueChange={(v) => { setInspYear(v); setInspDay(""); }}>
+                            <SelectTrigger data-testid="select-inspection-year">
+                              <SelectValue placeholder={t("السنة", "Year")} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {yearOptions.map((y) => (
+                                <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Select value={inspMonth} onValueChange={(v) => { setInspMonth(v); setInspDay(""); }}>
+                            <SelectTrigger data-testid="select-inspection-month">
+                              <SelectValue placeholder={t("الشهر", "Month")} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {Array.from({ length: 12 }, (_, i) => {
+                                const mIdx = i + 1;
+                                const mName = lang === "ar" ? monthNames.ar[i] : monthNames.en[i];
+                                return (
+                                  <SelectItem key={mIdx} value={String(mIdx)}>{mName}</SelectItem>
+                                );
+                              })}
+                            </SelectContent>
+                          </Select>
+                          <Select value={inspDay} onValueChange={setInspDay}>
+                            <SelectTrigger data-testid="select-inspection-day">
+                              <SelectValue placeholder={t("اليوم", "Day")} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {Array.from({ length: daysInMonth }, (_, i) => {
+                                const day = i + 1;
+                                const disabled = isDayDisabled(day);
+                                return (
+                                  <SelectItem key={day} value={String(day)} disabled={disabled}>
+                                    {day}
+                                  </SelectItem>
+                                );
+                              })}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        {selectedFullDate && isDateValid && (
+                          <p className="text-xs text-green-600 dark:text-green-400 font-medium" data-testid="text-selected-date">
+                            {formatFullDate(selectedFullDate)}
+                          </p>
+                        )}
+                        {selectedFullDate && !isDateValid && (
+                          <p className="text-xs text-red-500" data-testid="text-invalid-date">
+                            {t("لا يمكن اختيار تاريخ في الماضي", "Cannot select a past date")}
+                          </p>
+                        )}
+                        <div className="flex items-center gap-2">
+                          <Button
+                            size="sm"
+                            disabled={!isDateValid || inspectionMutation.isPending}
+                            onClick={() => {
+                              const dateStr = `${inspYear}-${String(inspMonth).padStart(2, "0")}-${String(inspDay).padStart(2, "0")}`;
+                              inspectionMutation.mutate({ id: viewOrder.id, inspectionDate: dateStr });
+                              setViewOrder({ ...viewOrder, inspectionDate: dateStr });
+                            }}
+                            data-testid="button-save-inspection"
+                          >
+                            {inspectionMutation.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin me-1" />}
+                            {t("حفظ الموعد", "Save Date")}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => { setShowInspectionPicker(false); setInspDay(""); setInspMonth(""); setInspYear(""); }}
+                            data-testid="button-cancel-inspection"
+                          >
+                            {t("إلغاء", "Cancel")}
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full"
+                        onClick={() => {
+                          const defaultYear = currentYear < 2026 ? 2026 : currentYear;
+                          setInspYear(String(defaultYear));
+                          setInspMonth("");
+                          setInspDay("");
+                          setShowInspectionPicker(true);
+                        }}
+                        data-testid="button-schedule-inspection"
+                      >
+                        <CalendarCheck className="w-3.5 h-3.5 me-1.5" />
+                        {t("تحديد موعد المعاينة", "Schedule Inspection")}
+                      </Button>
+                    )}
+                  </div>
+                );
+              })()}
+
               {viewOrder.items && viewOrder.items.length > 0 && (
                 <div>
                   <p className="text-xs font-semibold mb-2">{t("المنتجات", "Products")}</p>
@@ -608,14 +961,34 @@ export default function OrderCenterPage() {
                 {t("إغلاق", "Close")}
               </Button>
               {viewOrder.assignedTo && (
-                <Button
-                  variant="secondary"
-                  onClick={() => { window.location.href = `/dashboard/design-studio/${viewOrder.id}`; }}
-                  data-testid="button-open-design-studio"
-                >
-                  <Pencil className="w-3.5 h-3.5 me-1.5" />
-                  {t("استوديو التصميم", "Design Studio")}
-                </Button>
+                viewOrder.inspectionDate ? (
+                  <Button
+                    variant="secondary"
+                    onClick={() => { window.location.href = `/dashboard/design-studio/${viewOrder.id}`; }}
+                    data-testid="button-open-design-studio"
+                  >
+                    <Pencil className="w-3.5 h-3.5 me-1.5" />
+                    {t("استوديو التصميم", "Design Studio")}
+                  </Button>
+                ) : (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span>
+                        <Button
+                          variant="outline"
+                          disabled
+                          data-testid="button-open-design-studio-disabled"
+                        >
+                          <Pencil className="w-3.5 h-3.5 me-1.5" />
+                          {t("استوديو التصميم", "Design Studio")}
+                        </Button>
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      {t("يجب تحديد موعد المعاينة أولاً", "Schedule an inspection first")}
+                    </TooltipContent>
+                  </Tooltip>
+                )
               )}
               <Button onClick={() => { setViewOrder(null); setAssignDialog(viewOrder); }} data-testid="button-assign-from-view">
                 <Forward className="w-3.5 h-3.5 me-1.5" />
@@ -695,6 +1068,74 @@ export default function OrderCenterPage() {
               >
                 {assignMutation.isPending && <Loader2 className="w-4 h-4 animate-spin me-2" />}
                 {t("تحويل", "Assign")}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {newOrderDialog && (
+        <Dialog open onOpenChange={() => { setNewOrderDialog(false); setNewOrderForm({ fullName: "", phone: "", productDescription: "", notes: "" }); }}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>{t("طلب جديد", "New Order")}</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="new-order-name">{t("اسم العميل", "Customer Name")} *</Label>
+                <Input
+                  id="new-order-name"
+                  value={newOrderForm.fullName}
+                  onChange={(e) => setNewOrderForm({ ...newOrderForm, fullName: e.target.value })}
+                  placeholder={t("أدخل اسم العميل", "Enter customer name")}
+                  data-testid="input-new-order-name"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="new-order-phone">{t("رقم الجوال", "Phone Number")} *</Label>
+                <Input
+                  id="new-order-phone"
+                  value={newOrderForm.phone}
+                  onChange={(e) => setNewOrderForm({ ...newOrderForm, phone: e.target.value })}
+                  placeholder="05XXXXXXXX"
+                  dir="ltr"
+                  data-testid="input-new-order-phone"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="new-order-product">{t("وصف المنتج", "Product Description")} *</Label>
+                <Input
+                  id="new-order-product"
+                  value={newOrderForm.productDescription}
+                  onChange={(e) => setNewOrderForm({ ...newOrderForm, productDescription: e.target.value })}
+                  placeholder={t("مطبخ، دولاب، باب...", "Kitchen, wardrobe, door...")}
+                  data-testid="input-new-order-product"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="new-order-notes">{t("ملاحظات", "Notes")}</Label>
+                <Textarea
+                  id="new-order-notes"
+                  value={newOrderForm.notes}
+                  onChange={(e) => setNewOrderForm({ ...newOrderForm, notes: e.target.value })}
+                  placeholder={t("ملاحظات إضافية (اختياري)", "Additional notes (optional)")}
+                  className="resize-none"
+                  rows={3}
+                  data-testid="input-new-order-notes"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => { setNewOrderDialog(false); setNewOrderForm({ fullName: "", phone: "", productDescription: "", notes: "" }); }} data-testid="button-cancel-new-order">
+                {t("إلغاء", "Cancel")}
+              </Button>
+              <Button
+                disabled={!newOrderForm.fullName.trim() || !newOrderForm.phone.trim() || !newOrderForm.productDescription.trim() || createOrderMutation.isPending}
+                onClick={() => createOrderMutation.mutate(newOrderForm)}
+                data-testid="button-submit-new-order"
+              >
+                {createOrderMutation.isPending && <Loader2 className="w-4 h-4 animate-spin me-2" />}
+                {t("إنشاء الطلب", "Create Order")}
               </Button>
             </DialogFooter>
           </DialogContent>
