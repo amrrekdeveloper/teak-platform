@@ -1429,7 +1429,6 @@ export async function registerRoutes(
       const { idToken } = req.body;
       if (!idToken) return res.status(400).json({ message: "التوكن مطلوب", messageEn: "ID token is required" });
 
-      const { verifyFirebaseToken } = await import("./firebase-admin");
       const decoded = await verifyFirebaseToken(idToken);
       if (!decoded || !decoded.phone) {
         return res.status(401).json({ message: "فشل التحقق من التوكن", messageEn: "Token verification failed" });
