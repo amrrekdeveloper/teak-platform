@@ -117,37 +117,49 @@ function TabBar({ active, onChange, counts }: { active: TabKey; onChange: (t: Ta
     { key: "maintenance", icon: Wrench, ar: "الصيانة", en: "Maintenance" },
   ];
 
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const activeBtn = el.querySelector(`[data-active="true"]`) as HTMLElement;
+    if (activeBtn) {
+      activeBtn.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+    }
+  }, [active]);
+
   return (
     <div className="border-b bg-background sticky top-[53px] z-40">
-      <div className="max-w-2xl mx-auto">
-        <div ref={scrollRef} className="flex overflow-x-auto scrollbar-hide">
-          {tabs.map((tab) => {
-            const isActive = active === tab.key;
-            const count = counts[tab.key];
-            return (
-              <button
-                key={tab.key}
-                onClick={() => onChange(tab.key)}
-                className={`flex items-center gap-1.5 px-3.5 py-2.5 text-xs font-medium whitespace-nowrap border-b-2 transition-colors shrink-0 ${
-                  isActive
-                    ? "border-primary text-primary"
-                    : "border-transparent text-muted-foreground hover:text-foreground"
-                }`}
-                data-testid={`tab-${tab.key}`}
-              >
-                <tab.icon className="w-3.5 h-3.5" />
-                {t(tab.ar, tab.en)}
-                {count > 0 && (
-                  <span className={`min-w-[18px] h-[18px] rounded-full text-[10px] flex items-center justify-center ${
-                    isActive ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
-                  }`}>
-                    {count}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
+      <div
+        ref={scrollRef}
+        className="flex overflow-x-auto scrollbar-hide px-2"
+        style={{ WebkitOverflowScrolling: "touch" }}
+      >
+        {tabs.map((tab) => {
+          const isActive = active === tab.key;
+          const count = counts[tab.key];
+          return (
+            <button
+              key={tab.key}
+              data-active={isActive ? "true" : undefined}
+              onClick={() => onChange(tab.key)}
+              className={`flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium whitespace-nowrap border-b-2 transition-colors shrink-0 ${
+                isActive
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+              data-testid={`tab-${tab.key}`}
+            >
+              <tab.icon className="w-3.5 h-3.5" />
+              {t(tab.ar, tab.en)}
+              {count > 0 && (
+                <span className={`min-w-[18px] h-[18px] rounded-full text-[10px] flex items-center justify-center ${
+                  isActive ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                }`}>
+                  {count}
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
     </div>
   );
@@ -261,35 +273,21 @@ function InvoicePreviewModal({ invoice, onClose }: { invoice: any; onClose: () =
   const isTaxInvoice = invoice.type === "simplified_tax_invoice";
   const printRef = useRef<HTMLDivElement>(null);
 
+  const formatNum = (v: any) => parseFloat(v || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
   const handlePrint = () => {
     const content = printRef.current;
     if (!content) return;
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
     printWindow.document.write(`
-      <html dir="${lang === "ar" ? "rtl" : "ltr"}">
+      <html dir="rtl">
         <head>
           <title>${invoice.invoiceNumber || invoice.id}</title>
           <style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
-            body { font-family: system-ui, -apple-system, sans-serif; padding: 24px; color: #1a1a1a; font-size: 14px; }
-            .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 2px solid #e5e5e5; }
-            .logo { width: 64px; height: 64px; object-fit: contain; }
-            .title { font-size: 18px; font-weight: bold; color: ${isTaxInvoice ? "#15803d" : "#1d4ed8"}; margin-bottom: 4px; }
-            .meta { font-size: 12px; color: #666; }
-            .section { margin-bottom: 16px; }
-            .label { font-size: 11px; color: #999; text-transform: uppercase; margin-bottom: 4px; }
-            .value { font-weight: 600; }
-            .table { width: 100%; border-collapse: collapse; margin: 16px 0; }
-            .table th, .table td { padding: 8px 12px; text-align: ${lang === "ar" ? "right" : "left"}; border-bottom: 1px solid #e5e5e5; }
-            .table th { font-size: 11px; color: #999; font-weight: 500; }
-            .totals { display: flex; justify-content: flex-end; }
-            .totals-box { width: 260px; }
-            .total-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; }
-            .total-row.final { font-size: 16px; font-weight: bold; padding-top: 8px; border-top: 2px solid #1a1a1a; }
-            .qr-section { text-align: center; margin-top: 24px; padding-top: 16px; border-top: 1px solid #e5e5e5; }
-            .qr-section img { width: 140px; height: 140px; }
-            .footer { text-align: center; font-size: 11px; color: #999; margin-top: 16px; }
+            body { font-family: system-ui, -apple-system, sans-serif; padding: 20px; color: #1a1a1a; font-size: 13px; max-width: 400px; margin: 0 auto; }
+            canvas { display: block; margin: 0 auto; }
           </style>
         </head>
         <body>${content.innerHTML}</body>
@@ -303,23 +301,25 @@ function InvoicePreviewModal({ invoice, onClose }: { invoice: any; onClose: () =
     if (navigator.share) {
       try {
         await navigator.share({
-          title: `${isTaxInvoice ? t("فاتورة ضريبية", "Tax Invoice") : t("عرض سعر", "Quotation")} #${invoice.invoiceNumber || invoice.id}`,
-          text: `${t("المبلغ", "Amount")}: ${Number(invoice.totalWithVat).toLocaleString()} ${t("ريال", "SAR")}`,
+          title: `${isTaxInvoice ? "فاتورة ضريبية مبسطة" : "عرض سعر"} #${invoice.invoiceNumber || invoice.id}`,
+          text: `المبلغ: ${formatNum(invoice.totalWithVat)} ريال`,
         });
       } catch {}
     }
   };
 
+  const invoiceTitle = isTaxInvoice
+    ? t("فاتورة ضريبية مبسطة", "Simplified Tax Invoice")
+    : t("عرض سعر ضريبي", "Tax Price Quotation");
+
   return (
     <div className="fixed inset-0 z-[100] bg-black/60 flex items-end sm:items-center justify-center" onClick={onClose}>
       <div
-        className="bg-background w-full sm:max-w-lg sm:rounded-xl rounded-t-xl max-h-[90dvh] overflow-y-auto"
+        className="bg-background w-full sm:max-w-md sm:rounded-xl rounded-t-xl max-h-[90dvh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="sticky top-0 bg-background border-b px-4 py-3 flex items-center justify-between z-10">
-          <h3 className="font-semibold text-sm">
-            {isTaxInvoice ? t("فاتورة ضريبية مبسطة", "Simplified Tax Invoice") : t("عرض سعر", "Price Quotation")}
-          </h3>
+        <div className="sticky top-0 bg-background border-b px-4 py-2.5 flex items-center justify-between z-10">
+          <h3 className="font-semibold text-sm">{invoiceTitle}</h3>
           <div className="flex items-center gap-1">
             {typeof navigator.share === "function" && (
               <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleShare} data-testid="button-share-invoice">
@@ -335,90 +335,102 @@ function InvoicePreviewModal({ invoice, onClose }: { invoice: any; onClose: () =
           </div>
         </div>
 
-        <div ref={printRef} className="p-4 space-y-4">
-          <div className="flex items-start justify-between">
-            <div>
-              <img src={teakLogo} alt="Teak" className="w-12 h-12 object-contain mb-1.5 logo-red" />
-              <p className="font-bold text-sm">{invoice.sellerName}</p>
-              <p className="text-[11px] text-muted-foreground">{invoice.sellerAddress}</p>
-              <p className="text-[11px] text-muted-foreground" dir="ltr">{t("الرقم الضريبي: ", "VAT#: ")}{invoice.sellerVatNumber}</p>
+        <div ref={printRef} className="px-4 py-5">
+          <div className={`text-center pb-4 mb-4 border-b-2 ${isTaxInvoice ? "border-green-500" : "border-blue-500"}`}>
+            <div className={`inline-block px-6 py-2 rounded-md mb-3 ${isTaxInvoice ? "bg-green-600 text-white" : "bg-blue-600 text-white"}`}>
+              <p className="font-bold text-base">{invoiceTitle}</p>
             </div>
-            <div className="text-end">
-              <p className={`text-sm font-bold ${isTaxInvoice ? "text-green-700 dark:text-green-400" : "text-blue-700 dark:text-blue-400"}`}>
-                {isTaxInvoice ? t("فاتورة ضريبية مبسطة", "Simplified Tax Invoice") : t("عرض سعر", "Price Quotation")}
-              </p>
-              <p className="text-xs mt-0.5">
-                <span className="text-muted-foreground">#</span>
-                <span className="font-bold">{invoice.invoiceNumber}</span>
-              </p>
-              {invoice.issuedAt && (
-                <p className="text-[11px] text-muted-foreground mt-0.5">
-                  {new Date(invoice.issuedAt).toLocaleDateString("ar-SA", { year: "numeric", month: "long", day: "numeric" })}
-                </p>
-              )}
-            </div>
+            <p className="text-xs text-muted-foreground mb-1">
+              {t("رقم الفاتورة:", "Invoice No:")} <span className="font-bold text-foreground">{invoice.invoiceNumber || invoice.id}</span>
+            </p>
+            <img src={teakLogo} alt="Teak" className="w-10 h-10 object-contain mx-auto mb-1 logo-red" />
+            <p className="font-bold text-sm">{invoice.sellerName}</p>
+            {invoice.sellerAddress && <p className="text-[11px] text-muted-foreground">{invoice.sellerAddress}</p>}
           </div>
 
-          <div className="border-t border-b py-3">
-            <p className="text-[10px] text-muted-foreground uppercase mb-0.5">{t("بيانات المشتري", "BUYER DETAILS")}</p>
-            <p className="font-semibold text-sm">{invoice.buyerName}</p>
-            {invoice.buyerPhone && <p className="text-xs text-muted-foreground" dir="ltr">{invoice.buyerPhone}</p>}
+          <div className="space-y-2 mb-4 text-xs border rounded-lg p-3 bg-muted/20">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">{t("تاريخ:", "Date:")}</span>
+              <span className="font-medium">
+                {invoice.issuedAt
+                  ? new Date(invoice.issuedAt).toLocaleDateString("ar-SA", { year: "numeric", month: "2-digit", day: "2-digit" })
+                  : "-"}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">{t("رقم تسجيل ضريبة القيمة المضافة:", "VAT Registration No:")}</span>
+              <span className="font-mono font-medium text-[11px]" dir="ltr">{invoice.sellerVatNumber}</span>
+            </div>
           </div>
 
           {Array.isArray(invoice.items) && invoice.items.length > 0 && (
-            <div>
-              <table className="w-full text-xs">
+            <div className="mb-4">
+              <table className="w-full text-[11px] border-collapse">
                 <thead>
-                  <tr className="border-b">
-                    <th className="text-start py-1.5 font-medium text-muted-foreground">{t("البيان", "Description")}</th>
-                    <th className="text-end py-1.5 font-medium text-muted-foreground">{t("المبلغ", "Amount")}</th>
+                  <tr className="border-y bg-muted/30">
+                    <th className="text-start py-2 px-2 font-semibold">{t("المنتجات", "Products")}</th>
+                    <th className="text-center py-2 px-1 font-semibold">{t("الكمية", "Qty")}</th>
+                    <th className="text-center py-2 px-1 font-semibold">{t("سعر الوحدة", "Unit Price")}</th>
+                    <th className="text-center py-2 px-1 font-semibold">{t("ض.ق.م", "VAT")}</th>
+                    <th className="text-end py-2 px-2 font-semibold">{t("السعر شامل", "Total")}</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {invoice.items.map((item: any, idx: number) => (
-                    <tr key={idx} className="border-b">
-                      <td className="py-1.5">{item.description || item.productType || t("بند", "Item")}</td>
-                      <td className="py-1.5 text-end">{parseFloat(item.amount || item.total || 0).toLocaleString()} SAR</td>
-                    </tr>
-                  ))}
+                  {invoice.items.map((item: any, idx: number) => {
+                    const itemAmount = parseFloat(item.amount || item.total || 0);
+                    const itemQty = parseFloat(item.quantity || 1);
+                    const unitPrice = item.unitPrice ? parseFloat(item.unitPrice) : itemAmount / itemQty / 1.15;
+                    const itemVat = item.vat ? parseFloat(item.vat) : itemAmount - (itemAmount / 1.15);
+                    const itemWithVat = item.totalWithVat ? parseFloat(item.totalWithVat) : itemAmount;
+                    return (
+                      <tr key={idx} className="border-b">
+                        <td className="py-1.5 px-2">{item.description || item.productType || `${t("منتج", "Product")} ${idx + 1}`}</td>
+                        <td className="py-1.5 px-1 text-center">{item.quantity || "1"}</td>
+                        <td className="py-1.5 px-1 text-center">{formatNum(unitPrice)}</td>
+                        <td className="py-1.5 px-1 text-center">{formatNum(itemVat)}</td>
+                        <td className="py-1.5 px-2 text-end font-medium">{formatNum(itemWithVat)}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           )}
 
-          <div className="flex justify-end">
-            <div className="w-56 space-y-1.5">
-              <div className="flex justify-between text-xs">
-                <span className="text-muted-foreground">{t("المجموع قبل الضريبة", "Subtotal")}</span>
-                <span>{parseFloat(invoice.subtotal || 0).toLocaleString()} SAR</span>
-              </div>
-              <div className="flex justify-between text-xs">
-                <span className="text-muted-foreground">{t("ضريبة القيمة المضافة", "VAT")} ({invoice.vatRate || 15}%)</span>
-                <span>{parseFloat(invoice.vatAmount || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} SAR</span>
-              </div>
-              <div className="flex justify-between font-bold text-sm pt-1.5 border-t">
-                <span>{t("الإجمالي", "Total")}</span>
-                <span className="text-primary">{parseFloat(invoice.totalWithVat || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} SAR</span>
-              </div>
+          <div className="space-y-0 mb-4">
+            <div className="flex justify-between items-center py-2 px-3 border rounded-t-lg bg-muted/20">
+              <span className="text-xs font-semibold">{t("إجمالي المبلغ الخاضع للضريبة", "Total Taxable Amount")}</span>
+              <span className="text-xs font-bold">{formatNum(invoice.subtotal)}</span>
+            </div>
+            <div className="flex justify-between items-center py-2 px-3 border-x border-b bg-muted/20">
+              <span className="text-xs font-semibold">{t("ضريبة القيمة المضافة", "VAT")} ({invoice.vatRate || 15}%)</span>
+              <span className="text-xs font-bold">{formatNum(invoice.vatAmount)}</span>
+            </div>
+            <div className={`flex justify-between items-center py-2.5 px-3 border rounded-b-lg ${isTaxInvoice ? "bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-900" : "bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-900"}`}>
+              <span className="text-sm font-bold">{t("المجموع مع الضريبة", "Total with VAT")} ({invoice.vatRate || 15}%)</span>
+              <span className="text-sm font-bold">{formatNum(invoice.totalWithVat)}</span>
             </div>
           </div>
 
-          {isTaxInvoice && invoice.qrCodeData && (
-            <div className="border-t pt-4 text-center">
-              <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground mb-2">
-                <QrCode className="w-3.5 h-3.5" />
-                {t("رمز التحقق الضريبي", "Tax Verification QR")}
-              </div>
-              <div className="inline-block p-2 bg-white rounded-lg">
-                <ZatcaQRCode data={invoice.qrCodeData} size={120} />
-              </div>
-              <p className="text-[10px] text-muted-foreground mt-2 max-w-xs mx-auto">
-                {t(
-                  "فاتورة ضريبية مبسطة صادرة وفقاً لمتطلبات هيئة الزكاة والضريبة والجمارك",
-                  "Simplified tax invoice issued per ZATCA requirements"
-                )}
+          {invoice.qrCodeData && (
+            <div className="text-center pt-3 border-t">
+              <p className="text-[10px] text-muted-foreground mb-3">
+                {`>>>>>>>>>>>>>> ${t("إغلاق الفاتورة", "Invoice Close")} ${invoice.invoiceNumber || ""} >>>>>>>>>>>>>>`}
+              </p>
+              <ZatcaQRCode data={invoice.qrCodeData} size={140} />
+              <p className="text-[10px] text-muted-foreground mt-2">
+                {t("رمز الاستجابة السريعة (QR Code)", "Quick Response Code (QR Code)")}
               </p>
             </div>
+          )}
+
+          {isTaxInvoice && (
+            <p className="text-[9px] text-muted-foreground text-center mt-3 pt-2 border-t">
+              {t(
+                "فاتورة ضريبية مبسطة صادرة وفقاً لمتطلبات هيئة الزكاة والضريبة والجمارك (ZATCA)",
+                "Simplified tax invoice issued per ZATCA requirements"
+              )}
+            </p>
           )}
         </div>
 
@@ -459,7 +471,7 @@ function InvoicesTab({ invoices }: { invoices: any[] }) {
                   <div className="flex items-center gap-2">
                     <Receipt className={`w-4 h-4 ${isTaxInvoice ? "text-green-600" : "text-blue-600"}`} />
                     <span className="text-sm font-semibold">
-                      {isTaxInvoice ? t("فاتورة ضريبية", "Tax Invoice") : t("عرض سعر", "Quotation")}
+                      {isTaxInvoice ? t("فاتورة ضريبية مبسطة", "Simplified Tax Invoice") : t("عرض سعر ضريبي", "Tax Price Quotation")}
                     </span>
                   </div>
                   <StatusBadge status={inv.status} />
