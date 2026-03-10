@@ -55,7 +55,7 @@ function PortalHeader({ customerName }: { customerName: string }) {
 
   return (
     <header className="sticky top-0 z-50 bg-background/95 backdrop-blur border-b">
-      <div className="max-w-2xl mx-auto px-4 py-2.5 flex items-center justify-between">
+      <div className="max-w-2xl md:max-w-4xl lg:max-w-5xl mx-auto px-4 py-2.5 flex items-center justify-between">
         <div className="flex items-center gap-2.5">
           <img src={teakLogo} alt="Teak" className="w-8 h-8 object-contain logo-auto" data-testid="img-portal-header-logo" />
           <div className="min-w-0">
@@ -139,7 +139,7 @@ function TabBar({ active, onChange, counts }: { active: TabKey; onChange: (t: Ta
     <div className="border-b bg-background sticky top-[53px] z-40">
       <div
         ref={scrollRef}
-        className="flex overflow-x-auto scrollbar-hide px-2"
+        className="flex overflow-x-auto scrollbar-hide px-2 max-w-2xl md:max-w-4xl lg:max-w-5xl mx-auto"
         style={{ WebkitOverflowScrolling: "touch" }}
       >
         {tabs.map((tab) => {
@@ -233,7 +233,7 @@ function OrdersTab({ quotations, contracts, production, designs }: {
   const sorted = [...quotations].sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 md:grid md:grid-cols-2 md:gap-4 md:space-y-0">
       {sorted.map((q: any) => {
         const stageIdx = getOrderStageIndex(q, contracts, production);
         const isRejected = q.status === "rejected";
@@ -241,6 +241,7 @@ function OrdersTab({ quotations, contracts, production, designs }: {
         const isExpanded = expandedOrder === q.id;
         const design = designs.find((d: any) => d.customerId === q.customerId && d.status === "completed");
         const currentStage = stageIdx >= 0 ? orderStages[stageIdx] : null;
+        const itemDesc = q.items?.[0]?.description || q.productDescription;
 
         return (
           <Card key={q.id} className={`overflow-hidden ${isRejected ? "border-red-200 dark:border-red-900" : isExpired ? "border-gray-200" : ""}`} data-testid={`card-order-${q.id}`}>
@@ -248,8 +249,8 @@ function OrdersTab({ quotations, contracts, production, designs }: {
               <div className="px-4 py-3 flex items-center justify-between">
                 <div>
                   <span className="text-sm font-semibold">{t("طلب", "Order")} #{q.id}</span>
-                  {q.productDescription && (
-                    <p className="text-xs text-muted-foreground mt-0.5">{q.productDescription}</p>
+                  {itemDesc && (
+                    <p className="text-xs text-muted-foreground mt-0.5">{itemDesc}</p>
                   )}
                 </div>
                 <div className="flex items-center gap-2">
@@ -361,7 +362,7 @@ function QuotationsTab({ quotations, designs, onApprove, approving }: {
 
   return (
     <>
-      <div className="space-y-3">
+      <div className="space-y-3 md:grid md:grid-cols-2 md:gap-4 md:space-y-0">
         {sorted.map((q: any) => {
           const design = designs.find((d: any) => d.customerId === q.customerId && d.status === "completed");
           const isApproved = q.status === "approved";
@@ -1024,7 +1025,7 @@ export default function CustomerPortal() {
 
       <TabBar active={activeTab} onChange={setActiveTab} counts={counts} />
 
-      <main className="max-w-2xl mx-auto px-4 py-4 pb-20">
+      <main className="max-w-2xl md:max-w-4xl lg:max-w-5xl mx-auto px-4 py-4 pb-20">
         {activeTab === "orders" && (
           <OrdersTab
             quotations={data.quotations || []}
