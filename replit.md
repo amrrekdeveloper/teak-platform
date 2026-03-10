@@ -138,17 +138,18 @@ Customer requests quote (website) → Sales assigns to Designer → Designer dra
 - Route: `/dashboard/designer-board` (visible to designer role)
 - RTL: Page container has `dir="rtl"` for Arabic, card headers use `flex-row-reverse` for proper badge placement, canvas stays LTR, measurement inputs forced `dir="ltr"`
 
-## Customer Portal (Server-Side OTP)
-- OTP system: Server-side 6-digit code generation (no Firebase dependency)
-- Flow: Customer enters phone → server generates OTP → notification sent to owner/sales/customer_service users → sales sends code to customer via WhatsApp → customer enters code → session-based auth
-- OTP stored in memory (Map) with 5-minute expiry, max 5 verification attempts per code
-- Auth: Session-based (portalPhone, portalCustomerId stored in server session after OTP verification)
-- Firebase config still available as fallback (Bearer token auth in requirePortalAuth)
-- `client/src/pages/customer-portal-login.tsx` — Phone + OTP login (server-side)
+## Customer Portal (Firebase Phone Auth)
+- OTP system: Firebase Phone Authentication (SMS-based, automatic delivery)
+- Flow: Customer enters phone → server checks phone exists in DB → Firebase sends SMS OTP automatically → customer enters code → Firebase verifies → frontend gets ID token → backend verifies token via Firebase Admin SDK → session-based auth
+- Auth: Session-based (portalPhone, portalCustomerId stored in server session after Firebase token verification)
+- Backend route: POST /api/customer-auth/firebase-verify (verifies Firebase ID token, looks up customer, creates session)
+- Firebase config: client/src/lib/firebase.ts (frontend), server/firebase-admin.ts (backend Admin SDK)
+- Bearer token auth also supported in requirePortalAuth middleware (normalizes +966 phone format)
+- `client/src/pages/customer-portal-login.tsx` — Phone + Firebase SMS OTP login
 - `client/src/pages/customer-portal.tsx` — Customer dashboard (quotations, invoices, production timeline, payments, warranty, maintenance)
 - Routes: `/portal/login`, `/portal` (public, no dashboard auth)
 - Session storage (client): `portalPhone`, `portalCustomerName` (for UI display)
-- API: POST /api/customer-auth/send-otp, POST /api/customer-auth/verify-otp, POST /api/customer-auth/verify-phone, GET /api/customer-auth/pending-otps (admin), GET /api/customer-portal/my-data, POST /api/customer-portal/approve-quotation/:id, POST /api/customer-portal/upload-receipt, POST /api/customer-portal/maintenance-request
+- API: POST /api/customer-auth/verify-phone, POST /api/customer-auth/firebase-verify, GET /api/customer-portal/my-data, POST /api/customer-portal/approve-quotation/:id, POST /api/customer-portal/upload-receipt, POST /api/customer-portal/maintenance-request
 - Security: requirePortalAuth checks session first, then Firebase Bearer token; no raw phone fallback
 
 ## New API Endpoints
