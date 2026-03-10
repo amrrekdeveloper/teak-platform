@@ -352,7 +352,7 @@ export default function DesignStudioPage() {
       </div>
 
       <div className="max-w-[1600px] mx-auto p-4">
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <Tabs value={activeTab} onValueChange={setActiveTab} dir={isRTL ? "rtl" : "ltr"}>
           <TabsList className="grid grid-cols-4 w-full max-w-xl mb-4" data-testid="tabs-design-studio">
             <TabsTrigger value="product" className="gap-1.5" data-testid="tab-product">
               <Ruler className="w-3.5 h-3.5" />

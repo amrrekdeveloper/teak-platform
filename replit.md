@@ -17,6 +17,7 @@ The application follows a modern full-stack architecture.
 -   **UI/UX Features:** Splash screen, role-based sidebar, branded loading overlays, responsive design for mobile (hamburger menu, scrollable tabs).
 -   **Key Pages:** Includes a public landing page with product showcases, a quote request form (with geolocation and dynamic product categories), and a public order tracking system. The authenticated dashboard features comprehensive modules for order management, customer relations, quotations, contracts, payments, ZATCA-compliant invoices, work orders, production, inventory, HR, deliveries, installations, quality control, and system settings.
 -   **Designer Tools:** Integrated Designer Board and Design Studio with 2D sketching (Konva.js) and 3D viewing (Three.js) capabilities, allowing for detailed product specification, measurements, and file uploads.
+-   **RTL/LTR:** Radix `DirectionProvider` is wrapped globally in `LanguageProvider` to ensure all Radix UI components (Tabs, Select, Dialog, etc.) inherit the correct direction. The `<html>` element also gets `dir` attribute set via `useLayoutEffect`.
 
 **Backend:**
 -   **Framework:** Express.js.

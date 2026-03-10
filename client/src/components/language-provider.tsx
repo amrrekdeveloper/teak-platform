@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useState } from "react";
+import { DirectionProvider } from "@radix-ui/react-direction";
 
 type Language = "ar" | "en";
 
@@ -38,10 +39,14 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
   const toggleLang = () => setLang((prev) => (prev === "ar" ? "en" : "ar"));
   const t = (ar: string, en: string) => (lang === "ar" ? ar : en);
 
+  const dir = isRTL ? "rtl" : "ltr";
+
   return (
-    <LanguageContext.Provider value={{ lang, toggleLang, t, isRTL }}>
-      {children}
-    </LanguageContext.Provider>
+    <DirectionProvider dir={dir}>
+      <LanguageContext.Provider value={{ lang, toggleLang, t, isRTL }}>
+        {children}
+      </LanguageContext.Provider>
+    </DirectionProvider>
   );
 }
 
