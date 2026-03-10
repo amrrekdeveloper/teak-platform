@@ -140,7 +140,9 @@ export default function OrderCenterPage() {
   }, [workOrders, contracts]);
 
   const salesUsers = useMemo(() => {
-    return usersData.filter((u: any) => ["sales", "owner", "assistant", "designer"].includes(u.role));
+    return usersData.filter((u: any) => 
+      ["sales", "owner", "assistant", "designer"].includes(u.role) && u.username !== "admin"
+    );
   }, [usersData]);
 
   const assignMutation = useMutation({
@@ -631,14 +633,23 @@ export default function OrderCenterPage() {
                     <SelectValue placeholder={t("اختر الموظف", "Select staff member")} />
                   </SelectTrigger>
                   <SelectContent>
-                    {salesUsers.map((u: any) => (
-                      <SelectItem key={u.id} value={String(u.id)}>
-                        {t(u.fullNameAr, u.fullNameEn)} — {t(
-                          u.role === "owner" ? "مالك" : u.role === "sales" ? "مبيعات" : u.role === "designer" ? "مصمم" : u.role === "assistant" ? "مساعد" : u.role,
-                          u.role
-                        )}
-                      </SelectItem>
-                    ))}
+                    {salesUsers.map((u: any) => {
+                      const roleLabel = t(
+                        u.role === "owner" ? "مالك" :
+                        u.role === "sales" || u.role === "designer" ? "المبيعات والتصميم" :
+                        u.role === "assistant" ? "مساعد المدير" :
+                        u.role,
+                        u.role === "owner" ? "Owner" :
+                        u.role === "sales" || u.role === "designer" ? "Sales & Design" :
+                        u.role === "assistant" ? "Assistant Manager" :
+                        u.role
+                      );
+                      return (
+                        <SelectItem key={u.id} value={String(u.id)}>
+                          {t(u.fullNameAr, u.fullNameEn)} — {roleLabel}
+                        </SelectItem>
+                      );
+                    })}
                   </SelectContent>
                 </Select>
               </div>
