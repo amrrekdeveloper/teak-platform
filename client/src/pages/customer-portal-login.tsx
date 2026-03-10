@@ -157,8 +157,8 @@ export default function CustomerPortalLogin() {
         try { recaptchaRef.current.clear(); } catch (_e) {}
         recaptchaRef.current = null;
       }
-      sessionStorage.setItem("portalPhone", phone.trim());
-      sessionStorage.setItem("portalCustomerName", data.name || customerName);
+      localStorage.setItem("portalPhone", phone.trim());
+      localStorage.setItem("portalCustomerName", data.name || customerName);
       toast({
         title: t("مرحباً", "Welcome"),
         description: t(`مرحباً ${data.name || customerName}`, `Welcome ${data.name || customerName}`),

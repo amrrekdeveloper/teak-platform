@@ -2,6 +2,9 @@
 @tailwind components;
 @tailwind utilities;
 
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+
 .logo-red {
   filter: brightness(0) saturate(100%) invert(12%) sepia(95%) saturate(5000%) hue-rotate(355deg) brightness(90%) contrast(100%);
 }

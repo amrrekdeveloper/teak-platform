@@ -1551,7 +1551,7 @@ export async function registerRoutes(
           totalWithVat: quotation.totalWithVat || quotation.total || "0",
           sellerName: settings?.nameAr || "تيك للتصنيع",
           sellerVatNumber: settings?.vatNumber || "310012345600003",
-          qrCode: qrData,
+          qrCodeData: qrData,
           issuedAt: new Date(),
         });
       }
@@ -1636,6 +1636,16 @@ export async function registerRoutes(
 
       res.json({ message: "تم تقديم طلب الصيانة بنجاح", messageEn: "Maintenance request submitted successfully", request: maintenanceReq });
     } catch (error) { console.error(error); res.status(500).json({ message: "حدث خطأ", messageEn: "Error creating maintenance request" }); }
+  });
+
+  app.get("/api/customer-portal/invoices/:id", requirePortalAuth, async (req, res) => {
+    try {
+      const customer = (req as any).portalCustomer;
+      const invoice = await storage.getInvoice(parseInt(req.params.id));
+      if (!invoice) return res.status(404).json({ message: "الفاتورة غير موجودة", messageEn: "Invoice not found" });
+      if (invoice.customerId !== customer.id) return res.status(403).json({ message: "غير مصرح", messageEn: "Unauthorized" });
+      res.json(invoice);
+    } catch (error) { console.error(error); res.status(500).json({ message: "حدث خطأ", messageEn: "Error fetching invoice" }); }
   });
 
   // ==================== PRODUCTION-WAREHOUSE LINK ====================

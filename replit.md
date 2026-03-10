@@ -148,8 +148,10 @@ Customer requests quote (website) → Sales assigns to Designer → Designer dra
 - `client/src/pages/customer-portal-login.tsx` — Phone + Firebase SMS OTP login
 - `client/src/pages/customer-portal.tsx` — Customer dashboard (quotations, invoices, production timeline, payments, warranty, maintenance)
 - Routes: `/portal/login`, `/portal` (public, no dashboard auth)
-- Session storage (client): `portalPhone`, `portalCustomerName` (for UI display)
-- API: POST /api/customer-auth/verify-phone, POST /api/customer-auth/firebase-verify, GET /api/customer-portal/my-data, POST /api/customer-portal/approve-quotation/:id, POST /api/customer-portal/upload-receipt, POST /api/customer-portal/maintenance-request
+- localStorage (client): `portalPhone`, `portalCustomerName` (for UI display; persists across browser closes)
+- Server session: 30-day expiry via connect-pg-simple; on 401, client clears localStorage and redirects to /portal/login
+- Portal UI: Tab-based navigation (quotes/invoices/production/payments/warranty/maintenance), inline invoice preview modal with ZATCA QR (local qrcode lib), print/share
+- API: POST /api/customer-auth/verify-phone, POST /api/customer-auth/firebase-verify, GET /api/customer-portal/my-data, GET /api/customer-portal/invoices/:id, POST /api/customer-portal/approve-quotation/:id, POST /api/customer-portal/upload-receipt, POST /api/customer-portal/maintenance-request
 - Security: requirePortalAuth checks session first, then Firebase Bearer token; no raw phone fallback
 
 ## New API Endpoints
