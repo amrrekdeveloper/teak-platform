@@ -507,6 +507,12 @@ export default function OrderCenterPage() {
                     <Calendar className="w-3 h-3" />
                     {viewOrder.createdAt ? new Date(viewOrder.createdAt).toLocaleDateString(lang === "ar" ? "ar-SA" : "en-US", { year: "numeric", month: "long", day: "numeric" }) : "—"}
                   </p>
+                  {viewOrder.assignedAt && (
+                    <p className="text-xs font-medium text-amber-600 dark:text-amber-400 mt-1.5 flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      {t("في هذه المرحلة منذ", "In this stage for")} {formatElapsed(viewOrder.assignedAt, now, t)}
+                    </p>
+                  )}
                 </div>
               </div>
 
