@@ -9,7 +9,7 @@ import {
   Users, FileText, FolderOpen, CreditCard, Loader2,
   Factory, Package, AlertTriangle, Truck, Wrench,
   Shield, UserCheck, TrendingUp, DollarSign, Clock,
-  CheckCircle2, ArrowLeft, ArrowRight
+  CheckCircle2, ArrowLeft, ArrowRight, ClipboardList, Sparkles
 } from "lucide-react";
 
 const stageLabels: Record<string, { ar: string; en: string }> = {
@@ -54,7 +54,25 @@ export default function DashboardPage() {
         </p>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <Link href="/order-center">
+          <Card className={`cursor-pointer hover:shadow-md transition-shadow ${(stats?.newOrders || 0) > 0 ? "border-red-200 dark:border-red-900 bg-red-50/50 dark:bg-red-950/20" : ""}`} data-testid="stat-new-orders">
+            <CardContent className="p-3 flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-lg flex items-center justify-center relative ${(stats?.newOrders || 0) > 0 ? "bg-red-500/10" : "bg-muted"}`}>
+                <Sparkles className={`w-5 h-5 ${(stats?.newOrders || 0) > 0 ? "text-red-500" : "text-muted-foreground"}`} />
+                {(stats?.newOrders || 0) > 0 && (
+                  <span className="absolute -top-1 -end-1 w-4 h-4 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center animate-pulse">
+                    {stats.newOrders}
+                  </span>
+                )}
+              </div>
+              <div>
+                <p className={`text-lg font-bold ${(stats?.newOrders || 0) > 0 ? "text-red-600 dark:text-red-400" : ""}`}>{stats?.newOrders || 0}</p>
+                <p className="text-[11px] text-muted-foreground">{t("طلبات جديدة", "New Orders")}</p>
+              </div>
+            </CardContent>
+          </Card>
+        </Link>
         <StatCard icon={Users} color="text-blue-500" bg="bg-blue-500/10" value={stats?.totalCustomers || 0} label={t("العملاء", "Customers")} testId="stat-customers" />
         <StatCard icon={FileText} color="text-amber-500" bg="bg-amber-500/10" value={stats?.totalQuotations || 0} label={t("عروض الأسعار", "Quotations")} testId="stat-quotations" />
         <StatCard icon={FolderOpen} color="text-green-500" bg="bg-green-500/10" value={stats?.activeContracts || 0} label={t("العقود النشطة", "Active Contracts")} testId="stat-contracts" />

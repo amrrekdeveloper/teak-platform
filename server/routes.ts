@@ -772,6 +772,7 @@ export async function registerRoutes(
       const totalRevenue = paymentsList.reduce((sum, p) => sum + parseFloat(p.amount), 0);
       const activeContracts = contractsList.filter(c => c.status === "active").length;
       const pendingQuotations = quotationsList.filter(q => q.status === "draft" || q.status === "sent").length;
+      const newOrders = quotationsList.filter(q => q.status === "requested" || (q.status === "draft" && !q.assignedTo)).length;
       const inProductionOrders = workOrdersList.filter(w => w.status === "in_production").length;
 
       const lowStockItems = inventoryList.filter(i =>
@@ -819,6 +820,7 @@ export async function registerRoutes(
         totalContracts: contractsList.length,
         activeContracts,
         pendingQuotations,
+        newOrders,
         totalRevenue,
         totalPayments: paymentsList.length,
         totalWorkOrders: workOrdersList.length,

@@ -34,6 +34,7 @@ import QualityPage from "@/pages/quality";
 import SettingsPage from "@/pages/settings";
 import TrackOrderPage from "@/pages/track-order";
 import DesignerBoardPage from "@/pages/designer-board";
+import OrderCenterPage from "@/pages/order-center";
 import CustomerPortalLogin from "@/pages/customer-portal-login";
 import CustomerPortal from "@/pages/customer-portal";
 import AppLayout from "@/components/app-layout";
@@ -152,6 +153,7 @@ function DashboardRoutes() {
         <Route path="/installations" component={InstallationsPage} />
         <Route path="/quality" component={QualityPage} />
         <Route path="/employees" component={EmployeesPage} />
+        <Route path="/order-center" component={OrderCenterPage} />
         <Route path="/designer-board" component={DesignerBoardPage} />
         <Route path="/settings" component={SettingsPage} />
         <Route component={NotFound} />

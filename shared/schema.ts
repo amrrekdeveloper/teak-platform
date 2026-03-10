@@ -207,6 +207,7 @@ export const quotations = pgTable("quotations", {
   discount: decimal("discount", { precision: 12, scale: 2 }).default("0"),
   finalPrice: decimal("final_price", { precision: 12, scale: 2 }).notNull(),
   status: quotationStatusEnum("status").notNull().default("draft"),
+  assignedTo: integer("assigned_to").references(() => users.id),
   designFile: text("design_file"),
   validUntil: date("valid_until"),
   notes: text("notes"),

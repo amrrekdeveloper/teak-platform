@@ -22,8 +22,10 @@ import {
   Pencil,
   Menu,
   X,
+  ClipboardList,
   type LucideIcon,
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 
 interface MenuItem {
@@ -37,6 +39,7 @@ interface MenuItem {
 
 const menuItems: MenuItem[] = [
   { titleAr: "لوحة التحكم", titleEn: "Dashboard", icon: LayoutDashboard, path: "/", roles: ["owner", "assistant", "it"], group: "main" },
+  { titleAr: "مركز الطلبات", titleEn: "Order Center", icon: ClipboardList, path: "/order-center", roles: ["owner", "assistant", "sales"], group: "main" },
   { titleAr: "العملاء", titleEn: "Customers", icon: Users, path: "/customers", roles: ["owner", "assistant", "sales", "customer_service"], group: "crm" },
   { titleAr: "عروض الأسعار", titleEn: "Quotations", icon: FileText, path: "/quotations", roles: ["owner", "assistant", "sales", "designer"], group: "crm" },
   { titleAr: "العقود", titleEn: "Contracts", icon: FolderOpen, path: "/contracts", roles: ["owner", "assistant", "sales", "accountant"], group: "crm" },
@@ -55,14 +58,15 @@ const menuItems: MenuItem[] = [
   { titleAr: "الإعدادات", titleEn: "Settings", icon: Settings, path: "/settings", roles: ["owner", "it"], group: "admin" },
 ];
 
-function SidebarContent({ items, location, t, onItemClick }: {
-  items: MenuItem[]; location: string; t: (ar: string, en: string) => string; onItemClick?: () => void;
+function SidebarContent({ items, location, t, onItemClick, newOrderCount }: {
+  items: MenuItem[]; location: string; t: (ar: string, en: string) => string; onItemClick?: () => void; newOrderCount?: number;
 }) {
   return (
     <nav className="flex-1 py-3 space-y-0.5 px-2 overflow-y-auto">
       {items.map((item) => {
         const isActive = location === item.path || (item.path !== "/" && location.startsWith(item.path));
         const Icon = item.icon;
+        const showBadge = item.path === "/order-center" && (newOrderCount || 0) > 0;
 
         return (
           <Link key={item.path} href={item.path}>
@@ -76,9 +80,14 @@ function SidebarContent({ items, location, t, onItemClick }: {
               data-testid={`link-sidebar-${item.path === "/" ? "" : item.path.split("/").pop()}`}
             >
               <Icon className="w-5 h-5 shrink-0" />
-              <span className="text-sm truncate">
+              <span className="text-sm truncate flex-1">
                 {t(item.titleAr, item.titleEn)}
               </span>
+              {showBadge && (
+                <span className="min-w-[20px] h-5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center px-1" data-testid="badge-new-orders">
+                  {newOrderCount}
+                </span>
+              )}
             </div>
           </Link>
         );
@@ -91,6 +100,12 @@ export function AppSidebar({ collapsed }: { collapsed: boolean }) {
   const { t } = useLanguage();
   const { user } = useAuth();
   const [location] = useLocation();
+
+  const { data: quotations = [] } = useQuery<any[]>({
+    queryKey: ["/api/quotations"],
+    refetchInterval: 30000,
+  });
+  const newOrderCount = quotations.filter((q: any) => q.status === "requested" || (q.status === "draft" && !q.assignedTo)).length;
 
   if (!user) return null;
 
@@ -105,7 +120,7 @@ export function AppSidebar({ collapsed }: { collapsed: boolean }) {
       }`}
       data-testid="sidebar"
     >
-      <SidebarContent items={filteredItems} location={location} t={t} />
+      <SidebarContent items={filteredItems} location={location} t={t} newOrderCount={newOrderCount} />
     </aside>
   );
 }
@@ -115,6 +130,12 @@ export function MobileMenuButton() {
   const { user } = useAuth();
   const [location] = useLocation();
   const [open, setOpen] = useState(false);
+
+  const { data: quotations = [] } = useQuery<any[]>({
+    queryKey: ["/api/quotations"],
+    refetchInterval: 30000,
+  });
+  const newOrderCount = quotations.filter((q: any) => q.status === "requested" || (q.status === "draft" && !q.assignedTo)).length;
 
   if (!user) return null;
 
@@ -127,11 +148,16 @@ export function MobileMenuButton() {
       <Button
         size="icon"
         variant="ghost"
-        className="md:hidden"
+        className="md:hidden relative"
         onClick={() => setOpen(true)}
         data-testid="button-mobile-menu"
       >
         <Menu className="w-5 h-5" />
+        {newOrderCount > 0 && (
+          <span className="absolute -top-0.5 -end-0.5 w-4 h-4 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center">
+            {newOrderCount}
+          </span>
+        )}
       </Button>
 
       {open && (
@@ -151,7 +177,7 @@ export function MobileMenuButton() {
                 <X className="w-5 h-5" />
               </Button>
             </div>
-            <SidebarContent items={filteredItems} location={location} t={t} onItemClick={() => setOpen(false)} />
+            <SidebarContent items={filteredItems} location={location} t={t} onItemClick={() => setOpen(false)} newOrderCount={newOrderCount} />
           </div>
         </>
       )}

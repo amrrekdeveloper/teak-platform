@@ -1,0 +1,513 @@
+import { useState, useMemo } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { useLanguage } from "@/components/language-provider";
+import { useAuth } from "@/hooks/use-auth";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { Link } from "wouter";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Loader2,
+  Search,
+  ClipboardList,
+  Sparkles,
+  UserCheck,
+  Send,
+  CheckCircle2,
+  Factory,
+  PackageCheck,
+  XCircle,
+  ChevronLeft,
+  ChevronRight,
+  Eye,
+  Forward,
+  Phone,
+  MapPin,
+  Calendar,
+  User,
+  FileText,
+} from "lucide-react";
+
+type StageFilter = "all" | "new" | "sales" | "sent" | "approved" | "production" | "completed" | "cancelled";
+
+const stageConfig: Record<StageFilter, { ar: string; en: string; icon: typeof ClipboardList; color: string; bgColor: string }> = {
+  all: { ar: "الكل", en: "All", icon: ClipboardList, color: "text-foreground", bgColor: "bg-muted" },
+  new: { ar: "جديد", en: "New", icon: Sparkles, color: "text-amber-600", bgColor: "bg-amber-50 dark:bg-amber-950" },
+  sales: { ar: "لدى المبيعات", en: "With Sales", icon: UserCheck, color: "text-blue-600", bgColor: "bg-blue-50 dark:bg-blue-950" },
+  sent: { ar: "مرسل للعميل", en: "Sent to Client", icon: Send, color: "text-indigo-600", bgColor: "bg-indigo-50 dark:bg-indigo-950" },
+  approved: { ar: "معتمد / مدفوع", en: "Approved / Paid", icon: CheckCircle2, color: "text-green-600", bgColor: "bg-green-50 dark:bg-green-950" },
+  production: { ar: "تحت التصنيع", en: "In Production", icon: Factory, color: "text-orange-600", bgColor: "bg-orange-50 dark:bg-orange-950" },
+  completed: { ar: "مسلّم / منتهي", en: "Delivered / Done", icon: PackageCheck, color: "text-emerald-600", bgColor: "bg-emerald-50 dark:bg-emerald-950" },
+  cancelled: { ar: "ملغي", en: "Cancelled", icon: XCircle, color: "text-red-600", bgColor: "bg-red-50 dark:bg-red-950" },
+};
+
+function getOrderStage(q: any, workOrders: any[]): StageFilter {
+  if (q.status === "rejected" || q.status === "expired") return "cancelled";
+  if (q.status === "requested") return "new";
+  if (q.status === "draft") return q.assignedTo ? "sales" : "new";
+  if (q.status === "sent") return "sent";
+  if (q.status === "approved") {
+    const wo = workOrders.find((w: any) => {
+      const contract = w._contract;
+      return contract?.quotationId === q.id;
+    });
+    if (wo) {
+      if (["completed", "delivered", "installed"].includes(wo.status)) return "completed";
+      return "production";
+    }
+    return "approved";
+  }
+  return "new";
+}
+
+function StatusBadge({ stage }: { stage: StageFilter }) {
+  const { t } = useLanguage();
+  const cfg = stageConfig[stage];
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${cfg.bgColor} ${cfg.color}`} data-testid={`badge-stage-${stage}`}>
+      <cfg.icon className="w-3 h-3" />
+      {t(cfg.ar, cfg.en)}
+    </span>
+  );
+}
+
+export default function OrderCenterPage() {
+  const { t, lang } = useLanguage();
+  const { user } = useAuth();
+  const { toast } = useToast();
+
+  const [stageFilter, setStageFilter] = useState<StageFilter>("all");
+  const [salesFilter, setSalesFilter] = useState<string>("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [perPage, setPerPage] = useState(10);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [assignDialog, setAssignDialog] = useState<any | null>(null);
+  const [selectedSalesUser, setSelectedSalesUser] = useState<string>("");
+
+  const { data: quotations = [], isLoading: loadingQuotations } = useQuery<any[]>({
+    queryKey: ["/api/quotations"],
+  });
+  const { data: customers = [] } = useQuery<any[]>({ queryKey: ["/api/customers"] });
+  const { data: usersData = [] } = useQuery<any[]>({ queryKey: ["/api/users"] });
+  const { data: workOrders = [] } = useQuery<any[]>({ queryKey: ["/api/work-orders"] });
+  const { data: contracts = [] } = useQuery<any[]>({ queryKey: ["/api/contracts"] });
+
+  const workOrdersWithContract = useMemo(() => {
+    return workOrders.map((wo: any) => ({
+      ...wo,
+      _contract: contracts.find((c: any) => c.id === wo.contractId),
+    }));
+  }, [workOrders, contracts]);
+
+  const salesUsers = useMemo(() => {
+    return usersData.filter((u: any) => ["sales", "owner", "assistant", "designer"].includes(u.role));
+  }, [usersData]);
+
+  const assignMutation = useMutation({
+    mutationFn: async ({ id, assignedTo, status }: { id: number; assignedTo: number; status?: string }) => {
+      const body: any = { assignedTo };
+      if (status) body.status = status;
+      return apiRequest("PATCH", `/api/quotations/${id}`, body);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/quotations"] });
+      setAssignDialog(null);
+      setSelectedSalesUser("");
+      toast({ title: t("تم التحويل بنجاح", "Assigned successfully") });
+    },
+    onError: () => {
+      toast({ title: t("فشل التحويل", "Assignment failed"), variant: "destructive" });
+    },
+  });
+
+  const enrichedOrders = useMemo(() => {
+    return quotations.map((q: any) => {
+      const customer = customers.find((c: any) => c.id === q.customerId);
+      const assignedUser = q.assignedTo ? usersData.find((u: any) => u.id === q.assignedTo) : null;
+      const stage = getOrderStage(q, workOrdersWithContract);
+      return { ...q, customer, assignedUser, stage };
+    });
+  }, [quotations, customers, usersData, workOrdersWithContract]);
+
+  const stageCounts = useMemo(() => {
+    const counts: Record<StageFilter, number> = { all: 0, new: 0, sales: 0, sent: 0, approved: 0, production: 0, completed: 0, cancelled: 0 };
+    enrichedOrders.forEach((o: any) => {
+      counts[o.stage as StageFilter]++;
+      counts.all++;
+    });
+    return counts;
+  }, [enrichedOrders]);
+
+  const filtered = useMemo(() => {
+    let list = enrichedOrders;
+    if (stageFilter !== "all") list = list.filter((o: any) => o.stage === stageFilter);
+    if (salesFilter !== "all") list = list.filter((o: any) => String(o.assignedTo) === salesFilter);
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      list = list.filter((o: any) =>
+        o.customer?.fullName?.toLowerCase().includes(q) ||
+        o.customer?.phone?.includes(q) ||
+        String(o.id).includes(q) ||
+        String(o.quotationNumber).includes(q)
+      );
+    }
+    return list.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }, [enrichedOrders, stageFilter, salesFilter, searchQuery]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
+  const paginated = filtered.slice((currentPage - 1) * perPage, currentPage * perPage);
+
+  const handleStageFilter = (stage: StageFilter) => {
+    setStageFilter(stage);
+    setCurrentPage(1);
+  };
+
+  if (loadingQuotations) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-5" data-testid="page-order-center">
+      <div>
+        <h1 className="text-xl font-bold" data-testid="text-order-center-title">
+          {t("مركز الطلبات", "Order Center")}
+        </h1>
+        <p className="text-sm text-muted-foreground mt-0.5">
+          {t("إدارة ومتابعة جميع الطلبات من مكان واحد", "Manage and track all orders from one place")}
+        </p>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-2">
+        {(Object.keys(stageConfig) as StageFilter[]).filter(k => k !== "all").map((stage) => {
+          const cfg = stageConfig[stage];
+          const count = stageCounts[stage];
+          const isActive = stageFilter === stage;
+          return (
+            <button
+              key={stage}
+              onClick={() => handleStageFilter(isActive ? "all" : stage)}
+              className={`relative flex flex-col items-center gap-1 p-3 rounded-xl border transition-all text-center ${
+                isActive
+                  ? "border-primary bg-primary/5 ring-1 ring-primary/20"
+                  : "border-border hover:border-primary/30 hover:bg-muted/50"
+              }`}
+              data-testid={`kpi-${stage}`}
+            >
+              <cfg.icon className={`w-5 h-5 ${cfg.color}`} />
+              <span className={`text-lg font-bold ${cfg.color}`}>{count}</span>
+              <span className="text-[10px] text-muted-foreground leading-tight">{t(cfg.ar, cfg.en)}</span>
+              {stage === "new" && count > 0 && (
+                <span className="absolute -top-1.5 -end-1.5 w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center animate-pulse">
+                  {count}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
+        <div className="relative flex-1">
+          <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            placeholder={t("بحث بالاسم أو الهاتف أو رقم الطلب...", "Search by name, phone or order #...")}
+            value={searchQuery}
+            onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
+            className="ps-9 h-9 text-sm"
+            data-testid="input-search-orders"
+          />
+        </div>
+        <Select value={salesFilter} onValueChange={(v) => { setSalesFilter(v); setCurrentPage(1); }}>
+          <SelectTrigger className="w-full sm:w-[200px] h-9 text-sm" data-testid="select-sales-filter">
+            <SelectValue placeholder={t("جميع الموظفين", "All Staff")} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t("جميع الموظفين", "All Staff")}</SelectItem>
+            {salesUsers.map((u: any) => (
+              <SelectItem key={u.id} value={String(u.id)}>
+                {t(u.fullNameAr, u.fullNameEn)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={String(perPage)} onValueChange={(v) => { setPerPage(Number(v)); setCurrentPage(1); }}>
+          <SelectTrigger className="w-full sm:w-[100px] h-9 text-sm" data-testid="select-per-page">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="10">10</SelectItem>
+            <SelectItem value="50">50</SelectItem>
+            <SelectItem value="100">100</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      <Card>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm" data-testid="table-orders">
+              <thead>
+                <tr className="border-b bg-muted/50">
+                  <th className="text-start px-4 py-3 font-semibold text-xs text-muted-foreground whitespace-nowrap" data-testid="th-order-num">
+                    {t("#", "#")}
+                  </th>
+                  <th className="text-start px-4 py-3 font-semibold text-xs text-muted-foreground whitespace-nowrap" data-testid="th-customer">
+                    {t("العميل", "Customer")}
+                  </th>
+                  <th className="text-start px-4 py-3 font-semibold text-xs text-muted-foreground whitespace-nowrap" data-testid="th-product">
+                    {t("المنتج", "Product")}
+                  </th>
+                  <th className="text-start px-4 py-3 font-semibold text-xs text-muted-foreground whitespace-nowrap" data-testid="th-amount">
+                    {t("المبلغ", "Amount")}
+                  </th>
+                  <th className="text-start px-4 py-3 font-semibold text-xs text-muted-foreground whitespace-nowrap" data-testid="th-stage">
+                    {t("الحالة", "Status")}
+                  </th>
+                  <th className="text-start px-4 py-3 font-semibold text-xs text-muted-foreground whitespace-nowrap" data-testid="th-assigned">
+                    {t("المسؤول", "Assigned To")}
+                  </th>
+                  <th className="text-start px-4 py-3 font-semibold text-xs text-muted-foreground whitespace-nowrap" data-testid="th-date">
+                    {t("التاريخ", "Date")}
+                  </th>
+                  <th className="text-start px-4 py-3 font-semibold text-xs text-muted-foreground whitespace-nowrap" data-testid="th-actions">
+                    {t("إجراءات", "Actions")}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {paginated.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="text-center py-12 text-muted-foreground text-sm">
+                      <ClipboardList className="w-8 h-8 mx-auto mb-2 text-muted-foreground/30" />
+                      {t("لا توجد طلبات", "No orders found")}
+                    </td>
+                  </tr>
+                ) : (
+                  paginated.map((order: any) => {
+                    const itemDesc = order.items?.[0]?.description || order.items?.[0]?.productType || "—";
+                    const amount = Number(order.finalPrice || order.totalPrice || 0);
+                    return (
+                      <tr key={order.id} className="border-b last:border-b-0 hover:bg-muted/30 transition-colors" data-testid={`row-order-${order.id}`}>
+                        <td className="px-4 py-3 font-mono text-xs font-bold whitespace-nowrap">
+                          {order.quotationNumber || order.id}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <div className="flex flex-col">
+                            <span className="font-medium text-sm">{order.customer?.fullName || "—"}</span>
+                            {order.customer?.phone && (
+                              <span className="text-[11px] text-muted-foreground flex items-center gap-1 mt-0.5" dir="ltr">
+                                <Phone className="w-3 h-3" />
+                                {order.customer.phone}
+                              </span>
+                            )}
+                            {order.customer?.city && (
+                              <span className="text-[11px] text-muted-foreground flex items-center gap-1">
+                                <MapPin className="w-3 h-3" />
+                                {order.customer.city}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-xs max-w-[160px] truncate" title={itemDesc}>
+                          {itemDesc}
+                        </td>
+                        <td className="px-4 py-3 font-semibold text-xs whitespace-nowrap">
+                          {amount > 0 ? `${amount.toLocaleString()} ${t("ر.س", "SAR")}` : (
+                            <span className="text-muted-foreground">{t("لم يُحدد", "TBD")}</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <StatusBadge stage={order.stage} />
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-xs">
+                          {order.assignedUser ? (
+                            <span className="flex items-center gap-1">
+                              <User className="w-3 h-3 text-muted-foreground" />
+                              {t(order.assignedUser.fullNameAr, order.assignedUser.fullNameEn)}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">{t("غير مُعيّن", "Unassigned")}</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
+                          {order.createdAt ? new Date(order.createdAt).toLocaleDateString(lang === "ar" ? "ar-SA" : "en-US", {
+                            year: "numeric",
+                            month: "short",
+                            day: "numeric",
+                          }) : "—"}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 px-2 text-xs"
+                              onClick={() => setAssignDialog(order)}
+                              data-testid={`button-assign-${order.id}`}
+                            >
+                              <Forward className="w-3.5 h-3.5 me-1" />
+                              {t("تحويل", "Assign")}
+                            </Button>
+                            <Link href={`/quotations`}>
+                              <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" data-testid={`button-view-${order.id}`}>
+                                <Eye className="w-3.5 h-3.5" />
+                              </Button>
+                            </Link>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {filtered.length > 0 && (
+            <div className="flex items-center justify-between px-4 py-3 border-t bg-muted/20">
+              <p className="text-xs text-muted-foreground">
+                {t(
+                  `عرض ${(currentPage - 1) * perPage + 1} - ${Math.min(currentPage * perPage, filtered.length)} من ${filtered.length}`,
+                  `Showing ${(currentPage - 1) * perPage + 1} - ${Math.min(currentPage * perPage, filtered.length)} of ${filtered.length}`
+                )}
+              </p>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 w-7 p-0"
+                  disabled={currentPage <= 1}
+                  onClick={() => setCurrentPage(currentPage - 1)}
+                  data-testid="button-prev-page"
+                >
+                  {lang === "ar" ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronLeft className="w-3.5 h-3.5" />}
+                </Button>
+                {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+                  let page: number;
+                  if (totalPages <= 5) {
+                    page = i + 1;
+                  } else if (currentPage <= 3) {
+                    page = i + 1;
+                  } else if (currentPage >= totalPages - 2) {
+                    page = totalPages - 4 + i;
+                  } else {
+                    page = currentPage - 2 + i;
+                  }
+                  return (
+                    <Button
+                      key={page}
+                      variant={page === currentPage ? "default" : "outline"}
+                      size="sm"
+                      className="h-7 w-7 p-0 text-xs"
+                      onClick={() => setCurrentPage(page)}
+                      data-testid={`button-page-${page}`}
+                    >
+                      {page}
+                    </Button>
+                  );
+                })}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 w-7 p-0"
+                  disabled={currentPage >= totalPages}
+                  onClick={() => setCurrentPage(currentPage + 1)}
+                  data-testid="button-next-page"
+                >
+                  {lang === "ar" ? <ChevronLeft className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                </Button>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {assignDialog && (
+        <Dialog open onOpenChange={() => { setAssignDialog(null); setSelectedSalesUser(""); }}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>{t("تحويل الطلب", "Assign Order")}</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <div className="bg-muted/50 rounded-lg p-3 space-y-1.5">
+                <div className="flex items-center gap-2 text-sm">
+                  <FileText className="w-4 h-4 text-muted-foreground" />
+                  <span className="font-semibold">{t("طلب", "Order")} #{assignDialog.quotationNumber || assignDialog.id}</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <User className="w-3.5 h-3.5" />
+                  {assignDialog.customer?.fullName || "—"}
+                </div>
+                {assignDialog.items?.[0]?.description && (
+                  <div className="text-xs text-muted-foreground">
+                    {assignDialog.items[0].description}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="text-sm font-medium mb-1.5 block">{t("تحويل إلى", "Assign to")}</label>
+                <Select value={selectedSalesUser} onValueChange={setSelectedSalesUser}>
+                  <SelectTrigger data-testid="select-assign-user">
+                    <SelectValue placeholder={t("اختر الموظف", "Select staff member")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {salesUsers.map((u: any) => (
+                      <SelectItem key={u.id} value={String(u.id)}>
+                        {t(u.fullNameAr, u.fullNameEn)} — {t(
+                          u.role === "owner" ? "مالك" : u.role === "sales" ? "مبيعات" : u.role === "designer" ? "مصمم" : u.role === "assistant" ? "مساعد" : u.role,
+                          u.role
+                        )}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => { setAssignDialog(null); setSelectedSalesUser(""); }} data-testid="button-cancel-assign">
+                {t("إلغاء", "Cancel")}
+              </Button>
+              <Button
+                disabled={!selectedSalesUser || assignMutation.isPending}
+                onClick={() => {
+                  const newStatus = assignDialog.status === "requested" ? "draft" : undefined;
+                  assignMutation.mutate({
+                    id: assignDialog.id,
+                    assignedTo: Number(selectedSalesUser),
+                    status: newStatus,
+                  });
+                }}
+                data-testid="button-confirm-assign"
+              >
+                {assignMutation.isPending && <Loader2 className="w-4 h-4 animate-spin me-2" />}
+                {t("تحويل", "Assign")}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+    </div>
+  );
+}

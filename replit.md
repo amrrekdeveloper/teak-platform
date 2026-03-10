@@ -38,7 +38,7 @@ Integrated Manufacturing + CRM + Project Management platform for a Saudi wood pr
 ## Routing (wouter v3)
 - Public routes: `/`, `/login`, `/products`, `/request-quote`, `/track-order`, `/portal/login`, `/portal`
 - Dashboard uses `<Route path="/dashboard" nest>` — inner routes are RELATIVE (without /dashboard prefix)
-- Inner routes: `/`, `/customers`, `/customers/:id`, `/quotations`, `/quotations/new`, `/contracts`, `/contracts/:id`, `/payments`, `/invoices`, `/invoices/:id`, `/work-orders`, `/work-orders/:id`, `/production`, `/inventory`, `/suppliers`, `/purchases`, `/deliveries`, `/installations`, `/quality`, `/employees`, `/settings`
+- Inner routes: `/`, `/order-center`, `/customers`, `/customers/:id`, `/quotations`, `/quotations/new`, `/contracts`, `/contracts/:id`, `/payments`, `/invoices`, `/invoices/:id`, `/work-orders`, `/work-orders/:id`, `/production`, `/inventory`, `/suppliers`, `/purchases`, `/deliveries`, `/installations`, `/quality`, `/employees`, `/settings`
 - Sidebar Links and `useRoute()` inside dashboard pages use scoped paths (e.g., `/customers` not `/dashboard/customers`)
 - Login page navigates to `/dashboard` using absolute path (outside nested context)
 - **IMPORTANT**: AppLayout uses `window.location.href` (NOT `setLocation`) for redirects to `/login` because `setLocation` in wouter v3 nested context would navigate to `/dashboard/login` instead of `/login`
@@ -52,7 +52,8 @@ Integrated Manufacturing + CRM + Project Management platform for a Saudi wood pr
 
 ### Dashboard (authenticated)
 - `client/src/pages/login.tsx` — Login page
-- `client/src/pages/dashboard.tsx` — Stats overview with KPIs, work order progress bars, payment breakdown, employee stats
+- `client/src/pages/dashboard.tsx` — Stats overview with KPIs, work order progress bars, payment breakdown, employee stats, new orders card linking to Order Center
+- `client/src/pages/order-center.tsx` — Unified Order Center with stage KPI cards (new/sales/sent/approved/production/completed/cancelled), filterable/paginated table, assign-to-sales dialog, search by name/phone/order#
 - `client/src/pages/customers.tsx` — Customer list with search, create dialog
 - `client/src/pages/customer-detail.tsx` — Customer profile with quotations/contracts/payments
 - `client/src/pages/quotations.tsx` — Quotations list with status filters, approve/reject
