@@ -82,6 +82,7 @@ function PortalHeader({ customerName }: { customerName: string }) {
 function StatusBadge({ status }: { status: string }) {
   const { t } = useLanguage();
   const map: Record<string, { ar: string; en: string; cls: string }> = {
+    requested: { ar: "طلب جديد", en: "New Request", cls: "bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300" },
     draft: { ar: "مسودة", en: "Draft", cls: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300" },
     sent: { ar: "مُرسل", en: "Sent", cls: "bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300" },
     approved: { ar: "معتمد", en: "Approved", cls: "bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300" },
@@ -184,6 +185,7 @@ function EmptyState({ icon: Icon, titleAr, titleEn }: { icon: typeof FileText; t
 }
 
 const orderStages = [
+  { key: "requested", ar: "طلب جديد", en: "New Request" },
   { key: "reviewing", ar: "قيد المراجعة", en: "Under Review" },
   { key: "designing", ar: "عند المصمم", en: "With Designer" },
   { key: "quotation_sent", ar: "تم إرسال عرض السعر", en: "Quotation Sent" },
@@ -198,23 +200,24 @@ const orderStages = [
 ];
 
 function getOrderStageIndex(quotation: any, contracts: any[], production: any[]): number {
-  if (quotation.status === "draft") return 0;
-  if (quotation.status === "sent") return 3;
+  if (quotation.status === "requested") return 0;
+  if (quotation.status === "draft") return 1;
+  if (quotation.status === "sent") return 4;
   if (quotation.status === "rejected" || quotation.status === "expired") return -1;
   if (quotation.status === "approved") {
     const contract = contracts.find((c: any) => c.quotationId === quotation.id);
-    if (!contract) return 4;
+    if (!contract) return 5;
     const workOrderData = production.find((p: any) => p.workOrder?.contractId === contract.id);
-    if (!workOrderData) return 4;
+    if (!workOrderData) return 5;
     const wo = workOrderData.workOrder;
-    if (wo.status === "pending") return 5;
-    if (wo.status === "in_production") return 5;
-    if (wo.status === "quality_check") return 6;
-    if (wo.status === "ready") return 7;
-    if (wo.status === "shipped" || wo.status === "delivered") return 8;
-    if (wo.status === "installed") return 9;
-    if (wo.status === "completed") return 10;
-    return 5;
+    if (wo.status === "pending") return 6;
+    if (wo.status === "in_production") return 6;
+    if (wo.status === "quality_check") return 7;
+    if (wo.status === "ready") return 8;
+    if (wo.status === "shipped" || wo.status === "delivered") return 9;
+    if (wo.status === "installed") return 10;
+    if (wo.status === "completed") return 11;
+    return 6;
   }
   return 0;
 }

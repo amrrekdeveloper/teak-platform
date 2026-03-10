@@ -173,22 +173,44 @@ export async function registerRoutes(
         const cat = categories.find(c => c.id === parseInt(productInterest));
         productLabel = cat ? `${cat.nameAr} / ${cat.nameEn}` : productInterest;
       }
-      const customer = await storage.createCustomer({
-        fullName,
-        phone: normalizedPhone,
-        city,
-        source: "website",
-        notes: productLabel ? `اهتمام: ${productLabel}` : "",
+      let customer;
+      const existing = await storage.getCustomerByPhone(normalizedPhone);
+      if (existing) {
+        customer = existing;
+      } else {
+        customer = await storage.createCustomer({
+          fullName,
+          phone: normalizedPhone,
+          city,
+          source: "website",
+          notes: productLabel ? `اهتمام: ${productLabel}` : "",
+        });
+      }
+
+      const items = productLabel ? [{ description: productLabel, quantity: 1, unitPrice: 0, amount: 0 }] : [];
+      const quotation = await storage.createQuotation({
+        customerId: customer.id,
+        items,
+        subtotal: "0",
+        vatRate: "15",
+        vatAmount: "0",
+        totalPrice: "0",
+        finalPrice: "0",
+        status: "requested",
+        notes: [
+          productLabel ? `المنتج: ${productLabel}` : "",
+          city ? `المدينة: ${city}` : "",
+        ].filter(Boolean).join(" | ") || "طلب عرض سعر من الموقع",
       });
 
-      const salesUsers = (await storage.getUsers()).filter(u => u.role === "sales");
-      for (const salesUser of salesUsers) {
+      const staffUsers = (await storage.getUsers()).filter(u => ["owner", "assistant", "sales"].includes(u.role));
+      for (const staff of staffUsers) {
         await storage.createNotification({
-          userId: salesUser.id,
+          userId: staff.id,
           titleAr: "طلب عرض سعر جديد",
           titleEn: "New Quote Request",
-          messageAr: `طلب عرض سعر من ${fullName} - ${phone}`,
-          messageEn: `Quote request from ${fullName} - ${phone}`,
+          messageAr: `طلب عرض سعر من ${fullName} - ${phone}${productLabel ? ` - ${productLabel}` : ""}`,
+          messageEn: `Quote request from ${fullName} - ${phone}${productLabel ? ` - ${productLabel}` : ""}`,
           type: "action",
           relatedEntity: "customer",
           relatedId: customer.id,
@@ -196,7 +218,7 @@ export async function registerRoutes(
         });
       }
 
-      res.status(201).json({ message: "تم إرسال طلبك بنجاح", customer });
+      res.status(201).json({ message: "تم إرسال طلبك بنجاح", customer, quotation });
     } catch (error) {
       res.status(500).json({ message: "حدث خطأ في إرسال الطلب" });
     }

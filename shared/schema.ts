@@ -186,6 +186,7 @@ export type InsertDoorType = z.infer<typeof insertDoorTypeSchema>;
 export type DoorType = typeof doorTypes.$inferSelect;
 
 export const quotationStatusEnum = pgEnum("quotation_status", [
+  "requested",
   "draft",
   "sent",
   "approved",

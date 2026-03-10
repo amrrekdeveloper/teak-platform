@@ -27,6 +27,7 @@ import { Plus, Search, Loader2, FileText, Check, X, UserPlus, Palette, Phone, Ma
 import { Link } from "wouter";
 
 const statusConfig: Record<string, { ar: string; en: string; color: string }> = {
+  requested: { ar: "طلب جديد", en: "New Request", color: "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300" },
   draft: { ar: "مسودة", en: "Draft", color: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300" },
   sent: { ar: "مرسل", en: "Sent", color: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300" },
   approved: { ar: "معتمد", en: "Approved", color: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300" },
@@ -241,7 +242,7 @@ export default function QuotationsPage() {
           />
         </div>
         <div className="flex gap-2 overflow-x-auto flex-nowrap pb-1">
-          {["all", "draft", "sent", "approved", "rejected"].map((status) => (
+          {["all", "requested", "draft", "sent", "approved", "rejected"].map((status) => (
             <Button
               key={status}
               variant={statusFilter === status ? "default" : "outline"}
