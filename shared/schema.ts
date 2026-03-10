@@ -747,3 +747,17 @@ export const insertWarrantySchema = createInsertSchema(warranties).omit({
 });
 export type InsertWarranty = z.infer<typeof insertWarrantySchema>;
 export type Warranty = typeof warranties.$inferSelect;
+
+export const quoteProductCategories = pgTable("quote_product_categories", {
+  id: serial("id").primaryKey(),
+  nameAr: text("name_ar").notNull(),
+  nameEn: text("name_en").notNull(),
+  active: boolean("active").notNull().default(true),
+  sortOrder: integer("sort_order").notNull().default(0),
+});
+
+export const insertQuoteProductCategorySchema = createInsertSchema(quoteProductCategories).omit({
+  id: true,
+});
+export type InsertQuoteProductCategory = z.infer<typeof insertQuoteProductCategorySchema>;
+export type QuoteProductCategory = typeof quoteProductCategories.$inferSelect;

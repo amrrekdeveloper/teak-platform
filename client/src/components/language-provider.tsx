@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useState } from "react";
 
 type Language = "ar" | "en";
 
@@ -26,11 +26,14 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
 
   const isRTL = lang === "ar";
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     document.documentElement.setAttribute("dir", isRTL ? "rtl" : "ltr");
     document.documentElement.setAttribute("lang", lang);
-    localStorage.setItem("teak-lang", lang);
   }, [lang, isRTL]);
+
+  useEffect(() => {
+    localStorage.setItem("teak-lang", lang);
+  }, [lang]);
 
   const toggleLang = () => setLang((prev) => (prev === "ar" ? "en" : "ar"));
   const t = (ar: string, en: string) => (lang === "ar" ? ar : en);

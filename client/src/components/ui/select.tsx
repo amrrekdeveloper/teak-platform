@@ -6,9 +6,25 @@ import { Check, ChevronDown, ChevronUp } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
+function useDir() {
+  const [dir, setDir] = React.useState<"rtl" | "ltr">(() =>
+    typeof document !== "undefined" && document.documentElement.dir === "rtl" ? "rtl" : "ltr"
+  );
+  React.useEffect(() => {
+    const el = document.documentElement;
+    const observer = new MutationObserver(() => {
+      setDir(el.dir === "rtl" ? "rtl" : "ltr");
+    });
+    observer.observe(el, { attributes: true, attributeFilter: ["dir"] });
+    setDir(el.dir === "rtl" ? "rtl" : "ltr");
+    return () => observer.disconnect();
+  }, []);
+  return dir;
+}
+
 function Select({ dir, ...props }: React.ComponentPropsWithoutRef<typeof SelectPrimitive.Root>) {
-  const resolvedDir = dir || (typeof document !== "undefined" && document.documentElement.dir === "rtl" ? "rtl" : undefined);
-  return <SelectPrimitive.Root dir={resolvedDir} {...props} />;
+  const autoDir = useDir();
+  return <SelectPrimitive.Root dir={dir || autoDir} {...props} />;
 }
 
 const SelectGroup = SelectPrimitive.Group

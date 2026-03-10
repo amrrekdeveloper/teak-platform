@@ -1,12 +1,11 @@
 import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useLanguage } from "@/components/language-provider";
 import { useTheme } from "@/components/theme-provider";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -14,23 +13,89 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Sun, Moon, Loader2, CheckCircle2, ArrowLeft, ArrowRight } from "lucide-react";
+import type { QuoteProductCategory } from "@shared/schema";
+import { Sun, Moon, Loader2, CheckCircle2, ArrowLeft, ArrowRight, MapPin } from "lucide-react";
 import { Link } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
+import { useToast } from "@/hooks/use-toast";
 import teakLogo from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
 
 export default function RequestQuotePage() {
   const { lang, toggleLang, t, isRTL } = useLanguage();
   const { theme, toggleTheme } = useTheme();
+  const { toast } = useToast();
   const [submitted, setSubmitted] = useState(false);
+  const [geoLoading, setGeoLoading] = useState(false);
 
   const [form, setForm] = useState({
     fullName: "",
     phone: "",
     city: "",
     productInterest: "",
-    notes: "",
   });
+
+  const { data: productCategories } = useQuery<QuoteProductCategory[]>({
+    queryKey: ["/api/quote-product-categories"],
+  });
+
+  const [errors, setErrors] = useState<{ fullName?: string; phone?: string }>({});
+
+  const namePattern = /^[\u0600-\u06FF\u0750-\u077Fa-zA-Z\s\-']+$/;
+  const phonePattern = /^05\d{8}$/;
+
+  const validateName = (value: string): string | undefined => {
+    if (!value.trim()) {
+      return t("الاسم مطلوب", "Name is required");
+    }
+    if (!namePattern.test(value)) {
+      return t("يرجى إدخال حروف عربية أو إنجليزية فقط", "Please enter Arabic or English letters only");
+    }
+    return undefined;
+  };
+
+  const validatePhone = (value: string): string | undefined => {
+    if (!value.trim()) {
+      return t("رقم الجوال مطلوب", "Phone number is required");
+    }
+    if (!phonePattern.test(value)) {
+      return t("يرجى إدخال رقم جوال صحيح (05XXXXXXXX)", "Please enter a valid phone number (05XXXXXXXX)");
+    }
+    return undefined;
+  };
+
+  const handleNameChange = (value: string) => {
+    setForm({ ...form, fullName: value });
+    if (errors.fullName) {
+      setErrors({ ...errors, fullName: validateName(value) });
+    }
+  };
+
+  const handleNameBlur = () => {
+    if (form.fullName) {
+      setErrors({ ...errors, fullName: validateName(form.fullName) });
+    }
+  };
+
+  const handlePhoneChange = (value: string) => {
+    const digitsOnly = value.replace(/\D/g, "");
+    setForm({ ...form, phone: digitsOnly });
+    if (errors.phone) {
+      setErrors({ ...errors, phone: validatePhone(digitsOnly) });
+    }
+  };
+
+  const handlePhoneBlur = () => {
+    if (form.phone) {
+      setErrors({ ...errors, phone: validatePhone(form.phone) });
+    }
+  };
+
+  const validateForm = (): boolean => {
+    const nameError = validateName(form.fullName);
+    const phoneError = validatePhone(form.phone);
+    setErrors({ fullName: nameError, phone: phoneError });
+    return !nameError && !phoneError;
+  };
 
   const mutation = useMutation({
     mutationFn: async (data: typeof form) => {
@@ -44,6 +109,79 @@ export default function RequestQuotePage() {
     },
     onSuccess: () => setSubmitted(true),
   });
+
+  const handleDetectCity = () => {
+    if (!navigator.geolocation) {
+      toast({
+        title: t("خطأ", "Error"),
+        description: t("المتصفح لا يدعم تحديد الموقع", "Geolocation is not supported by your browser"),
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setGeoLoading(true);
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        try {
+          const { latitude, longitude } = position.coords;
+          const acceptLang = lang === "ar" ? "ar" : "en";
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json&accept-language=${acceptLang}`,
+            { headers: { "User-Agent": "TeakManufacturing/1.0" } }
+          );
+          if (!res.ok) throw new Error("Geocoding failed");
+          const data = await res.json();
+          const city =
+            data.address?.city ||
+            data.address?.town ||
+            data.address?.village ||
+            data.address?.state ||
+            "";
+          if (city) {
+            setForm((prev) => ({ ...prev, city }));
+          } else {
+            toast({
+              title: t("تنبيه", "Notice"),
+              description: t("لم نتمكن من تحديد المدينة", "Could not determine your city"),
+              variant: "destructive",
+            });
+          }
+        } catch {
+          toast({
+            title: t("خطأ", "Error"),
+            description: t("فشل في تحديد المدينة", "Failed to detect city"),
+            variant: "destructive",
+          });
+        } finally {
+          setGeoLoading(false);
+        }
+      },
+      (error) => {
+        setGeoLoading(false);
+        let message: string;
+        switch (error.code) {
+          case error.PERMISSION_DENIED:
+            message = t("تم رفض إذن الوصول للموقع", "Location permission denied");
+            break;
+          case error.POSITION_UNAVAILABLE:
+            message = t("معلومات الموقع غير متوفرة", "Location information unavailable");
+            break;
+          case error.TIMEOUT:
+            message = t("انتهت مهلة طلب الموقع", "Location request timed out");
+            break;
+          default:
+            message = t("فشل في تحديد الموقع", "Failed to detect location");
+        }
+        toast({
+          title: t("خطأ", "Error"),
+          description: message,
+          variant: "destructive",
+        });
+      },
+      { enableHighAccuracy: false, timeout: 10000 }
+    );
+  };
 
   const BackIcon = isRTL ? ArrowRight : ArrowLeft;
 
@@ -130,6 +268,7 @@ export default function RequestQuotePage() {
                   <form
                     onSubmit={(e) => {
                       e.preventDefault();
+                      if (!validateForm()) return;
                       mutation.mutate(form);
                     }}
                     className="space-y-4"
@@ -138,29 +277,57 @@ export default function RequestQuotePage() {
                       <Label>{t("الاسم الكامل", "Full Name")} *</Label>
                       <Input
                         value={form.fullName}
-                        onChange={(e) => setForm({ ...form, fullName: e.target.value })}
-                        required
+                        onChange={(e) => handleNameChange(e.target.value)}
+                        onBlur={handleNameBlur}
+                        className={errors.fullName ? "border-destructive" : ""}
                         data-testid="input-name"
                       />
+                      {errors.fullName && (
+                        <p className="text-sm text-destructive" data-testid="text-error-name">{errors.fullName}</p>
+                      )}
                     </div>
                     <div className="space-y-2">
                       <Label>{t("رقم الجوال", "Phone Number")} *</Label>
                       <Input
                         value={form.phone}
-                        onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                        required
+                        onChange={(e) => handlePhoneChange(e.target.value)}
+                        onBlur={handlePhoneBlur}
+                        type="tel"
+                        inputMode="numeric"
+                        maxLength={10}
                         placeholder="05XXXXXXXX"
                         dir="ltr"
+                        className={errors.phone ? "border-destructive" : ""}
                         data-testid="input-phone"
                       />
+                      {errors.phone && (
+                        <p className="text-sm text-destructive" data-testid="text-error-phone">{errors.phone}</p>
+                      )}
                     </div>
                     <div className="space-y-2">
                       <Label>{t("المدينة", "City")}</Label>
-                      <Input
-                        value={form.city}
-                        onChange={(e) => setForm({ ...form, city: e.target.value })}
-                        data-testid="input-city"
-                      />
+                      <div className="flex gap-2">
+                        <Input
+                          value={form.city}
+                          onChange={(e) => setForm({ ...form, city: e.target.value })}
+                          className="flex-1"
+                          data-testid="input-city"
+                        />
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="outline"
+                          onClick={handleDetectCity}
+                          disabled={geoLoading}
+                          data-testid="button-detect-city"
+                        >
+                          {geoLoading ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <MapPin className="w-4 h-4" />
+                          )}
+                        </Button>
+                      </div>
                     </div>
                     <div className="space-y-2">
                       <Label>{t("المنتج المطلوب", "Product Interest")}</Label>
@@ -172,22 +339,15 @@ export default function RequestQuotePage() {
                           <SelectValue placeholder={t("اختر المنتج", "Select product")} />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="kitchen">{t("مطبخ", "Kitchen")}</SelectItem>
-                          <SelectItem value="wardrobe">{t("خزانة ملابس", "Wardrobe")}</SelectItem>
-                          <SelectItem value="door">{t("أبواب", "Doors")}</SelectItem>
-                          <SelectItem value="decoration">{t("ديكورات", "Decorations")}</SelectItem>
-                          <SelectItem value="hotel">{t("تجهيز فنادق", "Hotel Furnishing")}</SelectItem>
+                          {(productCategories || [])
+                            .filter(c => c.active)
+                            .map(cat => (
+                              <SelectItem key={cat.id} value={String(cat.id)}>
+                                {t(cat.nameAr, cat.nameEn)}
+                              </SelectItem>
+                            ))}
                         </SelectContent>
                       </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>{t("ملاحظات إضافية", "Additional Notes")}</Label>
-                      <Textarea
-                        value={form.notes}
-                        onChange={(e) => setForm({ ...form, notes: e.target.value })}
-                        rows={3}
-                        data-testid="input-notes"
-                      />
                     </div>
                     <Button
                       type="submit"

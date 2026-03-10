@@ -26,6 +26,7 @@ import {
   employees, type Employee, type InsertEmployee,
   designAssignments, type DesignAssignment, type InsertDesignAssignment,
   warranties, type Warranty, type InsertWarranty,
+  quoteProductCategories, type QuoteProductCategory, type InsertQuoteProductCategory,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -148,6 +149,11 @@ export interface IStorage {
   updateWarranty(id: number, data: Partial<InsertWarranty>): Promise<Warranty | undefined>;
 
   getCustomerByPhone(phone: string): Promise<Customer | undefined>;
+
+  getQuoteProductCategories(): Promise<QuoteProductCategory[]>;
+  createQuoteProductCategory(cat: InsertQuoteProductCategory): Promise<QuoteProductCategory>;
+  updateQuoteProductCategory(id: number, data: Partial<InsertQuoteProductCategory>): Promise<QuoteProductCategory | undefined>;
+  deleteQuoteProductCategory(id: number): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -595,6 +601,25 @@ export class DatabaseStorage implements IStorage {
     const normalized = phone.replace(/^(\+966|00966|966)/, "0");
     const results = await db.select().from(customers);
     return results.find(c => c.phone.replace(/^(\+966|00966|966)/, "0") === normalized);
+  }
+
+  async getQuoteProductCategories(): Promise<QuoteProductCategory[]> {
+    return db.select().from(quoteProductCategories).orderBy(quoteProductCategories.sortOrder);
+  }
+
+  async createQuoteProductCategory(cat: InsertQuoteProductCategory): Promise<QuoteProductCategory> {
+    const [created] = await db.insert(quoteProductCategories).values(cat).returning();
+    return created;
+  }
+
+  async updateQuoteProductCategory(id: number, data: Partial<InsertQuoteProductCategory>): Promise<QuoteProductCategory | undefined> {
+    const [updated] = await db.update(quoteProductCategories).set(data).where(eq(quoteProductCategories.id, id)).returning();
+    return updated;
+  }
+
+  async deleteQuoteProductCategory(id: number): Promise<boolean> {
+    const result = await db.delete(quoteProductCategories).where(eq(quoteProductCategories.id, id)).returning();
+    return result.length > 0;
   }
 }
 

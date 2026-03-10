@@ -14,8 +14,8 @@ Integrated Manufacturing + CRM + Project Management platform for a Saudi wood pr
 - **QR Code**: `qrcode` library for ZATCA-compliant scannable QR codes
 
 ## Database
-- PostgreSQL with 23 tables (see `shared/schema.ts`)
-- Core: users, employees, customers, products, woodTypes, doorTypes
+- PostgreSQL with 24 tables (see `shared/schema.ts`)
+- Core: users, employees, customers, products, woodTypes, doorTypes, quoteProductCategories
 - Sales: quotations, contracts, payments, invoices
 - Manufacturing: workOrders, productionStages
 - Inventory: inventory, inventoryTransactions, suppliers, purchaseOrders
@@ -47,7 +47,7 @@ Integrated Manufacturing + CRM + Project Management platform for a Saudi wood pr
 ### Public
 - `client/src/pages/landing.tsx` — Landing page with real teak2030.net content: hero slider (4 slides, auto-rotate), About Us, CEO message with photo, Products showcase (5 categories), Gallery with lightbox (8 images, keyboard nav), Projects horizontal scroll (8 projects), Stats counter, Google Maps embed (Jazan), Contact info (phone/WhatsApp/email), Footer with quick links, WhatsApp FAB
 - `client/src/pages/products.tsx` — Product catalog with category filters
-- `client/src/pages/request-quote.tsx` — Public quote request form → creates customer + notification
+- `client/src/pages/request-quote.tsx` — Public quote request form with validation (name: AR/EN letters only, phone: Saudi format 05XXXXXXXX), geolocation city detection, dynamic product categories from DB
 - `client/src/pages/track-order.tsx` — Public order tracking (contract# + phone lookup, shows work order status timeline)
 
 ### Dashboard (authenticated)
@@ -72,7 +72,7 @@ Integrated Manufacturing + CRM + Project Management platform for a Saudi wood pr
 - `client/src/pages/deliveries.tsx` — Delivery scheduling and tracking
 - `client/src/pages/installations.tsx` — Installation scheduling + Maintenance requests
 - `client/src/pages/quality.tsx` — Quality control checks
-- `client/src/pages/settings.tsx` — Company settings, user management, activity logs (3 tabs)
+- `client/src/pages/settings.tsx` — Company settings, user management, activity logs, product categories management (4 tabs)
 
 ## Notifications System
 - Bell icon in header with unread count badge
@@ -157,6 +157,7 @@ Customer requests quote (website) → Sales assigns to Designer → Designer dra
 - Warranties: GET/POST /api/warranties, GET /:id
 - Production: POST /api/production-stages/:id/upload-photo, POST /api/work-orders/:id/create-material-request
 - Installation: POST /api/installations/:id/complete-with-warranty
+- Quote Product Categories: GET /api/quote-product-categories (public), POST/PATCH/:id/DELETE/:id (owner/assistant/it)
 
 ## Running
 - `npm run dev` starts Express backend + Vite frontend on port 5000

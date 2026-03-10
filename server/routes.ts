@@ -104,21 +104,77 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/quote-product-categories", async (_req, res) => {
+    try {
+      const categories = await storage.getQuoteProductCategories();
+      res.json(categories);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch categories" });
+    }
+  });
+
+  app.post("/api/quote-product-categories", requireRole("owner", "assistant", "it"), async (req, res) => {
+    try {
+      const { nameAr, nameEn, active, sortOrder } = req.body;
+      if (!nameAr || !nameEn) return res.status(400).json({ message: "nameAr and nameEn are required" });
+      const cat = await storage.createQuoteProductCategory({ nameAr, nameEn, active: active ?? true, sortOrder: sortOrder ?? 0 });
+      res.status(201).json(cat);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to create category" });
+    }
+  });
+
+  app.patch("/api/quote-product-categories/:id", requireRole("owner", "assistant", "it"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const updated = await storage.updateQuoteProductCategory(id, req.body);
+      if (!updated) return res.status(404).json({ message: "Category not found" });
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to update category" });
+    }
+  });
+
+  app.delete("/api/quote-product-categories/:id", requireRole("owner", "assistant", "it"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const deleted = await storage.deleteQuoteProductCategory(id);
+      if (!deleted) return res.status(404).json({ message: "Category not found" });
+      res.json({ message: "Deleted" });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete category" });
+    }
+  });
+
   app.post("/api/quote-request", async (req, res) => {
     try {
-      const { fullName, phone, city, productInterest, notes } = req.body;
+      const { fullName, phone, city, productInterest } = req.body;
       if (!fullName || !phone) {
         return res.status(400).json({
           message: "الاسم ورقم الجوال مطلوبان",
           messageEn: "Name and phone are required",
         });
       }
+      const namePattern = /^[\u0600-\u06FF\u0750-\u077Fa-zA-Z\s\-']+$/;
+      if (!namePattern.test(fullName)) {
+        return res.status(400).json({ message: "الاسم يجب أن يحتوي على حروف فقط", messageEn: "Name must contain letters only" });
+      }
+      const normalizedPhone = phone.replace(/\D/g, "");
+      if (!/^05\d{8}$/.test(normalizedPhone)) {
+        return res.status(400).json({ message: "رقم جوال غير صحيح", messageEn: "Invalid phone number" });
+      }
+      let productLabel = "";
+      if (productInterest) {
+        const categories = await storage.getQuoteProductCategories();
+        const cat = categories.find(c => c.id === parseInt(productInterest));
+        productLabel = cat ? `${cat.nameAr} / ${cat.nameEn}` : productInterest;
+      }
       const customer = await storage.createCustomer({
         fullName,
-        phone,
+        phone: normalizedPhone,
         city,
         source: "website",
-        notes: `${productInterest ? `اهتمام: ${productInterest}. ` : ""}${notes || ""}`,
+        notes: productLabel ? `اهتمام: ${productLabel}` : "",
       });
 
       const salesUsers = (await storage.getUsers()).filter(u => u.role === "sales");

@@ -3,10 +3,27 @@ import { hashPassword } from "./auth";
 import {
   users, customers, products, woodTypes, doorTypes,
   inventory, suppliers, employees, companySettings,
+  quoteProductCategories,
 } from "@shared/schema";
 import { eq } from "drizzle-orm";
 
+async function seedQuoteProductCategories() {
+  const existing = await db.select().from(quoteProductCategories).limit(1);
+  if (existing.length === 0) {
+    await db.insert(quoteProductCategories).values([
+      { nameAr: "مطبخ", nameEn: "Kitchen", sortOrder: 1 },
+      { nameAr: "خزانة ملابس", nameEn: "Wardrobe", sortOrder: 2 },
+      { nameAr: "أبواب", nameEn: "Doors", sortOrder: 3 },
+      { nameAr: "ديكورات", nameEn: "Decorations", sortOrder: 4 },
+      { nameAr: "تجهيز فنادق", nameEn: "Hotel Furnishing", sortOrder: 5 },
+    ]);
+    console.log("Seeded quote product categories");
+  }
+}
+
 export async function seedDatabase() {
+  await seedQuoteProductCategories();
+
   const existingUsers = await db.select().from(users).limit(1);
   if (existingUsers.length > 0) {
     console.log("Database already seeded, skipping...");
