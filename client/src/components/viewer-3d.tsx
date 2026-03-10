@@ -48,6 +48,18 @@ export interface ProductSpecs {
   isDoubleDoor?: boolean;
 }
 
+export interface FixtureElement3D {
+  id: string;
+  fixtureType: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation?: number;
+  color: string;
+  label?: string;
+}
+
 const MATERIAL_COLORS: Record<WoodMaterial, string> = {
   oak: "#c4913b",
   beech: "#d4b896",
@@ -708,25 +720,145 @@ function GenericBoxScene({
   );
 }
 
-function SceneContent({ specs }: { specs: ProductSpecs }) {
+function TreeFixture3D({ position, scale = 1 }: { position: [number, number, number]; scale?: number }) {
+  return (
+    <group position={position}>
+      <mesh position={[0, 0.15 * scale, 0]}>
+        <cylinderGeometry args={[0.02 * scale, 0.03 * scale, 0.3 * scale, 8]} />
+        <meshStandardMaterial color="#6b4423" roughness={0.8} />
+      </mesh>
+      <mesh position={[0, 0.4 * scale, 0]}>
+        <sphereGeometry args={[0.18 * scale, 12, 12]} />
+        <meshStandardMaterial color="#228B22" roughness={0.7} />
+      </mesh>
+      <mesh position={[0.08 * scale, 0.32 * scale, 0.05 * scale]}>
+        <sphereGeometry args={[0.12 * scale, 10, 10]} />
+        <meshStandardMaterial color="#2d8f2d" roughness={0.7} />
+      </mesh>
+      <mesh position={[-0.06 * scale, 0.35 * scale, -0.04 * scale]}>
+        <sphereGeometry args={[0.1 * scale, 10, 10]} />
+        <meshStandardMaterial color="#1e7a1e" roughness={0.7} />
+      </mesh>
+    </group>
+  );
+}
+
+function PlantFixture3D({ position, color, scale = 1 }: { position: [number, number, number]; color: string; scale?: number }) {
+  return (
+    <group position={position}>
+      <mesh position={[0, 0.06 * scale, 0]}>
+        <cylinderGeometry args={[0.08 * scale, 0.06 * scale, 0.12 * scale, 12]} />
+        <meshStandardMaterial color="#8B4513" roughness={0.6} />
+      </mesh>
+      <mesh position={[0, 0.18 * scale, 0]}>
+        <coneGeometry args={[0.14 * scale, 0.22 * scale, 8]} />
+        <meshStandardMaterial color={color} roughness={0.7} />
+      </mesh>
+      <mesh position={[0.05 * scale, 0.22 * scale, 0.03 * scale]}>
+        <sphereGeometry args={[0.08 * scale, 8, 8]} />
+        <meshStandardMaterial color={color} roughness={0.7} />
+      </mesh>
+    </group>
+  );
+}
+
+function ApplianceFixture3D({ position, color, size, label }: { position: [number, number, number]; color: string; size: [number, number, number]; label?: string }) {
+  return (
+    <group position={position}>
+      <mesh position={[0, size[1] / 2, 0]}>
+        <boxGeometry args={size} />
+        <meshStandardMaterial color={color} roughness={0.4} metalness={0.3} />
+      </mesh>
+      {label && (
+        <Text position={[0, size[1] + 0.05, 0]} fontSize={0.06} color="#333" anchorX="center" anchorY="bottom">
+          {label}
+        </Text>
+      )}
+    </group>
+  );
+}
+
+function FurnitureFixture3D({ position, color, size }: { position: [number, number, number]; color: string; size: [number, number, number] }) {
+  return (
+    <group position={position}>
+      <mesh position={[0, size[1] / 2, 0]}>
+        <boxGeometry args={size} />
+        <meshStandardMaterial color={color} roughness={0.6} />
+      </mesh>
+    </group>
+  );
+}
+
+const PLANT_FIXTURE_IDS = new Set(["palm_tree", "fern", "monstera", "cactus", "bonsai", "bamboo", "ivy"]);
+const APPLIANCE_FIXTURE_IDS = new Set(["sink", "stove", "oven", "fridge", "dishwasher", "microwave", "range_hood", "washing_machine"]);
+const FURNITURE_FIXTURE_IDS = new Set(["dining_table", "chair", "sofa", "coffee_table", "tv_unit", "bookshelf", "bed", "desk"]);
+
+function FixtureScene3D({ fixtures, canvasSize, roomDimensions }: { fixtures: FixtureElement3D[]; canvasSize: { width: number; height: number }; roomDimensions?: { width: number; height: number } }) {
+  if (!fixtures.length) return null;
+
+  const roomW = roomDimensions ? roomDimensions.width / 1000 : 5;
+  const roomH = roomDimensions ? roomDimensions.height / 1000 : 4;
+
+  return (
+    <group>
+      {fixtures.map((f) => {
+        const nx = f.x / canvasSize.width;
+        const ny = f.y / canvasSize.height;
+        const x3d = (nx - 0.5) * roomW;
+        const z3d = (ny - 0.5) * roomH;
+        const sizeW = (f.width / canvasSize.width) * roomW;
+        const sizeH = (f.height / canvasSize.height) * roomH;
+        const avgSize = (sizeW + sizeH) / 2;
+        const scale = Math.max(0.5, Math.min(2, avgSize / 0.3));
+
+        if (PLANT_FIXTURE_IDS.has(f.fixtureType)) {
+          if (f.fixtureType === "palm_tree" || f.fixtureType === "bonsai") {
+            return <TreeFixture3D key={f.id} position={[x3d, 0, z3d]} scale={scale} />;
+          }
+          return <PlantFixture3D key={f.id} position={[x3d, 0, z3d]} color={f.color} scale={scale} />;
+        }
+
+        if (APPLIANCE_FIXTURE_IDS.has(f.fixtureType)) {
+          const appH = f.fixtureType === "fridge" ? 0.6 : 0.3;
+          return <ApplianceFixture3D key={f.id} position={[x3d, 0, z3d]} color={f.color || "#d4d4d8"} size={[sizeW * 0.8, appH, sizeH * 0.8]} label={f.label} />;
+        }
+
+        if (FURNITURE_FIXTURE_IDS.has(f.fixtureType)) {
+          return <FurnitureFixture3D key={f.id} position={[x3d, 0, z3d]} color={f.color || "#8B4513"} size={[sizeW * 0.8, 0.25, sizeH * 0.8]} />;
+        }
+
+        return <PlantFixture3D key={f.id} position={[x3d, 0, z3d]} color={f.color || "#22c55e"} scale={scale * 0.8} />;
+      })}
+    </group>
+  );
+}
+
+function SceneContent({ specs, fixtures, canvasSize, roomDimensions }: { specs: ProductSpecs; fixtures?: FixtureElement3D[]; canvasSize?: { width: number; height: number }; roomDimensions?: { width: number; height: number } }) {
+  const fixtureScene = fixtures && fixtures.length > 0 && canvasSize ? (
+    <FixtureScene3D fixtures={fixtures} canvasSize={canvasSize} roomDimensions={roomDimensions} />
+  ) : null;
+
   if (specs.productType === "kitchen" && specs.kitchen) {
-    return <KitchenScene specs={specs.kitchen} woodType={specs.woodType} />;
+    return <>{<KitchenScene specs={specs.kitchen} woodType={specs.woodType} />}{fixtureScene}</>;
   }
 
   if (specs.productType === "wardrobe" && specs.wardrobe) {
-    return <WardrobeScene specs={specs.wardrobe} woodType={specs.woodType} />;
+    return <>{<WardrobeScene specs={specs.wardrobe} woodType={specs.woodType} />}{fixtureScene}</>;
   }
 
   return (
-    <GenericBoxScene
-      width={specs.width || 800}
-      height={specs.height || 2100}
-      depth={specs.depth || 40}
-      woodType={specs.woodType}
-      productType={specs.productType}
-      doorPattern={specs.doorPattern}
-      isDoubleDoor={specs.isDoubleDoor}
-    />
+    <>
+      <GenericBoxScene
+        width={specs.width || 800}
+        height={specs.height || 2100}
+        depth={specs.depth || 40}
+        woodType={specs.woodType}
+        productType={specs.productType}
+        doorPattern={specs.doorPattern}
+        isDoubleDoor={specs.isDoubleDoor}
+      />
+      {fixtureScene}
+    </>
   );
 }
 
@@ -806,11 +938,14 @@ function ScreenshotHelper({ onCapture }: { onCapture: (dataUrl: string) => void 
 
 interface Viewer3DProps {
   specs: ProductSpecs;
+  fixtures?: FixtureElement3D[];
+  canvasSize?: { width: number; height: number };
+  roomDimensions?: { width: number; height: number };
   onScreenshot?: (dataUrl: string) => void;
   className?: string;
 }
 
-export default function Viewer3D({ specs, onScreenshot, className }: Viewer3DProps) {
+export default function Viewer3D({ specs, fixtures, canvasSize, roomDimensions, onScreenshot, className }: Viewer3DProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const controlsRef = useRef<OrbitControlsImpl>(null);
@@ -903,7 +1038,7 @@ export default function Viewer3D({ specs, onScreenshot, className }: Viewer3DPro
           <directionalLight position={[-3, 4, -2]} intensity={0.4} />
           <pointLight position={[0, 3, 3]} intensity={0.3} color="#ffeedd" />
 
-          <SceneContent specs={displaySpecs} />
+          <SceneContent specs={displaySpecs} fixtures={fixtures} canvasSize={canvasSize} roomDimensions={roomDimensions} />
 
           <ContactShadows
             position={[0, -0.01, 0]}

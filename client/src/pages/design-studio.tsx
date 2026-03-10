@@ -174,6 +174,7 @@ export default function DesignStudioPage() {
   const [notes, setNotes] = useState("");
   const [uploadedFiles, setUploadedFiles] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
+  const [sketchFixtures, setSketchFixtures] = useState<import("@/components/sketch-canvas-2d").SketchFixtureElement[]>([]);
 
   const { data: designAssignment, isLoading: daLoading } = useQuery<DesignAssignment>({
     queryKey: ["/api/design-assignments/quotation", orderId],
@@ -424,6 +425,7 @@ export default function DesignStudioPage() {
                   <SketchCanvas2D
                     initialData={designAssignment?.sketchData || undefined}
                     onSave={handleSketchSave}
+                    onElementsChange={setSketchFixtures}
                     roomDimensions={specs.roomWidth > 0 && specs.roomLength > 0 ? { width: specs.roomWidth / 10, height: specs.roomLength / 10 } : undefined}
                   />
                 </Suspense>
@@ -443,6 +445,9 @@ export default function DesignStudioPage() {
                 <Suspense fallback={<div className="flex items-center justify-center h-[300px] sm:h-[500px]"><Loader2 className="w-6 h-6 animate-spin" /></div>}>
                   <Viewer3D
                     specs={viewer3dSpecs}
+                    fixtures={sketchFixtures}
+                    canvasSize={{ width: 1200, height: 700 }}
+                    roomDimensions={specs.roomWidth > 0 && specs.roomLength > 0 ? { width: specs.roomWidth, height: specs.roomLength } : undefined}
                     onScreenshot={handle3DScreenshot}
                     className="h-[350px] sm:h-[500px] lg:h-[600px] w-full rounded-lg overflow-hidden border"
                   />

@@ -311,9 +311,22 @@ function DimensionLine({
   );
 }
 
+export interface SketchFixtureElement {
+  id: string;
+  fixtureType: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation?: number;
+  color: string;
+  label?: string;
+}
+
 interface SketchCanvas2DProps {
   initialData?: string;
   onSave?: (jsonData: string, imageDataUrl: string) => void;
+  onElementsChange?: (fixtures: SketchFixtureElement[]) => void;
   width?: number;
   height?: number;
   roomDimensions?: { width: number; height: number };
@@ -322,6 +335,7 @@ interface SketchCanvas2DProps {
 export default function SketchCanvas2D({
   initialData,
   onSave,
+  onElementsChange,
   width: containerWidth = 1200,
   height: containerHeight = 700,
   roomDimensions,
@@ -350,6 +364,24 @@ export default function SketchCanvas2D({
   const [libraryCategory, setLibraryCategory] = useState<FixtureCategory>("kitchen");
   const [librarySearch, setLibrarySearch] = useState("");
   const [pendingFixture, setPendingFixture] = useState<FixtureDefinition | null>(null);
+
+  useEffect(() => {
+    if (!onElementsChange) return;
+    const fixtures: SketchFixtureElement[] = elements
+      .filter(el => el.type === "fixture" && el.fixtureType)
+      .map(el => ({
+        id: el.id,
+        fixtureType: el.fixtureType!,
+        x: el.x,
+        y: el.y,
+        width: el.width || 0,
+        height: el.height || 0,
+        rotation: el.rotation,
+        color: el.color,
+        label: el.label,
+      }));
+    onElementsChange(fixtures);
+  }, [elements, onElementsChange]);
 
   const filteredFixtures = useMemo(() => {
     let items = FIXTURE_LIBRARY.filter(f => f.category === libraryCategory);
