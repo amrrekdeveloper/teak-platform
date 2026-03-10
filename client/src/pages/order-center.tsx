@@ -146,6 +146,7 @@ export default function OrderCenterPage() {
   const [inspDay, setInspDay] = useState<string>("");
   const [inspMonth, setInspMonth] = useState<string>("");
   const [inspYear, setInspYear] = useState<string>("");
+  const [designPreviewImg, setDesignPreviewImg] = useState<string | null>(null);
   const now = useElapsedTime();
 
   const { data: quotations = [], isLoading: loadingQuotations } = useQuery<any[]>({
@@ -982,11 +983,98 @@ export default function OrderCenterPage() {
                   <p className="text-xs">{viewOrder.notes}</p>
                 </div>
               )}
+
+              {(() => {
+                const da = designAssignments.find((d: any) => d.quotationId === viewOrder.id);
+                if (!da) return null;
+                const isCompleted = da.status === "completed";
+                const hasImages = da.sketchImage || da.screenshot3d;
+                return (
+                  <div className="border rounded-lg p-3 space-y-2" data-testid="design-section-order-detail">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-semibold flex items-center gap-1.5">
+                        <Pencil className="w-3.5 h-3.5 text-muted-foreground" />
+                        {t("التصميم", "Design")}
+                      </p>
+                      {isCompleted ? (
+                        <span className="text-[10px] font-medium text-green-700 dark:text-green-400 bg-green-100 dark:bg-green-950/40 px-2 py-0.5 rounded-full flex items-center gap-1" data-testid="badge-design-completed">
+                          <CheckCircle2 className="w-3 h-3" />
+                          {t("مكتمل", "Completed")}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-medium text-yellow-700 dark:text-yellow-400 bg-yellow-100 dark:bg-yellow-950/40 px-2 py-0.5 rounded-full flex items-center gap-1" data-testid="badge-design-inprogress">
+                          <Clock className="w-3 h-3" />
+                          {da.status === "pending" ? t("معلّق", "Pending") : t("قيد التصميم", "In Progress")}
+                        </span>
+                      )}
+                    </div>
+                    {da.customerApproval === "approved" && (
+                      <span className="text-[10px] font-medium text-green-700 dark:text-green-400 bg-green-100/60 dark:bg-green-950/30 px-2 py-0.5 rounded-full flex items-center gap-1 w-fit" data-testid="badge-customer-approved-detail">
+                        <CheckCircle2 className="w-2.5 h-2.5" />
+                        {t("معتمد من العميل", "Customer Approved")}
+                      </span>
+                    )}
+                    {da.customerApproval === "revision_requested" && (
+                      <span className="text-[10px] font-medium text-amber-700 dark:text-amber-400 bg-amber-100/60 dark:bg-amber-950/30 px-2 py-0.5 rounded-full flex items-center gap-1 w-fit" data-testid="badge-customer-revision-detail">
+                        <AlertCircle className="w-2.5 h-2.5" />
+                        {t("العميل طلب تعديل", "Customer Requested Revision")}
+                      </span>
+                    )}
+                    {isCompleted && hasImages && (
+                      <div className="grid grid-cols-2 gap-2">
+                        {da.sketchImage && (
+                          <div className="space-y-1">
+                            <p className="text-[10px] text-muted-foreground">{t("المخطط ثنائي الأبعاد", "2D Plan")}</p>
+                            <div
+                              className="border rounded-md overflow-hidden cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all bg-white dark:bg-muted/20"
+                              onClick={() => setDesignPreviewImg(da.sketchImage)}
+                              data-testid="img-design-2d-order"
+                            >
+                              <img src={da.sketchImage} alt="2D Plan" className="w-full h-28 object-contain" />
+                            </div>
+                          </div>
+                        )}
+                        {da.screenshot3d && (
+                          <div className="space-y-1">
+                            <p className="text-[10px] text-muted-foreground">{t("العرض الثلاثي", "3D View")}</p>
+                            <div
+                              className="border rounded-md overflow-hidden cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all bg-white dark:bg-muted/20"
+                              onClick={() => setDesignPreviewImg(da.screenshot3d)}
+                              data-testid="img-design-3d-order"
+                            >
+                              <img src={da.screenshot3d} alt="3D View" className="w-full h-28 object-contain" />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {da.notes && (
+                      <p className="text-[10px] text-muted-foreground">{da.notes}</p>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setViewOrder(null)} data-testid="button-close-view">
                 {t("إغلاق", "Close")}
               </Button>
+              {(() => {
+                const da = designAssignments.find((d: any) => d.quotationId === viewOrder.id);
+                if (da?.status === "completed" && (da.sketchImage || da.screenshot3d)) {
+                  return (
+                    <Button
+                      variant="default"
+                      onClick={() => setDesignPreviewImg(da.sketchImage || da.screenshot3d)}
+                      data-testid="button-view-design"
+                    >
+                      <Eye className="w-3.5 h-3.5 me-1.5" />
+                      {t("استعراض التصميم", "View Design")}
+                    </Button>
+                  );
+                }
+                return null;
+              })()}
               {viewOrder.assignedTo && (
                 viewOrder.inspectionDate ? (
                   <Button
@@ -1022,6 +1110,21 @@ export default function OrderCenterPage() {
                 {t("تحويل", "Assign")}
               </Button>
             </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {designPreviewImg && (
+        <Dialog open onOpenChange={() => setDesignPreviewImg(null)}>
+          <DialogContent className="max-w-4xl max-h-[90vh] p-2">
+            <div className="flex items-center justify-center min-h-[300px] bg-white dark:bg-muted/20 rounded-lg overflow-auto">
+              <img
+                src={designPreviewImg}
+                alt="Design Preview"
+                className="max-w-full max-h-[80vh] object-contain"
+                data-testid="img-design-fullscreen"
+              />
+            </div>
           </DialogContent>
         </Dialog>
       )}
