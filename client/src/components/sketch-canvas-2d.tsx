@@ -776,21 +776,21 @@ export default function SketchCanvas2D({
             onTransformEnd={() => handleTransformEnd(el.id)}
           >
             <Rect
-              width={el.width || 0}
-              height={el.height || 0}
+              width={Math.abs(el.width || 0)}
+              height={Math.abs(el.height || 0)}
               fill={el.color + "33"}
               stroke={el.color}
               strokeWidth={2 / stageScale}
-              cornerRadius={2}
+              cornerRadius={Math.min(2, Math.abs(el.width || 0) / 2, Math.abs(el.height || 0) / 2)}
             />
             <Line
-              points={[0, 0, el.width || 0, el.height || 0]}
+              points={[0, 0, Math.abs(el.width || 0), Math.abs(el.height || 0)]}
               stroke={el.color + "44"}
               strokeWidth={0.5 / stageScale}
               listening={false}
             />
             <Line
-              points={[el.width || 0, 0, 0, el.height || 0]}
+              points={[Math.abs(el.width || 0), 0, 0, Math.abs(el.height || 0)]}
               stroke={el.color + "44"}
               strokeWidth={0.5 / stageScale}
               listening={false}
@@ -803,7 +803,7 @@ export default function SketchCanvas2D({
                 fontSize={10 / stageScale}
                 fill={el.color}
                 fontFamily="monospace"
-                width={(el.width || 0) - 8}
+                width={Math.max(0, Math.abs(el.width || 0) - 8)}
                 listening={false}
               />
             )}
