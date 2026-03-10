@@ -2,8 +2,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { useLanguage } from "@/components/language-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Phone, KeyRound, ArrowLeft, Loader2, Shield, AlertCircle } from "lucide-react";
+import { Phone, KeyRound, Loader2, Shield, AlertCircle, ArrowRight, RotateCcw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { auth, RecaptchaVerifier, signInWithPhoneNumber, type ConfirmationResult } from "@/lib/firebase";
 import teakLogo from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
@@ -11,6 +10,7 @@ import teakLogo from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
 export default function CustomerPortalLogin() {
   const { t, lang } = useLanguage();
   const { toast } = useToast();
+  const isRTL = lang === "ar";
 
   const [step, setStep] = useState<"phone" | "otp">("phone");
   const [phone, setPhone] = useState("");
@@ -185,152 +185,174 @@ export default function CustomerPortalLogin() {
     confirmationRef.current = null;
   }, []);
 
+  const maskedPhone = phone ? `${phone.substring(0, 4)}****${phone.substring(8)}` : "";
+
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background to-muted flex items-center justify-center p-4" dir={lang === "ar" ? "rtl" : "ltr"}>
-      <div className="w-full max-w-md space-y-6">
-        <div className="text-center">
-          <img src={teakLogo} alt="Teak" className="w-24 h-24 mx-auto object-contain mb-4 logo-auto transition-all duration-300" data-testid="img-portal-logo" />
-          <h1 className="text-2xl font-bold" data-testid="text-portal-title">
+    <div
+      className="min-h-[100dvh] bg-gradient-to-b from-background via-background to-muted/50 flex flex-col items-center justify-center px-4 py-6"
+      dir={isRTL ? "rtl" : "ltr"}
+    >
+      <div className="w-full max-w-sm space-y-5">
+        <div className="text-center space-y-1.5">
+          <img
+            src={teakLogo}
+            alt="Teak"
+            className="w-16 h-16 mx-auto object-contain logo-auto"
+            data-testid="img-portal-logo"
+          />
+          <h1 className="text-xl font-bold tracking-tight" data-testid="text-portal-title">
             {t("بوابة العملاء", "Customer Portal")}
           </h1>
-          <p className="text-muted-foreground mt-2">
+          <p className="text-xs text-muted-foreground">
             {t("تيك للتصنيع — متابعة طلباتك", "Teak Manufacturing — Track Your Orders")}
           </p>
         </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <Shield className="w-5 h-5 text-primary" />
-              {step === "phone"
-                ? t("تسجيل الدخول", "Sign In")
-                : t("رمز التحقق", "Verification Code")}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
+        <div className="rounded-2xl border bg-card text-card-foreground shadow-sm overflow-hidden">
+          <div className="px-5 pt-5 pb-3 border-b bg-muted/30">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                <Shield className="w-4 h-4 text-primary" />
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold">
+                  {step === "phone"
+                    ? t("تسجيل الدخول", "Sign In")
+                    : t("رمز التحقق", "Verification Code")}
+                </h2>
+                {step === "otp" && (
+                  <p className="text-[11px] text-muted-foreground">
+                    {t(`تم الإرسال إلى ${maskedPhone}`, `Sent to ${maskedPhone}`)}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="px-5 py-4 space-y-3.5">
             {error && (
-              <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3 flex items-start gap-2" data-testid="text-error">
-                <AlertCircle className="w-4 h-4 text-destructive mt-0.5 shrink-0" />
-                <p className="text-sm text-destructive">{error}</p>
+              <div className="bg-destructive/5 border border-destructive/15 rounded-lg px-3 py-2 flex items-start gap-2" data-testid="text-error">
+                <AlertCircle className="w-3.5 h-3.5 text-destructive mt-0.5 shrink-0" />
+                <p className="text-xs text-destructive leading-relaxed">{error}</p>
               </div>
             )}
 
             {step === "phone" ? (
               <>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium" data-testid="label-phone">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-foreground/80" data-testid="label-phone">
                     {t("رقم الجوال", "Phone Number")}
                   </label>
                   <div className="relative">
-                    <Phone className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Phone className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/60" />
                     <Input
                       type="tel"
-                      placeholder={t("05xxxxxxxx", "05xxxxxxxx")}
+                      placeholder="05xxxxxxxx"
                       value={phone}
                       onChange={(e) => {
                         setPhone(e.target.value.replace(/\D/g, ""));
                         setError("");
                       }}
-                      className="ps-10"
+                      className="ps-10 h-11 text-base"
                       dir="ltr"
                       maxLength={10}
                       data-testid="input-phone"
                       onKeyDown={(e) => e.key === "Enter" && handleSendOTP()}
                     />
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    {t("أدخل رقم الجوال المسجل لدينا — سيتم إرسال رمز التحقق عبر SMS", "Enter your registered phone number — a verification code will be sent via SMS")}
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">
+                    {t("أدخل رقم الجوال المسجل — سيصلك رمز التحقق عبر SMS", "Enter your registered number — you'll receive a code via SMS")}
                   </p>
                 </div>
                 <Button
                   onClick={handleSendOTP}
                   disabled={loading || !phone.trim()}
-                  className="w-full"
+                  className="w-full h-11 text-sm font-medium"
                   data-testid="button-send-otp"
                 >
-                  {loading ? <Loader2 className="w-4 h-4 animate-spin me-2" /> : null}
+                  {loading ? (
+                    <Loader2 className="w-4 h-4 animate-spin me-2" />
+                  ) : (
+                    <ArrowRight className="w-4 h-4 me-2" />
+                  )}
                   {t("إرسال رمز التحقق", "Send Verification Code")}
                 </Button>
               </>
             ) : (
               <>
                 {customerName && (
-                  <div className="bg-primary/5 border border-primary/20 rounded-lg p-3 text-center">
-                    <p className="text-sm text-muted-foreground">{t("مرحباً", "Welcome")}</p>
-                    <p className="font-semibold text-lg" data-testid="text-customer-name">{customerName}</p>
+                  <div className="bg-primary/5 rounded-lg px-3 py-2.5 text-center">
+                    <p className="text-[11px] text-muted-foreground">{t("مرحباً", "Welcome")}</p>
+                    <p className="font-semibold text-base mt-0.5" data-testid="text-customer-name">{customerName}</p>
                   </div>
                 )}
 
-                <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
-                  <p className="text-sm text-blue-800 dark:text-blue-200 text-center">
-                    {t(
-                      "تم إرسال رمز التحقق عبر رسالة نصية SMS إلى رقمك",
-                      "A verification code has been sent via SMS to your phone number"
-                    )}
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium" data-testid="label-otp">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-foreground/80" data-testid="label-otp">
                     {t("رمز التحقق", "Verification Code")}
                   </label>
                   <div className="relative">
-                    <KeyRound className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <KeyRound className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/60" />
                     <Input
                       type="text"
                       inputMode="numeric"
-                      placeholder="123456"
+                      placeholder="------"
                       value={otp}
                       onChange={(e) => {
                         setOtp(e.target.value.replace(/\D/g, ""));
                         setError("");
                       }}
-                      className="ps-10 text-center tracking-widest text-lg"
+                      className="ps-10 h-12 text-center tracking-[0.4em] text-lg font-mono"
                       maxLength={6}
                       dir="ltr"
+                      autoFocus
                       data-testid="input-otp"
                       onKeyDown={(e) => e.key === "Enter" && handleVerifyOTP()}
                     />
                   </div>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-[11px] text-muted-foreground">
                     {t("أدخل الرمز المكون من 6 أرقام", "Enter the 6-digit code")}
                   </p>
                 </div>
+
                 <Button
                   onClick={handleVerifyOTP}
                   disabled={loading || otp.length < 6}
-                  className="w-full"
+                  className="w-full h-11 text-sm font-medium"
                   data-testid="button-verify-otp"
                 >
                   {loading ? <Loader2 className="w-4 h-4 animate-spin me-2" /> : null}
                   {t("تأكيد", "Verify")}
                 </Button>
 
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="ghost"
+                <div className="flex items-center justify-center pt-1">
+                  <button
                     onClick={handleResendOTP}
                     disabled={countdown > 0}
-                    className="flex-1"
+                    className="text-xs text-muted-foreground hover:text-primary disabled:opacity-50 disabled:cursor-default transition-colors flex items-center gap-1.5"
                     data-testid="button-resend"
                   >
-                    <ArrowLeft className="w-4 h-4 me-2" />
+                    <RotateCcw className="w-3 h-3" />
                     {countdown > 0
-                      ? t(`إعادة الإرسال بعد ${countdown} ثانية`, `Resend in ${countdown}s`)
+                      ? t(`إعادة الإرسال بعد ${countdown} ث`, `Resend in ${countdown}s`)
                       : t("إعادة إرسال الرمز", "Resend Code")}
-                  </Button>
+                  </button>
                 </div>
               </>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
         <div id="recaptcha-container" data-testid="recaptcha-container"></div>
 
         <div className="text-center">
-          <Button variant="link" onClick={() => window.location.href = "/"} data-testid="link-home">
+          <button
+            onClick={() => window.location.href = "/"}
+            className="text-xs text-muted-foreground hover:text-primary transition-colors"
+            data-testid="link-home"
+          >
             {t("العودة للموقع الرئيسي", "Back to Main Site")}
-          </Button>
+          </button>
         </div>
       </div>
     </div>
