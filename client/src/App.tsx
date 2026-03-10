@@ -84,15 +84,19 @@ function SplashScreen({ onFinish }: { onFinish: () => void }) {
         />
       </div>
 
-      <motion.img
-        src={teakLogo}
-        alt="Teak"
-        className="w-36 h-36 sm:w-44 sm:h-44 object-contain relative z-10 drop-shadow-2xl"
+      <motion.div
+        className="w-40 h-40 sm:w-48 sm:h-48 rounded-full bg-white/5 backdrop-blur-sm flex items-center justify-center relative z-10 ring-1 ring-white/10"
         initial={{ scale: 0.5, opacity: 0, filter: "blur(10px)" }}
         animate={{ scale: 1, opacity: 1, filter: "blur(0px)" }}
         transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] }}
         data-testid="img-splash-logo"
-      />
+      >
+        <img
+          src={teakLogo}
+          alt="Teak"
+          className="w-28 h-28 sm:w-36 sm:h-36 object-contain drop-shadow-2xl"
+        />
+      </motion.div>
 
       <motion.div
         className="mt-8 flex flex-col items-center gap-3 relative z-10"

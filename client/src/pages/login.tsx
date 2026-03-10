@@ -85,12 +85,14 @@ export default function LoginPage() {
 
       <div className="w-full max-w-sm">
         <div className="text-center mb-6">
-          <img
-            src={teakLogo}
-            alt="Teak"
-            className="w-20 h-20 mx-auto mb-4 object-contain logo-auto transition-all duration-300"
-            data-testid="img-login-logo"
-          />
+          <div className="w-24 h-24 mx-auto mb-4 rounded-full bg-primary/5 dark:bg-white/5 flex items-center justify-center ring-1 ring-border">
+            <img
+              src={teakLogo}
+              alt="Teak"
+              className="w-16 h-16 object-contain logo-auto transition-all duration-300"
+              data-testid="img-login-logo"
+            />
+          </div>
           <h1 className="text-2xl font-bold mb-1" data-testid="text-login-title">
             {t("تسجيل الدخول", "Sign In")}
           </h1>

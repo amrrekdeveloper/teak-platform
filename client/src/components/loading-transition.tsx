@@ -50,12 +50,12 @@ export function LoadingTransition({ show, message, subMessage, duration = 1500, 
       data-testid="loading-transition-overlay"
     >
       <div className="flex flex-col items-center gap-5">
-        <div className="relative">
-          <div className="w-20 h-20 rounded-full border-[3px] border-white/10 border-t-primary animate-spin absolute inset-0" />
+        <div className="relative w-24 h-24 flex items-center justify-center">
+          <div className="w-24 h-24 rounded-full border-[3px] border-white/10 border-t-primary animate-spin absolute inset-0" />
           <img
             src={teakLogo}
             alt="Teak"
-            className="w-20 h-20 object-contain logo-red animate-pulse"
+            className="w-14 h-14 object-contain logo-red animate-pulse relative z-10"
             data-testid="img-loading-logo"
           />
         </div>

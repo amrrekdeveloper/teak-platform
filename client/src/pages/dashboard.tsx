@@ -37,9 +37,9 @@ export default function DashboardPage() {
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px] gap-4">
-        <div className="relative">
-          <div className="w-16 h-16 rounded-full border-[3px] border-muted border-t-primary animate-spin absolute inset-0" />
-          <img src={teakLogo} alt="Teak" className="w-16 h-16 object-contain logo-auto animate-pulse" />
+        <div className="relative w-20 h-20 flex items-center justify-center">
+          <div className="w-20 h-20 rounded-full border-[3px] border-muted border-t-primary animate-spin absolute inset-0" />
+          <img src={teakLogo} alt="Teak" className="w-12 h-12 object-contain logo-auto animate-pulse relative z-10" />
         </div>
         <p className="text-sm text-muted-foreground animate-pulse">{t("جاري تحميل لوحة التحكم...", "Loading dashboard...")}</p>
       </div>
