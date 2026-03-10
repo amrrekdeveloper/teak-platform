@@ -1,5 +1,32 @@
 export type ProductCategory = "kitchen" | "wardrobe" | "door" | "decoration";
 
+export type BuildingStatus = "under_construction" | "ready";
+
+export type ConstructionPhase =
+  | "construction"
+  | "electrical_plumbing"
+  | "plastering"
+  | "gypsum"
+  | "tiling"
+  | "painting"
+  | "finishing";
+
+export interface ConstructionPhaseInfo {
+  value: ConstructionPhase;
+  labelAr: string;
+  labelEn: string;
+}
+
+export const CONSTRUCTION_PHASES: ConstructionPhaseInfo[] = [
+  { value: "construction", labelAr: "بناء", labelEn: "Construction" },
+  { value: "electrical_plumbing", labelAr: "تأسيس كهرباء وسباكة", labelEn: "Electrical & Plumbing" },
+  { value: "plastering", labelAr: "لياسة", labelEn: "Plastering" },
+  { value: "gypsum", labelAr: "جبسيات", labelEn: "Gypsum" },
+  { value: "tiling", labelAr: "بلاط", labelEn: "Tiling" },
+  { value: "painting", labelAr: "دهانات", labelEn: "Painting" },
+  { value: "finishing", labelAr: "تركيبات", labelEn: "Finishing" },
+];
+
 export type CabinetType = "base" | "wall" | "tall";
 export type WardrobeType = "hinged" | "sliding" | "walkin";
 export type DoorSizeStandard = "70" | "80" | "90" | "100" | "custom";
@@ -611,6 +638,41 @@ export const MATERIAL_COLORS: Record<WoodMaterial, string> = {
   hpl: "#e8e0d0",
   pvc: "#ffffff",
 };
+
+export type OpeningType = "door" | "window" | "open_entrance";
+export type WallDirection = "north" | "south" | "east" | "west";
+
+export interface RoomOpening {
+  type: OpeningType;
+  wall: WallDirection;
+  widthMm: number;
+  heightMm: number;
+  distanceFromCornerMm: number;
+  sillHeightMm?: number;
+}
+
+export const OPENING_TYPES: { value: OpeningType; labelAr: string; labelEn: string }[] = [
+  { value: "door", labelAr: "باب", labelEn: "Door" },
+  { value: "window", labelAr: "نافذة", labelEn: "Window" },
+  { value: "open_entrance", labelAr: "مدخل مفتوح", labelEn: "Open Entrance" },
+];
+
+export const WALL_DIRECTIONS: { value: WallDirection; labelAr: string; labelEn: string }[] = [
+  { value: "north", labelAr: "شمال", labelEn: "North" },
+  { value: "south", labelAr: "جنوب", labelEn: "South" },
+  { value: "east", labelAr: "شرق", labelEn: "East" },
+  { value: "west", labelAr: "غرب", labelEn: "West" },
+];
+
+export function getDefaultRoomOpening(): RoomOpening {
+  return {
+    type: "door",
+    wall: "north",
+    widthMm: 900,
+    heightMm: 2100,
+    distanceFromCornerMm: 0,
+  };
+}
 
 export function formatMm(mm: number): string {
   if (mm >= 10) {

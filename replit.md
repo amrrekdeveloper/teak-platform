@@ -43,3 +43,10 @@ The application follows a modern full-stack architecture.
 -   **Frontend State/Queries:** TanStack React Query v5.
 -   **2D Sketching:** Konva.js.
 -   **3D Viewer:** Three.js.
+
+## Recent Features
+-   **User Profile System:** Users table has `profileImage` column (base64 TEXT). Dashboard header includes a clickable avatar that opens a professional profile popover (name, role, email, phone, username). "Edit Profile" dialog allows profile image upload and password change via `PATCH /api/users/profile/me`.
+-   **Customer Portal Profile:** Mobile-optimized bottom sheet profile view with customer info and logout.
+-   **Design Studio Mobile:** Fully responsive layout with horizontally scrollable tabs, stacking grids, responsive canvas heights, and `xs: 480px` Tailwind breakpoint.
+-   **Building Status:** Product specs include `buildingStatus` ("ready" / "under_construction") with conditional `constructionPhase` selector (7 phases from construction to finishing).
+-   **Room Openings:** Optional room openings (doors, windows, open entrances) in product specs with wall position, dimensions, and sill height for windows. Collapsible editor UI.

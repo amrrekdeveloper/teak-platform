@@ -354,6 +354,44 @@ export async function registerRoutes(
     }
   });
 
+  app.patch("/api/users/profile/me", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const { profileImage, currentPassword, newPassword } = req.body;
+      const updateData: any = {};
+
+      if (profileImage !== undefined) {
+        updateData.profileImage = profileImage;
+      }
+
+      if (newPassword) {
+        if (!currentPassword) {
+          return res.status(400).json({ message: "كلمة المرور الحالية مطلوبة" });
+        }
+        const user = await storage.getUser(userId);
+        if (!user) return res.status(404).json({ message: "المستخدم غير موجود" });
+
+        const { comparePasswords, hashPassword } = await import("./auth");
+        const valid = await comparePasswords(currentPassword, user.password);
+        if (!valid) {
+          return res.status(400).json({ message: "كلمة المرور الحالية غير صحيحة" });
+        }
+        updateData.password = await hashPassword(newPassword);
+      }
+
+      if (Object.keys(updateData).length === 0) {
+        return res.status(400).json({ message: "لا توجد بيانات للتحديث" });
+      }
+
+      const updated = await storage.updateUser(userId, updateData);
+      if (!updated) return res.status(404).json({ message: "المستخدم غير موجود" });
+      const { password, ...safeUser } = updated;
+      res.json(safeUser);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
   app.get("/api/customers", requireAuth, async (_req, res) => {
     try {
       const list = await storage.getCustomers();

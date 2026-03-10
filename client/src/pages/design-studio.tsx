@@ -39,6 +39,8 @@ import {
   X,
   CheckCircle2,
   Calculator,
+  DoorOpen,
+  ChevronDown,
 } from "lucide-react";
 import type { DesignAssignment } from "@shared/schema";
 import {
@@ -47,6 +49,8 @@ import {
   type CabinetType,
   type WardrobeType,
   type DoorPattern,
+  type BuildingStatus,
+  type ConstructionPhase,
   type KitchenUnitSpec,
   type WardrobeUnitSpec,
   type DoorSpec,
@@ -57,13 +61,21 @@ import {
   DOOR_STANDARD_WIDTHS,
   DOOR_STANDARDS,
   DOOR_PATTERNS,
+  CONSTRUCTION_PHASES,
+  OPENING_TYPES,
+  WALL_DIRECTIONS,
+  type RoomOpening,
+  type OpeningType,
+  type WallDirection,
   getDefaultKitchenUnit,
   getDefaultWardrobeUnit,
   getDefaultDoorSpec,
   getDefaultDecorationSpec,
+  getDefaultRoomOpening,
   calculateManufacturingDimensions,
   formatMm,
 } from "@/lib/product-specs";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 const SketchCanvas2D = lazy(() => import("@/components/sketch-canvas-2d"));
 const Viewer3D = lazy(() => import("@/components/viewer-3d"));
@@ -74,11 +86,14 @@ interface ProductSpecsState {
   roomWidth: number;
   roomLength: number;
   roomHeight: number;
+  buildingStatus: BuildingStatus;
+  constructionPhase: ConstructionPhase;
   kitchenUnits: KitchenUnitSpec[];
   wardrobeSpec: WardrobeUnitSpec;
   doorSpec: DoorSpec;
   decorationSpec: DecorationSpec;
   countertopMaterial: string;
+  roomOpenings: RoomOpening[];
 }
 
 function getAllMfgDimensions(specs: ProductSpecsState): any[] {
@@ -131,11 +146,14 @@ function getInitialSpecs(): ProductSpecsState {
     roomWidth: 3000,
     roomLength: 4000,
     roomHeight: 2700,
+    buildingStatus: "ready",
+    constructionPhase: "construction",
     kitchenUnits: [getDefaultKitchenUnit("base")],
     wardrobeSpec: getDefaultWardrobeUnit("hinged"),
     doorSpec: getDefaultDoorSpec(),
     decorationSpec: getDefaultDecorationSpec(),
     countertopMaterial: "granite",
+    roomOpenings: [],
   };
 }
 
@@ -310,31 +328,31 @@ export default function DesignStudioPage() {
   return (
     <div className="min-h-screen bg-background" data-testid="design-studio-page">
       <div className="border-b bg-card sticky top-0 z-20">
-        <div className="flex items-center justify-between px-4 py-3 max-w-[1600px] mx-auto">
-          <div className="flex items-center gap-3">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 px-3 sm:px-4 py-2 sm:py-3 max-w-[1600px] mx-auto">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <Button
               variant="ghost"
-              size="sm"
+              size="icon"
               onClick={() => window.location.href = "/dashboard/order-center"}
               data-testid="button-back-to-orders"
             >
               <BackArrow className="w-4 h-4" />
             </Button>
-            <div>
-              <h1 className="text-lg font-bold flex items-center gap-2">
-                <Pencil className="w-5 h-5 text-primary" />
-                {t("استوديو التصميم", "Design Studio")}
+            <div className="min-w-0">
+              <h1 className="text-sm sm:text-lg font-bold flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                <Pencil className="w-4 h-4 sm:w-5 sm:h-5 text-primary shrink-0" />
+                <span className="truncate">{t("استوديو التصميم", "Design Studio")}</span>
                 <Badge variant="outline" className="text-xs">#{orderId}</Badge>
               </h1>
               {customer && (
-                <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
+                <div className="flex items-center gap-2 sm:gap-3 text-xs text-muted-foreground mt-0.5 flex-wrap">
                   <span className="flex items-center gap-1"><User className="w-3 h-3" />{customer.fullName}</span>
                   {customer.phone && <span className="flex items-center gap-1" dir="ltr"><Phone className="w-3 h-3" />{customer.phone}</span>}
                 </div>
               )}
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
             {designAssignment?.status && (
               <Badge variant={designAssignment.status === "completed" ? "default" : "secondary"} data-testid="badge-da-status">
                 {designAssignment.status === "pending" ? t("معلق", "Pending") :
@@ -351,26 +369,28 @@ export default function DesignStudioPage() {
         </div>
       </div>
 
-      <div className="max-w-[1600px] mx-auto p-4">
+      <div className="max-w-[1600px] mx-auto p-2 sm:p-4">
         <Tabs value={activeTab} onValueChange={setActiveTab} dir={isRTL ? "rtl" : "ltr"}>
-          <TabsList className="grid grid-cols-4 w-full max-w-xl mb-4" data-testid="tabs-design-studio">
-            <TabsTrigger value="product" className="gap-1.5" data-testid="tab-product">
-              <Ruler className="w-3.5 h-3.5" />
-              {t("تفاصيل المنتج", "Product Details")}
-            </TabsTrigger>
-            <TabsTrigger value="sketch" className="gap-1.5" data-testid="tab-sketch">
-              <Pencil className="w-3.5 h-3.5" />
-              {t("الكروكي", "Sketch")}
-            </TabsTrigger>
-            <TabsTrigger value="3d" className="gap-1.5" data-testid="tab-3d">
-              <Box className="w-3.5 h-3.5" />
-              {t("عرض 3D", "3D View")}
-            </TabsTrigger>
-            <TabsTrigger value="files" className="gap-1.5" data-testid="tab-files">
-              <FileUp className="w-3.5 h-3.5" />
-              {t("الملفات", "Files")}
-            </TabsTrigger>
-          </TabsList>
+          <div className="overflow-x-auto -mx-2 px-2 sm:-mx-4 sm:px-4 mb-4">
+            <TabsList className="inline-flex w-auto min-w-full sm:grid sm:grid-cols-4 sm:w-full sm:max-w-xl" data-testid="tabs-design-studio">
+              <TabsTrigger value="product" className="gap-1 sm:gap-1.5 text-xs sm:text-sm whitespace-nowrap" data-testid="tab-product">
+                <Ruler className="w-3.5 h-3.5 shrink-0" />
+                {t("تفاصيل المنتج", "Product Details")}
+              </TabsTrigger>
+              <TabsTrigger value="sketch" className="gap-1 sm:gap-1.5 text-xs sm:text-sm whitespace-nowrap" data-testid="tab-sketch">
+                <Pencil className="w-3.5 h-3.5 shrink-0" />
+                {t("الكروكي", "Sketch")}
+              </TabsTrigger>
+              <TabsTrigger value="3d" className="gap-1 sm:gap-1.5 text-xs sm:text-sm whitespace-nowrap" data-testid="tab-3d">
+                <Box className="w-3.5 h-3.5 shrink-0" />
+                {t("عرض 3D", "3D View")}
+              </TabsTrigger>
+              <TabsTrigger value="files" className="gap-1 sm:gap-1.5 text-xs sm:text-sm whitespace-nowrap" data-testid="tab-files">
+                <FileUp className="w-3.5 h-3.5 shrink-0" />
+                {t("الملفات", "Files")}
+              </TabsTrigger>
+            </TabsList>
+          </div>
 
           <TabsContent value="product">
             <ProductDetailsTab
@@ -395,8 +415,8 @@ export default function DesignStudioPage() {
                   {t("الكروكي / الرسم ثنائي الأبعاد", "2D Sketch / Croquis")}
                 </CardTitle>
               </CardHeader>
-              <CardContent className="p-2">
-                <Suspense fallback={<div className="flex items-center justify-center h-[500px]"><Loader2 className="w-6 h-6 animate-spin" /></div>}>
+              <CardContent className="p-1 sm:p-2">
+                <Suspense fallback={<div className="flex items-center justify-center h-[300px] sm:h-[500px]"><Loader2 className="w-6 h-6 animate-spin" /></div>}>
                   <SketchCanvas2D
                     initialData={designAssignment?.sketchData || undefined}
                     onSave={handleSketchSave}
@@ -415,12 +435,12 @@ export default function DesignStudioPage() {
                   {t("العرض ثلاثي الأبعاد", "3D Preview")}
                 </CardTitle>
               </CardHeader>
-              <CardContent className="p-2">
-                <Suspense fallback={<div className="flex items-center justify-center h-[500px]"><Loader2 className="w-6 h-6 animate-spin" /></div>}>
+              <CardContent className="p-1 sm:p-2">
+                <Suspense fallback={<div className="flex items-center justify-center h-[300px] sm:h-[500px]"><Loader2 className="w-6 h-6 animate-spin" /></div>}>
                   <Viewer3D
                     specs={viewer3dSpecs}
                     onScreenshot={handle3DScreenshot}
-                    className="h-[600px] w-full rounded-lg overflow-hidden border"
+                    className="h-[350px] sm:h-[500px] lg:h-[600px] w-full rounded-lg overflow-hidden border"
                   />
                 </Suspense>
               </CardContent>
@@ -469,7 +489,7 @@ function ProductDetailsTab({ specs, setSpecs, notes, setNotes, mfgDimensions, up
             <CardTitle className="text-base">{t("نوع المنتج والخامة", "Product Type & Material")}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <Label className="text-xs mb-1.5 block">{t("نوع المنتج", "Product Type")}</Label>
                 <Select value={specs.productType} onValueChange={handleProductTypeChange}>
@@ -502,7 +522,7 @@ function ProductDetailsTab({ specs, setSpecs, notes, setNotes, mfgDimensions, up
 
             <div>
               <Label className="text-xs font-medium mb-2 block">{t("أبعاد الغرفة (مم)", "Room Dimensions (mm)")}</Label>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 xs:grid-cols-3 gap-3">
                 <div>
                   <Label className="text-[10px] text-muted-foreground">{t("العرض", "Width")}</Label>
                   <Input
@@ -532,8 +552,58 @@ function ProductDetailsTab({ specs, setSpecs, notes, setNotes, mfgDimensions, up
                 </div>
               </div>
             </div>
+
+            <Separator />
+
+            <div>
+              <Label className="text-xs font-medium mb-2 block">{t("حالة المبنى", "Building Status")}</Label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-[10px] text-muted-foreground">{t("الحالة", "Status")}</Label>
+                  <Select
+                    value={specs.buildingStatus}
+                    onValueChange={(v: string) => setSpecs((p: ProductSpecsState) => ({ ...p, buildingStatus: v as BuildingStatus }))}
+                  >
+                    <SelectTrigger data-testid="select-building-status">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ready">{t("جاهز", "Ready")}</SelectItem>
+                      <SelectItem value="under_construction">{t("قيد الإنشاء", "Under Construction")}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {specs.buildingStatus === "under_construction" && (
+                  <div>
+                    <Label className="text-[10px] text-muted-foreground">{t("مرحلة البناء", "Construction Phase")}</Label>
+                    <Select
+                      value={specs.constructionPhase}
+                      onValueChange={(v: string) => setSpecs((p: ProductSpecsState) => ({ ...p, constructionPhase: v as ConstructionPhase }))}
+                    >
+                      <SelectTrigger data-testid="select-construction-phase">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {CONSTRUCTION_PHASES.map(phase => (
+                          <SelectItem key={phase.value} value={phase.value}>
+                            {lang === "ar" ? phase.labelAr : phase.labelEn}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </div>
+            </div>
           </CardContent>
         </Card>
+
+        <RoomOpeningsEditor
+          openings={specs.roomOpenings}
+          onChange={(openings: RoomOpening[]) => setSpecs((p: ProductSpecsState) => ({ ...p, roomOpenings: openings }))}
+          t={t}
+          lang={lang}
+        />
 
         {specs.productType === "kitchen" && (
           <KitchenUnitsEditor
@@ -579,7 +649,7 @@ function ProductDetailsTab({ specs, setSpecs, notes, setNotes, mfgDimensions, up
       </div>
 
       <div className="space-y-4">
-        <Card className="sticky top-20">
+        <Card className="lg:sticky lg:top-20">
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <Calculator className="w-4 h-4 text-primary" />
@@ -624,6 +694,164 @@ function ProductDetailsTab({ specs, setSpecs, notes, setNotes, mfgDimensions, up
   );
 }
 
+function RoomOpeningsEditor({ openings, onChange, t, lang }: { openings: RoomOpening[]; onChange: (o: RoomOpening[]) => void; t: (ar: string, en: string) => string; lang: string }) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  const addOpening = () => {
+    onChange([...openings, getDefaultRoomOpening()]);
+    setIsOpen(true);
+  };
+
+  const removeOpening = (index: number) => {
+    onChange(openings.filter((_, i) => i !== index));
+  };
+
+  const updateOpening = (index: number, field: keyof RoomOpening, value: any) => {
+    const updated = [...openings];
+    (updated[index] as any)[field] = value;
+    if (field === "type" && value !== "window") {
+      delete (updated[index] as any).sillHeightMm;
+    }
+    onChange(updated);
+  };
+
+  return (
+    <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+      <Card>
+        <CollapsibleTrigger asChild>
+          <CardHeader className="pb-3 cursor-pointer hover-elevate">
+            <CardTitle className="text-base flex items-center justify-between gap-2">
+              <span className="flex items-center gap-2">
+                <DoorOpen className="w-4 h-4 text-primary" />
+                {t("فتحات الغرفة (اختياري)", "Room Openings (Optional)")}
+                {openings.length > 0 && (
+                  <Badge variant="secondary" className="text-xs">{openings.length}</Badge>
+                )}
+              </span>
+              <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${isOpen ? "rotate-180" : ""}`} />
+            </CardTitle>
+          </CardHeader>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <CardContent className="space-y-3 pt-0">
+            {openings.map((opening, idx) => (
+              <div key={idx} className="border rounded-md p-3 space-y-3" data-testid={`room-opening-${idx}`}>
+                <div className="flex items-center justify-between gap-2">
+                  <Badge variant="outline" className="text-xs">
+                    {OPENING_TYPES.find(ot => ot.value === opening.type)?.[lang === "ar" ? "labelAr" : "labelEn"]} #{idx + 1}
+                  </Badge>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => removeOpening(idx)}
+                    data-testid={`button-remove-opening-${idx}`}
+                  >
+                    <Trash2 className="w-4 h-4 text-destructive" />
+                  </Button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-[10px] text-muted-foreground">{t("النوع", "Type")}</Label>
+                    <Select
+                      value={opening.type}
+                      onValueChange={(v) => updateOpening(idx, "type", v as OpeningType)}
+                    >
+                      <SelectTrigger data-testid={`select-opening-type-${idx}`}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {OPENING_TYPES.map(ot => (
+                          <SelectItem key={ot.value} value={ot.value}>
+                            {lang === "ar" ? ot.labelAr : ot.labelEn}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-[10px] text-muted-foreground">{t("الجدار", "Wall")}</Label>
+                    <Select
+                      value={opening.wall}
+                      onValueChange={(v) => updateOpening(idx, "wall", v as WallDirection)}
+                    >
+                      <SelectTrigger data-testid={`select-opening-wall-${idx}`}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {WALL_DIRECTIONS.map(wd => (
+                          <SelectItem key={wd.value} value={wd.value}>
+                            {lang === "ar" ? wd.labelAr : wd.labelEn}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 xs:grid-cols-3 gap-3">
+                  <div>
+                    <Label className="text-[10px] text-muted-foreground">{t("العرض (مم)", "Width (mm)")}</Label>
+                    <Input
+                      type="number"
+                      value={opening.widthMm}
+                      onChange={e => updateOpening(idx, "widthMm", parseInt(e.target.value) || 0)}
+                      data-testid={`input-opening-width-${idx}`}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-[10px] text-muted-foreground">{t("الارتفاع (مم)", "Height (mm)")}</Label>
+                    <Input
+                      type="number"
+                      value={opening.heightMm}
+                      onChange={e => updateOpening(idx, "heightMm", parseInt(e.target.value) || 0)}
+                      data-testid={`input-opening-height-${idx}`}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-[10px] text-muted-foreground">{t("المسافة من الزاوية (مم)", "Distance from Corner (mm)")}</Label>
+                    <Input
+                      type="number"
+                      value={opening.distanceFromCornerMm}
+                      onChange={e => updateOpening(idx, "distanceFromCornerMm", parseInt(e.target.value) || 0)}
+                      data-testid={`input-opening-distance-${idx}`}
+                    />
+                  </div>
+                </div>
+
+                {opening.type === "window" && (
+                  <div className="grid grid-cols-1 xs:grid-cols-3 gap-3">
+                    <div>
+                      <Label className="text-[10px] text-muted-foreground">{t("ارتفاع حافة النافذة (مم)", "Sill Height (mm)")}</Label>
+                      <Input
+                        type="number"
+                        value={opening.sillHeightMm ?? 900}
+                        onChange={e => updateOpening(idx, "sillHeightMm", parseInt(e.target.value) || 0)}
+                        data-testid={`input-opening-sill-${idx}`}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={addOpening}
+              className="w-full"
+              data-testid="button-add-opening"
+            >
+              <Plus className="w-4 h-4 me-1.5" />
+              {t("إضافة فتحة", "Add Opening")}
+            </Button>
+          </CardContent>
+        </CollapsibleContent>
+      </Card>
+    </Collapsible>
+  );
+}
+
 function KitchenUnitsEditor({ units, material, updateUnit, addUnit, removeUnit, t, lang }: any) {
   const cabinetLabels: Record<CabinetType, { ar: string; en: string }> = {
     base: { ar: "وحدة أرضية", en: "Base Cabinet" },
@@ -634,9 +862,9 @@ function KitchenUnitsEditor({ units, material, updateUnit, addUnit, removeUnit, 
   return (
     <Card>
       <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
           <CardTitle className="text-base">{t("وحدات المطبخ", "Kitchen Units")}</CardTitle>
-          <div className="flex gap-1">
+          <div className="flex gap-1 flex-wrap">
             <Button size="sm" variant="outline" onClick={() => addUnit("base")} data-testid="button-add-base">
               <Plus className="w-3 h-3 me-1" />{t("أرضية", "Base")}
             </Button>
@@ -661,7 +889,7 @@ function KitchenUnitsEditor({ units, material, updateUnit, addUnit, removeUnit, 
                 <Trash2 className="w-3.5 h-3.5" />
               </Button>
             </div>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 xs:grid-cols-3 gap-2">
               <div>
                 <Label className="text-[10px] text-muted-foreground">{t("العرض (مم)", "Width (mm)")}</Label>
                 <Input type="number" value={unit.designWidth} onChange={e => updateUnit(idx, "designWidth", parseInt(e.target.value) || 0)} className="h-8 text-xs" data-testid={`input-unit-width-${idx}`} />
@@ -716,7 +944,7 @@ function WardrobeEditor({ spec, material, onChange, t, lang }: any) {
             </SelectContent>
           </Select>
         </div>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 xs:grid-cols-3 gap-3">
           <div>
             <Label className="text-[10px] text-muted-foreground">{t("العرض (مم)", "Width (mm)")}</Label>
             <Input type="number" value={spec.designWidth} onChange={e => update("designWidth", parseInt(e.target.value) || 0)} data-testid="input-wardrobe-width" />
@@ -730,7 +958,7 @@ function WardrobeEditor({ spec, material, onChange, t, lang }: any) {
             <Input type="number" value={spec.designDepth} onChange={e => update("designDepth", parseInt(e.target.value) || 0)} data-testid="input-wardrobe-depth" />
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <Label className="text-[10px] text-muted-foreground">{t("عدد الأبواب", "Doors")}</Label>
             <Input type="number" value={spec.doorCount} onChange={e => update("doorCount", parseInt(e.target.value) || 0)} data-testid="input-wardrobe-doors" />
@@ -740,7 +968,7 @@ function WardrobeEditor({ spec, material, onChange, t, lang }: any) {
             <Input type="number" value={spec.shelfCount} onChange={e => update("shelfCount", parseInt(e.target.value) || 0)} data-testid="input-wardrobe-shelves" />
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="flex items-center gap-2">
             <input type="checkbox" checked={spec.hasHangingRail} onChange={e => update("hasHangingRail", e.target.checked)} className="rounded" data-testid="check-wardrobe-rail" />
             <Label className="text-xs">{t("علاقة ملابس", "Hanging Rail")}</Label>
@@ -764,7 +992,7 @@ function DoorEditor({ spec, material, onChange, t, lang }: any) {
         <CardTitle className="text-base">{t("الأبواب", "Door Specifications")}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <Label className="text-[10px] text-muted-foreground">{t("العرض (مم)", "Width (mm)")}</Label>
             <Input type="number" value={spec.designWidth} onChange={e => update("designWidth", parseInt(e.target.value) || 0)} data-testid="input-door-width" />
@@ -774,7 +1002,7 @@ function DoorEditor({ spec, material, onChange, t, lang }: any) {
             <Input type="number" value={spec.designHeight} onChange={e => update("designHeight", parseInt(e.target.value) || 0)} data-testid="input-door-height" />
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <Label className="text-[10px] text-muted-foreground">{t("عرض الإطار (مم)", "Frame Width (mm)")}</Label>
             <Input type="number" value={spec.frameWidth} onChange={e => update("frameWidth", parseInt(e.target.value) || 0)} data-testid="input-door-frame-width" />
@@ -858,7 +1086,7 @@ function DecorationEditor({ spec, material, onChange, t, lang }: any) {
         <CardTitle className="text-base">{t("الديكور", "Decoration Specifications")}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 xs:grid-cols-3 gap-3">
           <div>
             <Label className="text-[10px] text-muted-foreground">{t("العرض (مم)", "Width (mm)")}</Label>
             <Input type="number" value={spec.designWidth} onChange={e => update("designWidth", parseInt(e.target.value) || 0)} data-testid="input-deco-width" />
@@ -972,7 +1200,7 @@ function FilesTab({ uploadedFiles, onUpload, onRemove, t }: any) {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="border-2 border-dashed rounded-lg p-8 text-center hover:border-primary/50 transition-colors" data-testid="file-drop-zone">
+        <div className="border-2 border-dashed rounded-lg p-4 sm:p-8 text-center hover:border-primary/50 transition-colors" data-testid="file-drop-zone">
           <FileUp className="w-10 h-10 mx-auto text-muted-foreground mb-3" />
           <p className="text-sm text-muted-foreground mb-3">
             {t("اسحب الملفات هنا أو اضغط لاختيار الملفات", "Drag files here or click to browse")}
@@ -996,7 +1224,7 @@ function FilesTab({ uploadedFiles, onUpload, onRemove, t }: any) {
         </div>
 
         {uploadedFiles.length > 0 && (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
             {uploadedFiles.map((file: string, idx: number) => (
               <div key={idx} className="relative group border rounded-lg overflow-hidden" data-testid={`file-item-${idx}`}>
                 {file.startsWith("data:image") ? (

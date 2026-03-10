@@ -12,7 +12,13 @@ import {
   Clock, Eye, Loader2,
   Calendar, Sun, Moon, Share2, Printer,
   AlertCircle, X, ClipboardList, ChevronDown, ChevronUp,
+  User, MapPin, Phone, Package,
 } from "lucide-react";
+import {
+  Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
+} from "@/components/ui/sheet";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Separator } from "@/components/ui/separator";
 import teakLogo from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
 
 function ZatcaQRCode({ data, size = 120 }: { data: string; size?: number }) {
@@ -43,9 +49,10 @@ function ZatcaQRCode({ data, size = 120 }: { data: string; size?: number }) {
 
 type TabKey = "orders" | "quotes" | "invoices" | "warranty" | "maintenance";
 
-function PortalHeader({ customerName }: { customerName: string }) {
-  const { t, lang, setLang } = useLanguage();
+function PortalHeader({ customerName, customer, orderCount }: { customerName: string; customer?: any; orderCount?: number }) {
+  const { t, lang, toggleLang } = useLanguage();
   const { theme, toggleTheme } = useTheme();
+  const [profileOpen, setProfileOpen] = useState(false);
 
   const handleLogout = () => {
     localStorage.removeItem("portalPhone");
@@ -53,29 +60,96 @@ function PortalHeader({ customerName }: { customerName: string }) {
     window.location.href = "/portal/login";
   };
 
+  const initials = customerName
+    ? customerName.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase()
+    : "?";
+
   return (
-    <header className="sticky top-0 z-50 bg-background/95 backdrop-blur border-b">
-      <div className="max-w-2xl md:max-w-4xl lg:max-w-5xl mx-auto px-4 py-2.5 flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <img src={teakLogo} alt="Teak" className="w-8 h-8 object-contain logo-auto" data-testid="img-portal-header-logo" />
-          <div className="min-w-0">
-            <p className="font-semibold text-sm truncate" data-testid="text-header-name">{customerName}</p>
-            <p className="text-[11px] text-muted-foreground">{t("بوابة العملاء", "Customer Portal")}</p>
+    <>
+      <header className="sticky top-0 z-50 bg-background/95 backdrop-blur border-b">
+        <div className="max-w-2xl md:max-w-4xl lg:max-w-5xl mx-auto px-4 py-2.5 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5">
+            <img src={teakLogo} alt="Teak" className="w-8 h-8 object-contain logo-auto" data-testid="img-portal-header-logo" />
+            <div className="min-w-0">
+              <p className="font-semibold text-sm truncate" data-testid="text-header-name">{customerName}</p>
+              <p className="text-[11px] text-muted-foreground">{t("بوابة العملاء", "Customer Portal")}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-1">
+            <Button variant="ghost" size="sm" className="text-xs" onClick={toggleLang} data-testid="button-lang-toggle">
+              {lang === "ar" ? "EN" : "عربي"}
+            </Button>
+            <Button variant="ghost" size="icon" onClick={toggleTheme} data-testid="button-theme-toggle">
+              {theme === "dark" ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
+            </Button>
+            <button
+              onClick={() => setProfileOpen(true)}
+              className="rounded-full"
+              data-testid="button-profile-avatar"
+            >
+              <Avatar className="w-8 h-8">
+                <AvatarFallback className="text-xs bg-primary/10 text-primary font-semibold">
+                  {initials}
+                </AvatarFallback>
+              </Avatar>
+            </button>
           </div>
         </div>
-        <div className="flex items-center gap-1">
-          <Button variant="ghost" size="sm" className="h-8 px-2 text-xs" onClick={() => setLang(lang === "ar" ? "en" : "ar")} data-testid="button-lang-toggle">
-            {lang === "ar" ? "EN" : "عربي"}
-          </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={toggleTheme} data-testid="button-theme-toggle">
-            {theme === "dark" ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
-          </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" onClick={handleLogout} data-testid="button-logout">
-            <LogOut className="w-3.5 h-3.5" />
-          </Button>
-        </div>
-      </div>
-    </header>
+      </header>
+
+      <Sheet open={profileOpen} onOpenChange={setProfileOpen}>
+        <SheetContent side="bottom" className="rounded-t-2xl max-h-[70dvh]" data-testid="sheet-customer-profile">
+          <SheetHeader className="items-center pb-2">
+            <Avatar className="w-16 h-16 mb-1">
+              <AvatarFallback className="text-xl bg-primary/10 text-primary font-bold">
+                {initials}
+              </AvatarFallback>
+            </Avatar>
+            <SheetTitle className="text-center" data-testid="text-profile-name">
+              {customerName}
+            </SheetTitle>
+            <SheetDescription className="text-center">
+              {t("بوابة العملاء", "Customer Portal")}
+            </SheetDescription>
+          </SheetHeader>
+
+          <div className="space-y-3 mt-2">
+            {customer?.phone && (
+              <div className="flex items-center gap-3 text-sm" data-testid="text-profile-phone">
+                <Phone className="w-4 h-4 text-muted-foreground shrink-0" />
+                <span dir="ltr">{customer.phone}</span>
+              </div>
+            )}
+            {customer?.city && (
+              <div className="flex items-center gap-3 text-sm" data-testid="text-profile-city">
+                <MapPin className="w-4 h-4 text-muted-foreground shrink-0" />
+                <span>{customer.city}</span>
+              </div>
+            )}
+
+            <Separator />
+
+            <div className="flex items-center gap-3 text-sm" data-testid="text-profile-orders">
+              <Package className="w-4 h-4 text-muted-foreground shrink-0" />
+              <span>{t("عدد الطلبات", "Total Orders")}</span>
+              <span className="ms-auto font-semibold">{orderCount ?? 0}</span>
+            </div>
+
+            <Separator />
+
+            <Button
+              variant="outline"
+              className="w-full text-destructive hover:text-destructive"
+              onClick={handleLogout}
+              data-testid="button-profile-logout"
+            >
+              <LogOut className="w-4 h-4 me-2" />
+              {t("تسجيل الخروج", "Logout")}
+            </Button>
+          </div>
+        </SheetContent>
+      </Sheet>
+    </>
   );
 }
 
@@ -1021,7 +1095,11 @@ export default function CustomerPortal() {
 
   return (
     <div className="min-h-[100dvh] bg-background" dir={lang === "ar" ? "rtl" : "ltr"}>
-      <PortalHeader customerName={customerName || data.customer?.fullName || ""} />
+      <PortalHeader
+        customerName={customerName || data.customer?.fullName || ""}
+        customer={data.customer}
+        orderCount={data.quotations?.length || 0}
+      />
 
       <TabBar active={activeTab} onChange={setActiveTab} counts={counts} />
 

@@ -1,13 +1,17 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { useLanguage } from "@/components/language-provider";
 import { useTheme } from "@/components/theme-provider";
 import { AppSidebar, MobileMenuButton } from "@/components/app-sidebar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Sun, Moon, LogOut, Bell, Loader2, Check, Info, AlertTriangle, Zap, CheckCircle2 } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Sun, Moon, LogOut, Bell, Loader2, Check, Info, AlertTriangle, Zap, CheckCircle2, Camera, Mail, Phone, Shield, Eye, EyeOff, User as UserIcon, KeyRound } from "lucide-react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import type { Notification } from "@shared/schema";
 import teakLogo from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
@@ -73,13 +77,209 @@ function getNotificationRoute(n: Notification): string | null {
   return null;
 }
 
+function UserAvatar({ user, size = "sm", onClick, className = "" }: { user: any; size?: "sm" | "lg"; onClick?: () => void; className?: string }) {
+  const dim = size === "lg" ? "w-16 h-16 text-xl" : "w-8 h-8 text-xs";
+  const initials = (user.fullNameAr || user.fullNameEn || "U").charAt(0);
+
+  if (user.profileImage) {
+    return (
+      <button onClick={onClick} className={`${dim} rounded-full overflow-hidden ring-2 ring-border hover:ring-primary transition-all shrink-0 ${className}`} data-testid="button-user-avatar">
+        <img src={user.profileImage} alt="" className="w-full h-full object-cover" />
+      </button>
+    );
+  }
+
+  return (
+    <button
+      onClick={onClick}
+      className={`${dim} rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center ring-2 ring-border hover:ring-primary transition-all shrink-0 ${className}`}
+      data-testid="button-user-avatar"
+    >
+      {initials}
+    </button>
+  );
+}
+
+function ProfileEditDialog({ user, open, onClose, t }: { user: any; open: boolean; onClose: () => void; t: (ar: string, en: string) => string }) {
+  const { toast } = useToast();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [profileImage, setProfileImage] = useState<string | undefined>(user.profileImage || undefined);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showCurrent, setShowCurrent] = useState(false);
+  const [showNew, setShowNew] = useState(false);
+
+  const mutation = useMutation({
+    mutationFn: (data: any) => apiRequest("PATCH", "/api/users/profile/me", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      toast({ title: t("تم التحديث", "Profile Updated"), description: t("تم حفظ التغييرات بنجاح", "Changes saved successfully") });
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      onClose();
+    },
+    onError: (err: any) => {
+      const msg = err?.message || t("حدث خطأ", "An error occurred");
+      toast({ title: t("خطأ", "Error"), description: msg, variant: "destructive" });
+    },
+  });
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      toast({ title: t("خطأ", "Error"), description: t("الحجم الأقصى 2 ميجابايت", "Max size is 2MB"), variant: "destructive" });
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => setProfileImage(reader.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  const handleSave = () => {
+    const data: any = {};
+    if (profileImage !== (user.profileImage || undefined)) {
+      data.profileImage = profileImage || null;
+    }
+    if (newPassword) {
+      if (newPassword.length < 6) {
+        toast({ title: t("خطأ", "Error"), description: t("كلمة المرور يجب أن تكون 6 أحرف على الأقل", "Password must be at least 6 characters"), variant: "destructive" });
+        return;
+      }
+      if (newPassword !== confirmPassword) {
+        toast({ title: t("خطأ", "Error"), description: t("كلمة المرور غير متطابقة", "Passwords don't match"), variant: "destructive" });
+        return;
+      }
+      if (!currentPassword) {
+        toast({ title: t("خطأ", "Error"), description: t("أدخل كلمة المرور الحالية", "Enter current password"), variant: "destructive" });
+        return;
+      }
+      data.currentPassword = currentPassword;
+      data.newPassword = newPassword;
+    }
+    if (Object.keys(data).length === 0) {
+      onClose();
+      return;
+    }
+    mutation.mutate(data);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={v => !v && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <UserIcon className="w-5 h-5 text-primary" />
+            {t("تعديل الملف الشخصي", "Edit Profile")}
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-5 pt-2">
+          <div className="flex flex-col items-center gap-3">
+            <div className="relative group">
+              {profileImage ? (
+                <div className="w-20 h-20 rounded-full overflow-hidden ring-4 ring-primary/20">
+                  <img src={profileImage} alt="" className="w-full h-full object-cover" />
+                </div>
+              ) : (
+                <div className="w-20 h-20 rounded-full bg-primary/10 text-primary font-bold text-2xl flex items-center justify-center ring-4 ring-primary/20">
+                  {(user.fullNameAr || "U").charAt(0)}
+                </div>
+              )}
+              <button
+                onClick={() => fileRef.current?.click()}
+                className="absolute inset-0 rounded-full bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                data-testid="button-change-avatar"
+              >
+                <Camera className="w-5 h-5 text-white" />
+              </button>
+              <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleImageChange} data-testid="input-avatar-file" />
+            </div>
+            <p className="text-sm font-medium">{t(user.fullNameAr, user.fullNameEn)}</p>
+          </div>
+
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 p-2.5 rounded-lg bg-muted/40">
+              <Shield className="w-4 h-4 text-muted-foreground shrink-0" />
+              <span className="text-sm text-muted-foreground">{t("اسم المستخدم", "Username")}: </span>
+              <span className="text-sm font-medium" dir="ltr">{user.username}</span>
+            </div>
+          </div>
+
+          <div className="space-y-3 border-t pt-4">
+            <p className="text-sm font-semibold flex items-center gap-2">
+              <KeyRound className="w-4 h-4 text-primary" />
+              {t("تغيير كلمة المرور", "Change Password")}
+            </p>
+            <div className="space-y-2.5">
+              <div>
+                <Label className="text-xs">{t("كلمة المرور الحالية", "Current Password")}</Label>
+                <div className="relative">
+                  <Input
+                    type={showCurrent ? "text" : "password"}
+                    value={currentPassword}
+                    onChange={e => setCurrentPassword(e.target.value)}
+                    className="pe-9"
+                    data-testid="input-current-password"
+                  />
+                  <button className="absolute top-1/2 -translate-y-1/2 end-2.5 text-muted-foreground" onClick={() => setShowCurrent(!showCurrent)}>
+                    {showCurrent ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <Label className="text-xs">{t("كلمة المرور الجديدة", "New Password")}</Label>
+                <div className="relative">
+                  <Input
+                    type={showNew ? "text" : "password"}
+                    value={newPassword}
+                    onChange={e => setNewPassword(e.target.value)}
+                    className="pe-9"
+                    data-testid="input-new-password"
+                  />
+                  <button className="absolute top-1/2 -translate-y-1/2 end-2.5 text-muted-foreground" onClick={() => setShowNew(!showNew)}>
+                    {showNew ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <Label className="text-xs">{t("تأكيد كلمة المرور", "Confirm Password")}</Label>
+                <Input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={e => setConfirmPassword(e.target.value)}
+                  data-testid="input-confirm-password"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex gap-2 pt-2">
+            <Button onClick={handleSave} disabled={mutation.isPending} className="flex-1" data-testid="button-save-profile">
+              {mutation.isPending ? <Loader2 className="w-4 h-4 animate-spin me-1.5" /> : <Check className="w-4 h-4 me-1.5" />}
+              {t("حفظ", "Save")}
+            </Button>
+            <Button variant="outline" onClick={onClose} className="flex-1" data-testid="button-cancel-profile">
+              {t("إلغاء", "Cancel")}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, isLoading, isAuthenticated, logout, isLoggingOut } = useAuth();
   const { lang, toggleLang, t, isRTL } = useLanguage();
   const { theme, toggleTheme } = useTheme();
+  const { toast } = useToast();
   const [notifOpen, setNotifOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [, setLocation] = useLocation();
-
 
   const { data: notifications = [] } = useQuery<Notification[]>({
     queryKey: ["/api/notifications"],
@@ -147,7 +347,63 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             </div>
           </div>
 
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1.5">
+            <div className="relative">
+              <UserAvatar user={user} onClick={() => setProfileOpen(!profileOpen)} />
+              {profileOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setProfileOpen(false)} />
+                  <div className="absolute top-full end-0 mt-2 w-72 bg-card border border-border rounded-xl shadow-xl z-50 overflow-hidden" data-testid="profile-popover">
+                    <div className="bg-primary/5 px-4 pt-5 pb-4 flex flex-col items-center gap-2 border-b border-border">
+                      <UserAvatar user={user} size="lg" onClick={() => { setProfileOpen(false); setEditOpen(true); }} />
+                      <div className="text-center">
+                        <p className="font-semibold text-sm">{t(user.fullNameAr, user.fullNameEn)}</p>
+                        <Badge variant="secondary" className="mt-1 text-[10px]">{t(roleLabel.ar, roleLabel.en)}</Badge>
+                      </div>
+                    </div>
+                    <div className="p-3 space-y-1.5">
+                      {user.email && (
+                        <div className="flex items-center gap-2.5 text-xs text-muted-foreground px-1">
+                          <Mail className="w-3.5 h-3.5 shrink-0" />
+                          <span dir="ltr">{user.email}</span>
+                        </div>
+                      )}
+                      {user.phone && (
+                        <div className="flex items-center gap-2.5 text-xs text-muted-foreground px-1">
+                          <Phone className="w-3.5 h-3.5 shrink-0" />
+                          <span dir="ltr">{user.phone}</span>
+                        </div>
+                      )}
+                      <div className="flex items-center gap-2.5 text-xs text-muted-foreground px-1">
+                        <Shield className="w-3.5 h-3.5 shrink-0" />
+                        <span dir="ltr">@{user.username}</span>
+                      </div>
+                    </div>
+                    <div className="border-t border-border p-2 space-y-1">
+                      <Button
+                        variant="ghost"
+                        className="w-full justify-start text-xs h-8 gap-2"
+                        onClick={() => { setProfileOpen(false); setEditOpen(true); }}
+                        data-testid="button-edit-profile"
+                      >
+                        <UserIcon className="w-3.5 h-3.5" />
+                        {t("تعديل الملف الشخصي", "Edit Profile")}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        className="w-full justify-start text-xs h-8 gap-2 text-destructive hover:text-destructive"
+                        onClick={async () => { setProfileOpen(false); await logout(); window.location.href = "/login"; }}
+                        disabled={isLoggingOut}
+                        data-testid="button-popover-logout"
+                      >
+                        {isLoggingOut ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <LogOut className="w-3.5 h-3.5" />}
+                        {t("تسجيل الخروج", "Sign Out")}
+                      </Button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
             <div className="relative">
               <Button
                 size="icon"
@@ -232,24 +488,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             >
               {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </Button>
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={async () => {
-                await logout();
-                window.location.href = "/login";
-              }}
-              disabled={isLoggingOut}
-              data-testid="button-logout"
-            >
-              {isLoggingOut ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <LogOut className="w-4 h-4" />
-              )}
-            </Button>
           </div>
         </header>
+
+        <ProfileEditDialog user={user} open={editOpen} onClose={() => setEditOpen(false)} t={t} />
 
         <main className="flex-1 p-4 md:p-6 overflow-y-auto">
           {children}
