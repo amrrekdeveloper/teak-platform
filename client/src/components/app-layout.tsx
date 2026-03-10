@@ -10,8 +10,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 import type { Notification } from "@shared/schema";
-import logoAr from "@assets/logo_teak1_1772689915503.png";
-import logoEn from "@assets/logo_teak2_1772689894105.png";
+import teakLogo from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
 
 const roleLabels: Record<string, { ar: string; en: string }> = {
   owner: { ar: "المالك", en: "Owner" },
@@ -81,7 +80,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [notifOpen, setNotifOpen] = useState(false);
   const [, setLocation] = useLocation();
 
-  const currentLogo = lang === "ar" ? logoAr : logoEn;
 
   const { data: notifications = [] } = useQuery<Notification[]>({
     queryKey: ["/api/notifications"],
@@ -131,9 +129,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <div className="flex items-center gap-3">
             <MobileMenuButton />
             <img
-              src={currentLogo}
+              src={teakLogo}
               alt="Teak"
-              className="w-7 h-7 object-contain md:hidden"
+              className="w-7 h-7 object-contain md:hidden logo-auto transition-all duration-300"
               data-testid="img-header-logo"
             />
             <div className="hidden sm:flex items-center gap-2">

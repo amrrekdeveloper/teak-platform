@@ -105,10 +105,12 @@ admin/owner (System Admin), k.asiri/owner, khaled/assistant, hadi/sales, mohnad/
 - Login race condition fixed: uses `setQueryData` instead of `invalidateQueries` to prevent white screen flash
 
 ## Logos
-- Arabic logo: `@assets/logo_teak1_1772689915503.png` (imported as `logoAr`) — displayed when lang=AR
-- English logo: `@assets/logo_teak2_1772689894105.png` (imported as `logoEn`) — displayed when lang=EN, also used as favicon and splash screen
-- White logo for hero/dark: `@assets/TEAK-LOGO_(1)_(1)_1772710617816.png` (imported as `teakLogoWhite`) — used on hero section and dark backgrounds in landing page
-- All pages use `const currentLogo = lang === "ar" ? logoAr : logoEn;` for language-aware switching
+- Single unified logo: `@assets/TEAK-LOGO_(1)_(1)_1772710617816.png` (imported as `teakLogo` everywhere)
+- White PNG — displayed as-is on dark/red backgrounds (splash screen, hero, dark mode)
+- Red variant via CSS filter class `.logo-red` — on light backgrounds (invoices, print)
+- Auto variant via CSS class `.logo-auto` — red in light mode, white in dark mode (`.dark .logo-auto` removes filter)
+- Landing page navbar uses dynamic `logoClass`: white on hero (no filter), red after scroll (`.logo-red`), always white in dark mode
+- OLD LOGOS REMOVED: `logo_teak1_1772689915503.png` and `logo_teak2_1772689894105.png` — never use these
 
 ## Landing Page Content (from teak2030.net)
 - All images stored in `client/public/images/` (products/, gallery/, projects/ subdirs, ceo_photo.jpg)

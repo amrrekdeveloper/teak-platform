@@ -14,13 +14,11 @@ import {
   Clock, Upload, Download, Phone, Eye, ChevronDown, ChevronUp, Loader2,
   Camera, Calendar, Package, User, CircleDot, Sun, Moon,
 } from "lucide-react";
-import logoAr from "@assets/logo_teak1_1772689915503.png";
-import logoEn from "@assets/logo_teak2_1772689894105.png";
+import teakLogo from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
 
 function PortalHeader({ customerName }: { customerName: string }) {
   const { t, lang, setLang } = useLanguage();
   const { theme, toggleTheme } = useTheme();
-  const currentLogo = lang === "ar" ? logoAr : logoEn;
 
   const handleLogout = () => {
     sessionStorage.removeItem("portalPhone");
@@ -32,7 +30,7 @@ function PortalHeader({ customerName }: { customerName: string }) {
     <header className="sticky top-0 z-50 bg-background/95 backdrop-blur border-b px-4 py-3">
       <div className="max-w-4xl mx-auto flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <img src={currentLogo} alt="Teak" className="w-10 h-10 object-contain" data-testid="img-portal-header-logo" />
+          <img src={teakLogo} alt="Teak" className="w-10 h-10 object-contain logo-auto transition-all duration-300" data-testid="img-portal-header-logo" />
           <div>
             <p className="font-semibold text-sm" data-testid="text-header-name">{customerName}</p>
             <p className="text-xs text-muted-foreground">{t("بوابة العملاء", "Customer Portal")}</p>

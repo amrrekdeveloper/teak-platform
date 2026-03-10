@@ -38,7 +38,7 @@ import CustomerPortalLogin from "@/pages/customer-portal-login";
 import CustomerPortal from "@/pages/customer-portal";
 import AppLayout from "@/components/app-layout";
 import NotFound from "@/pages/not-found";
-import logoEn from "@assets/logo_teak2_1772689894105.png";
+import teakLogo from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
 
 function SplashScreen({ onFinish }: { onFinish: () => void }) {
   const [progress, setProgress] = useState(0);
@@ -83,12 +83,12 @@ function SplashScreen({ onFinish }: { onFinish: () => void }) {
       </div>
 
       <motion.img
-        src={logoEn}
+        src={teakLogo}
         alt="Teak"
-        className="w-32 h-32 sm:w-40 sm:h-40 object-contain relative z-10"
-        initial={{ scale: 0.3, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
+        className="w-36 h-36 sm:w-44 sm:h-44 object-contain relative z-10 drop-shadow-2xl"
+        initial={{ scale: 0.5, opacity: 0, filter: "blur(10px)" }}
+        animate={{ scale: 1, opacity: 1, filter: "blur(0px)" }}
+        transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] }}
         data-testid="img-splash-logo"
       />
 

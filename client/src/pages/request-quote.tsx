@@ -17,13 +17,11 @@ import {
 import { Sun, Moon, Loader2, CheckCircle2, ArrowLeft, ArrowRight } from "lucide-react";
 import { Link } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
-import logoAr from "@assets/logo_teak1_1772689915503.png";
-import logoEn from "@assets/logo_teak2_1772689894105.png";
+import teakLogo from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
 
 export default function RequestQuotePage() {
   const { lang, toggleLang, t, isRTL } = useLanguage();
   const { theme, toggleTheme } = useTheme();
-  const currentLogo = lang === "ar" ? logoAr : logoEn;
   const [submitted, setSubmitted] = useState(false);
 
   const [form, setForm] = useState({
@@ -57,7 +55,7 @@ export default function RequestQuotePage() {
             <Link href="/">
               <div className="flex items-center gap-2 cursor-pointer" data-testid="link-home">
                 <BackIcon className="w-4 h-4" />
-                <img src={currentLogo} alt="Teak" className="w-8 h-8 object-contain" />
+                <img src={teakLogo} alt="Teak" className="w-8 h-8 object-contain logo-auto transition-all duration-300" />
                 <span className="font-bold hidden sm:inline">{t("تيك للتصنيع", "Teak Manufacturing")}</span>
               </div>
             </Link>
@@ -120,7 +118,7 @@ export default function RequestQuotePage() {
             <motion.div key="form" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
               <Card>
                 <CardHeader className="text-center">
-                  <img src={currentLogo} alt="Teak" className="w-16 h-16 mx-auto mb-2 object-contain" />
+                  <img src={teakLogo} alt="Teak" className="w-16 h-16 mx-auto mb-2 object-contain logo-auto transition-all duration-300" />
                   <CardTitle className="text-2xl" data-testid="text-form-title">
                     {t("طلب عرض سعر", "Request a Quote")}
                   </CardTitle>

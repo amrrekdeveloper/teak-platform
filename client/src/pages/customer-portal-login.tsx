@@ -5,13 +5,11 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Phone, KeyRound, ArrowLeft, Loader2, Shield, MessageCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import logoAr from "@assets/logo_teak1_1772689915503.png";
-import logoEn from "@assets/logo_teak2_1772689894105.png";
+import teakLogo from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
 
 export default function CustomerPortalLogin() {
   const { t, lang } = useLanguage();
   const { toast } = useToast();
-  const currentLogo = lang === "ar" ? logoAr : logoEn;
 
   const [step, setStep] = useState<"phone" | "otp">("phone");
   const [phone, setPhone] = useState("");
@@ -115,7 +113,7 @@ export default function CustomerPortalLogin() {
     <div className="min-h-screen bg-gradient-to-b from-background to-muted flex items-center justify-center p-4" dir={lang === "ar" ? "rtl" : "ltr"}>
       <div className="w-full max-w-md space-y-6">
         <div className="text-center">
-          <img src={currentLogo} alt="Teak" className="w-24 h-24 mx-auto object-contain mb-4" data-testid="img-portal-logo" />
+          <img src={teakLogo} alt="Teak" className="w-24 h-24 mx-auto object-contain mb-4 logo-auto transition-all duration-300" data-testid="img-portal-logo" />
           <h1 className="text-2xl font-bold" data-testid="text-portal-title">
             {t("بوابة العملاء", "Customer Portal")}
           </h1>

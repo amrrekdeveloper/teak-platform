@@ -10,8 +10,7 @@ import {
   Loader2, Search, Package, Truck, Wrench, CheckCircle2,
   Clock, Factory, Shield, Sun, Moon, ArrowRight, ArrowLeft
 } from "lucide-react";
-import logoAr from "@assets/logo_teak1_1772689915503.png";
-import logoEn from "@assets/logo_teak2_1772689894105.png";
+import teakLogo from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
 
 const statusSteps = [
   { key: "pending", ar: "في الانتظار", en: "Pending", icon: Clock },
@@ -33,7 +32,6 @@ export default function TrackOrderPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const currentLogo = lang === "ar" ? logoAr : logoEn;
   const ArrowIcon = lang === "ar" ? ArrowLeft : ArrowRight;
 
   const handleSearch = async () => {
@@ -63,7 +61,7 @@ export default function TrackOrderPage() {
       <header className="border-b border-border bg-card/50">
         <div className="max-w-3xl mx-auto px-4 h-14 flex items-center justify-between">
           <Link href="/">
-            <img src={currentLogo} alt="Teak" className="h-8 object-contain cursor-pointer" data-testid="img-track-logo" />
+            <img src={teakLogo} alt="Teak" className="h-8 object-contain cursor-pointer logo-auto transition-all duration-300" data-testid="img-track-logo" />
           </Link>
           <div className="flex items-center gap-1">
             <Button size="icon" variant="ghost" onClick={toggleLang} data-testid="button-track-lang">

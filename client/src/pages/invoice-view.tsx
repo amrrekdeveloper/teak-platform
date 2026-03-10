@@ -6,8 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, ArrowRight, Loader2, Download, QrCode } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import logoAr from "@assets/logo_teak1_1772689915503.png";
-import logoEn from "@assets/logo_teak2_1772689894105.png";
+import teakLogo from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
 
 function ZatcaQRCode({ data, size = 160 }: { data: string; size?: number }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -47,7 +46,6 @@ export default function InvoiceViewPage() {
   const { t, isRTL, lang } = useLanguage();
   const [, params] = useRoute("/invoices/:id");
   const id = params?.id;
-  const currentLogo = lang === "ar" ? logoAr : logoEn;
 
   const { data: invoice, isLoading } = useQuery<Invoice>({
     queryKey: ["/api/invoices", id],
@@ -94,7 +92,7 @@ export default function InvoiceViewPage() {
         <CardContent className="p-6 sm:p-8">
           <div className="flex items-start justify-between mb-8">
             <div>
-              <img src={currentLogo} alt="Teak" className="w-16 h-16 object-contain mb-2" />
+              <img src={teakLogo} alt="Teak" className="w-16 h-16 object-contain mb-2 logo-red" />
               <h2 className="text-xl font-bold">{invoice.sellerName}</h2>
               <p className="text-sm text-muted-foreground">{invoice.sellerAddress}</p>
               <p className="text-sm text-muted-foreground" dir="ltr">

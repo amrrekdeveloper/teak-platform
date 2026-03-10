@@ -7,8 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Sun, Moon, Eye, EyeOff, Loader2, Lock, Copy, CheckCircle2 } from "lucide-react";
-import logoAr from "@assets/logo_teak1_1772689915503.png";
-import logoEn from "@assets/logo_teak2_1772689894105.png";
+import teakLogo from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
 
 const demoAccounts = [
   { username: "admin", password: "123456", roleAr: "مدير النظام", roleEn: "System Admin" },
@@ -30,7 +29,6 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
 
-  const currentLogo = lang === "ar" ? logoAr : logoEn;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -82,9 +80,9 @@ export default function LoginPage() {
       <div className="w-full max-w-sm">
         <div className="text-center mb-6">
           <img
-            src={currentLogo}
+            src={teakLogo}
             alt="Teak"
-            className="w-20 h-20 mx-auto mb-4 object-contain"
+            className="w-20 h-20 mx-auto mb-4 object-contain logo-auto transition-all duration-300"
             data-testid="img-login-logo"
           />
           <h1 className="text-2xl font-bold mb-1" data-testid="text-login-title">

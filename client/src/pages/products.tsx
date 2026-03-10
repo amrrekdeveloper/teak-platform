@@ -7,8 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2, Sun, Moon, ArrowLeft, ArrowRight, Package } from "lucide-react";
 import { Link } from "wouter";
-import logoAr from "@assets/logo_teak1_1772689915503.png";
-import logoEn from "@assets/logo_teak2_1772689894105.png";
+import teakLogo from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
 
 const categories = [
   { key: "all", ar: "الكل", en: "All" },
@@ -23,7 +22,6 @@ export default function ProductsPage() {
   const { lang, toggleLang, t, isRTL } = useLanguage();
   const { theme, toggleTheme } = useTheme();
   const [activeCategory, setActiveCategory] = useState("all");
-  const currentLogo = lang === "ar" ? logoAr : logoEn;
 
   const { data: products = [], isLoading } = useQuery<Product[]>({
     queryKey: ["/api/products/public", activeCategory],
@@ -48,7 +46,7 @@ export default function ProductsPage() {
               <Link href="/">
                 <div className="flex items-center gap-2 cursor-pointer" data-testid="link-home">
                   <BackIcon className="w-4 h-4" />
-                  <img src={currentLogo} alt="Teak" className="w-8 h-8 object-contain" />
+                  <img src={teakLogo} alt="Teak" className="w-8 h-8 object-contain logo-auto transition-all duration-300" />
                   <span className="font-bold hidden sm:inline">{t("تيك للتصنيع", "Teak Manufacturing")}</span>
                 </div>
               </Link>

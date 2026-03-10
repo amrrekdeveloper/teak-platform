@@ -29,9 +29,7 @@ import {
 import { SiWhatsapp } from "react-icons/si";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import logoAr from "@assets/logo_teak1_1772689915503.png";
-import logoEn from "@assets/logo_teak2_1772689894105.png";
-import teakLogoWhite from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
+import teakLogo from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
 
 const heroSlides = [
   {
@@ -139,6 +137,7 @@ function Navbar() {
   const isOnHero = !scrolled;
   const isDark = theme === "dark";
   const showWhiteLogo = isDark || isOnHero;
+  const logoClass = showWhiteLogo ? "" : "logo-red";
 
   const navLinks = [
     { href: "#about", labelAr: "من نحن", labelEn: "About" },
@@ -171,9 +170,9 @@ function Navbar() {
         <div className="flex items-center justify-between gap-4 h-16 sm:h-20">
           <a href="/" className="flex items-center gap-3">
             <img
-              src={showWhiteLogo ? teakLogoWhite : (lang === "ar" ? logoAr : logoEn)}
+              src={teakLogo}
               alt="Teak Logo"
-              className="h-12 sm:h-14 w-auto object-contain transition-all duration-300"
+              className={`h-12 sm:h-14 w-auto object-contain transition-all duration-500 ${logoClass}`}
               data-testid="img-logo"
             />
           </a>
@@ -1177,9 +1176,9 @@ function Footer() {
           <div>
             <div className="flex items-center gap-3 mb-4">
               <img
-                src={lang === "ar" ? logoAr : logoEn}
+                src={teakLogo}
                 alt="Teak Logo"
-                className="w-10 h-10 object-contain"
+                className="w-10 h-10 object-contain logo-auto transition-all duration-300"
                 data-testid="img-footer-logo"
               />
               <div>
