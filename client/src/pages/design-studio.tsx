@@ -45,6 +45,9 @@ import {
   Wrench,
   Layers,
   Package,
+  SendHorizontal,
+  Receipt,
+  Trash2 as TrashIcon,
 } from "lucide-react";
 import type { DesignAssignment } from "@shared/schema";
 import {
@@ -174,7 +177,10 @@ export default function DesignStudioPage() {
   const [notes, setNotes] = useState("");
   const [uploadedFiles, setUploadedFiles] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
+  const [isSending, setIsSending] = useState(false);
   const [sketchFixtures, setSketchFixtures] = useState<import("@/components/sketch-canvas-2d").SketchFixtureElement[]>([]);
+  const [quoteItems, setQuoteItems] = useState<Array<{ description: string; quantity: number; unitPrice: number }>>([]);
+  const [quoteDiscount, setQuoteDiscount] = useState(0);
 
   const { data: designAssignment, isLoading: daLoading } = useQuery<DesignAssignment>({
     queryKey: ["/api/design-assignments/quotation", orderId],
@@ -205,6 +211,25 @@ export default function DesignStudioPage() {
       if (designAssignment.designFiles) setUploadedFiles(designAssignment.designFiles);
     }
   }, [designAssignment]);
+
+  useEffect(() => {
+    if (quotation) {
+      const items = quotation.items || [];
+      if (items.length > 0) {
+        setQuoteItems(items.map((it: any) => ({
+          description: it.description || it.productType || "",
+          quantity: it.quantity || 1,
+          unitPrice: Number(it.unitPrice || it.amount || 0),
+        })));
+      } else if (quoteItems.length === 0) {
+        const productLabel = specs.productType === "kitchen" ? t("مطبخ", "Kitchen") :
+          specs.productType === "wardrobe" ? t("خزانة", "Wardrobe") :
+          specs.productType === "door" ? t("باب", "Door") : t("ديكور", "Decoration");
+        setQuoteItems([{ description: productLabel, quantity: 1, unitPrice: 0 }]);
+      }
+      setQuoteDiscount(Number(quotation.discount || 0));
+    }
+  }, [quotation?.id]);
 
   const saveMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -247,6 +272,56 @@ export default function DesignStudioPage() {
     });
     toast({ title: t("تم حفظ لقطة 3D", "3D Screenshot Saved") });
   }, [designAssignment, saveMutation, toast, t]);
+
+  const quoteSubtotal = quoteItems.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
+  const quoteVat = Math.round(quoteSubtotal * 0.15 * 100) / 100;
+  const quoteFinal = quoteSubtotal + quoteVat - quoteDiscount;
+
+  const handleSendToCustomer = useCallback(async () => {
+    if (!designAssignment?.id || !quotation?.id) return;
+    if (quoteFinal <= 0) {
+      toast({ title: t("يجب تحديد السعر أولاً", "Please set the price first"), description: t("حدد عرض السعر في تبويب 'عرض السعر' قبل الإرسال", "Set the quotation in the 'Quotation' tab before sending"), variant: "destructive" });
+      setActiveTab("quote");
+      return;
+    }
+    if (!designAssignment.sketchImage && !designAssignment.screenshot3d) {
+      toast({ title: t("يجب إنشاء التصميم أولاً", "Please create a design first"), description: t("ارسم الكروكي أو التقط صورة 3D قبل الإرسال", "Draw a sketch or take a 3D screenshot before sending"), variant: "destructive" });
+      return;
+    }
+    setIsSending(true);
+    try {
+      await apiRequest("PATCH", `/api/quotations/${quotation.id}`, {
+        items: quoteItems.map(item => ({
+          description: item.description,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          amount: item.quantity * item.unitPrice,
+          productType: specs.productType,
+        })),
+        subtotal: String(quoteSubtotal),
+        vatAmount: String(quoteVat),
+        vatRate: "15",
+        discount: String(quoteDiscount),
+        totalPrice: String(quoteSubtotal + quoteVat),
+        finalPrice: String(quoteFinal),
+        status: "sent",
+      });
+      await apiRequest("PATCH", `/api/design-assignments/${designAssignment.id}`, {
+        status: "completed",
+        productSpecs: specs,
+        notes,
+        designFiles: uploadedFiles,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/design-assignments/quotation", orderId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/quotations", orderId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/quotations"] });
+      toast({ title: t("تم الإرسال للعميل", "Sent to Customer"), description: t("تم إرسال التصميم وعرض السعر للعميل بنجاح", "Design and quotation sent to customer successfully") });
+    } catch {
+      toast({ title: t("فشل الإرسال", "Send Failed"), variant: "destructive" });
+    } finally {
+      setIsSending(false);
+    }
+  }, [designAssignment, quotation, quoteItems, quoteSubtotal, quoteVat, quoteDiscount, quoteFinal, specs, notes, uploadedFiles, orderId, toast, t]);
 
   const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -377,7 +452,7 @@ export default function DesignStudioPage() {
       <div className="max-w-[1600px] mx-auto p-2 sm:p-4">
         <Tabs value={activeTab} onValueChange={setActiveTab} dir={isRTL ? "rtl" : "ltr"}>
           <div className="overflow-x-auto -mx-2 px-2 sm:-mx-4 sm:px-4 mb-4">
-            <TabsList className="inline-flex w-auto min-w-full sm:grid sm:grid-cols-4 sm:w-full sm:max-w-xl" data-testid="tabs-design-studio">
+            <TabsList className="inline-flex w-auto min-w-full sm:grid sm:grid-cols-5 sm:w-full sm:max-w-2xl" data-testid="tabs-design-studio">
               <TabsTrigger value="product" className="gap-1 sm:gap-1.5 text-xs sm:text-sm whitespace-nowrap" data-testid="tab-product">
                 <Ruler className="w-3.5 h-3.5 shrink-0" />
                 {t("تفاصيل المنتج", "Product Details")}
@@ -393,6 +468,10 @@ export default function DesignStudioPage() {
               <TabsTrigger value="files" className="gap-1 sm:gap-1.5 text-xs sm:text-sm whitespace-nowrap" data-testid="tab-files">
                 <FileUp className="w-3.5 h-3.5 shrink-0" />
                 {t("الملفات", "Files")}
+              </TabsTrigger>
+              <TabsTrigger value="quote" className="gap-1 sm:gap-1.5 text-xs sm:text-sm whitespace-nowrap" data-testid="tab-quote">
+                <Receipt className="w-3.5 h-3.5 shrink-0" />
+                {t("عرض السعر", "Quotation")}
               </TabsTrigger>
             </TabsList>
           </div>
@@ -464,10 +543,127 @@ export default function DesignStudioPage() {
               t={t}
             />
           </TabsContent>
+
+          <TabsContent value="quote">
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Receipt className="w-4 h-4" />
+                  {t("عرض السعر", "Quotation")}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-3">
+                  {quoteItems.map((item, idx) => (
+                    <div key={idx} className="grid grid-cols-12 gap-2 items-end" data-testid={`quote-item-${idx}`}>
+                      <div className="col-span-5">
+                        {idx === 0 && <Label className="text-xs mb-1 block">{t("الوصف", "Description")}</Label>}
+                        <Input
+                          value={item.description}
+                          onChange={e => {
+                            const updated = [...quoteItems];
+                            updated[idx].description = e.target.value;
+                            setQuoteItems(updated);
+                          }}
+                          placeholder={t("وصف البند", "Item description")}
+                          className="h-9 text-sm"
+                          data-testid={`input-quote-desc-${idx}`}
+                        />
+                      </div>
+                      <div className="col-span-2">
+                        {idx === 0 && <Label className="text-xs mb-1 block">{t("الكمية", "Qty")}</Label>}
+                        <Input
+                          type="number"
+                          min={1}
+                          value={item.quantity}
+                          onChange={e => {
+                            const updated = [...quoteItems];
+                            updated[idx].quantity = Math.max(1, Number(e.target.value) || 1);
+                            setQuoteItems(updated);
+                          }}
+                          className="h-9 text-sm"
+                          data-testid={`input-quote-qty-${idx}`}
+                        />
+                      </div>
+                      <div className="col-span-3">
+                        {idx === 0 && <Label className="text-xs mb-1 block">{t("سعر الوحدة", "Unit Price")}</Label>}
+                        <Input
+                          type="number"
+                          min={0}
+                          value={item.unitPrice || ""}
+                          onChange={e => {
+                            const updated = [...quoteItems];
+                            updated[idx].unitPrice = Number(e.target.value) || 0;
+                            setQuoteItems(updated);
+                          }}
+                          placeholder="0"
+                          className="h-9 text-sm"
+                          data-testid={`input-quote-price-${idx}`}
+                        />
+                      </div>
+                      <div className="col-span-2 flex items-center gap-1">
+                        <span className="text-sm font-medium text-muted-foreground whitespace-nowrap">
+                          {(item.quantity * item.unitPrice).toLocaleString()}
+                        </span>
+                        {quoteItems.length > 1 && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-red-400 hover:text-red-600"
+                            onClick={() => setQuoteItems(quoteItems.filter((_, i) => i !== idx))}
+                            data-testid={`button-remove-item-${idx}`}
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setQuoteItems([...quoteItems, { description: "", quantity: 1, unitPrice: 0 }])}
+                    data-testid="button-add-quote-item"
+                  >
+                    <Plus className="w-3.5 h-3.5 me-1" />
+                    {t("إضافة بند", "Add Item")}
+                  </Button>
+                </div>
+
+                <Separator />
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="bg-muted/50 rounded-lg p-3 text-center">
+                    <p className="text-[10px] text-muted-foreground mb-0.5">{t("الإجمالي قبل الضريبة", "Subtotal")}</p>
+                    <p className="text-sm font-bold">{quoteSubtotal.toLocaleString()} {t("ر.س", "SAR")}</p>
+                  </div>
+                  <div className="bg-muted/50 rounded-lg p-3 text-center">
+                    <p className="text-[10px] text-muted-foreground mb-0.5">{t("ضريبة القيمة المضافة", "VAT")} 15%</p>
+                    <p className="text-sm font-bold">{quoteVat.toLocaleString()} {t("ر.س", "SAR")}</p>
+                  </div>
+                  <div className="bg-muted/50 rounded-lg p-3 text-center">
+                    <p className="text-[10px] text-muted-foreground mb-0.5">{t("الخصم", "Discount")}</p>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={quoteDiscount || ""}
+                      onChange={e => setQuoteDiscount(Number(e.target.value) || 0)}
+                      className="h-7 text-sm text-center mt-0.5"
+                      data-testid="input-quote-discount"
+                    />
+                  </div>
+                  <div className="bg-primary/10 rounded-lg p-3 text-center">
+                    <p className="text-[10px] text-primary mb-0.5">{t("الإجمالي النهائي", "Final Total")}</p>
+                    <p className="text-lg font-bold text-primary">{quoteFinal.toLocaleString()} {t("ر.س", "SAR")}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
         </Tabs>
 
-        <div className="mt-4">
-          <Card>
+        <div className="mt-4 flex flex-col sm:flex-row gap-3">
+          <Card className="flex-1">
             <CardContent className="p-4">
               <Label className="text-sm font-medium mb-2 block">{t("ملاحظات", "Notes")}</Label>
               <Textarea
@@ -479,6 +675,22 @@ export default function DesignStudioPage() {
               />
             </CardContent>
           </Card>
+          {designAssignment?.status !== "completed" && (
+            <Card className="sm:w-auto shrink-0">
+              <CardContent className="p-4 flex items-center justify-center h-full">
+                <Button
+                  size="lg"
+                  onClick={handleSendToCustomer}
+                  disabled={isSending}
+                  className="w-full sm:w-auto gap-2"
+                  data-testid="button-send-to-customer"
+                >
+                  {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <SendHorizontal className="w-4 h-4" />}
+                  {t("إرسال للعميل", "Send to Customer")}
+                </Button>
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
     </div>

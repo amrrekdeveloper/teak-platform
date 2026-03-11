@@ -14,6 +14,7 @@ import {
   AlertCircle, X, ClipboardList, ChevronDown, ChevronUp,
   User, MapPin, Phone, Package, CalendarPlus,
   Palette, ThumbsUp, MessageSquare, Maximize, Image,
+  Upload, CreditCard, Banknote,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { apiRequest } from "@/lib/queryClient";
@@ -382,7 +383,7 @@ function InspectionAppointmentCard({ inspectionDate, orderId }: { inspectionDate
   );
 }
 
-function DesignViewSection({ design, quotationId }: { design: any; quotationId: number }) {
+function DesignViewSection({ design, quotationId, hideApprovalButtons }: { design: any; quotationId: number; hideApprovalButtons?: boolean }) {
   const { t } = useLanguage();
   const { toast } = useToast();
   const [fullscreenImg, setFullscreenImg] = useState<string | null>(null);
@@ -493,7 +494,7 @@ function DesignViewSection({ design, quotationId }: { design: any; quotationId: 
         </div>
       )}
 
-      {canAct && (
+      {canAct && !hideApprovalButtons && (
         <div className="space-y-2">
           <div className="grid grid-cols-2 gap-2">
             <Button
@@ -696,8 +697,144 @@ function OrdersTab({ quotations, contracts, production, designs }: {
   );
 }
 
-function QuotationsTab({ quotations, designs, onApprove, approving }: {
-  quotations: any[]; designs: any[]; onApprove: (id: number) => void; approving: boolean;
+function PaymentSection({ invoice, contract, quotation, setPreviewInvoice }: {
+  invoice: any; contract: any; quotation: any; setPreviewInvoice: (inv: any) => void;
+}) {
+  const { t } = useLanguage();
+  const { toast } = useToast();
+  const [receiptImage, setReceiptImage] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [paymentNotes, setPaymentNotes] = useState("");
+
+  const uploadMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/customer-portal/upload-receipt", {
+        contractId: contract?.id,
+        amount: invoice?.totalWithVat || quotation.finalPrice || quotation.totalPrice || "0",
+        receiptImage,
+        paymentMethod: "bank_transfer",
+        notes: paymentNotes || "تم رفع الوصل من بوابة العميل",
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: t("تم رفع إيصال السداد بنجاح", "Payment receipt uploaded successfully") });
+      setReceiptImage(null);
+      setPaymentNotes("");
+      queryClient.invalidateQueries({ queryKey: ["/api/customer-portal/my-data"] });
+    },
+    onError: () => {
+      toast({ title: t("حدث خطأ", "Error"), variant: "destructive" });
+    },
+  });
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      toast({ title: t("الحد الأقصى 5 ميجابايت", "Max file size is 5MB"), variant: "destructive" });
+      return;
+    }
+    setUploading(true);
+    const reader = new FileReader();
+    reader.onload = () => {
+      setReceiptImage(reader.result as string);
+      setUploading(false);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  return (
+    <div className="border rounded-lg p-3 bg-emerald-50/50 dark:bg-emerald-950/20 space-y-3" data-testid={`section-payment-${quotation.id}`}>
+      <div className="flex items-center gap-2">
+        <Banknote className="w-4 h-4 text-emerald-600" />
+        <span className="text-xs font-semibold text-emerald-800 dark:text-emerald-300">
+          {t("السداد", "Payment")}
+        </span>
+      </div>
+
+      {invoice && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full h-9 text-xs border-emerald-200 dark:border-emerald-800"
+          onClick={() => setPreviewInvoice({
+            ...invoice,
+            invoiceNumber: invoice.invoiceNumber || invoice.id,
+            type: "simplified_tax_invoice",
+            sellerName: invoice.sellerName || "مصنع تيك للمنتجات الخشبية",
+            sellerAddress: invoice.sellerAddress || "الرياض - المملكة العربية السعودية",
+            sellerVatNumber: invoice.sellerVatNumber || "310012345600003",
+          })}
+          data-testid={`button-view-invoice-${quotation.id}`}
+        >
+          <Receipt className="w-3.5 h-3.5 me-1.5" />
+          {t("استعراض الفاتورة الضريبية", "View Tax Invoice")}
+        </Button>
+      )}
+
+      <div className="space-y-2">
+        <p className="text-[11px] text-muted-foreground">
+          {t("يرجى تحويل المبلغ ثم إرفاق صورة الإيصال", "Please transfer the amount and attach the receipt")}
+        </p>
+        <div className="flex items-center justify-between bg-white dark:bg-gray-900 rounded-md px-3 py-2 border">
+          <span className="text-xs text-muted-foreground">{t("المبلغ المطلوب", "Amount Due")}</span>
+          <span className="font-bold text-sm">
+            {Number(invoice?.totalWithVat || quotation.finalPrice || quotation.totalPrice || 0).toLocaleString()} {t("ريال", "SAR")}
+          </span>
+        </div>
+
+        {receiptImage ? (
+          <div className="space-y-2">
+            <div className="relative">
+              <img src={receiptImage} alt="Receipt" className="w-full rounded-md border max-h-48 object-contain bg-white" />
+              <button
+                onClick={() => setReceiptImage(null)}
+                className="absolute top-1 end-1 bg-red-500 text-white rounded-full p-1"
+                data-testid={`button-remove-receipt-${quotation.id}`}
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+            <Textarea
+              placeholder={t("ملاحظات إضافية (اختياري)", "Additional notes (optional)")}
+              value={paymentNotes}
+              onChange={(e) => setPaymentNotes(e.target.value)}
+              className="text-xs h-16"
+              data-testid={`input-payment-notes-${quotation.id}`}
+            />
+            <Button
+              onClick={() => uploadMutation.mutate()}
+              disabled={uploadMutation.isPending}
+              className="w-full h-10 bg-emerald-600 hover:bg-emerald-700"
+              data-testid={`button-submit-receipt-${quotation.id}`}
+            >
+              {uploadMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin me-2" /> : <CreditCard className="w-4 h-4 me-2" />}
+              {t("إرسال إيصال السداد", "Submit Payment Receipt")}
+            </Button>
+          </div>
+        ) : (
+          <label className="flex flex-col items-center gap-2 border-2 border-dashed border-emerald-300 dark:border-emerald-700 rounded-lg p-4 cursor-pointer hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-colors">
+            <Upload className="w-6 h-6 text-emerald-500" />
+            <span className="text-xs text-emerald-700 dark:text-emerald-400 font-medium">
+              {uploading ? t("جاري الرفع...", "Uploading...") : t("اضغط لإرفاق صورة الإيصال", "Tap to attach receipt image")}
+            </span>
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleFileSelect}
+              className="hidden"
+              data-testid={`input-receipt-file-${quotation.id}`}
+            />
+          </label>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function QuotationsTab({ quotations, designs, invoices, contracts, onApprove, approving }: {
+  quotations: any[]; designs: any[]; invoices: any[]; contracts: any[]; onApprove: (id: number) => void; approving: boolean;
 }) {
   const { t } = useLanguage();
   const [viewDesign, setViewDesign] = useState<number | null>(null);
@@ -728,7 +865,7 @@ function QuotationsTab({ quotations, designs, onApprove, approving }: {
                 <div className="px-4 py-3 space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-xs text-muted-foreground">{t("المبلغ الإجمالي", "Total Amount")}</span>
-                    <span className="font-bold text-base">{Number(q.totalWithVat || q.total || 0).toLocaleString()} <span className="text-xs font-normal text-muted-foreground">{t("ريال", "SAR")}</span></span>
+                    <span className="font-bold text-base">{Number(q.finalPrice || q.totalPrice || q.totalWithVat || q.total || 0).toLocaleString()} <span className="text-xs font-normal text-muted-foreground">{t("ريال", "SAR")}</span></span>
                   </div>
                   {q.vatAmount && (
                     <div className="flex items-center justify-between">
@@ -772,23 +909,27 @@ function QuotationsTab({ quotations, designs, onApprove, approving }: {
                   </Button>
 
                   {design && (design.sketchImage || design.screenshot3d) && (
-                    <>
-                      <button
-                        onClick={() => setViewDesign(viewDesign === q.id ? null : q.id)}
-                        className="text-xs text-primary flex items-center gap-1 hover:underline w-full justify-center"
-                        data-testid={`button-toggle-design-${q.id}`}
-                      >
-                        <Palette className="w-3 h-3" />
-                        {t("عرض التصميم", "View Design")}
-                        {design.customerApproval === "approved" && <CheckCircle2 className="w-3 h-3 text-green-600" />}
-                      </button>
-                      {viewDesign === q.id && (
-                        <DesignViewSection design={design} quotationId={q.id} />
-                      )}
-                    </>
+                    q.status === "sent" ? (
+                      <DesignViewSection design={design} quotationId={q.id} hideApprovalButtons />
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => setViewDesign(viewDesign === q.id ? null : q.id)}
+                          className="text-xs text-primary flex items-center gap-1 hover:underline w-full justify-center"
+                          data-testid={`button-toggle-design-${q.id}`}
+                        >
+                          <Palette className="w-3 h-3" />
+                          {t("عرض التصميم", "View Design")}
+                          {design.customerApproval === "approved" && <CheckCircle2 className="w-3 h-3 text-green-600" />}
+                        </button>
+                        {viewDesign === q.id && (
+                          <DesignViewSection design={design} quotationId={q.id} />
+                        )}
+                      </>
+                    )
                   )}
 
-                  {(q.status === "sent" || q.status === "draft") && (
+                  {q.status === "sent" && (
                     <Button
                       onClick={() => onApprove(q.id)}
                       disabled={approving}
@@ -796,9 +937,22 @@ function QuotationsTab({ quotations, designs, onApprove, approving }: {
                       data-testid={`button-approve-quotation-${q.id}`}
                     >
                       {approving ? <Loader2 className="w-4 h-4 animate-spin me-2" /> : <CheckCircle2 className="w-4 h-4 me-2" />}
-                      {t("اعتماد عرض السعر", "Approve Quotation")}
+                      {t("اعتماد التصميم وعرض السعر", "Approve Design & Quotation")}
                     </Button>
                   )}
+
+                  {isApproved && (() => {
+                    const invoice = invoices.find((inv: any) => inv.quotationId === q.id);
+                    const contract = contracts.find((c: any) => c.quotationId === q.id);
+                    return (
+                      <PaymentSection
+                        invoice={invoice}
+                        contract={contract}
+                        quotation={q}
+                        setPreviewInvoice={setPreviewInvoice}
+                      />
+                    );
+                  })()}
                 </div>
               </CardContent>
             </Card>
@@ -1388,6 +1542,8 @@ export default function CustomerPortal() {
           <QuotationsTab
             quotations={data.quotations || []}
             designs={data.designs || []}
+            invoices={data.invoices || []}
+            contracts={data.contracts || []}
             onApprove={(id) => approveMutation.mutate(id)}
             approving={approveMutation.isPending}
           />

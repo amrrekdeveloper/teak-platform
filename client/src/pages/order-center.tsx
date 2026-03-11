@@ -56,6 +56,8 @@ import {
   RotateCcw,
   Plus,
   AlertCircle,
+  Wallet,
+  Ban,
 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -85,20 +87,21 @@ function formatElapsed(fromDate: string | Date, now: number, t: (ar: string, en:
   return t(`${mins} دقيقة`, `${mins}m`);
 }
 
-type StageFilter = "all" | "new" | "sales" | "sent" | "approved" | "production" | "completed" | "cancelled";
+type StageFilter = "all" | "new" | "sales" | "sent" | "awaiting_payment" | "approved" | "production" | "completed" | "cancelled";
 
 const stageConfig: Record<StageFilter, { ar: string; en: string; icon: typeof ClipboardList; color: string; bgColor: string }> = {
   all: { ar: "الكل", en: "All", icon: ClipboardList, color: "text-foreground", bgColor: "bg-muted" },
   new: { ar: "جديد", en: "New", icon: Sparkles, color: "text-amber-600", bgColor: "bg-amber-50 dark:bg-amber-950" },
   sales: { ar: "لدى المبيعات", en: "With Sales", icon: UserCheck, color: "text-blue-600", bgColor: "bg-blue-50 dark:bg-blue-950" },
   sent: { ar: "مرسل للعميل", en: "Sent to Client", icon: Send, color: "text-indigo-600", bgColor: "bg-indigo-50 dark:bg-indigo-950" },
-  approved: { ar: "معتمد / مدفوع", en: "Approved / Paid", icon: CheckCircle2, color: "text-green-600", bgColor: "bg-green-50 dark:bg-green-950" },
+  awaiting_payment: { ar: "لدى العميل للسداد", en: "Awaiting Payment", icon: Wallet, color: "text-purple-600", bgColor: "bg-purple-50 dark:bg-purple-950" },
+  approved: { ar: "مدفوع", en: "Paid", icon: CheckCircle2, color: "text-green-600", bgColor: "bg-green-50 dark:bg-green-950" },
   production: { ar: "تحت التصنيع", en: "In Production", icon: Factory, color: "text-orange-600", bgColor: "bg-orange-50 dark:bg-orange-950" },
   completed: { ar: "مسلّم / منتهي", en: "Delivered / Done", icon: PackageCheck, color: "text-emerald-600", bgColor: "bg-emerald-50 dark:bg-emerald-950" },
   cancelled: { ar: "ملغي", en: "Cancelled", icon: XCircle, color: "text-red-600", bgColor: "bg-red-50 dark:bg-red-950" },
 };
 
-function getOrderStage(q: any, workOrders: any[]): StageFilter {
+function getOrderStage(q: any, workOrders: any[], contracts: any[]): StageFilter {
   if (q.status === "rejected" || q.status === "expired") return "cancelled";
   if (q.status === "requested") return "new";
   if (q.status === "draft") return q.assignedTo ? "sales" : "new";
@@ -112,6 +115,8 @@ function getOrderStage(q: any, workOrders: any[]): StageFilter {
       if (["completed", "delivered", "installed"].includes(wo.status)) return "completed";
       return "production";
     }
+    const contract = contracts.find((c: any) => c.quotationId === q.id);
+    if (!contract || Number(contract.paidAmount || 0) === 0) return "awaiting_payment";
     return "approved";
   }
   return "new";
@@ -223,6 +228,22 @@ export default function OrderCenterPage() {
     },
   });
 
+  const cancelOrderMutation = useMutation({
+    mutationFn: async (id: number) => {
+      return apiRequest("PATCH", `/api/quotations/${id}`, { status: "expired" });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/quotations"] });
+      setViewOrder(null);
+      toast({ title: t("تم إلغاء الطلب", "Order cancelled") });
+    },
+    onError: () => {
+      toast({ title: t("فشل إلغاء الطلب", "Failed to cancel order"), variant: "destructive" });
+    },
+  });
+
+  const [confirmCancel, setConfirmCancel] = useState(false);
+
   const createOrderMutation = useMutation({
     mutationFn: async (data: { fullName: string; phone: string; productDescription: string; notes: string }) => {
       return apiRequest("POST", "/api/orders/create-direct", data);
@@ -243,13 +264,13 @@ export default function OrderCenterPage() {
     return quotations.map((q: any) => {
       const customer = customers.find((c: any) => c.id === q.customerId);
       const assignedUser = q.assignedTo ? usersData.find((u: any) => u.id === q.assignedTo) : null;
-      const stage = getOrderStage(q, workOrdersWithContract);
+      const stage = getOrderStage(q, workOrdersWithContract, contracts);
       return { ...q, customer, assignedUser, stage };
     });
-  }, [quotations, customers, usersData, workOrdersWithContract]);
+  }, [quotations, customers, usersData, workOrdersWithContract, contracts]);
 
   const stageCounts = useMemo(() => {
-    const counts: Record<StageFilter, number> = { all: 0, new: 0, sales: 0, sent: 0, approved: 0, production: 0, completed: 0, cancelled: 0 };
+    const counts: Record<StageFilter, number> = { all: 0, new: 0, sales: 0, sent: 0, awaiting_payment: 0, approved: 0, production: 0, completed: 0, cancelled: 0 };
     enrichedOrders.forEach((o: any) => {
       counts[o.stage as StageFilter]++;
       counts.all++;
@@ -711,7 +732,7 @@ export default function OrderCenterPage() {
       </Card>
 
       {viewOrder && (
-        <Dialog open onOpenChange={() => { setViewOrder(null); setShowInspectionPicker(false); setInspDay(""); setInspMonth(""); setInspYear(""); }}>
+        <Dialog open onOpenChange={() => { setViewOrder(null); setConfirmCancel(false); setShowInspectionPicker(false); setInspDay(""); setInspMonth(""); setInspYear(""); }}>
           <DialogContent className="sm:max-w-lg max-h-[85vh] flex flex-col">
             <DialogHeader>
               <DialogTitle>{t("تفاصيل الطلب", "Order Details")} #{viewOrder.quotationNumber || viewOrder.id}</DialogTitle>
@@ -1116,6 +1137,30 @@ export default function OrderCenterPage() {
                   <Forward className="w-3.5 h-3.5 me-1.5" />
                   {t("تحويل", "Assign")}
                 </Button>
+              )}
+              {isManager && viewOrder.status !== "approved" && viewOrder.status !== "rejected" && viewOrder.status !== "expired" && (
+                confirmCancel ? (
+                  <div className="flex items-center gap-1.5">
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => { cancelOrderMutation.mutate(viewOrder.id); setConfirmCancel(false); }}
+                      disabled={cancelOrderMutation.isPending}
+                      data-testid="button-confirm-cancel-order"
+                    >
+                      {cancelOrderMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin me-1" /> : null}
+                      {t("تأكيد الإلغاء", "Confirm Cancel")}
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => setConfirmCancel(false)} data-testid="button-undo-cancel">
+                      {t("تراجع", "Undo")}
+                    </Button>
+                  </div>
+                ) : (
+                  <Button variant="ghost" className="text-red-500 hover:text-red-600 hover:bg-red-50" onClick={() => setConfirmCancel(true)} data-testid="button-cancel-order">
+                    <Ban className="w-3.5 h-3.5 me-1.5" />
+                    {t("إلغاء الطلب", "Cancel Order")}
+                  </Button>
+                )
               )}
             </DialogFooter>
           </DialogContent>

@@ -1702,14 +1702,27 @@ export async function registerRoutes(
         return res.json({ message: "عرض السعر معتمد مسبقاً", messageEn: "Quotation already approved", contract: existingContract });
       }
 
+      if (quotation.status !== "sent") {
+        return res.status(400).json({ message: "لا يمكن اعتماد عرض سعر لم يتم إرساله بعد", messageEn: "Cannot approve a quotation that hasn't been sent yet" });
+      }
+
       const updatedQuotation = await storage.updateQuotation(quotation.id, { status: "approved" });
+
+      const allDA = await storage.getDesignAssignments();
+      const quotationDA = allDA.find((da: any) => da.quotationId === quotation.id);
+      if (quotationDA && quotationDA.customerApproval !== "approved") {
+        await storage.updateDesignAssignment(quotationDA.id, {
+          customerApproval: "approved",
+          customerApprovalNotes: null,
+        } as any);
+      }
 
       const contractNumber = `CNT-${Date.now().toString(36).toUpperCase()}`;
       const contract = await storage.createContract({
         contractNumber,
         quotationId: quotation.id,
         customerId: customer.id,
-        totalAmount: quotation.totalWithVat || quotation.total || "0",
+        totalAmount: quotation.finalPrice || quotation.totalPrice || quotation.totalWithVat || quotation.total || "0",
         status: "active",
         terms: "تم الاعتماد عبر بوابة العميل",
       });
@@ -1730,7 +1743,7 @@ export async function registerRoutes(
           sellerName: settings?.nameAr || "تيك للتصنيع",
           sellerVatNumber: settings?.vatNumber || "310012345600003",
           issuedAt: new Date(),
-          totalWithVat: quotation.totalWithVat || quotation.total,
+          totalWithVat: quotation.finalPrice || quotation.totalPrice || quotation.totalWithVat || quotation.total,
           vatAmount: quotation.vatAmount || "0",
         });
         await storage.createInvoice({
@@ -1741,10 +1754,10 @@ export async function registerRoutes(
           contractId: contract.id,
           quotationId: quotation.id,
           items: Array.isArray(quotation.items) ? quotation.items : [],
-          subtotal: quotation.subtotal || quotation.total || "0",
-          vatRate: "15",
+          subtotal: quotation.subtotal || quotation.totalPrice || quotation.total || "0",
+          vatRate: quotation.vatRate || "15",
           vatAmount: quotation.vatAmount || "0",
-          totalWithVat: quotation.totalWithVat || quotation.total || "0",
+          totalWithVat: quotation.finalPrice || quotation.totalPrice || quotation.totalWithVat || quotation.total || "0",
           sellerName: settings?.nameAr || "تيك للتصنيع",
           sellerVatNumber: settings?.vatNumber || "310012345600003",
           sellerAddress: settings?.address || "",
@@ -1777,6 +1790,13 @@ export async function registerRoutes(
     try {
       const customer = (req as any).portalCustomer;
       const { contractId, amount, receiptImage, paymentMethod, notes } = req.body;
+
+      if (!contractId) return res.status(400).json({ message: "يجب تحديد العقد", messageEn: "Contract ID required" });
+      if (!receiptImage) return res.status(400).json({ message: "يجب إرفاق صورة الإيصال", messageEn: "Receipt image required" });
+      const contract = await storage.getContract(contractId);
+      if (!contract || contract.customerId !== customer.id) {
+        return res.status(403).json({ message: "غير مصرح", messageEn: "Unauthorized - contract not yours" });
+      }
 
       const payment = await storage.createPayment({
         contractId: contractId || null,
