@@ -491,9 +491,17 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/quotations", requireAuth, async (_req, res) => {
+  app.get("/api/quotations", requireAuth, async (req, res) => {
     try {
-      res.json(await storage.getQuotations());
+      const userId = req.session.userId!;
+      const user = await storage.getUser(userId);
+      if (user?.role === "owner" || user?.role === "assistant") {
+        res.json(await storage.getQuotations());
+      } else {
+        const all = await storage.getQuotations();
+        const filtered = all.filter((q: any) => q.assignedTo === userId);
+        res.json(filtered);
+      }
     } catch (error) {
       res.status(500).json({ message: "حدث خطأ" });
     }
