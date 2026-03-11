@@ -133,6 +133,7 @@ export default function OrderCenterPage() {
   const { user } = useAuth();
   const { toast } = useToast();
 
+  const isManager = user?.role === "owner" || user?.role === "assistant";
   const [stageFilter, setStageFilter] = useState<StageFilter>("all");
   const [salesFilter, setSalesFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -459,19 +460,21 @@ export default function OrderCenterPage() {
             data-testid="input-search-orders"
           />
         </div>
-        <Select value={salesFilter} onValueChange={(v) => { setSalesFilter(v); setCurrentPage(1); }}>
-          <SelectTrigger className="w-full sm:w-[200px] h-9 text-sm" data-testid="select-sales-filter">
-            <SelectValue placeholder={t("جميع الموظفين", "All Staff")} />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">{t("جميع الموظفين", "All Staff")}</SelectItem>
-            {salesUsers.map((u: any) => (
-              <SelectItem key={u.id} value={String(u.id)}>
-                {t(u.fullNameAr, u.fullNameEn)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {isManager && (
+          <Select value={salesFilter} onValueChange={(v) => { setSalesFilter(v); setCurrentPage(1); }}>
+            <SelectTrigger className="w-full sm:w-[200px] h-9 text-sm" data-testid="select-sales-filter">
+              <SelectValue placeholder={t("جميع الموظفين", "All Staff")} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{t("جميع الموظفين", "All Staff")}</SelectItem>
+              {salesUsers.map((u: any) => (
+                <SelectItem key={u.id} value={String(u.id)}>
+                  {t(u.fullNameAr, u.fullNameEn)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
         <Select value={String(perPage)} onValueChange={(v) => { setPerPage(Number(v)); setCurrentPage(1); }}>
           <SelectTrigger className="w-full sm:w-[100px] h-9 text-sm" data-testid="select-per-page">
             <SelectValue />
@@ -505,9 +508,11 @@ export default function OrderCenterPage() {
                   <th className="text-start px-4 py-3 font-semibold text-xs text-muted-foreground whitespace-nowrap" data-testid="th-stage">
                     {t("الحالة", "Status")}
                   </th>
-                  <th className="text-start px-4 py-3 font-semibold text-xs text-muted-foreground whitespace-nowrap" data-testid="th-assigned">
-                    {t("المسؤول", "Assigned To")}
-                  </th>
+                  {isManager && (
+                    <th className="text-start px-4 py-3 font-semibold text-xs text-muted-foreground whitespace-nowrap" data-testid="th-assigned">
+                      {t("المسؤول", "Assigned To")}
+                    </th>
+                  )}
                   <th className="text-start px-4 py-3 font-semibold text-xs text-muted-foreground whitespace-nowrap" data-testid="th-date">
                     {t("التاريخ", "Date")}
                   </th>
@@ -519,7 +524,7 @@ export default function OrderCenterPage() {
               <tbody>
                 {paginated.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="text-center py-12 text-muted-foreground text-sm">
+                    <td colSpan={isManager ? 8 : 7} className="text-center py-12 text-muted-foreground text-sm">
                       <ClipboardList className="w-8 h-8 mx-auto mb-2 text-muted-foreground/30" />
                       {t("لا توجد طلبات", "No orders found")}
                     </td>
@@ -586,24 +591,26 @@ export default function OrderCenterPage() {
                             })()}
                           </div>
                         </td>
-                        <td className="px-4 py-3 whitespace-nowrap text-xs">
-                          {order.assignedUser ? (
-                            <div className="flex flex-col gap-0.5">
-                              <span className="flex items-center gap-1 font-medium">
-                                <User className="w-3 h-3 text-muted-foreground" />
-                                {t(order.assignedUser.fullNameAr, order.assignedUser.fullNameEn)}
-                              </span>
-                              {order.assignedAt && (
-                                <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                                  <Clock className="w-2.5 h-2.5" />
-                                  {t("منذ", "Since")} {formatElapsed(order.assignedAt, now, t)}
+                        {isManager && (
+                          <td className="px-4 py-3 whitespace-nowrap text-xs">
+                            {order.assignedUser ? (
+                              <div className="flex flex-col gap-0.5">
+                                <span className="flex items-center gap-1 font-medium">
+                                  <User className="w-3 h-3 text-muted-foreground" />
+                                  {t(order.assignedUser.fullNameAr, order.assignedUser.fullNameEn)}
                                 </span>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="text-muted-foreground">{t("غير مُعيّن", "Unassigned")}</span>
-                          )}
-                        </td>
+                                {order.assignedAt && (
+                                  <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                                    <Clock className="w-2.5 h-2.5" />
+                                    {t("منذ", "Since")} {formatElapsed(order.assignedAt, now, t)}
+                                  </span>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-muted-foreground">{t("غير مُعيّن", "Unassigned")}</span>
+                            )}
+                          </td>
+                        )}
                         <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
                           {order.createdAt ? new Date(order.createdAt).toLocaleDateString(lang === "ar" ? "ar-SA" : "en-US", {
                             year: "numeric",
@@ -613,16 +620,18 @@ export default function OrderCenterPage() {
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap">
                           <div className="flex items-center gap-1">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 px-2 text-xs"
-                              onClick={() => setAssignDialog(order)}
-                              data-testid={`button-assign-${order.id}`}
-                            >
-                              <Forward className="w-3.5 h-3.5 me-1" />
-                              {t("تحويل", "Assign")}
-                            </Button>
+                            {isManager && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 px-2 text-xs"
+                                onClick={() => setAssignDialog(order)}
+                                data-testid={`button-assign-${order.id}`}
+                              >
+                                <Forward className="w-3.5 h-3.5 me-1" />
+                                {t("تحويل", "Assign")}
+                              </Button>
+                            )}
                             <Button
                               variant="ghost"
                               size="sm"
@@ -1102,10 +1111,12 @@ export default function OrderCenterPage() {
                   </Tooltip>
                 )
               )}
-              <Button onClick={() => { setViewOrder(null); setAssignDialog(viewOrder); }} data-testid="button-assign-from-view">
-                <Forward className="w-3.5 h-3.5 me-1.5" />
-                {t("تحويل", "Assign")}
-              </Button>
+              {isManager && (
+                <Button onClick={() => { setViewOrder(null); setAssignDialog(viewOrder); }} data-testid="button-assign-from-view">
+                  <Forward className="w-3.5 h-3.5 me-1.5" />
+                  {t("تحويل", "Assign")}
+                </Button>
+              )}
             </DialogFooter>
           </DialogContent>
         </Dialog>

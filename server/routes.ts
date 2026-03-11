@@ -562,10 +562,20 @@ export async function registerRoutes(
 
   app.patch("/api/quotations/:id", requireRole("owner", "assistant", "sales"), async (req, res) => {
     try {
+      const userId = req.session.userId!;
+      const currentUser = await storage.getUser(userId);
+      const quotation = await storage.getQuotation(parseInt(req.params.id));
+      if (!quotation) return res.status(404).json({ message: "عرض السعر غير موجود" });
+      if (currentUser?.role === "sales") {
+        if (quotation.assignedTo !== userId) {
+          return res.status(403).json({ message: "غير مصرح", messageEn: "Not authorized to modify this quotation" });
+        }
+        delete req.body.assignedTo;
+        delete req.body.assignedAt;
+      }
       const data = { ...req.body };
       if (data.assignedTo) {
-        const existing = await storage.getQuotation(parseInt(req.params.id));
-        if (existing && existing.assignedTo !== data.assignedTo) {
+        if (quotation.assignedTo !== data.assignedTo) {
           data.assignedAt = new Date();
         }
       }
@@ -1447,8 +1457,13 @@ export async function registerRoutes(
       const user = await storage.getUser(userId);
       if (user?.role === "designer") {
         res.json(await storage.getDesignAssignmentsByDesigner(userId));
-      } else {
+      } else if (user?.role === "owner" || user?.role === "assistant") {
         res.json(await storage.getDesignAssignments());
+      } else {
+        const allDA = await storage.getDesignAssignments();
+        const userQuotations = (await storage.getQuotations()).filter((q: any) => q.assignedTo === userId);
+        const userQuotationIds = new Set(userQuotations.map((q: any) => q.id));
+        res.json(allDA.filter((da: any) => userQuotationIds.has(da.quotationId)));
       }
     } catch (error) { res.status(500).json({ message: "حدث خطأ", messageEn: "Error fetching design assignments" }); }
   });
