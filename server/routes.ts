@@ -874,13 +874,13 @@ export async function registerRoutes(
             notes: quotation?.notes || null,
           } as any);
 
-          const stages = ["cutting", "edging", "assembly", "finishing"];
+          const stages = ["cutting", "edging", "assembly", "finishing"] as const;
           for (const stage of stages) {
             await storage.createProductionStage({
               workOrderId: workOrder.id,
-              stageName: stage,
+              stage,
               status: "pending",
-            } as any);
+            });
           }
 
           const productionUsers = await storage.getUsers();
