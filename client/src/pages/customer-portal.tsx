@@ -24,6 +24,7 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import teakLogo from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
+import { DeliveryCountdown } from "@/components/delivery-countdown";
 
 function ZatcaQRCode({ data, size = 120 }: { data: string; size?: number }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -671,6 +672,24 @@ function OrdersTab({ quotations, contracts, production, designs }: {
                     })}
                   </div>
 
+                  {(() => {
+                    const contract = contracts.find((c: any) => c.quotationId === q.id);
+                    if (!contract) return null;
+                    const woData = production.find((p: any) => p.workOrder?.contractId === contract.id);
+                    const wo = woData?.workOrder;
+                    if (wo && wo.productionStartDate && wo.deliveryDays) {
+                      return (
+                        <div className="mt-3 border rounded-lg p-3" data-testid={`delivery-countdown-order-${q.id}`}>
+                          <DeliveryCountdown
+                            deliveryDays={wo.deliveryDays}
+                            productionStartDate={wo.productionStartDate}
+                          />
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
+
                   {design && (design.sketchImage || design.screenshot3d) && (
                     <DesignViewSection design={design} quotationId={q.id} />
                   )}
@@ -697,8 +716,8 @@ function OrdersTab({ quotations, contracts, production, designs }: {
   );
 }
 
-function PaymentSection({ invoice, contract, quotation, setPreviewInvoice }: {
-  invoice: any; contract: any; quotation: any; setPreviewInvoice: (inv: any) => void;
+function PaymentSection({ invoice, contract, quotation, payments, setPreviewInvoice }: {
+  invoice: any; contract: any; quotation: any; payments: any[]; setPreviewInvoice: (inv: any) => void;
 }) {
   const { t } = useLanguage();
   const { toast } = useToast();
@@ -784,57 +803,140 @@ function PaymentSection({ invoice, contract, quotation, setPreviewInvoice }: {
           </span>
         </div>
 
-        {receiptImage ? (
+        {payments.length > 0 && (
           <div className="space-y-2">
-            <div className="relative">
-              <img src={receiptImage} alt="Receipt" className="w-full rounded-md border max-h-48 object-contain bg-white" />
-              <button
-                onClick={() => setReceiptImage(null)}
-                className="absolute top-1 end-1 bg-red-500 text-white rounded-full p-1"
-                data-testid={`button-remove-receipt-${quotation.id}`}
-              >
-                <X className="w-3 h-3" />
-              </button>
-            </div>
-            <Textarea
-              placeholder={t("ملاحظات إضافية (اختياري)", "Additional notes (optional)")}
-              value={paymentNotes}
-              onChange={(e) => setPaymentNotes(e.target.value)}
-              className="text-xs h-16"
-              data-testid={`input-payment-notes-${quotation.id}`}
-            />
-            <Button
-              onClick={() => uploadMutation.mutate()}
-              disabled={uploadMutation.isPending}
-              className="w-full h-10 bg-emerald-600 hover:bg-emerald-700"
-              data-testid={`button-submit-receipt-${quotation.id}`}
-            >
-              {uploadMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin me-2" /> : <CreditCard className="w-4 h-4 me-2" />}
-              {t("إرسال إيصال السداد", "Submit Payment Receipt")}
-            </Button>
+            <p className="text-[11px] font-semibold text-muted-foreground">{t("المدفوعات السابقة", "Previous Payments")}</p>
+            {payments.map((p: any) => (
+              <div key={p.id} className={`flex items-center justify-between rounded-md px-3 py-2 border text-xs ${
+                p.status === "confirmed" ? "bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800" :
+                p.status === "rejected" ? "bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800" :
+                "bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800"
+              }`} data-testid={`payment-status-${p.id}`}>
+                <div className="flex items-center gap-2">
+                  {p.status === "confirmed" ? (
+                    <CheckCircle2 className="w-3.5 h-3.5 text-green-600" />
+                  ) : p.status === "rejected" ? (
+                    <AlertCircle className="w-3.5 h-3.5 text-red-600" />
+                  ) : (
+                    <Clock className="w-3.5 h-3.5 text-amber-600" />
+                  )}
+                  <div>
+                    <span className="font-medium">
+                      {Number(p.amount || 0).toLocaleString()} {t("ريال", "SAR")}
+                    </span>
+                    <p className={`text-[10px] mt-0.5 ${
+                      p.status === "confirmed" ? "text-green-600 dark:text-green-400" :
+                      p.status === "rejected" ? "text-red-600 dark:text-red-400" :
+                      "text-amber-600 dark:text-amber-400"
+                    }`}>
+                      {p.status === "confirmed" ? t("تم التأكيد", "Confirmed") :
+                       p.status === "rejected" ? t("مرفوض", "Rejected") :
+                       t("بانتظار التأكيد", "Pending confirmation")}
+                    </p>
+                    {p.status === "rejected" && p.rejectionReason && (
+                      <p className="text-[10px] text-red-500 mt-0.5">{p.rejectionReason}</p>
+                    )}
+                  </div>
+                </div>
+                <span className="text-[10px] text-muted-foreground">
+                  {new Date(p.createdAt).toLocaleDateString("ar-SA")}
+                </span>
+              </div>
+            ))}
           </div>
-        ) : (
-          <label className="flex flex-col items-center gap-2 border-2 border-dashed border-emerald-300 dark:border-emerald-700 rounded-lg p-4 cursor-pointer hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-colors">
-            <Upload className="w-6 h-6 text-emerald-500" />
-            <span className="text-xs text-emerald-700 dark:text-emerald-400 font-medium">
-              {uploading ? t("جاري الرفع...", "Uploading...") : t("اضغط لإرفاق صورة أو ملف PDF للإيصال", "Tap to attach receipt image or PDF")}
-            </span>
-            <input
-              type="file"
-              accept="image/*,application/pdf"
-              onChange={handleFileSelect}
-              className="hidden"
-              data-testid={`input-receipt-file-${quotation.id}`}
-            />
-          </label>
         )}
+
+        {(() => {
+          const hasRejected = payments.some((p: any) => p.status === "rejected");
+          const hasPending = payments.some((p: any) => p.status === "pending");
+          const allConfirmed = payments.length > 0 && payments.every((p: any) => p.status === "confirmed");
+          const showUpload = !hasPending && !allConfirmed;
+
+          if (hasPending) {
+            return (
+              <div className="text-center py-3 bg-amber-50 dark:bg-amber-950/20 rounded-lg border border-amber-200 dark:border-amber-800">
+                <Clock className="w-5 h-5 text-amber-500 mx-auto mb-1" />
+                <p className="text-xs text-amber-700 dark:text-amber-400 font-medium">
+                  {t("إيصالك قيد المراجعة من المحاسب", "Your receipt is being reviewed by the accountant")}
+                </p>
+              </div>
+            );
+          }
+
+          if (allConfirmed) {
+            return (
+              <div className="text-center py-3 bg-green-50 dark:bg-green-950/20 rounded-lg border border-green-200 dark:border-green-800">
+                <CheckCircle2 className="w-5 h-5 text-green-500 mx-auto mb-1" />
+                <p className="text-xs text-green-700 dark:text-green-400 font-medium">
+                  {t("تم تأكيد جميع المدفوعات", "All payments confirmed")}
+                </p>
+              </div>
+            );
+          }
+
+          return (
+            <>
+              {hasRejected && (
+                <div className="bg-red-50 dark:bg-red-950/20 rounded-lg border border-red-200 dark:border-red-800 p-2 text-center">
+                  <p className="text-xs text-red-700 dark:text-red-400 font-medium">
+                    {t("تم رفض الإيصال السابق — يرجى إرفاق إيصال جديد", "Previous receipt rejected — please upload a new one")}
+                  </p>
+                </div>
+              )}
+              {receiptImage ? (
+                <div className="space-y-2">
+                  <div className="relative">
+                    <img src={receiptImage} alt="Receipt" className="w-full rounded-md border max-h-48 object-contain bg-white" />
+                    <button
+                      onClick={() => setReceiptImage(null)}
+                      className="absolute top-1 end-1 bg-red-500 text-white rounded-full p-1"
+                      data-testid={`button-remove-receipt-${quotation.id}`}
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                  <Textarea
+                    placeholder={t("ملاحظات إضافية (اختياري)", "Additional notes (optional)")}
+                    value={paymentNotes}
+                    onChange={(e) => setPaymentNotes(e.target.value)}
+                    className="text-xs h-16"
+                    data-testid={`input-payment-notes-${quotation.id}`}
+                  />
+                  <Button
+                    onClick={() => uploadMutation.mutate()}
+                    disabled={uploadMutation.isPending}
+                    className="w-full h-10 bg-emerald-600 hover:bg-emerald-700"
+                    data-testid={`button-submit-receipt-${quotation.id}`}
+                  >
+                    {uploadMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin me-2" /> : <CreditCard className="w-4 h-4 me-2" />}
+                    {hasRejected ? t("إعادة إرسال الإيصال", "Resubmit Receipt") : t("إرسال إيصال السداد", "Submit Payment Receipt")}
+                  </Button>
+                </div>
+              ) : (
+                <label className="flex flex-col items-center gap-2 border-2 border-dashed border-emerald-300 dark:border-emerald-700 rounded-lg p-4 cursor-pointer hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-colors">
+                  <Upload className="w-6 h-6 text-emerald-500" />
+                  <span className="text-xs text-emerald-700 dark:text-emerald-400 font-medium">
+                    {uploading ? t("جاري الرفع...", "Uploading...") : t("اضغط لإرفاق صورة أو ملف PDF للإيصال", "Tap to attach receipt image or PDF")}
+                  </span>
+                  <input
+                    type="file"
+                    accept="image/*,application/pdf"
+                    onChange={handleFileSelect}
+                    className="hidden"
+                    data-testid={`input-receipt-file-${quotation.id}`}
+                  />
+                </label>
+              )}
+            </>
+          );
+        })()}
       </div>
     </div>
   );
 }
 
-function QuotationsTab({ quotations, designs, invoices, contracts, onApprove, approving }: {
-  quotations: any[]; designs: any[]; invoices: any[]; contracts: any[]; onApprove: (id: number) => void; approving: boolean;
+function QuotationsTab({ quotations, designs, invoices, contracts, payments, onApprove, approving }: {
+  quotations: any[]; designs: any[]; invoices: any[]; contracts: any[]; payments: any[]; onApprove: (id: number) => void; approving: boolean;
 }) {
   const { t } = useLanguage();
   const { toast } = useToast();
@@ -1017,11 +1119,13 @@ function QuotationsTab({ quotations, designs, invoices, contracts, onApprove, ap
                   {isApproved && (() => {
                     const invoice = invoices.find((inv: any) => inv.quotationId === q.id);
                     const contract = contracts.find((c: any) => c.quotationId === q.id);
+                    const contractPayments = contract ? payments.filter((p: any) => p.contractId === contract.id) : [];
                     return (
                       <PaymentSection
                         invoice={invoice}
                         contract={contract}
                         quotation={q}
+                        payments={contractPayments}
                         setPreviewInvoice={setPreviewInvoice}
                       />
                     );
@@ -1617,6 +1721,7 @@ export default function CustomerPortal() {
             designs={data.designs || []}
             invoices={data.invoices || []}
             contracts={data.contracts || []}
+            payments={data.payments || []}
             onApprove={(id) => approveMutation.mutate(id)}
             approving={approveMutation.isPending}
           />

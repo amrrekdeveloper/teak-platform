@@ -66,6 +66,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { DeliveryCountdown } from "@/components/delivery-countdown";
 
 function useElapsedTime() {
   const [now, setNow] = useState(Date.now());
@@ -963,6 +964,21 @@ export default function OrderCenterPage() {
                     )}
                   </div>
                 );
+              })()}
+
+              {viewOrder.stage === "production" && (() => {
+                const wo = workOrdersWithContract.find((w: any) => w._contract?.quotationId === viewOrder.id);
+                if (wo && wo.productionStartDate && wo.deliveryDays) {
+                  return (
+                    <div className="border rounded-lg p-3" data-testid="section-delivery-countdown">
+                      <DeliveryCountdown
+                        deliveryDays={wo.deliveryDays}
+                        productionStartDate={wo.productionStartDate}
+                      />
+                    </div>
+                  );
+                }
+                return null;
               })()}
 
               {viewOrder.items && viewOrder.items.length > 0 && (

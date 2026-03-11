@@ -16,6 +16,7 @@ import {
   Loader2, ArrowLeft, ArrowRight, Factory, Scissors, Layers,
   Wrench, Paintbrush, CheckCircle2, Clock, Pause, Play, AlertTriangle, User
 } from "lucide-react";
+import { DeliveryCountdown } from "@/components/delivery-countdown";
 
 const statusConfig: Record<string, { ar: string; en: string; color: string }> = {
   pending: { ar: "في الانتظار", en: "Pending", color: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300" },
@@ -188,6 +189,17 @@ export default function WorkOrderDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      {(workOrder as any).productionStartDate && (workOrder as any).deliveryDays && (
+        <Card className="mb-6">
+          <CardContent className="p-4">
+            <DeliveryCountdown
+              deliveryDays={(workOrder as any).deliveryDays}
+              productionStartDate={(workOrder as any).productionStartDate}
+            />
+          </CardContent>
+        </Card>
+      )}
 
       {workOrder.notes && (
         <Card className="mb-6">

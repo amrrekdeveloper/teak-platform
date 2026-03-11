@@ -213,6 +213,7 @@ export const quotations = pgTable("quotations", {
   designFile: text("design_file"),
   validUntil: date("valid_until"),
   inspectionDate: date("inspection_date"),
+  deliveryDays: integer("delivery_days"),
   notes: text("notes"),
   createdBy: integer("created_by").references(() => users.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -271,6 +272,12 @@ export const paymentMethodEnum = pgEnum("payment_method", [
   "card",
 ]);
 
+export const paymentStatusEnum = pgEnum("payment_status", [
+  "pending",
+  "confirmed",
+  "rejected",
+]);
+
 export const payments = pgTable("payments", {
   id: serial("id").primaryKey(),
   contractId: integer("contract_id").references(() => contracts.id).notNull(),
@@ -279,11 +286,15 @@ export const payments = pgTable("payments", {
   amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
   paymentStage: paymentStageEnum("payment_stage").notNull(),
   method: paymentMethodEnum("method").notNull(),
+  status: paymentStatusEnum("payment_status").notNull().default("confirmed"),
   bankReference: text("bank_reference"),
   receiptNumber: text("receipt_number"),
   attachmentUrl: text("attachment_url"),
   notes: text("notes"),
   recordedBy: integer("recorded_by").references(() => users.id),
+  confirmedBy: integer("confirmed_by").references(() => users.id),
+  confirmedAt: timestamp("confirmed_at"),
+  rejectionReason: text("rejection_reason"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -359,11 +370,14 @@ export const workOrders = pgTable("work_orders", {
   orderNumber: serial("order_number"),
   contractId: integer("contract_id").references(() => contracts.id).notNull(),
   customerId: integer("customer_id").references(() => customers.id).notNull(),
+  quotationId: integer("quotation_id").references(() => quotations.id),
   designFile: text("design_file"),
   specifications: jsonb("specifications"),
   priority: priorityEnum("priority").notNull().default("normal"),
   status: workOrderStatusEnum("status").notNull().default("pending"),
   assignedTo: integer("assigned_to").references(() => users.id),
+  deliveryDays: integer("delivery_days"),
+  productionStartDate: timestamp("production_start_date"),
   startDate: date("start_date"),
   dueDate: date("due_date"),
   completedDate: date("completed_date"),

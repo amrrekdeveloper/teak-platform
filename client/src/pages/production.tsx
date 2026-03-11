@@ -4,6 +4,7 @@ import { Link } from "wouter";
 import type { WorkOrder, Customer } from "@shared/schema";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { DeliveryCountdown } from "@/components/delivery-countdown";
 import {
   Loader2, Factory, AlertTriangle, CheckCircle2, Clock, Play,
   Package, TrendingUp
@@ -152,11 +153,19 @@ export default function ProductionPage() {
                             )}
                           </div>
                           <p className="text-xs font-medium truncate">{getCustomerName(wo.customerId)}</p>
-                          {wo.dueDate && (
+                          {(wo as any).productionStartDate && (wo as any).deliveryDays ? (
+                            <div className="mt-1">
+                              <DeliveryCountdown
+                                deliveryDays={(wo as any).deliveryDays}
+                                productionStartDate={(wo as any).productionStartDate}
+                                compact
+                              />
+                            </div>
+                          ) : wo.dueDate ? (
                             <p className="text-[10px] text-muted-foreground mt-1">
                               {new Date(wo.dueDate).toLocaleDateString("ar-SA")}
                             </p>
-                          )}
+                          ) : null}
                         </CardContent>
                       </Card>
                     </Link>

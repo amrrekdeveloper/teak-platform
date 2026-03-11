@@ -42,6 +42,7 @@ export default function QuotationBuilderPage() {
   const [customerId, setCustomerId] = useState(preselectedCustomerId || "");
   const [items, setItems] = useState<LineItem[]>([]);
   const [discount, setDiscount] = useState(0);
+  const [deliveryDays, setDeliveryDays] = useState<number | null>(null);
   const [notes, setNotes] = useState("");
 
   const { data: customers = [] } = useQuery<Customer[]>({ queryKey: ["/api/customers"] });
@@ -173,6 +174,7 @@ export default function QuotationBuilderPage() {
       discount: String(discount),
       finalPrice: String(totals.finalPrice),
       status,
+      deliveryDays: deliveryDays || null,
       notes,
       designFile: completedDesign?.sketchImage || null,
     });
@@ -427,15 +429,28 @@ export default function QuotationBuilderPage() {
           <>
             <Card>
               <CardContent className="p-4 space-y-2">
-                <div className="space-y-1">
-                  <Label className="text-xs">{t("خصم (ريال)", "Discount (SAR)")}</Label>
-                  <Input
-                    type="number"
-                    min="0"
-                    value={discount || ""}
-                    onChange={(e) => setDiscount(parseFloat(e.target.value) || 0)}
-                    data-testid="input-discount"
-                  />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">{t("خصم (ريال)", "Discount (SAR)")}</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={discount || ""}
+                      onChange={(e) => setDiscount(parseFloat(e.target.value) || 0)}
+                      data-testid="input-discount"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">{t("فترة التسليم (أيام عمل)", "Delivery Period (working days)")}</Label>
+                    <Input
+                      type="number"
+                      min="1"
+                      value={deliveryDays || ""}
+                      onChange={(e) => setDeliveryDays(parseInt(e.target.value) || null)}
+                      placeholder={t("مثال: 30", "e.g. 30")}
+                      data-testid="input-delivery-days"
+                    />
+                  </div>
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs">{t("ملاحظات", "Notes")}</Label>

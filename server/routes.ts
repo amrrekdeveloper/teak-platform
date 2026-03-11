@@ -810,6 +810,147 @@ export async function registerRoutes(
     }
   });
 
+  app.patch("/api/payments/:id/confirm", requireRole("owner", "assistant", "accountant"), async (req, res) => {
+    try {
+      const paymentId = parseInt(req.params.id);
+      if (isNaN(paymentId)) return res.status(400).json({ message: "معرف غير صالح" });
+      const payment = await storage.getPayment(paymentId);
+      if (!payment) return res.status(404).json({ message: "الدفعة غير موجودة" });
+      if (payment.status === "confirmed") return res.json({ message: "الدفعة مؤكدة مسبقاً", payment });
+      if (payment.status !== "pending") return res.status(400).json({ message: "لا يمكن تأكيد دفعة ليست في حالة انتظار" });
+
+      const updated = await storage.updatePayment(paymentId, {
+        status: "confirmed",
+        confirmedBy: req.session.userId,
+        confirmedAt: new Date(),
+        rejectionReason: null,
+      } as any);
+
+      const contract = await storage.getContract(payment.contractId);
+      if (contract) {
+        const allPayments = await storage.getPaymentsByContract(contract.id);
+        const confirmedTotal = allPayments
+          .filter((p: any) => p.status === "confirmed" || (p.id === paymentId))
+          .reduce((sum: number, p: any) => sum + parseFloat(p.amount), 0);
+        const newRemaining = parseFloat(contract.totalAmount) - confirmedTotal;
+        await storage.updateContract(contract.id, {
+          paidAmount: String(confirmedTotal),
+          remainingAmount: String(Math.max(0, newRemaining)),
+          status: newRemaining <= 0 ? "completed" : "active",
+        });
+      }
+
+      const confirmedPayments = (await storage.getPaymentsByContract(payment.contractId))
+        .filter((p: any) => p.status === "confirmed");
+      const isFirstConfirmed = confirmedPayments.length <= 1;
+
+      if (isFirstConfirmed && contract) {
+        const existingWOs = await storage.getWorkOrders();
+        const hasWO = existingWOs.some((wo: any) => wo.contractId === contract.id);
+
+        if (!hasWO) {
+          const allQuotations = await storage.getQuotations();
+          const quotation = allQuotations.find((q: any) => q.id === contract.quotationId);
+          const deliveryDays = quotation?.deliveryDays || 30;
+          const now = new Date();
+          const dueDate = new Date(now);
+          dueDate.setDate(dueDate.getDate() + deliveryDays);
+
+          const allDA = await storage.getDesignAssignments();
+          const designDA = quotation ? allDA.find((da: any) => da.quotationId === quotation.id) : null;
+
+          const workOrder = await storage.createWorkOrder({
+            contractId: contract.id,
+            customerId: contract.customerId,
+            quotationId: quotation?.id || null,
+            designFile: designDA?.sketchImage || quotation?.designFile || null,
+            specifications: quotation?.items || null,
+            priority: "normal",
+            status: "pending",
+            deliveryDays,
+            productionStartDate: now,
+            startDate: now.toISOString().split("T")[0],
+            dueDate: dueDate.toISOString().split("T")[0],
+            notes: quotation?.notes || null,
+          } as any);
+
+          const stages = ["cutting", "edging", "assembly", "finishing"];
+          for (const stage of stages) {
+            await storage.createProductionStage({
+              workOrderId: workOrder.id,
+              stageName: stage,
+              status: "pending",
+            } as any);
+          }
+
+          const productionUsers = await storage.getUsers();
+          const productionStaff = productionUsers.filter((u: any) => ["owner", "assistant", "production"].includes(u.role));
+          for (const staff of productionStaff) {
+            await storage.createNotification({
+              userId: staff.id,
+              type: "action",
+              titleAr: "أمر إنتاج جديد",
+              titleEn: "New Work Order",
+              messageAr: `تم إنشاء أمر إنتاج جديد للعقد ${contract.contractNumber}`,
+              messageEn: `New work order created for contract ${contract.contractNumber}`,
+              link: `/work-orders/${workOrder.id}`,
+            });
+          }
+        }
+      }
+
+      const customer = await storage.getCustomer(payment.customerId);
+      const salesUsers = await storage.getUsers();
+      const relevantStaff = salesUsers.filter((u: any) => ["owner", "assistant", "sales", "accountant"].includes(u.role));
+      for (const staff of relevantStaff) {
+        await storage.createNotification({
+          userId: staff.id,
+          type: "info",
+          titleAr: "تم تأكيد دفعة",
+          titleEn: "Payment Confirmed",
+          messageAr: `تم تأكيد دفعة بمبلغ ${payment.amount} ريال من العميل ${customer?.fullName}`,
+          messageEn: `Payment of ${payment.amount} SAR confirmed from ${customer?.fullName}`,
+          link: "/payments",
+        });
+      }
+
+      res.json({ message: "تم تأكيد الدفعة بنجاح", messageEn: "Payment confirmed", payment: updated });
+    } catch (error) { console.error("Confirm payment error:", error); res.status(500).json({ message: "حدث خطأ" }); }
+  });
+
+  app.patch("/api/payments/:id/reject", requireRole("owner", "assistant", "accountant"), async (req, res) => {
+    try {
+      const paymentId = parseInt(req.params.id);
+      if (isNaN(paymentId)) return res.status(400).json({ message: "معرف غير صالح" });
+      const { rejectionReason } = req.body;
+      const payment = await storage.getPayment(paymentId);
+      if (!payment) return res.status(404).json({ message: "الدفعة غير موجودة" });
+      if (payment.status !== "pending") return res.status(400).json({ message: "لا يمكن رفض دفعة ليست في حالة انتظار" });
+
+      const updated = await storage.updatePayment(paymentId, {
+        status: "rejected",
+        rejectionReason: rejectionReason || "لم يتم قبول الإيصال",
+      } as any);
+
+      const customer = await storage.getCustomer(payment.customerId);
+      const salesUsers = await storage.getUsers();
+      const relevantStaff = salesUsers.filter((u: any) => ["owner", "assistant", "sales", "accountant"].includes(u.role));
+      for (const staff of relevantStaff) {
+        await storage.createNotification({
+          userId: staff.id,
+          type: "warning",
+          titleAr: "تم رفض دفعة",
+          titleEn: "Payment Rejected",
+          messageAr: `تم رفض دفعة بمبلغ ${payment.amount} ريال من العميل ${customer?.fullName}`,
+          messageEn: `Payment of ${payment.amount} SAR rejected from ${customer?.fullName}`,
+          link: "/payments",
+        });
+      }
+
+      res.json({ message: "تم رفض الدفعة", messageEn: "Payment rejected", payment: updated });
+    } catch (error) { console.error("Reject payment error:", error); res.status(500).json({ message: "حدث خطأ" }); }
+  });
+
   app.get("/api/invoices", requireAuth, async (_req, res) => {
     try {
       res.json(await storage.getInvoices());
@@ -1802,14 +1943,15 @@ export async function registerRoutes(
       }
 
       const payment = await storage.createPayment({
-        contractId: contractId || null,
+        contractId,
         customerId: customer.id,
         amount: amount || "0",
         method: paymentMethod || "bank_transfer",
-        stage: "deposit",
+        paymentStage: "deposit",
         notes: notes || "تم رفع الوصل من بوابة العميل",
-        receiptImage: receiptImage || null,
+        attachmentUrl: receiptImage || null,
         recordedBy: null,
+        status: "pending",
       });
 
       const salesUsers = await storage.getUsers();
