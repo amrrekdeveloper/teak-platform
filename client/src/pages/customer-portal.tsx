@@ -910,7 +910,15 @@ function QuotationsTab({ quotations, designs, invoices, contracts, onApprove, ap
 
                   {design && (design.sketchImage || design.screenshot3d) && (
                     q.status === "sent" ? (
-                      <DesignViewSection design={design} quotationId={q.id} hideApprovalButtons />
+                      <div className="space-y-2">
+                        {design.updatedAt && design.updatedAt !== design.createdAt && (
+                          <div className="flex items-center gap-1.5 text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/30 rounded-md px-2.5 py-1.5" data-testid={`badge-design-updated-${q.id}`}>
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            {t("تم تحديث التصميم — يرجى المراجعة والاعتماد", "Design updated — please review and approve")}
+                          </div>
+                        )}
+                        <DesignViewSection design={design} quotationId={q.id} hideApprovalButtons />
+                      </div>
                     ) : (
                       <>
                         <button

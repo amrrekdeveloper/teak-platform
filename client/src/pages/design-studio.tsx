@@ -48,6 +48,7 @@ import {
   SendHorizontal,
   Receipt,
   Trash2 as TrashIcon,
+  AlertCircle,
 } from "lucide-react";
 import type { DesignAssignment } from "@shared/schema";
 import {
@@ -308,6 +309,8 @@ export default function DesignStudioPage() {
       });
       await apiRequest("PATCH", `/api/design-assignments/${designAssignment.id}`, {
         status: "completed",
+        customerApproval: null,
+        customerApprovalNotes: null,
         productSpecs: specs,
         notes,
         designFiles: uploadedFiles,
@@ -450,6 +453,23 @@ export default function DesignStudioPage() {
       </div>
 
       <div className="max-w-[1600px] mx-auto p-2 sm:p-4">
+        {designAssignment?.customerApproval === "revision_requested" && designAssignment?.customerApprovalNotes && (
+          <div className="mb-4 border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/30 rounded-lg p-3 space-y-1" data-testid="alert-revision-request">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+              <span className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+                {t("العميل طلب تعديل", "Customer Requested Revision")}
+              </span>
+            </div>
+            <p className="text-sm text-amber-700 dark:text-amber-400 ps-6">
+              {designAssignment.customerApprovalNotes}
+            </p>
+            <p className="text-[11px] text-amber-600/70 dark:text-amber-500/70 ps-6">
+              {t("عدّل التصميم ثم اضغط 'إرسال للعميل' لإعادة إرساله", "Edit the design then click 'Send to Customer' to re-send")}
+            </p>
+          </div>
+        )}
+
         <Tabs value={activeTab} onValueChange={setActiveTab} dir={isRTL ? "rtl" : "ltr"}>
           <div className="overflow-x-auto -mx-2 px-2 sm:-mx-4 sm:px-4 mb-4">
             <TabsList className="inline-flex w-auto min-w-full sm:grid sm:grid-cols-5 sm:w-full sm:max-w-2xl" data-testid="tabs-design-studio">
@@ -675,18 +695,20 @@ export default function DesignStudioPage() {
               />
             </CardContent>
           </Card>
-          {designAssignment?.status !== "completed" && (
+          {(designAssignment?.status !== "completed" || designAssignment?.customerApproval === "revision_requested") && (
             <Card className="sm:w-auto shrink-0">
               <CardContent className="p-4 flex items-center justify-center h-full">
                 <Button
                   size="lg"
                   onClick={handleSendToCustomer}
                   disabled={isSending}
-                  className="w-full sm:w-auto gap-2"
+                  className={`w-full sm:w-auto gap-2 ${designAssignment?.customerApproval === "revision_requested" ? "bg-amber-600 hover:bg-amber-700" : ""}`}
                   data-testid="button-send-to-customer"
                 >
                   {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <SendHorizontal className="w-4 h-4" />}
-                  {t("إرسال للعميل", "Send to Customer")}
+                  {designAssignment?.customerApproval === "revision_requested"
+                    ? t("إعادة إرسال بعد التعديل", "Re-send After Revision")
+                    : t("إرسال للعميل", "Send to Customer")}
                 </Button>
               </CardContent>
             </Card>
