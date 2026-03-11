@@ -14,7 +14,7 @@ import {
   AlertCircle, X, ClipboardList, ChevronDown, ChevronUp,
   User, MapPin, Phone, Package, CalendarPlus,
   Palette, ThumbsUp, MessageSquare, Maximize, Image,
-  Upload, CreditCard, Banknote,
+  Upload, CreditCard, Banknote, RotateCcw,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { apiRequest } from "@/lib/queryClient";
@@ -837,8 +837,27 @@ function QuotationsTab({ quotations, designs, invoices, contracts, onApprove, ap
   quotations: any[]; designs: any[]; invoices: any[]; contracts: any[]; onApprove: (id: number) => void; approving: boolean;
 }) {
   const { t } = useLanguage();
+  const { toast } = useToast();
   const [viewDesign, setViewDesign] = useState<number | null>(null);
   const [previewInvoice, setPreviewInvoice] = useState<any | null>(null);
+  const [revisionForQuote, setRevisionForQuote] = useState<number | null>(null);
+  const [revisionNotes, setRevisionNotes] = useState("");
+
+  const revisionMutation = useMutation({
+    mutationFn: async ({ designId }: { designId: number }) => {
+      const res = await apiRequest("POST", `/api/customer-portal/request-revision/${designId}`, { notes: revisionNotes });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: t("تم إرسال طلب التعديل بنجاح", "Revision request sent successfully") });
+      setRevisionForQuote(null);
+      setRevisionNotes("");
+      queryClient.invalidateQueries({ queryKey: ["/api/customer-portal/my-data"] });
+    },
+    onError: () => {
+      toast({ title: t("حدث خطأ", "Error"), variant: "destructive" });
+    },
+  });
 
   if (!quotations.length) return <EmptyState icon={FileText} titleAr="لا توجد عروض أسعار" titleEn="No quotations yet" />;
 
@@ -938,15 +957,61 @@ function QuotationsTab({ quotations, designs, invoices, contracts, onApprove, ap
                   )}
 
                   {q.status === "sent" && (
-                    <Button
-                      onClick={() => onApprove(q.id)}
-                      disabled={approving}
-                      className="w-full h-10"
-                      data-testid={`button-approve-quotation-${q.id}`}
-                    >
-                      {approving ? <Loader2 className="w-4 h-4 animate-spin me-2" /> : <CheckCircle2 className="w-4 h-4 me-2" />}
-                      {t("اعتماد التصميم وعرض السعر", "Approve Design & Quotation")}
-                    </Button>
+                    <div className="space-y-2">
+                      <Button
+                        onClick={() => onApprove(q.id)}
+                        disabled={approving}
+                        className="w-full h-10"
+                        data-testid={`button-approve-quotation-${q.id}`}
+                      >
+                        {approving ? <Loader2 className="w-4 h-4 animate-spin me-2" /> : <CheckCircle2 className="w-4 h-4 me-2" />}
+                        {t("اعتماد التصميم وعرض السعر", "Approve Design & Quotation")}
+                      </Button>
+
+                      {design && revisionForQuote === q.id ? (
+                        <div className="space-y-2 border rounded-lg p-2.5 bg-amber-50/50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800">
+                          <Textarea
+                            placeholder={t("اكتب ملاحظاتك للتعديل...", "Write your revision notes...")}
+                            value={revisionNotes}
+                            onChange={(e) => setRevisionNotes(e.target.value)}
+                            className="text-xs min-h-[60px]"
+                            data-testid={`input-revision-notes-qt-${q.id}`}
+                          />
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="flex-1 h-8 text-xs border-amber-300 text-amber-700 hover:bg-amber-100"
+                              onClick={() => revisionMutation.mutate({ designId: design.id })}
+                              disabled={revisionMutation.isPending || !revisionNotes.trim()}
+                              data-testid={`button-submit-revision-qt-${q.id}`}
+                            >
+                              {revisionMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin me-1" /> : <RotateCcw className="w-3.5 h-3.5 me-1" />}
+                              {t("إرسال طلب التعديل", "Send Revision Request")}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-8 text-xs"
+                              onClick={() => { setRevisionForQuote(null); setRevisionNotes(""); }}
+                              data-testid={`button-cancel-revision-qt-${q.id}`}
+                            >
+                              {t("إلغاء", "Cancel")}
+                            </Button>
+                          </div>
+                        </div>
+                      ) : design ? (
+                        <Button
+                          variant="outline"
+                          className="w-full h-9 text-xs border-amber-200 text-amber-700 hover:bg-amber-50 dark:border-amber-800 dark:text-amber-400 dark:hover:bg-amber-950/30"
+                          onClick={() => setRevisionForQuote(q.id)}
+                          data-testid={`button-request-revision-qt-${q.id}`}
+                        >
+                          <RotateCcw className="w-3.5 h-3.5 me-1.5" />
+                          {t("طلب تعديل", "Request Revision")}
+                        </Button>
+                      ) : null}
+                    </div>
                   )}
 
                   {isApproved && (() => {

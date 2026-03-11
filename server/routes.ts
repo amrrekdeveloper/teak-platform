@@ -1930,8 +1930,12 @@ export async function registerRoutes(
       const updated = await storage.updateDesignAssignment(da.id, {
         customerApproval: "revision_requested",
         customerApprovalNotes: notes || "",
-        status: "revision",
+        status: "designing",
       } as any);
+
+      if (da.quotationId) {
+        await storage.updateQuotation(da.quotationId, { status: "draft" });
+      }
 
       const staffUsers = (await storage.getUsers()).filter(u => u.id === da.assignedTo || u.role === "owner" || u.role === "assistant");
       for (const staff of staffUsers) {
