@@ -538,7 +538,7 @@ export async function registerRoutes(
           customerId: quotation.customerId,
           paymentStage: null,
           type: "quotation",
-          items: quotation.items,
+          items: quotation.items as any,
           subtotal: quotation.subtotal,
           vatRate: quotation.vatRate,
           vatAmount: quotation.vatAmount,
@@ -893,7 +893,6 @@ export async function registerRoutes(
               titleEn: "New Work Order",
               messageAr: `تم إنشاء أمر إنتاج جديد للعقد ${contract.contractNumber}`,
               messageEn: `New work order created for contract ${contract.contractNumber}`,
-              link: `/work-orders/${workOrder.id}`,
             });
           }
         }
@@ -910,7 +909,6 @@ export async function registerRoutes(
           titleEn: "Payment Confirmed",
           messageAr: `تم تأكيد دفعة بمبلغ ${payment.amount} ريال من العميل ${customer?.fullName}`,
           messageEn: `Payment of ${payment.amount} SAR confirmed from ${customer?.fullName}`,
-          link: "/payments",
         });
       }
 
@@ -943,7 +941,6 @@ export async function registerRoutes(
           titleEn: "Payment Rejected",
           messageAr: `تم رفض دفعة بمبلغ ${payment.amount} ريال من العميل ${customer?.fullName}`,
           messageEn: `Payment of ${payment.amount} SAR rejected from ${customer?.fullName}`,
-          link: "/payments",
         });
       }
 
@@ -1656,7 +1653,6 @@ export async function registerRoutes(
           titleEn: "New Design Assignment",
           messageAr: "تم تحويل طلب تصميم جديد إليك",
           messageEn: "A new design assignment has been assigned to you",
-          link: "/designer-board",
         });
       }
       res.status(201).json(created);
@@ -1694,7 +1690,6 @@ export async function registerRoutes(
           titleEn: "Design Completed",
           messageAr: "تم إكمال التصميم وجاهز لإنشاء عرض السعر",
           messageEn: "Design is completed and ready for quotation",
-          link: "/quotations",
         });
       }
       res.json(updated);
@@ -1859,7 +1854,8 @@ export async function registerRoutes(
       }
 
       const contractNumber = `CNT-${Date.now().toString(36).toUpperCase()}`;
-      const totalAmt = quotation.finalPrice || quotation.totalPrice || quotation.totalWithVat || quotation.total || "0";
+      const q = quotation as any;
+      const totalAmt = q.finalPrice || q.totalPrice || q.totalWithVat || q.total || quotation.subtotal || "0";
       const contract = await storage.createContract({
         contractNumber,
         quotationId: quotation.id,
@@ -1887,10 +1883,10 @@ export async function registerRoutes(
           sellerName: settings?.nameAr || "تيك للتصنيع",
           sellerVatNumber: settings?.vatNumber || "310012345600003",
           issuedAt: new Date(),
-          totalWithVat: quotation.finalPrice || quotation.totalPrice || quotation.totalWithVat || quotation.total,
+          totalWithVat: q.finalPrice || q.totalPrice || q.totalWithVat || q.total,
           vatAmount: quotation.vatAmount || "0",
         });
-        await storage.createInvoice({
+        await (storage.createInvoice as any)({
           invoiceNumber,
           type: "simplified_tax_invoice",
           status: "issued",
@@ -1898,10 +1894,10 @@ export async function registerRoutes(
           contractId: contract.id,
           quotationId: quotation.id,
           items: Array.isArray(quotation.items) ? quotation.items : [],
-          subtotal: quotation.subtotal || quotation.totalPrice || quotation.total || "0",
+          subtotal: quotation.subtotal || q.totalPrice || q.total || "0",
           vatRate: quotation.vatRate || "15",
           vatAmount: quotation.vatAmount || "0",
-          totalWithVat: quotation.finalPrice || quotation.totalPrice || quotation.totalWithVat || quotation.total || "0",
+          totalWithVat: q.finalPrice || q.totalPrice || q.totalWithVat || q.total || "0",
           sellerName: settings?.nameAr || "تيك للتصنيع",
           sellerVatNumber: settings?.vatNumber || "310012345600003",
           sellerAddress: settings?.address || "",
@@ -1922,7 +1918,6 @@ export async function registerRoutes(
           titleEn: "Customer Approved Quotation",
           messageAr: `العميل ${customer.fullName} اعتمد عرض السعر رقم ${quotation.id}`,
           messageEn: `Customer ${customer.fullName} approved quotation #${quotation.id}`,
-          link: "/quotations",
         });
       }
 
@@ -1964,7 +1959,6 @@ export async function registerRoutes(
           titleEn: "New Payment Receipt from Customer",
           messageAr: `العميل ${customer.fullName} رفع وصل دفع بمبلغ ${amount}`,
           messageEn: `Customer ${customer.fullName} uploaded payment receipt of ${amount}`,
-          link: "/payments",
         });
       }
 
@@ -2010,7 +2004,6 @@ export async function registerRoutes(
           titleEn: "New Maintenance Request",
           messageAr: `العميل ${customer.fullName} قدم طلب صيانة`,
           messageEn: `Customer ${customer.fullName} submitted a maintenance request`,
-          link: "/installations",
         });
       }
 
