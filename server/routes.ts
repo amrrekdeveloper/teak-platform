@@ -1718,13 +1718,16 @@ export async function registerRoutes(
       }
 
       const contractNumber = `CNT-${Date.now().toString(36).toUpperCase()}`;
+      const totalAmt = quotation.finalPrice || quotation.totalPrice || quotation.totalWithVat || quotation.total || "0";
       const contract = await storage.createContract({
         contractNumber,
         quotationId: quotation.id,
         customerId: customer.id,
-        totalAmount: quotation.finalPrice || quotation.totalPrice || quotation.totalWithVat || quotation.total || "0",
+        totalAmount: totalAmt,
+        paidAmount: "0",
+        remainingAmount: totalAmt,
         status: "active",
-        terms: "تم الاعتماد عبر بوابة العميل",
+        notes: "تم الاعتماد عبر بوابة العميل",
       });
 
       const existingInvoices = await storage.getInvoicesByCustomer(customer.id);

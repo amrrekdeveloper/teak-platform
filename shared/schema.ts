@@ -310,6 +310,7 @@ export const invoices = pgTable("invoices", {
   id: serial("id").primaryKey(),
   invoiceNumber: serial("invoice_number"),
   contractId: integer("contract_id").references(() => contracts.id),
+  quotationId: integer("quotation_id").references(() => quotations.id),
   customerId: integer("customer_id").references(() => customers.id).notNull(),
   paymentStage: paymentStageEnum("payment_stage"),
   type: invoiceTypeEnum("type").notNull().default("quotation"),
