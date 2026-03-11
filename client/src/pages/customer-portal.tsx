@@ -817,11 +817,11 @@ function PaymentSection({ invoice, contract, quotation, setPreviewInvoice }: {
           <label className="flex flex-col items-center gap-2 border-2 border-dashed border-emerald-300 dark:border-emerald-700 rounded-lg p-4 cursor-pointer hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-colors">
             <Upload className="w-6 h-6 text-emerald-500" />
             <span className="text-xs text-emerald-700 dark:text-emerald-400 font-medium">
-              {uploading ? t("جاري الرفع...", "Uploading...") : t("اضغط لإرفاق صورة الإيصال", "Tap to attach receipt image")}
+              {uploading ? t("جاري الرفع...", "Uploading...") : t("اضغط لإرفاق صورة أو ملف PDF للإيصال", "Tap to attach receipt image or PDF")}
             </span>
             <input
               type="file"
-              accept="image/*"
+              accept="image/*,application/pdf"
               onChange={handleFileSelect}
               className="hidden"
               data-testid={`input-receipt-file-${quotation.id}`}
