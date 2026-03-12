@@ -807,11 +807,22 @@ export default function OrderCenterPage() {
                 };
 
                 const currentYear = today.getFullYear();
-                const yearOptions = [currentYear, currentYear + 1, currentYear + 2];
+                const currentMonth = today.getMonth() + 1;
+                const currentDay = today.getDate();
 
-                const selectedYear = inspYear ? Number(inspYear) : 0;
+                const selectedYear = inspYear ? Number(inspYear) : currentYear;
                 const selectedMonth = inspMonth ? Number(inspMonth) : 0;
                 const daysInMonth = selectedYear && selectedMonth ? new Date(selectedYear, selectedMonth, 0).getDate() : 31;
+
+                const isCurrentYearAndMonth = selectedYear === currentYear && selectedMonth === currentMonth;
+
+                const availableMonths = Array.from({ length: 12 }, (_, i) => i + 1).filter((m) =>
+                  selectedYear > currentYear ? true : m >= currentMonth
+                );
+
+                const availableDays = Array.from({ length: daysInMonth }, (_, i) => i + 1).filter((day) =>
+                  isCurrentYearAndMonth ? day >= currentDay : true
+                );
 
                 const isDateValid = inspDay && inspMonth && inspYear && (() => {
                   const d = new Date(Number(inspYear), Number(inspMonth) - 1, Number(inspDay));
@@ -827,12 +838,6 @@ export default function OrderCenterPage() {
                   const dayName = lang === "ar" ? dayNames.ar[d.getDay()] : dayNames.en[d.getDay()];
                   const monthName = lang === "ar" ? monthNames.ar[d.getMonth()] : monthNames.en[d.getMonth()];
                   return `${dayName} ${d.getDate()} ${monthName} ${d.getFullYear()}`;
-                };
-
-                const isDayDisabled = (day: number) => {
-                  if (!inspMonth || !inspYear) return false;
-                  const d = new Date(Number(inspYear), Number(inspMonth) - 1, day);
-                  return d < today;
                 };
 
                 return (
@@ -869,44 +874,32 @@ export default function OrderCenterPage() {
                           {t("تحديد موعد المعاينة", "Schedule Inspection")}
                         </p>
                         <div className="grid grid-cols-3 gap-2">
-                          <Select value={inspYear} onValueChange={(v) => { setInspYear(v); setInspDay(""); }}>
-                            <SelectTrigger data-testid="select-inspection-year">
-                              <SelectValue placeholder={t("السنة", "Year")} />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {yearOptions.map((y) => (
-                                <SelectItem key={y} value={String(y)}>{y}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                          <div className="flex items-center justify-center rounded-md border border-input bg-muted/50 px-3 h-9 text-sm font-medium" data-testid="select-inspection-year">
+                            {currentYear}
+                          </div>
                           <Select value={inspMonth} onValueChange={(v) => { setInspMonth(v); setInspDay(""); }}>
                             <SelectTrigger data-testid="select-inspection-month">
                               <SelectValue placeholder={t("الشهر", "Month")} />
                             </SelectTrigger>
                             <SelectContent>
-                              {Array.from({ length: 12 }, (_, i) => {
-                                const mIdx = i + 1;
-                                const mName = lang === "ar" ? monthNames.ar[i] : monthNames.en[i];
+                              {availableMonths.map((mIdx) => {
+                                const mName = lang === "ar" ? monthNames.ar[mIdx - 1] : monthNames.en[mIdx - 1];
                                 return (
                                   <SelectItem key={mIdx} value={String(mIdx)}>{mName}</SelectItem>
                                 );
                               })}
                             </SelectContent>
                           </Select>
-                          <Select value={inspDay} onValueChange={setInspDay}>
+                          <Select value={inspDay} onValueChange={setInspDay} disabled={!inspMonth}>
                             <SelectTrigger data-testid="select-inspection-day">
                               <SelectValue placeholder={t("اليوم", "Day")} />
                             </SelectTrigger>
                             <SelectContent>
-                              {Array.from({ length: daysInMonth }, (_, i) => {
-                                const day = i + 1;
-                                const disabled = isDayDisabled(day);
-                                return (
-                                  <SelectItem key={day} value={String(day)} disabled={disabled}>
-                                    {day}
-                                  </SelectItem>
-                                );
-                              })}
+                              {availableDays.map((day) => (
+                                <SelectItem key={day} value={String(day)}>
+                                  {day}
+                                </SelectItem>
+                              ))}
                             </SelectContent>
                           </Select>
                         </div>
@@ -925,7 +918,7 @@ export default function OrderCenterPage() {
                             size="sm"
                             disabled={!isDateValid || inspectionMutation.isPending}
                             onClick={() => {
-                              const dateStr = `${inspYear}-${String(inspMonth).padStart(2, "0")}-${String(inspDay).padStart(2, "0")}`;
+                              const dateStr = `${selectedYear}-${String(inspMonth).padStart(2, "0")}-${String(inspDay).padStart(2, "0")}`;
                               inspectionMutation.mutate({ id: viewOrder.id, inspectionDate: dateStr });
                               setViewOrder({ ...viewOrder, inspectionDate: dateStr });
                             }}
@@ -950,8 +943,7 @@ export default function OrderCenterPage() {
                         size="sm"
                         className="w-full"
                         onClick={() => {
-                          const defaultYear = currentYear < 2026 ? 2026 : currentYear;
-                          setInspYear(String(defaultYear));
+                          setInspYear(String(currentYear));
                           setInspMonth("");
                           setInspDay("");
                           setShowInspectionPicker(true);
