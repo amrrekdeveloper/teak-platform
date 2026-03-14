@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "4ZZOp9moE6FNf7y5es_iI"
+uri = "file://client/public/teak_design_dimensions.csv"
+type = "table"
+title = "مقاييس تيك التصميمية والتصنيعية - 252 منتج"
