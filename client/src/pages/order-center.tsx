@@ -104,7 +104,7 @@ const stageConfig: Record<StageFilter, { ar: string; en: string; icon: typeof Cl
 
 function getOrderStage(q: any, workOrders: any[], contracts: any[]): StageFilter {
   if (q.status === "rejected" || q.status === "expired") return "cancelled";
-  if (q.status === "requested") return "new";
+  if (q.status === "requested" || q.status === "open") return "new";
   if (q.status === "draft") return q.assignedTo ? "sales" : "new";
   if (q.status === "sent") return "sent";
   if (q.status === "approved") {
@@ -140,6 +140,7 @@ export default function OrderCenterPage() {
   const { toast } = useToast();
 
   const isManager = user?.role === "owner" || user?.role === "assistant";
+  const [managerTab, setManagerTab] = useState<"open" | "assigned">("open");
   const [stageFilter, setStageFilter] = useState<StageFilter>("all");
   const [salesFilter, setSalesFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -193,15 +194,13 @@ export default function OrderCenterPage() {
 
   const salesUsers = useMemo(() => {
     return usersData.filter((u: any) => 
-      ["sales", "owner", "assistant", "designer"].includes(u.role) && u.username !== "admin"
+      u.role === "sales"
     );
   }, [usersData]);
 
   const assignMutation = useMutation({
-    mutationFn: async ({ id, assignedTo, status }: { id: number; assignedTo: number; status?: string }) => {
-      const body: any = { assignedTo };
-      if (status) body.status = status;
-      return apiRequest("PATCH", `/api/quotations/${id}`, body);
+    mutationFn: async ({ id, assignedTo }: { id: number; assignedTo: number }) => {
+      return apiRequest("POST", `/api/quotations/${id}/transfer`, { newAssigneeId: assignedTo });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/quotations"] });
@@ -270,17 +269,27 @@ export default function OrderCenterPage() {
     });
   }, [quotations, customers, usersData, workOrdersWithContract, contracts]);
 
+  const openPoolOrders = useMemo(() => {
+    return enrichedOrders.filter((o: any) => o.stage === "new" && !o.assignedTo);
+  }, [enrichedOrders]);
+
+  const assignedOrders = useMemo(() => {
+    return enrichedOrders.filter((o: any) => o.stage !== "new" || o.assignedTo);
+  }, [enrichedOrders]);
+
+  const tabOrders = isManager ? (managerTab === "open" ? openPoolOrders : assignedOrders) : enrichedOrders;
+
   const stageCounts = useMemo(() => {
     const counts: Record<StageFilter, number> = { all: 0, new: 0, sales: 0, sent: 0, awaiting_payment: 0, approved: 0, production: 0, completed: 0, cancelled: 0 };
-    enrichedOrders.forEach((o: any) => {
+    tabOrders.forEach((o: any) => {
       counts[o.stage as StageFilter]++;
       counts.all++;
     });
     return counts;
-  }, [enrichedOrders]);
+  }, [tabOrders]);
 
   const filtered = useMemo(() => {
-    let list = enrichedOrders;
+    let list = tabOrders;
     if (stageFilter !== "all") list = list.filter((o: any) => o.stage === stageFilter);
     if (salesFilter !== "all") list = list.filter((o: any) => String(o.assignedTo) === salesFilter);
     if (searchQuery.trim()) {
@@ -293,7 +302,7 @@ export default function OrderCenterPage() {
       );
     }
     return list.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  }, [enrichedOrders, stageFilter, salesFilter, searchQuery]);
+  }, [tabOrders, stageFilter, salesFilter, searchQuery]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
   const paginated = filtered.slice((currentPage - 1) * perPage, currentPage * perPage);
@@ -349,6 +358,25 @@ export default function OrderCenterPage() {
           </Button>
         )}
       </div>
+
+      {isManager && (
+        <div className="flex gap-2 border-b pb-1" data-testid="manager-tabs">
+          <button
+            onClick={() => { setManagerTab("open"); setStageFilter("all"); setCurrentPage(1); }}
+            className={`px-4 py-2 text-sm font-medium rounded-t-md transition-colors ${managerTab === "open" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}
+            data-testid="tab-open-pool"
+          >
+            {t("المفتوحة", "Open Pool")} ({openPoolOrders.length})
+          </button>
+          <button
+            onClick={() => { setManagerTab("assigned"); setStageFilter("all"); setCurrentPage(1); }}
+            className={`px-4 py-2 text-sm font-medium rounded-t-md transition-colors ${managerTab === "assigned" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}
+            data-testid="tab-with-agents"
+          >
+            {t("مع المناديب", "With Agents")} ({assignedOrders.length})
+          </button>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-2">
         {(Object.keys(stageConfig) as StageFilter[]).filter(k => k !== "all").map((stage) => {
@@ -772,11 +800,17 @@ export default function OrderCenterPage() {
 
               {viewOrder.assignedUser && (
                 <div className="bg-blue-50/50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900 rounded-lg p-3">
-                  <p className="text-[11px] text-blue-600 dark:text-blue-400 font-medium mb-1.5">{t("تم التحويل للمبيعات", "Assigned to Sales")}</p>
+                  <p className="text-[11px] text-blue-600 dark:text-blue-400 font-medium mb-1.5">{t("المندوب الحالي", "Current Agent")}</p>
                   <p className="text-sm font-semibold flex items-center gap-1.5">
                     <User className="w-3.5 h-3.5 text-blue-500" />
                     {t(viewOrder.assignedUser.fullNameAr, viewOrder.assignedUser.fullNameEn)}
                   </p>
+                  {viewOrder.claimedAt && (!viewOrder.previousAssignees || (viewOrder.previousAssignees as any[]).length === 0) && (
+                    <p className="text-[10px] text-green-600 dark:text-green-400 mt-1 flex items-center gap-1">
+                      <CheckCircle2 className="w-2.5 h-2.5" />
+                      {t("التقطه بنفسه", "Self-claimed")}
+                    </p>
+                  )}
                   {viewOrder.assignedAt && (
                     <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
                       <span className="flex items-center gap-1">
@@ -789,6 +823,25 @@ export default function OrderCenterPage() {
                       </span>
                     </div>
                   )}
+                </div>
+              )}
+
+              {viewOrder.previousAssignees && (viewOrder.previousAssignees as any[]).length > 0 && (
+                <div className="border border-dashed rounded-lg p-3" data-testid="section-transfer-history">
+                  <p className="text-[11px] text-muted-foreground font-medium mb-2">{t("سجل التحويلات", "Transfer History")}</p>
+                  <div className="space-y-1.5">
+                    {(viewOrder.previousAssignees as any[]).map((prev: any, idx: number) => (
+                      <div key={idx} className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                        <RotateCcw className="w-3 h-3 flex-shrink-0" />
+                        <span>{prev.name || t("مندوب", "Agent")}</span>
+                        {prev.removedAt && (
+                          <span className="text-[10px]">
+                            ({new Date(prev.removedAt).toLocaleDateString(lang === "ar" ? "ar-SA" : "en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })})
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
 
@@ -1276,11 +1329,9 @@ export default function OrderCenterPage() {
               <Button
                 disabled={!selectedSalesUser || assignMutation.isPending}
                 onClick={() => {
-                  const newStatus = assignDialog.status === "requested" ? "draft" : undefined;
                   assignMutation.mutate({
                     id: assignDialog.id,
                     assignedTo: Number(selectedSalesUser),
-                    status: newStatus,
                   });
                 }}
                 data-testid="button-confirm-assign"

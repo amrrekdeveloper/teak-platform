@@ -196,7 +196,7 @@ export async function registerRoutes(
         vatAmount: "0",
         totalPrice: "0",
         finalPrice: "0",
-        status: "requested",
+        status: "open",
         notes: [
           productLabel ? `المنتج: ${productLabel}` : "",
           city ? `المدينة: ${city}` : "",
@@ -608,6 +608,13 @@ export async function registerRoutes(
       const user = await storage.getUser(userId);
       if (user?.role === "owner" || user?.role === "assistant") {
         res.json(await storage.getQuotations());
+      } else if (user?.role === "sales") {
+        const all = await storage.getQuotations();
+        const filtered = all.filter((q: any) =>
+          q.assignedTo === userId ||
+          (q.status === "open" && !q.assignedTo)
+        );
+        res.json(filtered);
       } else {
         const all = await storage.getQuotations();
         const filtered = all.filter((q: any) => q.assignedTo === userId);
@@ -720,6 +727,99 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/quotations/:id/claim", requireRole("sales"), async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const quotationId = parseInt(req.params.id);
+      const updated = await storage.claimQuotation(quotationId, userId);
+      if (!updated) {
+        return res.status(409).json({ message: "تم التقاط هذا الطلب من قبل مندوب آخر أو لا يمكن التقاطه", messageEn: "Order already claimed or cannot be claimed" });
+      }
+      const claimingUser = await storage.getUser(userId);
+      const staffUsers = (await storage.getUsers()).filter(u => ["owner", "assistant"].includes(u.role) && u.id !== userId);
+      for (const staff of staffUsers) {
+        await storage.createNotification({
+          userId: staff.id,
+          titleAr: "تم التقاط طلب",
+          titleEn: "Order Claimed",
+          messageAr: `قام ${claimingUser?.fullNameAr || ""} بالتقاط الطلب #${updated.quotationNumber || quotationId}`,
+          messageEn: `${claimingUser?.fullNameEn || ""} claimed order #${updated.quotationNumber || quotationId}`,
+          type: "info",
+          relatedEntity: "quotation",
+          relatedId: quotationId,
+          isRead: false,
+        });
+      }
+      res.json(updated);
+    } catch (error) {
+      console.error("Claim order error:", error);
+      res.status(500).json({ message: "حدث خطأ في التقاط الطلب", messageEn: "Error claiming order" });
+    }
+  });
+
+  app.post("/api/quotations/:id/transfer", requireRole("owner", "assistant"), async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const quotationId = parseInt(req.params.id);
+      const { newAssigneeId } = req.body;
+      if (!newAssigneeId) return res.status(400).json({ message: "يجب تحديد المندوب الجديد", messageEn: "New assignee required" });
+      const quotation = await storage.getQuotation(quotationId);
+      if (!quotation) return res.status(404).json({ message: "الطلب غير موجود", messageEn: "Order not found" });
+      const newAssignee = await storage.getUser(Number(newAssigneeId));
+      if (!newAssignee) return res.status(404).json({ message: "المستخدم غير موجود", messageEn: "User not found" });
+      if (newAssignee.role !== "sales") {
+        return res.status(400).json({ message: "يمكن تحويل الطلبات فقط لمناديب المبيعات", messageEn: "Orders can only be transferred to sales agents" });
+      }
+      const previousAssignees = (quotation.previousAssignees as any[] || []);
+      if (quotation.assignedTo) {
+        const oldUser = await storage.getUser(quotation.assignedTo);
+        previousAssignees.push({
+          userId: quotation.assignedTo,
+          name: oldUser?.fullNameAr || "",
+          assignedAt: quotation.assignedAt,
+          removedAt: new Date().toISOString(),
+          removedBy: userId,
+        });
+      }
+      const now = new Date();
+      const updated = await storage.updateQuotation(quotationId, {
+        assignedTo: Number(newAssigneeId),
+        assignedAt: now,
+        previousAssignees,
+        status: (quotation.status === "requested" || quotation.status === "open") ? "draft" : quotation.status,
+      });
+      const transferringUser = await storage.getUser(userId);
+      if (quotation.assignedTo && quotation.assignedTo !== Number(newAssigneeId)) {
+        await storage.createNotification({
+          userId: quotation.assignedTo,
+          titleAr: "تم نقل طلب منك",
+          titleEn: "Order Transferred From You",
+          messageAr: `تم نقل الطلب #${quotation.quotationNumber || quotationId} إلى مندوب آخر بواسطة ${transferringUser?.fullNameAr || ""}`,
+          messageEn: `Order #${quotation.quotationNumber || quotationId} was transferred by ${transferringUser?.fullNameEn || ""}`,
+          type: "warning",
+          relatedEntity: "quotation",
+          relatedId: quotationId,
+          isRead: false,
+        });
+      }
+      await storage.createNotification({
+        userId: Number(newAssigneeId),
+        titleAr: "تم تحويل طلب إليك",
+        titleEn: "Order Transferred To You",
+        messageAr: `تم تحويل الطلب #${quotation.quotationNumber || quotationId} إليك بواسطة ${transferringUser?.fullNameAr || ""}`,
+        messageEn: `Order #${quotation.quotationNumber || quotationId} was transferred to you by ${transferringUser?.fullNameEn || ""}`,
+        type: "action",
+        relatedEntity: "quotation",
+        relatedId: quotationId,
+        isRead: false,
+      });
+      res.json(updated);
+    } catch (error) {
+      console.error("Transfer order error:", error);
+      res.status(500).json({ message: "حدث خطأ في نقل الطلب", messageEn: "Error transferring order" });
+    }
+  });
+
   app.post("/api/orders/create-direct", requireRole("owner", "assistant", "sales"), async (req, res) => {
     try {
       const { fullName, phone, productDescription, notes } = req.body;
@@ -763,6 +863,7 @@ export async function registerRoutes(
         status: "draft",
         assignedTo: req.session.userId,
         assignedAt: new Date(),
+        claimedAt: new Date(),
         notes: [
           `المنتج: ${productDescription}`,
           notes ? `ملاحظات: ${notes}` : "",
@@ -1157,7 +1258,7 @@ export async function registerRoutes(
       const totalRevenue = paymentsList.reduce((sum, p) => sum + parseFloat(p.amount), 0);
       const activeContracts = contractsList.filter(c => c.status === "active").length;
       const pendingQuotations = quotationsList.filter(q => q.status === "draft" || q.status === "sent").length;
-      const newOrders = quotationsList.filter(q => q.status === "requested" || (q.status === "draft" && !q.assignedTo)).length;
+      const newOrders = quotationsList.filter(q => q.status === "requested" || q.status === "open" || (q.status === "draft" && !q.assignedTo)).length;
       const inProductionOrders = workOrdersList.filter(w => w.status === "in_production").length;
 
       const lowStockItems = inventoryList.filter(i =>
@@ -1199,6 +1300,15 @@ export async function registerRoutes(
           customerName: customersList.find(c => c.id === p.customerId)?.fullName || "",
         }));
 
+      const openPoolCount = quotationsList.filter(q => q.status === "open" && !q.assignedTo).length;
+      const transferredCount = quotationsList.filter(q => Array.isArray(q.previousAssignees) && (q.previousAssignees as any[]).length > 0).length;
+      const usersAll = await storage.getUsers();
+      const salesUsers = usersAll.filter(u => u.role === "sales");
+      const agentDistribution = salesUsers.map(su => {
+        const count = quotationsList.filter(q => q.assignedTo === su.id && q.status !== "rejected" && q.status !== "expired").length;
+        return { userId: su.id, nameAr: su.fullNameAr, nameEn: su.fullNameEn, orderCount: count };
+      });
+
       res.json({
         totalCustomers: customersList.length,
         totalQuotations: quotationsList.length,
@@ -1223,6 +1333,9 @@ export async function registerRoutes(
         woByStatus,
         paymentsByStage,
         recentPayments,
+        openPoolCount,
+        transferredCount,
+        agentDistribution,
       });
     } catch (error) {
       res.status(500).json({ message: "حدث خطأ" });

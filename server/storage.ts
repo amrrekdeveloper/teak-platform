@@ -60,6 +60,7 @@ export interface IStorage {
   getQuotationsByCustomer(customerId: number): Promise<Quotation[]>;
   createQuotation(quotation: InsertQuotation): Promise<Quotation>;
   updateQuotation(id: number, data: Partial<InsertQuotation>): Promise<Quotation | undefined>;
+  claimQuotation(id: number, userId: number): Promise<Quotation | undefined>;
 
   getContracts(): Promise<Contract[]>;
   getContract(id: number): Promise<Contract | undefined>;
@@ -281,6 +282,27 @@ export class DatabaseStorage implements IStorage {
 
   async updateQuotation(id: number, data: Partial<InsertQuotation>): Promise<Quotation | undefined> {
     const [updated] = await db.update(quotations).set({ ...data, updatedAt: new Date() }).where(eq(quotations.id, id)).returning();
+    return updated;
+  }
+
+  async claimQuotation(id: number, userId: number): Promise<Quotation | undefined> {
+    const now = new Date();
+    const [updated] = await db.update(quotations)
+      .set({
+        assignedTo: userId,
+        assignedAt: now,
+        claimedAt: now,
+        status: "draft",
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(quotations.id, id),
+          eq(quotations.status, "open" as any),
+          sql`${quotations.assignedTo} IS NULL`
+        )
+      )
+      .returning();
     return updated;
   }
 

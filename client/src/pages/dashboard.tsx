@@ -160,6 +160,49 @@ export default function DashboardPage() {
 
       <InspectionScheduleSection inspections={inspections || []} t={t} lang={lang} />
 
+      {(user?.role === "owner" || user?.role === "assistant") && (
+        <Card data-testid="card-order-competition">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <ClipboardList className="w-5 h-5 text-primary" />
+              {t("توزيع الطلبات على المناديب", "Order Distribution")}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pb-4">
+            <div className="grid grid-cols-3 gap-3 mb-4">
+              <div className="text-center p-3 rounded-lg bg-red-50 dark:bg-red-950/30">
+                <p className="text-2xl font-bold text-red-600" data-testid="text-open-pool-count">{stats?.openPoolCount || 0}</p>
+                <p className="text-xs text-muted-foreground">{t("طلبات مفتوحة", "Open Pool")}</p>
+              </div>
+              <div className="text-center p-3 rounded-lg bg-blue-50 dark:bg-blue-950/30">
+                <p className="text-2xl font-bold text-blue-600" data-testid="text-assigned-count">{(stats?.totalQuotations || 0) - (stats?.openPoolCount || 0)}</p>
+                <p className="text-xs text-muted-foreground">{t("مع المناديب", "With Agents")}</p>
+              </div>
+              <div className="text-center p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30">
+                <p className="text-2xl font-bold text-amber-600" data-testid="text-transferred-count">{stats?.transferredCount || 0}</p>
+                <p className="text-xs text-muted-foreground">{t("تم تحويلها", "Transferred")}</p>
+              </div>
+            </div>
+            {(stats?.agentDistribution || []).length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">{t("توزيع حسب المندوب", "Per Agent")}</p>
+                {(stats?.agentDistribution || []).map((agent: any) => (
+                  <div key={agent.userId} className="flex items-center justify-between text-sm py-1 border-b last:border-0">
+                    <span>{lang === "ar" ? agent.nameAr : agent.nameEn}</span>
+                    <Badge variant="secondary" data-testid={`badge-agent-count-${agent.userId}`}>{agent.orderCount}</Badge>
+                  </div>
+                ))}
+              </div>
+            )}
+            <Link href="/order-center">
+              <Button variant="ghost" size="sm" className="w-full mt-3" data-testid="link-view-order-center">
+                {t("مركز الطلبات", "Order Center")} <ArrowIcon className="w-4 h-4 ms-1" />
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
+      )}
+
       <DesignApprovalSection designAssignments={designAssignments || []} t={t} lang={lang} />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

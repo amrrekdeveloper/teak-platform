@@ -188,6 +188,7 @@ export type DoorType = typeof doorTypes.$inferSelect;
 
 export const quotationStatusEnum = pgEnum("quotation_status", [
   "requested",
+  "open",
   "draft",
   "sent",
   "approved",
@@ -210,6 +211,8 @@ export const quotations = pgTable("quotations", {
   status: quotationStatusEnum("status").notNull().default("draft"),
   assignedTo: integer("assigned_to").references(() => users.id),
   assignedAt: timestamp("assigned_at"),
+  claimedAt: timestamp("claimed_at"),
+  previousAssignees: jsonb("previous_assignees").default([]),
   designFile: text("design_file"),
   validUntil: date("valid_until"),
   inspectionDate: date("inspection_date"),

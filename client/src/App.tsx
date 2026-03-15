@@ -36,6 +36,7 @@ import SettingsProductsPage from "@/pages/settings-products";
 import TrackOrderPage from "@/pages/track-order";
 import DesignerBoardPage from "@/pages/designer-board";
 import OrderCenterPage from "@/pages/order-center";
+import MyOrdersPage from "@/pages/my-orders";
 import DesignStudioPage from "@/pages/design-studio";
 import CustomerPortalLogin from "@/pages/customer-portal-login";
 import CustomerPortal from "@/pages/customer-portal";
@@ -160,6 +161,7 @@ function DashboardRoutes() {
         <Route path="/quality" component={QualityPage} />
         <Route path="/employees" component={EmployeesPage} />
         <Route path="/order-center" component={OrderCenterPage} />
+        <Route path="/my-orders" component={MyOrdersPage} />
         <Route path="/design-studio/:orderId" component={DesignStudioPage} />
         <Route path="/designer-board" component={DesignerBoardPage} />
         <Route path="/settings/products" component={SettingsProductsPage} />
