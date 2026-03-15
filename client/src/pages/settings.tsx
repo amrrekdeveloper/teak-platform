@@ -110,7 +110,7 @@ export default function SettingsPage() {
     }
   }, [settings]);
 
-  const isOwnerOrIT = currentUser?.role === "owner" || currentUser?.role === "it" || currentUser?.role === "assistant";
+  const isOwnerOrIT = currentUser?.role === "owner" || currentUser?.role === "it";
 
   const filteredUsers = users.filter(u => {
     const q = userSearch.toLowerCase();
@@ -425,8 +425,9 @@ function ResetRequestsTab({ users }: { users: User[] }) {
   const pendingRequests = requests.filter(r => r.status === "pending");
   const resolvedRequests = requests.filter(r => r.status === "resolved");
 
+  const getUser = (userId: number) => users.find(u => u.id === userId);
   const getUserName = (userId: number) => {
-    const u = users.find(u => u.id === userId);
+    const u = getUser(userId);
     return u ? t(u.fullNameAr, u.fullNameEn) : `#${userId}`;
   };
 
@@ -443,25 +444,29 @@ function ResetRequestsTab({ users }: { users: User[] }) {
         <Card><CardContent className="p-8 text-center text-muted-foreground">{t("لا توجد طلبات", "No requests")}</CardContent></Card>
       ) : (
         <div className="space-y-2">
-          {pendingRequests.map(req => (
-            <Card key={req.id} className="border-orange-300 dark:border-orange-700" data-testid={`card-reset-request-${req.id}`}>
-              <CardContent className="p-4 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3 min-w-0">
-                  <Clock className="w-5 h-5 text-orange-500 shrink-0" />
-                  <div className="min-w-0">
-                    <p className="font-semibold">{getUserName(req.userId)}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {req.createdAt && new Date(req.createdAt).toLocaleString(t("ar-SA", "en-US"))}
-                    </p>
+          {pendingRequests.map(req => {
+            const reqUser = getUser(req.userId);
+            return (
+              <Card key={req.id} className="border-orange-300 dark:border-orange-700" data-testid={`card-reset-request-${req.id}`}>
+                <CardContent className="p-4 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <Clock className="w-5 h-5 text-orange-500 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="font-semibold">{getUserName(req.userId)}</p>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+                        {reqUser?.phone && <span dir="ltr">{reqUser.phone}</span>}
+                        <span>{req.createdAt && new Date(req.createdAt).toLocaleString(t("ar-SA", "en-US"))}</span>
+                      </div>
+                    </div>
+                    <Badge className="bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">{t("معلق", "Pending")}</Badge>
                   </div>
-                  <Badge className="bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">{t("معلق", "Pending")}</Badge>
-                </div>
-                <Button size="sm" onClick={() => { setResolveId(req.id); setResolveUserId(req.userId); setResolvePassword(""); }} data-testid={`button-resolve-${req.id}`}>
-                  <Key className="w-3.5 h-3.5 me-1.5" />{t("حل الطلب", "Resolve")}
-                </Button>
-              </CardContent>
-            </Card>
-          ))}
+                  <Button size="sm" onClick={() => { setResolveId(req.id); setResolveUserId(req.userId); setResolvePassword(""); }} data-testid={`button-resolve-${req.id}`}>
+                    <Key className="w-3.5 h-3.5 me-1.5" />{t("حل الطلب", "Resolve")}
+                  </Button>
+                </CardContent>
+              </Card>
+            );
+          })}
 
           {resolvedRequests.length > 0 && (
             <>

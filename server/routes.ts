@@ -305,10 +305,14 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/users", requireAuth, async (_req, res) => {
+  app.get("/api/users", requireAuth, async (req, res) => {
     try {
       const allUsers = await storage.getUsers();
-      const safeUsers = allUsers.map(({ password, ...u }) => u);
+      const isAdmin = req.session.userId && ["owner", "it"].includes((await storage.getUser(req.session.userId))?.role || "");
+      const safeUsers = allUsers.map(({ password, ...u }) => {
+        if (isAdmin) return u;
+        return { id: u.id, username: u.username, fullNameAr: u.fullNameAr, fullNameEn: u.fullNameEn, role: u.role };
+      });
       res.json(safeUsers);
     } catch (error) {
       res.status(500).json({ message: "حدث خطأ" });
@@ -405,7 +409,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/users/reset-requests", requireRole("owner", "it", "assistant"), async (req, res) => {
+  app.get("/api/users/reset-requests", requireRole("owner", "it"), async (req, res) => {
     try {
       const status = req.query.status as string | undefined;
       const requests = await storage.getPasswordResetRequests(status);
@@ -415,7 +419,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/users/reset-requests/:id/resolve", requireRole("owner", "it", "assistant"), async (req, res) => {
+  app.patch("/api/users/reset-requests/:id/resolve", requireRole("owner", "it"), async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       const { newPassword } = req.body;
