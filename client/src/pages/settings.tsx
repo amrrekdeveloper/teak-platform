@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Loader2, Building2, Users, History, Save, Plus, Pencil, Shield, Tags, Trash2, Package } from "lucide-react";
+import { Loader2, Building2, Users, History, Save, Plus, Pencil, Shield, Tags, Trash2, Package, Search, Key, UserCheck, UserX, Clock } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Link } from "wouter";
 
@@ -54,6 +54,10 @@ export default function SettingsPage() {
   const [editUser, setEditUser] = useState<User | null>(null);
   const [newUserDialog, setNewUserDialog] = useState(false);
   const [newUser, setNewUser] = useState({ username: "", password: "", fullNameAr: "", fullNameEn: "", role: "sales", phone: "", email: "" });
+  const [userSearch, setUserSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState("all");
+  const [resetPasswordUser, setResetPasswordUser] = useState<User | null>(null);
+  const [adminNewPassword, setAdminNewPassword] = useState("");
 
   const settingsMutation = useMutation({
     mutationFn: (data: any) => apiRequest("PUT", "/api/company-settings", data),
@@ -80,6 +84,26 @@ export default function SettingsPage() {
     },
   });
 
+  const adminResetPasswordMutation = useMutation({
+    mutationFn: ({ id, password }: { id: number; password: string }) => apiRequest("PATCH", `/api/users/${id}`, { password }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      setResetPasswordUser(null);
+      setAdminNewPassword("");
+      toast({ title: t("تم تغيير كلمة المرور", "Password changed") });
+    },
+    onError: () => toast({ title: t("حدث خطأ", "Error"), variant: "destructive" }),
+  });
+
+  const toggleActiveMutation2 = useMutation({
+    mutationFn: ({ id, active }: { id: number; active: boolean }) => apiRequest("PATCH", `/api/users/${id}`, { active }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      toast({ title: t("تم التحديث", "Updated") });
+    },
+    onError: () => toast({ title: t("حدث خطأ", "Error"), variant: "destructive" }),
+  });
+
   useEffect(() => {
     if (!companyForm && settings) {
       setCompanyForm({ ...settings });
@@ -87,6 +111,13 @@ export default function SettingsPage() {
   }, [settings]);
 
   const isOwnerOrIT = currentUser?.role === "owner" || currentUser?.role === "it" || currentUser?.role === "assistant";
+
+  const filteredUsers = users.filter(u => {
+    const q = userSearch.toLowerCase();
+    const matchesSearch = !q || u.fullNameAr.toLowerCase().includes(q) || u.fullNameEn.toLowerCase().includes(q) || u.username.toLowerCase().includes(q);
+    const matchesRole = roleFilter === "all" || u.role === roleFilter;
+    return matchesSearch && matchesRole;
+  });
 
   if (loadingSettings || loadingUsers) return <div className="flex items-center justify-center h-64"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
 
@@ -105,6 +136,11 @@ export default function SettingsPage() {
           {isOwnerOrIT && (
             <TabsTrigger value="logs" data-testid="tab-logs">
               <History className="w-4 h-4 me-1.5" />{t("السجل", "Activity Log")}
+            </TabsTrigger>
+          )}
+          {isOwnerOrIT && (
+            <TabsTrigger value="reset-requests" data-testid="tab-reset-requests">
+              <Key className="w-4 h-4 me-1.5" />{t("طلبات كلمة المرور", "Password Requests")}
             </TabsTrigger>
           )}
           {isOwnerOrIT && (
@@ -173,11 +209,24 @@ export default function SettingsPage() {
         </TabsContent>
 
         <TabsContent value="users" className="space-y-4">
-          <div className="flex justify-end">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="relative flex-1 min-w-[200px]">
+              <Search className="absolute top-1/2 -translate-y-1/2 start-3 w-4 h-4 text-muted-foreground" />
+              <Input value={userSearch} onChange={e => setUserSearch(e.target.value)}
+                placeholder={t("بحث بالاسم أو اسم المستخدم...", "Search by name or username...")}
+                className="ps-9 h-9" data-testid="input-user-search" />
+            </div>
+            <Select value={roleFilter} onValueChange={setRoleFilter}>
+              <SelectTrigger className="w-[160px] h-9" data-testid="select-role-filter"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t("جميع الأدوار", "All Roles")}</SelectItem>
+                {allRoles.map(r => <SelectItem key={r} value={r}>{t(roleLabels[r].ar, roleLabels[r].en)}</SelectItem>)}
+              </SelectContent>
+            </Select>
             {isOwnerOrIT && (
               <Dialog open={newUserDialog} onOpenChange={setNewUserDialog}>
                 <DialogTrigger asChild>
-                  <Button data-testid="button-new-user"><Plus className="w-4 h-4 me-2" />{t("مستخدم جديد", "New User")}</Button>
+                  <Button size="sm" data-testid="button-new-user"><Plus className="w-4 h-4 me-1.5" />{t("مستخدم جديد", "New User")}</Button>
                 </DialogTrigger>
                 <DialogContent>
                   <DialogHeader><DialogTitle>{t("إنشاء مستخدم جديد", "Create New User")}</DialogTitle></DialogHeader>
@@ -208,27 +257,50 @@ export default function SettingsPage() {
             )}
           </div>
 
+          <p className="text-xs text-muted-foreground" data-testid="text-users-count">
+            {t(`${filteredUsers.length} مستخدم`, `${filteredUsers.length} users`)}
+          </p>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {users.map(u => (
-              <Card key={u.id} data-testid={`card-user-${u.id}`}>
-                <CardContent className="p-4 flex items-center justify-between">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                      <Shield className="w-5 h-5 text-primary" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="font-semibold truncate">{t(u.fullNameAr, u.fullNameEn)}</p>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-muted-foreground font-mono">@{u.username}</span>
-                        <Badge variant="secondary" className="text-[10px]">{t(roleLabels[u.role]?.ar || u.role, roleLabels[u.role]?.en || u.role)}</Badge>
+            {filteredUsers.map(u => (
+              <Card key={u.id} className={`${u.active === false ? "opacity-60" : ""}`} data-testid={`card-user-${u.id}`}>
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${u.active === false ? "bg-muted" : "bg-primary/10"}`}>
+                        <Shield className={`w-5 h-5 ${u.active === false ? "text-muted-foreground" : "text-primary"}`} />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-semibold truncate">{t(u.fullNameAr, u.fullNameEn)}</p>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs text-muted-foreground font-mono">@{u.username}</span>
+                          <Badge variant="secondary" className="text-[10px]">{t(roleLabels[u.role]?.ar || u.role, roleLabels[u.role]?.en || u.role)}</Badge>
+                          {u.active === false && (
+                            <Badge variant="outline" className="text-[10px] border-destructive text-destructive">{t("معطّل", "Inactive")}</Badge>
+                          )}
+                        </div>
+                        {(u.phone || u.email) && (
+                          <p className="text-[10px] text-muted-foreground mt-0.5 truncate">
+                            {u.phone && u.phone}{u.phone && u.email && " | "}{u.email && u.email}
+                          </p>
+                        )}
                       </div>
                     </div>
+                    {isOwnerOrIT && u.id !== currentUser?.id && (
+                      <div className="flex items-center gap-1 shrink-0">
+                        <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => { setResetPasswordUser(u); setAdminNewPassword(""); }} title={t("تغيير كلمة المرور", "Reset Password")} data-testid={`button-reset-password-${u.id}`}>
+                          <Key className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => toggleActiveMutation2.mutate({ id: u.id, active: !(u.active !== false) })}
+                          title={u.active === false ? t("تفعيل", "Activate") : t("تعطيل", "Deactivate")} data-testid={`button-toggle-active-${u.id}`}>
+                          {u.active === false ? <UserCheck className="w-3.5 h-3.5 text-green-500" /> : <UserX className="w-3.5 h-3.5 text-destructive" />}
+                        </Button>
+                        <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setEditUser(u)} data-testid={`button-edit-user-${u.id}`}>
+                          <Pencil className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    )}
                   </div>
-                  {isOwnerOrIT && u.id !== currentUser?.id && (
-                    <Button size="icon" variant="ghost" className="shrink-0" onClick={() => setEditUser(u)} data-testid={`button-edit-user-${u.id}`}>
-                      <Pencil className="w-4 h-4" />
-                    </Button>
-                  )}
                 </CardContent>
               </Card>
             ))}
@@ -258,6 +330,12 @@ export default function SettingsPage() {
                 </div>
               )
             )}
+          </TabsContent>
+        )}
+
+        {isOwnerOrIT && (
+          <TabsContent value="reset-requests" className="space-y-4">
+            <ResetRequestsTab users={users} />
           </TabsContent>
         )}
 
@@ -295,7 +373,137 @@ export default function SettingsPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      <Dialog open={!!resetPasswordUser} onOpenChange={o => { if (!o) { setResetPasswordUser(null); setAdminNewPassword(""); } }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>{t("تغيير كلمة المرور", "Reset Password")}</DialogTitle></DialogHeader>
+          {resetPasswordUser && (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                {t(`تغيير كلمة مرور المستخدم: ${resetPasswordUser.fullNameAr} (@${resetPasswordUser.username})`,
+                   `Reset password for: ${resetPasswordUser.fullNameEn} (@${resetPasswordUser.username})`)}
+              </p>
+              <div className="space-y-1">
+                <Label>{t("كلمة المرور الجديدة", "New Password")}</Label>
+                <Input type="password" value={adminNewPassword} onChange={e => setAdminNewPassword(e.target.value)} data-testid="input-admin-new-password" />
+              </div>
+              <Button className="w-full" disabled={!adminNewPassword || adminNewPassword.length < 4 || adminResetPasswordMutation.isPending}
+                onClick={() => adminResetPasswordMutation.mutate({ id: resetPasswordUser.id, password: adminNewPassword })} data-testid="button-admin-reset-password">
+                {adminResetPasswordMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : t("تغيير كلمة المرور", "Reset Password")}
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
+  );
+}
+
+function ResetRequestsTab({ users }: { users: User[] }) {
+  const { t } = useLanguage();
+  const { toast } = useToast();
+  const [resolveId, setResolveId] = useState<number | null>(null);
+  const [resolveUserId, setResolveUserId] = useState<number | null>(null);
+  const [resolvePassword, setResolvePassword] = useState("");
+
+  const { data: requests = [], isLoading } = useQuery<any[]>({ queryKey: ["/api/users/reset-requests"] });
+
+  const resolveMutation = useMutation({
+    mutationFn: ({ id, newPassword }: { id: number; newPassword: string }) =>
+      apiRequest("PATCH", `/api/users/reset-requests/${id}/resolve`, { newPassword }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/users/reset-requests"] });
+      setResolveId(null);
+      setResolvePassword("");
+      toast({ title: t("تم تغيير كلمة المرور وحل الطلب", "Password reset and request resolved") });
+    },
+    onError: () => toast({ title: t("حدث خطأ", "Error"), variant: "destructive" }),
+  });
+
+  if (isLoading) return <div className="flex justify-center p-8"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>;
+
+  const pendingRequests = requests.filter(r => r.status === "pending");
+  const resolvedRequests = requests.filter(r => r.status === "resolved");
+
+  const getUserName = (userId: number) => {
+    const u = users.find(u => u.id === userId);
+    return u ? t(u.fullNameAr, u.fullNameEn) : `#${userId}`;
+  };
+
+  return (
+    <>
+      <h2 className="text-lg font-semibold" data-testid="text-reset-requests-title">
+        {t("طلبات استعادة كلمة المرور", "Password Reset Requests")}
+        {pendingRequests.length > 0 && (
+          <Badge className="ms-2 bg-orange-500">{pendingRequests.length}</Badge>
+        )}
+      </h2>
+
+      {requests.length === 0 ? (
+        <Card><CardContent className="p-8 text-center text-muted-foreground">{t("لا توجد طلبات", "No requests")}</CardContent></Card>
+      ) : (
+        <div className="space-y-2">
+          {pendingRequests.map(req => (
+            <Card key={req.id} className="border-orange-300 dark:border-orange-700" data-testid={`card-reset-request-${req.id}`}>
+              <CardContent className="p-4 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <Clock className="w-5 h-5 text-orange-500 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="font-semibold">{getUserName(req.userId)}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {req.createdAt && new Date(req.createdAt).toLocaleString(t("ar-SA", "en-US"))}
+                    </p>
+                  </div>
+                  <Badge className="bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">{t("معلق", "Pending")}</Badge>
+                </div>
+                <Button size="sm" onClick={() => { setResolveId(req.id); setResolveUserId(req.userId); setResolvePassword(""); }} data-testid={`button-resolve-${req.id}`}>
+                  <Key className="w-3.5 h-3.5 me-1.5" />{t("حل الطلب", "Resolve")}
+                </Button>
+              </CardContent>
+            </Card>
+          ))}
+
+          {resolvedRequests.length > 0 && (
+            <>
+              <h3 className="text-sm font-medium text-muted-foreground pt-4">{t("الطلبات المحلولة", "Resolved Requests")}</h3>
+              {resolvedRequests.slice(0, 10).map(req => (
+                <Card key={req.id} className="opacity-60" data-testid={`card-reset-resolved-${req.id}`}>
+                  <CardContent className="p-3 flex items-center justify-between text-sm">
+                    <div className="min-w-0">
+                      <p className="font-medium">{getUserName(req.userId)}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {t("تم الحل بواسطة", "Resolved by")} {getUserName(req.resolvedBy || 0)}
+                      </p>
+                    </div>
+                    <Badge variant="secondary">{t("تم الحل", "Resolved")}</Badge>
+                  </CardContent>
+                </Card>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+
+      <Dialog open={resolveId !== null} onOpenChange={o => { if (!o) { setResolveId(null); setResolvePassword(""); } }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>{t("حل طلب كلمة المرور", "Resolve Password Request")}</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              {t("أدخل كلمة المرور الجديدة للمستخدم", "Enter the new password for the user")}: <strong>{getUserName(resolveUserId || 0)}</strong>
+            </p>
+            <div className="space-y-1">
+              <Label>{t("كلمة المرور الجديدة", "New Password")}</Label>
+              <Input type="password" value={resolvePassword} onChange={e => setResolvePassword(e.target.value)} data-testid="input-resolve-password" />
+            </div>
+            <Button className="w-full" disabled={!resolvePassword || resolvePassword.length < 4 || resolveMutation.isPending}
+              onClick={() => resolveId && resolveMutation.mutate({ id: resolveId, newPassword: resolvePassword })}
+              data-testid="button-resolve-submit">
+              {resolveMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : t("تغيير وحل الطلب", "Reset & Resolve")}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 

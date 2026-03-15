@@ -308,10 +308,7 @@ export async function registerRoutes(
   app.get("/api/users", requireAuth, async (_req, res) => {
     try {
       const allUsers = await storage.getUsers();
-      const safeUsers = allUsers.map(({ password, ...u }) => ({
-        id: u.id, username: u.username, fullNameAr: u.fullNameAr,
-        fullNameEn: u.fullNameEn, role: u.role, phone: u.phone,
-      }));
+      const safeUsers = allUsers.map(({ password, ...u }) => u);
       res.json(safeUsers);
     } catch (error) {
       res.status(500).json({ message: "حدث خطأ" });
@@ -357,16 +354,18 @@ export async function registerRoutes(
   app.patch("/api/users/profile/me", requireAuth, async (req, res) => {
     try {
       const userId = req.session.userId!;
-      const { profileImage, currentPassword, newPassword } = req.body;
+      const { profileImage, currentPassword, newPassword, fullNameAr, fullNameEn, phone, email } = req.body;
       const updateData: any = {};
 
-      if (profileImage !== undefined) {
-        updateData.profileImage = profileImage;
-      }
+      if (profileImage !== undefined) updateData.profileImage = profileImage;
+      if (fullNameAr !== undefined) updateData.fullNameAr = fullNameAr;
+      if (fullNameEn !== undefined) updateData.fullNameEn = fullNameEn;
+      if (phone !== undefined) updateData.phone = phone;
+      if (email !== undefined) updateData.email = email;
 
       if (newPassword) {
         if (!currentPassword) {
-          return res.status(400).json({ message: "كلمة المرور الحالية مطلوبة" });
+          return res.status(400).json({ message: "كلمة المرور الحالية مطلوبة", messageEn: "Current password is required" });
         }
         const user = await storage.getUser(userId);
         if (!user) return res.status(404).json({ message: "المستخدم غير موجود" });
@@ -374,7 +373,7 @@ export async function registerRoutes(
         const { comparePasswords, hashPassword } = await import("./auth");
         const valid = await comparePasswords(currentPassword, user.password);
         if (!valid) {
-          return res.status(400).json({ message: "كلمة المرور الحالية غير صحيحة" });
+          return res.status(400).json({ message: "كلمة المرور الحالية غير صحيحة", messageEn: "Current password is incorrect" });
         }
         updateData.password = await hashPassword(newPassword);
       }
@@ -387,6 +386,49 @@ export async function registerRoutes(
       if (!updated) return res.status(404).json({ message: "المستخدم غير موجود" });
       const { password, ...safeUser } = updated;
       res.json(safeUser);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  app.post("/api/auth/forgot-password", async (req, res) => {
+    try {
+      const { username } = req.body;
+      if (!username) return res.status(400).json({ message: "اسم المستخدم مطلوب", messageEn: "Username is required" });
+      const genericResponse = { message: "إذا كان الحساب موجوداً، سيتم التواصل معك قريباً", messageEn: "If the account exists, you will be contacted soon." };
+      const user = await storage.getUserByUsername(username);
+      if (!user) return res.json(genericResponse);
+      await storage.createPasswordResetRequest({ userId: user.id, status: "pending" });
+      res.json(genericResponse);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  app.get("/api/users/reset-requests", requireRole("owner", "it", "assistant"), async (req, res) => {
+    try {
+      const status = req.query.status as string | undefined;
+      const requests = await storage.getPasswordResetRequests(status);
+      res.json(requests);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  app.patch("/api/users/reset-requests/:id/resolve", requireRole("owner", "it", "assistant"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { newPassword } = req.body;
+      if (!newPassword) return res.status(400).json({ message: "كلمة المرور الجديدة مطلوبة" });
+      const requests = await storage.getPasswordResetRequests("pending");
+      const request = requests.find(r => r.id === id);
+      if (!request) return res.status(404).json({ message: "الطلب غير موجود أو تم حله مسبقاً" });
+      const { hashPassword } = await import("./auth");
+      const hashed = await hashPassword(newPassword);
+      await storage.updateUser(request.userId, { password: hashed });
+      const updated = await storage.resolvePasswordResetRequest(id, req.session.userId!);
+      if (!updated) return res.status(404).json({ message: "الطلب غير موجود" });
+      res.json(updated);
     } catch (error) {
       res.status(500).json({ message: "حدث خطأ" });
     }

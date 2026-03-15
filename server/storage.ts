@@ -30,6 +30,7 @@ import {
   quoteProductCategories, type QuoteProductCategory, type InsertQuoteProductCategory,
   appointments, type Appointment, type InsertAppointment,
   siteSurveys, type SiteSurvey, type InsertSiteSurvey,
+  passwordResetRequests, type PasswordResetRequest, type InsertPasswordResetRequest,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -180,6 +181,11 @@ export interface IStorage {
   getSiteSurveyByAppointment(appointmentId: number): Promise<SiteSurvey | undefined>;
   createSiteSurvey(survey: InsertSiteSurvey): Promise<SiteSurvey>;
   updateSiteSurvey(id: number, data: Partial<InsertSiteSurvey>): Promise<SiteSurvey | undefined>;
+
+  // Password Reset Requests (Task #8)
+  getPasswordResetRequests(status?: string): Promise<PasswordResetRequest[]>;
+  createPasswordResetRequest(req: InsertPasswordResetRequest): Promise<PasswordResetRequest>;
+  resolvePasswordResetRequest(id: number, resolvedBy: number): Promise<PasswordResetRequest | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -785,6 +791,23 @@ export class DatabaseStorage implements IStorage {
 
   async updateSiteSurvey(id: number, data: Partial<InsertSiteSurvey>): Promise<SiteSurvey | undefined> {
     const [updated] = await db.update(siteSurveys).set({ ...data, updatedAt: new Date() }).where(eq(siteSurveys.id, id)).returning();
+    return updated;
+  }
+
+  async getPasswordResetRequests(status?: string): Promise<PasswordResetRequest[]> {
+    if (status) {
+      return db.select().from(passwordResetRequests).where(eq(passwordResetRequests.status, status as any)).orderBy(desc(passwordResetRequests.createdAt));
+    }
+    return db.select().from(passwordResetRequests).orderBy(desc(passwordResetRequests.createdAt));
+  }
+
+  async createPasswordResetRequest(req: InsertPasswordResetRequest): Promise<PasswordResetRequest> {
+    const [created] = await db.insert(passwordResetRequests).values(req).returning();
+    return created;
+  }
+
+  async resolvePasswordResetRequest(id: number, resolvedBy: number): Promise<PasswordResetRequest | undefined> {
+    const [updated] = await db.update(passwordResetRequests).set({ status: "resolved", resolvedBy, resolvedAt: new Date() }).where(eq(passwordResetRequests.id, id)).returning();
     return updated;
   }
 }

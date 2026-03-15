@@ -865,3 +865,22 @@ export const insertQuoteProductCategorySchema = createInsertSchema(quoteProductC
 });
 export type InsertQuoteProductCategory = z.infer<typeof insertQuoteProductCategorySchema>;
 export type QuoteProductCategory = typeof quoteProductCategories.$inferSelect;
+
+export const resetRequestStatusEnum = pgEnum("reset_request_status", ["pending", "resolved"]);
+
+export const passwordResetRequests = pgTable("password_reset_requests", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id).notNull(),
+  status: resetRequestStatusEnum("status").notNull().default("pending"),
+  note: text("note"),
+  resolvedBy: integer("resolved_by").references(() => users.id),
+  resolvedAt: timestamp("resolved_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertPasswordResetRequestSchema = createInsertSchema(passwordResetRequests).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertPasswordResetRequest = z.infer<typeof insertPasswordResetRequestSchema>;
+export type PasswordResetRequest = typeof passwordResetRequests.$inferSelect;
