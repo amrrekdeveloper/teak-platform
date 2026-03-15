@@ -154,7 +154,7 @@ export default function PurchasesPage() {
                       </SelectContent>
                     </Select>
                   )}
-                  <div className="grid grid-cols-4 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     <Input placeholder={t("الاسم بالعربي", "Name AR")} value={newItemRow.materialNameAr} onChange={e => setNewItemRow({ ...newItemRow, materialNameAr: e.target.value })} data-testid="input-po-item-name-ar" />
                     <Input placeholder={t("الاسم بالإنجليزي", "Name EN")} value={newItemRow.materialNameEn} onChange={e => setNewItemRow({ ...newItemRow, materialNameEn: e.target.value })} data-testid="input-po-item-name-en" />
                     <Input type="number" placeholder={t("الكمية", "Qty")} value={newItemRow.quantity} onChange={e => setNewItemRow({ ...newItemRow, quantity: e.target.value })} data-testid="input-po-item-qty" />
@@ -167,8 +167,8 @@ export default function PurchasesPage() {
               </div>
 
               {poItems.length > 0 && (
-                <div className="border rounded-lg overflow-hidden">
-                  <table className="w-full text-sm">
+                <div className="border rounded-lg overflow-x-auto">
+                  <table className="w-full text-sm min-w-[400px]">
                     <thead className="bg-muted">
                       <tr>
                         <th className="text-start p-2">{t("المادة", "Material")}</th>

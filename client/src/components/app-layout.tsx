@@ -353,7 +353,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               {profileOpen && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setProfileOpen(false)} />
-                  <div className="absolute top-full end-0 mt-2 w-72 bg-card border border-border rounded-xl shadow-xl z-50 overflow-hidden" data-testid="profile-popover">
+                  <div className="absolute top-full right-0 mt-2 w-[min(18rem,calc(100vw-1rem))] bg-card border border-border rounded-xl shadow-xl z-50 overflow-hidden" data-testid="profile-popover">
                     <div className="bg-primary/5 px-4 pt-5 pb-4 flex flex-col items-center gap-2 border-b border-border">
                       <UserAvatar user={user} size="lg" onClick={() => { setProfileOpen(false); setEditOpen(true); }} />
                       <div className="text-center">
@@ -422,7 +422,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               {notifOpen && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setNotifOpen(false)} />
-                  <div className="absolute top-full end-0 mt-1 w-80 max-h-96 bg-card border border-border rounded-lg shadow-lg z-50 overflow-hidden" data-testid="notifications-panel">
+                  <div className="absolute top-full right-0 mt-1 w-[min(20rem,calc(100vw-1rem))] max-h-96 bg-card border border-border rounded-lg shadow-lg z-50 overflow-hidden" data-testid="notifications-panel">
                     <div className="flex items-center justify-between p-3 border-b border-border">
                       <span className="font-semibold text-sm">{t("الإشعارات", "Notifications")}</span>
                       {unreadCount > 0 && (

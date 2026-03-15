@@ -140,7 +140,7 @@ export default function EmployeesPage() {
   }
 
   const FormFields = ({ data, onChange }: { data: EmployeeForm; onChange: (d: EmployeeForm) => void }) => (
-    <div className="grid grid-cols-2 gap-3">
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
       <div className="space-y-1">
         <Label>{t("رقم الموظف", "Employee #")} *</Label>
         <Input value={data.employeeNumber} onChange={e => onChange({ ...data, employeeNumber: e.target.value })} data-testid="input-emp-number" />
