@@ -37,6 +37,23 @@ const roleLabels: Record<string, { ar: string; en: string }> = {
 
 const allRoles = Object.keys(roleLabels);
 
+const roleColors: Record<string, string> = {
+  owner: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",
+  assistant: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300",
+  sales: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
+  designer: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300",
+  production: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
+  purchasing: "bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-300",
+  warehouse: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300",
+  accountant: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
+  customer_service: "bg-pink-100 text-pink-800 dark:bg-pink-900/30 dark:text-pink-300",
+  delivery: "bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-300",
+  installation: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300",
+  quality: "bg-lime-100 text-lime-800 dark:bg-lime-900/30 dark:text-lime-300",
+  hr: "bg-fuchsia-100 text-fuchsia-800 dark:bg-fuchsia-900/30 dark:text-fuchsia-300",
+  it: "bg-slate-100 text-slate-800 dark:bg-slate-900/30 dark:text-slate-300",
+};
+
 export default function SettingsPage({ initialTab }: { initialTab?: string }) {
   const { t } = useLanguage();
   const { toast } = useToast();
@@ -56,6 +73,7 @@ export default function SettingsPage({ initialTab }: { initialTab?: string }) {
   const [newUser, setNewUser] = useState({ username: "", password: "", fullNameAr: "", fullNameEn: "", role: "sales", phone: "", email: "", active: true });
   const [userSearch, setUserSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [resetPasswordUser, setResetPasswordUser] = useState<User | null>(null);
   const [adminNewPassword, setAdminNewPassword] = useState("");
 
@@ -116,7 +134,8 @@ export default function SettingsPage({ initialTab }: { initialTab?: string }) {
     const q = userSearch.toLowerCase();
     const matchesSearch = !q || u.fullNameAr.toLowerCase().includes(q) || u.fullNameEn.toLowerCase().includes(q) || u.username.toLowerCase().includes(q);
     const matchesRole = roleFilter === "all" || u.role === roleFilter;
-    return matchesSearch && matchesRole;
+    const matchesStatus = statusFilter === "all" || (statusFilter === "active" ? u.active : !u.active);
+    return matchesSearch && matchesRole && matchesStatus;
   });
 
   if (loadingSettings || loadingUsers) return <div className="flex items-center justify-center h-64"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
@@ -223,6 +242,14 @@ export default function SettingsPage({ initialTab }: { initialTab?: string }) {
                 {allRoles.map(r => <SelectItem key={r} value={r}>{t(roleLabels[r].ar, roleLabels[r].en)}</SelectItem>)}
               </SelectContent>
             </Select>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-[140px] h-9" data-testid="select-status-filter"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t("جميع الحالات", "All Status")}</SelectItem>
+                <SelectItem value="active">{t("نشط", "Active")}</SelectItem>
+                <SelectItem value="inactive">{t("معطل", "Inactive")}</SelectItem>
+              </SelectContent>
+            </Select>
             {isOwnerOrIT && (
               <Dialog open={newUserDialog} onOpenChange={setNewUserDialog}>
                 <DialogTrigger asChild>
@@ -278,7 +305,7 @@ export default function SettingsPage({ initialTab }: { initialTab?: string }) {
                         <p className="font-semibold truncate">{t(u.fullNameAr, u.fullNameEn)}</p>
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-xs text-muted-foreground font-mono">@{u.username}</span>
-                          <Badge variant="secondary" className="text-[10px]">{t(roleLabels[u.role]?.ar || u.role, roleLabels[u.role]?.en || u.role)}</Badge>
+                          <Badge variant="secondary" className={`text-[10px] ${roleColors[u.role] || ""}`}>{t(roleLabels[u.role]?.ar || u.role, roleLabels[u.role]?.en || u.role)}</Badge>
                           {u.active === false && (
                             <Badge variant="outline" className="text-[10px] border-destructive text-destructive">{t("معطّل", "Inactive")}</Badge>
                           )}
