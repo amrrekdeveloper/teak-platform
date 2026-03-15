@@ -56,7 +56,6 @@ interface LineItem {
   adekoNameAr: string;
   adekoNameEn: string;
   qty: number;
-  unitPrice: number;
   total: number;
   quantity: number;
   unitPrice: number;
@@ -78,6 +77,7 @@ interface LineItem {
 function createEmptyItem(): LineItem {
   return {
     id: Date.now().toString() + Math.random().toString(36).slice(2),
+    mode: "product" as ItemMode,
     productId: null,
     productType: "",
     woodType: "",
@@ -85,6 +85,11 @@ function createEmptyItem(): LineItem {
     description: "",
     area: 0,
     pricePerMeter: 0,
+    adekoProductId: null,
+    adekoCode: "",
+    adekoNameAr: "",
+    adekoNameEn: "",
+    qty: 1,
     total: 0,
     quantity: 1,
     unitPrice: 0,
@@ -123,8 +128,6 @@ export default function QuotationBuilderPage() {
   const { data: products = [] } = useQuery<Product[]>({ queryKey: ["/api/products"] });
   const { data: woodTypes = [] } = useQuery<WoodType[]>({ queryKey: ["/api/wood-types"] });
   const { data: doorTypes = [] } = useQuery<DoorType[]>({ queryKey: ["/api/door-types"] });
-  const { data: adekoProducts = [] } = useQuery<any[]>({ queryKey: ["/api/adeko-products"] });
-
   const { data: adekoProducts = [] } = useQuery<any[]>({
     queryKey: ["/api/adeko-products"],
     queryFn: async () => {
@@ -226,6 +229,7 @@ export default function QuotationBuilderPage() {
       ...createEmptyItem(),
       id: Date.now().toString() + Math.random().toString(36).slice(2),
       mode,
+      useAdeko: mode !== "area",
     };
   }
 
@@ -703,17 +707,13 @@ export default function QuotationBuilderPage() {
                       </div>
 
                       {item.productId && (
-                        <div className="bg-muted/30 rounded-md p-2.5 text-xs space-y-1">
-                          <div className="flex justify-between">
+                        <div className="bg-muted/30 rounded-md p-2.5 text-xs space-y-2">
+                          <div className="flex justify-between items-center">
                             <span className="text-muted-foreground">{t("الكود", "Code")}</span>
                             <span className="font-mono">{item.code}</span>
                           </div>
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">{t("سعر الوحدة", "Unit Price")}</span>
-                            <span>{item.unitPrice.toLocaleString()} SAR</span>
-                          </div>
                           {(item.dimensions.w > 0 || item.dimensions.h > 0) && (
-                            <div className="flex justify-between">
+                            <div className="flex justify-between items-center">
                               <span className="text-muted-foreground">{t("الأبعاد", "Dimensions")}</span>
                               <span dir="ltr">{item.dimensions.w} × {item.dimensions.h} × {item.dimensions.d} cm</span>
                             </div>
@@ -721,25 +721,35 @@ export default function QuotationBuilderPage() {
                         </div>
                       )}
 
-                      <div className="space-y-1">
-                        <Label className="text-xs">{t("الكمية", "Quantity")}</Label>
-                        <Input
-                          type="number"
-                          min="1"
-                          value={item.quantity}
-                          onChange={(e) => updateItem(item.id, "quantity", e.target.value)}
-                          className="w-24 h-8 text-sm"
-                          data-testid={`input-quantity-${index}`}
-                        />
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <Label className="text-xs">{t("سعر الوحدة (ريال)", "Unit Price (SAR)")}</Label>
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={item.unitPrice || ""}
+                            onChange={(e) => updateItem(item.id, "unitPrice", e.target.value)}
+                            className="h-8 text-sm"
+                            placeholder="0.00"
+                            data-testid={`input-unit-price-${index}`}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">{t("الكمية", "Quantity")}</Label>
+                          <Input
+                            type="number"
+                            min="1"
+                            value={item.quantity}
+                            onChange={(e) => updateItem(item.id, "quantity", e.target.value)}
+                            className="h-8 text-sm"
+                            data-testid={`input-quantity-${index}`}
+                          />
+                        </div>
                       </div>
                     </div>
                   ) : (
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-
+                    <div className="space-y-3">
                       <div className="space-y-1">
                         <Label className="text-xs">{t("نوع الخشب", "Wood Type")}</Label>
                         <Select
@@ -905,8 +915,6 @@ export default function QuotationBuilderPage() {
                       {item.total.toLocaleString(undefined, { maximumFractionDigits: 2 })} SAR
                     </span>
                   </div>
-                    </span>
-                  </div>
                 </div>
               ))
             )}
@@ -992,7 +1000,6 @@ export default function QuotationBuilderPage() {
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">{t("بعد الخصم", "After Discount")}</span>
                     <span>{totals.afterDiscount.toLocaleString(undefined, { maximumFractionDigits: 2 })} SAR</span>
-                  </div>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">{t("ضريبة القيمة المضافة (15%)", "VAT (15%)")}</span>
