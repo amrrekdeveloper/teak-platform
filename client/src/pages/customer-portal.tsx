@@ -690,6 +690,12 @@ function OrdersTab({ quotations, contracts, production, designs }: {
                     return null;
                   })()}
 
+                  <View3DButton quotationId={q.id} />
+
+                  {Array.isArray(q.items) && q.items.length > 0 && (
+                    <ProductDetailsTable items={q.items} quotation={q} />
+                  )}
+
                   {design && (design.sketchImage || design.screenshot3d) && (
                     <DesignViewSection design={design} quotationId={q.id} />
                   )}
@@ -935,6 +941,142 @@ function PaymentSection({ invoice, contract, quotation, payments, setPreviewInvo
   );
 }
 
+function ProductDetailsTable({ items, quotation }: { items: any[]; quotation: any }) {
+  const { t } = useLanguage();
+  if (!items || !Array.isArray(items) || items.length === 0) return null;
+
+  const subtotal = parseFloat(quotation.subtotal || "0");
+  const vatAmount = parseFloat(quotation.vatAmount || "0");
+  const discount = parseFloat(quotation.discount || "0");
+  const finalPrice = parseFloat(quotation.finalPrice || quotation.totalPrice || "0");
+
+  return (
+    <div className="border rounded-lg overflow-hidden" data-testid={`product-table-${quotation.id}`}>
+      <div className="px-3 py-2 bg-muted/50 flex items-center gap-1.5">
+        <Package className="w-3.5 h-3.5 text-primary" />
+        <span className="text-xs font-semibold">{t("تفاصيل المنتجات", "Product Details")}</span>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="border-b bg-muted/30">
+              <th className="px-3 py-2 text-start font-medium">{t("المنتج", "Product")}</th>
+              <th className="px-2 py-2 text-center font-medium">{t("الكمية", "Qty")}</th>
+              <th className="px-2 py-2 text-end font-medium">{t("السعر", "Price")}</th>
+              <th className="px-3 py-2 text-end font-medium">{t("الإجمالي", "Total")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((item: any, idx: number) => {
+              const unitPrice = parseFloat(item.unitPrice || item.pricePerMeter || 0);
+              const optCost = parseFloat(item.optionsCost || 0);
+              const qty = parseFloat(item.quantity || 1);
+              const total = parseFloat(item.amount || item.total || item.lineTotal || 0) || (unitPrice + optCost) * qty;
+              return (
+                <tr key={idx} className="border-b last:border-0">
+                  <td className="px-3 py-2">
+                    <p className="font-medium">{item.description || item.nameAr || item.productType || `${t("منتج", "Item")} ${idx + 1}`}</p>
+                    {item.code && <p className="text-[10px] text-muted-foreground">{item.code}</p>}
+                    {item.optionDetails && Object.keys(item.optionDetails).length > 0 && (
+                      <div className="mt-0.5">
+                        {Object.entries(item.optionDetails).map(([key, val]: any) => (
+                          <p key={key} className="text-[9px] text-muted-foreground">
+                            {val.name} (+{val.price} {t("ر.س", "SAR")})
+                          </p>
+                        ))}
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-2 py-2 text-center">{qty}</td>
+                  <td className="px-2 py-2 text-end">{(unitPrice + optCost).toLocaleString()}</td>
+                  <td className="px-3 py-2 text-end font-medium">{total.toLocaleString()}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div className="border-t p-3 space-y-1 text-xs bg-muted/20">
+        <div className="flex justify-between">
+          <span className="text-muted-foreground">{t("المجموع", "Subtotal")}</span>
+          <span>{subtotal.toLocaleString()} {t("ر.س", "SAR")}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-muted-foreground">{t("الضريبة 15%", "VAT 15%")}</span>
+          <span>{vatAmount.toLocaleString(undefined, { maximumFractionDigits: 2 })} {t("ر.س", "SAR")}</span>
+        </div>
+        {discount > 0 && (
+          <div className="flex justify-between text-green-600">
+            <span>{t("الخصم", "Discount")}</span>
+            <span>-{discount.toLocaleString()} {t("ر.س", "SAR")}</span>
+          </div>
+        )}
+        <div className="flex justify-between font-bold text-sm border-t pt-1">
+          <span>{t("الإجمالي النهائي", "Final Total")}</span>
+          <span className="text-primary">{finalPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })} {t("ر.س", "SAR")}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function View3DButton({ quotationId, surveyId }: { quotationId: number; surveyId?: number }) {
+  const { t } = useLanguage();
+  const { toast } = useToast();
+  const { data: surveys } = useQuery<any[]>({
+    queryKey: ["/api/customer-portal/site-surveys"],
+    queryFn: async () => {
+      const res = await fetch("/api/customer-portal/site-surveys", { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    staleTime: 60000,
+  });
+
+  const survey = surveys?.find(s => s.quotationId === quotationId) || (surveyId ? surveys?.find(s => s.id === surveyId) : null);
+  if (!survey) return null;
+
+  const tokenQuery = survey.shareToken ? `&token=${survey.shareToken}` : "";
+
+  const handleOpen = () => {
+    window.open(`/view-3d?surveyId=${survey.id}&public=1&quotationId=${quotationId}${tokenQuery}`, "_blank");
+  };
+
+  const handleShare = () => {
+    const url = `${window.location.origin}/view-3d?surveyId=${survey.id}&public=1&quotationId=${quotationId}${tokenQuery}`;
+    if (navigator.share) {
+      navigator.share({ title: t("تصميم ثلاثي الأبعاد - تيك", "3D Design - Teak"), url }).catch(() => {});
+    } else {
+      navigator.clipboard.writeText(url);
+      toast({ title: t("تم نسخ الرابط", "Link copied") });
+    }
+  };
+
+  return (
+    <div className="flex gap-2" data-testid={`view-3d-${quotationId}`}>
+      <Button
+        variant="outline"
+        size="sm"
+        className="flex-1 h-9 text-xs border-purple-200 text-purple-700 hover:bg-purple-50 dark:border-purple-800 dark:text-purple-400 dark:hover:bg-purple-950/30"
+        onClick={handleOpen}
+        data-testid={`button-view-3d-${quotationId}`}
+      >
+        <Eye className="w-3.5 h-3.5 me-1.5" />
+        {t("عرض التصميم 3D", "View 3D Design")}
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-9 w-9 text-purple-600 dark:text-purple-400"
+        onClick={handleShare}
+        data-testid={`button-share-3d-${quotationId}`}
+      >
+        <Share2 className="w-3.5 h-3.5" />
+      </Button>
+    </div>
+  );
+}
+
 function QuotationsTab({ quotations, designs, invoices, contracts, payments, onApprove, approving }: {
   quotations: any[]; designs: any[]; invoices: any[]; contracts: any[]; payments: any[]; onApprove: (id: number) => void; approving: boolean;
 }) {
@@ -945,6 +1087,7 @@ function QuotationsTab({ quotations, designs, invoices, contracts, payments, onA
   const [revisionForQuote, setRevisionForQuote] = useState<number | null>(null);
   const [revisionNotes, setRevisionNotes] = useState("");
   const [expandedItems, setExpandedItems] = useState<number | null>(null);
+  const [expandedProducts, setExpandedProducts] = useState<number | null>(null);
 
   const revisionMutation = useMutation({
     mutationFn: async ({ designId }: { designId: number }) => {
@@ -1070,6 +1213,27 @@ function QuotationsTab({ quotations, designs, invoices, contracts, payments, onA
                     <Eye className="w-3.5 h-3.5 me-1.5" />
                     {t("استعراض عرض السعر", "View Quotation")}
                   </Button>
+
+                  <View3DButton quotationId={q.id} />
+
+                  {Array.isArray(q.items) && q.items.length > 0 && (
+                    <>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full h-8 text-xs"
+                        onClick={() => setExpandedProducts(expandedProducts === q.id ? null : q.id)}
+                        data-testid={`button-toggle-products-${q.id}`}
+                      >
+                        <Package className="w-3 h-3 me-1" />
+                        {expandedProducts === q.id ? t("إخفاء المنتجات", "Hide Products") : t("عرض المنتجات والأسعار", "View Products & Prices")}
+                        {expandedProducts === q.id ? <ChevronUp className="w-3 h-3 ms-1" /> : <ChevronDown className="w-3 h-3 ms-1" />}
+                      </Button>
+                      {expandedProducts === q.id && (
+                        <ProductDetailsTable items={q.items} quotation={q} />
+                      )}
+                    </>
+                  )}
 
                   {design && (design.sketchImage || design.screenshot3d) && (
                     q.status === "sent" ? (

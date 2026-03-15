@@ -2849,14 +2849,25 @@ export async function registerRoutes(
   });
 
   // ══════════════════════════════════════════════════════════════════════════
-  // TASK #4: Pricing Engine
+  // TASK #4: Pricing Engine + 3D Visualization + Customer Approval
   // ══════════════════════════════════════════════════════════════════════════
 
   app.post("/api/pricing/calculate", requireAuth, async (req, res) => {
     try {
-      const { products: prods, discount = 0 } = req.body as {
-        products: Array<{ productId: number; quantity: number; optionsPrice?: number }>;
+      const { products: prods, discount = 0, discountType = "percent" } = req.body as {
+        products: Array<{
+          productId: number;
+          quantity: number;
+          options?: { drawerType?: string; hingeType?: string; liftMechanism?: string };
+        }>;
         discount?: number;
+        discountType?: "percent" | "fixed";
+      };
+
+      const optionPrices: Record<string, Record<string, number>> = {
+        drawerType: { standard: 0, soft_close: 150, full_extension: 250, tandem: 400 },
+        hingeType: { standard: 0, soft_close: 80, concealed: 120, hydraulic: 200 },
+        liftMechanism: { none: 0, gas_strut: 300, aventos_hf: 600, aventos_hl: 500, servo_drive: 900 },
       };
 
       let subtotal = 0;
@@ -2865,31 +2876,550 @@ export async function registerRoutes(
       for (const item of prods) {
         const adeko = await storage.getAdekoProduct(item.productId);
         if (!adeko) continue;
-        const unitPrice = parseFloat(adeko.price?.toString() || "0");
-        const optionsCost = item.optionsPrice || 0;
+        const unitPrice = parseFloat(adeko.priceBeforeVat?.toString() || "0");
+
+        let optionsCost = 0;
+        const optionDetails: Record<string, { name: string; price: number }> = {};
+        if (item.options) {
+          for (const [optKey, optVal] of Object.entries(item.options)) {
+            if (optVal && optionPrices[optKey] && optionPrices[optKey][optVal] !== undefined) {
+              const price = optionPrices[optKey][optVal];
+              optionsCost += price;
+              optionDetails[optKey] = { name: optVal, price };
+            }
+          }
+        }
+
         const lineTotal = (unitPrice + optionsCost) * item.quantity;
         subtotal += lineTotal;
         lineItems.push({
           productId: item.productId,
           code: adeko.code,
-          nameAr: adeko.nameAr,
-          nameEn: adeko.nameEn,
+          nameAr: adeko.descriptionAr || adeko.code,
+          nameEn: adeko.descriptionEn || adeko.code,
+          groupNameAr: adeko.groupNameAr,
+          groupNameEn: adeko.groupNameEn,
           unitPrice,
           optionsCost,
+          optionDetails,
           quantity: item.quantity,
           lineTotal,
-          dimensions: { w: adeko.width, h: adeko.height, d: adeko.depth },
+          dimensions: {
+            w: parseFloat(adeko.designW?.toString() || adeko.manufacturingW?.toString() || "0"),
+            h: parseFloat(adeko.designH?.toString() || adeko.manufacturingH?.toString() || "0"),
+            d: parseFloat(adeko.designD?.toString() || adeko.manufacturingD?.toString() || "0"),
+          },
         });
       }
 
-      const discountAmount = (subtotal * discount) / 100;
-      const afterDiscount = subtotal - discountAmount;
+      const clampedDiscount = Math.max(0, discountType === "percent" ? Math.min(discount, 100) : Math.min(discount, subtotal));
+      const discountAmount = discountType === "percent" ? (subtotal * clampedDiscount) / 100 : clampedDiscount;
+      const afterDiscount = Math.max(0, subtotal - discountAmount);
       const vat = afterDiscount * 0.15;
       const total = afterDiscount + vat;
 
-      res.json({ lineItems, subtotal, discountPercent: discount, discountAmount, afterDiscount, vat, total });
+      res.json({ lineItems, subtotal, discountPercent: discountType === "percent" ? discount : 0, discountAmount, afterDiscount, vat, total });
     } catch (error) {
       res.status(500).json({ message: "حدث خطأ في الحساب" });
+    }
+  });
+
+  app.post("/api/pricing/save-quotation", requireAuth, async (req, res) => {
+    try {
+      const { customerId, lineItems, discountAmount: clientDiscount = 0, notes, deliveryDays, surveyId } = req.body;
+      if (!customerId || !lineItems || lineItems.length === 0) {
+        return res.status(400).json({ message: "العميل والمنتجات مطلوبة" });
+      }
+
+      const optionPrices: Record<string, Record<string, number>> = {
+        drawerType: { standard: 0, soft_close: 150, full_extension: 250, tandem: 400 },
+        hingeType: { standard: 0, soft_close: 80, concealed: 120, hydraulic: 200 },
+        liftMechanism: { none: 0, gas_strut: 300, aventos_hf: 600, aventos_hl: 500, servo_drive: 900 },
+      };
+
+      let serverSubtotal = 0;
+      const items: Array<{
+        productId: number | null; code: string; description: string;
+        nameAr: string; nameEn: string; quantity: number;
+        unitPrice: number; optionsCost: number;
+        optionDetails: Record<string, { name: string; price: number }>;
+        amount: number; dimensions: { w: number; h: number; d: number } | null;
+      }> = [];
+
+      for (const li of lineItems) {
+        const quantity = Math.max(1, parseInt(li.quantity || 1));
+        let unitPrice = parseFloat(li.unitPrice || 0);
+        let dimensions = li.dimensions || null;
+        let code = li.code || "";
+        let nameAr = li.nameAr || "";
+        let nameEn = li.nameEn || "";
+
+        if (li.productId) {
+          const adeko = await storage.getAdekoProduct(parseInt(li.productId));
+          if (adeko) {
+            unitPrice = parseFloat(adeko.priceBeforeVat?.toString() || "0");
+            code = code || adeko.code;
+            nameAr = nameAr || adeko.descriptionAr || adeko.code;
+            nameEn = nameEn || adeko.descriptionEn || adeko.code;
+            dimensions = dimensions || {
+              w: parseFloat(adeko.designW?.toString() || adeko.manufacturingW?.toString() || "60"),
+              h: parseFloat(adeko.designH?.toString() || adeko.manufacturingH?.toString() || "80"),
+              d: parseFloat(adeko.designD?.toString() || adeko.manufacturingD?.toString() || "55"),
+            };
+          }
+        }
+
+        let optionsCost = 0;
+        const optionDetails: Record<string, { name: string; price: number }> = {};
+        const rawOptions = li.optionDetails || {};
+        for (const [optKey, optVal] of Object.entries(rawOptions)) {
+          if (!optionPrices[optKey]) continue;
+          const optName = typeof optVal === "object" && optVal !== null ? (optVal as Record<string, unknown>).name as string : String(optVal);
+          if (optName && optionPrices[optKey][optName] !== undefined) {
+            const price = optionPrices[optKey][optName];
+            optionsCost += price;
+            optionDetails[optKey] = { name: optName, price };
+          }
+        }
+
+        const lineTotal = (unitPrice + optionsCost) * quantity;
+        serverSubtotal += lineTotal;
+        items.push({
+          productId: li.productId || null,
+          code,
+          description: nameAr || code,
+          nameAr,
+          nameEn,
+          quantity,
+          unitPrice,
+          optionsCost,
+          optionDetails,
+          amount: lineTotal,
+          dimensions,
+        });
+      }
+
+      const discountVal = Math.max(0, Math.min(parseFloat(clientDiscount) || 0, serverSubtotal));
+      const afterDiscount = Math.max(0, serverSubtotal - discountVal);
+      const serverVat = afterDiscount * 0.15;
+      const serverTotal = afterDiscount + serverVat;
+
+      const quotation = await storage.createQuotation({
+        customerId,
+        items,
+        subtotal: String(serverSubtotal),
+        vatRate: "15",
+        vatAmount: String(serverVat),
+        totalPrice: String(serverTotal),
+        discount: String(discountVal),
+        finalPrice: String(serverTotal),
+        status: "draft",
+        deliveryDays: deliveryDays || null,
+        notes: notes || "",
+        createdBy: req.session.userId,
+      });
+
+      if (surveyId) {
+        await storage.updateSiteSurvey(parseInt(surveyId), { quotationId: quotation.id } as any);
+      }
+
+      res.status(201).json(quotation);
+    } catch (error) {
+      console.error("Save quotation error:", error);
+      res.status(500).json({ message: "حدث خطأ في حفظ عرض السعر" });
+    }
+  });
+
+  app.post("/api/pricing/send-to-customer/:id", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user || !["owner", "assistant", "sales"].includes(user.role)) {
+        return res.status(403).json({ message: "غير مصرح بإرسال عروض الأسعار" });
+      }
+
+      const quotation = await storage.getQuotation(parseInt(req.params.id));
+      if (!quotation) return res.status(404).json({ message: "عرض السعر غير موجود" });
+
+      if (user.role === "sales" && quotation.assignedTo !== user.id && quotation.createdBy !== user.id) {
+        return res.status(403).json({ message: "غير مصرح - عرض السعر ليس مخصصاً لك" });
+      }
+
+      const updated = await storage.updateQuotation(quotation.id, { status: "sent" });
+
+      const customer = await storage.getCustomer(quotation.customerId);
+      const staffUsers = (await storage.getUsers()).filter(u => ["owner", "assistant", "sales"].includes(u.role));
+      for (const staff of staffUsers) {
+        await storage.createNotification({
+          userId: staff.id,
+          titleAr: "تم إرسال عرض سعر للعميل",
+          titleEn: "Quotation Sent to Customer",
+          messageAr: `تم إرسال عرض السعر #${quotation.id} للعميل ${customer?.fullName || ""}`,
+          messageEn: `Quotation #${quotation.id} sent to customer ${customer?.fullName || ""}`,
+          type: "info",
+          relatedEntity: "quotation",
+          relatedId: quotation.id,
+          isRead: false,
+        });
+      }
+
+      res.json({ message: "تم إرسال عرض السعر", quotation: updated });
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  app.get("/api/pricing/options", requireAuth, async (_req, res) => {
+    res.json({
+      drawerType: [
+        { value: "standard", labelAr: "قياسي", labelEn: "Standard", price: 0 },
+        { value: "soft_close", labelAr: "إغلاق ناعم", labelEn: "Soft Close", price: 150 },
+        { value: "full_extension", labelAr: "سحب كامل", labelEn: "Full Extension", price: 250 },
+        { value: "tandem", labelAr: "تاندم", labelEn: "Tandem", price: 400 },
+      ],
+      hingeType: [
+        { value: "standard", labelAr: "قياسي", labelEn: "Standard", price: 0 },
+        { value: "soft_close", labelAr: "إغلاق ناعم", labelEn: "Soft Close", price: 80 },
+        { value: "concealed", labelAr: "مخفي", labelEn: "Concealed", price: 120 },
+        { value: "hydraulic", labelAr: "هيدروليكي", labelEn: "Hydraulic", price: 200 },
+      ],
+      liftMechanism: [
+        { value: "none", labelAr: "بدون", labelEn: "None", price: 0 },
+        { value: "gas_strut", labelAr: "مسند غاز", labelEn: "Gas Strut", price: 300 },
+        { value: "aventos_hf", labelAr: "أفينتوس HF", labelEn: "Aventos HF", price: 600 },
+        { value: "aventos_hl", labelAr: "أفينتوس HL", labelEn: "Aventos HL", price: 500 },
+        { value: "servo_drive", labelAr: "محرك كهربائي", labelEn: "Servo Drive", price: 900 },
+      ],
+    });
+  });
+
+  function generateShareToken(surveyId: number): string {
+    const crypto = require("crypto");
+    const secret = process.env.SESSION_SECRET;
+    if (!secret) {
+      throw new Error("SESSION_SECRET environment variable is required for share token generation");
+    }
+    return crypto.createHmac("sha256", secret).update(`3d-share-${surveyId}`).digest("hex").slice(0, 16);
+  }
+
+  app.get("/api/public/3d-scene/:surveyId", async (req, res) => {
+    try {
+      const surveyId = parseInt(req.params.surveyId);
+      const token = req.query.token as string | undefined;
+      const expectedToken = generateShareToken(surveyId);
+
+      const hasValidToken = token === expectedToken;
+      const isPortalAuth = !!(req.session && (req.session as any).portalCustomerId);
+
+      if (!hasValidToken && !isPortalAuth) {
+        return res.status(403).json({ message: "رابط غير صالح" });
+      }
+
+      const survey = await storage.getSiteSurvey(surveyId);
+      if (!survey) return res.status(404).json({ message: "الزيارة غير موجودة" });
+
+      if (isPortalAuth && !hasValidToken) {
+        const customer = await storage.getCustomer((req.session as any).portalCustomerId);
+        if (!customer) {
+          return res.status(403).json({ message: "غير مصرح" });
+        }
+        if (!survey.quotationId) {
+          return res.status(403).json({ message: "غير مصرح" });
+        }
+        const quotations = await storage.getQuotationsByCustomer(customer.id);
+        const qIds = quotations.map(q => q.id);
+        if (!qIds.includes(survey.quotationId)) {
+          return res.status(403).json({ message: "غير مصرح" });
+        }
+      }
+
+      const quotation = survey.quotationId ? await storage.getQuotation(survey.quotationId) : null;
+
+      const roomDimensions = {
+        length: parseFloat(survey.roomLength?.toString() || "400"),
+        width: parseFloat(survey.roomWidth?.toString() || "300"),
+        height: parseFloat(survey.roomHeight?.toString() || "240"),
+      };
+
+      interface SurveyWall { id: string; name?: string; length?: string }
+      interface SurveyProduct {
+        adekoProductId?: number; productId?: number; code?: string;
+        description?: string; room?: string; wallIndex?: number;
+        quantity?: number; dimensions?: { w: number; h: number; d: number };
+      }
+      interface SceneProduct {
+        productId: number | null; code: string; nameAr: string;
+        unitPrice: number; quantity: number; wallIndex: number;
+        positionInWall: number;
+        dimensions: { w: number; h: number; d: number };
+        optionsCost?: number; optionDetails?: Record<string, { name: string; price: number }>;
+      }
+      interface QuotationItem {
+        productId?: number; code?: string; nameAr?: string; description?: string;
+        unitPrice?: number | string; optionsCost?: number | string;
+        optionDetails?: Record<string, { name: string; price: number }>;
+        quantity?: number; dimensions?: { w: number; h: number; d: number };
+        wallIndex?: number;
+      }
+
+      const surveyWalls: SurveyWall[] = Array.isArray(survey.walls) ? survey.walls as SurveyWall[] : [];
+      const rawProducts: SurveyProduct[] = Array.isArray(survey.selectedProducts) ? survey.selectedProducts as SurveyProduct[] : [];
+      let enrichedProducts: SceneProduct[] = [];
+
+      if (rawProducts.length > 0) {
+        enrichedProducts = (await Promise.all(rawProducts.map(async (sp, spIdx) => {
+          const adekoId = sp.adekoProductId || sp.productId;
+          let wallIdx = sp.wallIndex;
+          if (wallIdx == null && sp.room && surveyWalls.length > 0) {
+            wallIdx = surveyWalls.findIndex((w) => w.id === sp.room);
+            if (wallIdx < 0) wallIdx = spIdx % Math.max(surveyWalls.length, 3);
+          }
+          if (wallIdx == null) wallIdx = spIdx % 3;
+
+          if (adekoId) {
+            const adeko = await storage.getAdekoProduct(adekoId);
+            if (adeko) {
+              return {
+                productId: adeko.id,
+                code: sp.code || adeko.code,
+                nameAr: sp.description || adeko.descriptionAr || adeko.code,
+                unitPrice: parseFloat(adeko.priceBeforeVat?.toString() || "0"),
+                quantity: sp.quantity || 1,
+                dimensions: {
+                  w: parseFloat(adeko.designW?.toString() || adeko.manufacturingW?.toString() || "60"),
+                  h: parseFloat(adeko.designH?.toString() || adeko.manufacturingH?.toString() || "80"),
+                  d: parseFloat(adeko.designD?.toString() || adeko.manufacturingD?.toString() || "55"),
+                },
+                wallIndex: wallIdx,
+                positionInWall: spIdx,
+              } as SceneProduct;
+            }
+          }
+          return {
+            productId: sp.productId || null,
+            code: sp.code || "",
+            nameAr: sp.description || "",
+            unitPrice: 0,
+            quantity: sp.quantity || 1,
+            dimensions: sp.dimensions || { w: 60, h: 80, d: 55 },
+            wallIndex: wallIdx,
+            positionInWall: spIdx,
+          } as SceneProduct;
+        }))).filter(Boolean);
+      }
+
+      if (quotation?.items && Array.isArray(quotation.items) && (quotation.items as QuotationItem[]).length > 0) {
+        enrichedProducts = (quotation.items as QuotationItem[]).map((item, idx) => ({
+          productId: item.productId || null,
+          code: item.code || "",
+          nameAr: item.nameAr || item.description || "",
+          unitPrice: parseFloat(String(item.unitPrice || 0)),
+          optionsCost: parseFloat(String(item.optionsCost || 0)),
+          optionDetails: item.optionDetails || {},
+          quantity: item.quantity || 1,
+          dimensions: item.dimensions || { w: 60, h: 80, d: 55 },
+          wallIndex: item.wallIndex ?? (idx % 3),
+          positionInWall: idx,
+        }));
+      }
+
+      res.json({
+        roomDimensions,
+        walls: survey.walls,
+        selectedProducts: enrichedProducts,
+        quotationId: survey.quotationId,
+        shareToken: expectedToken,
+        items: quotation?.items || [],
+        subtotal: quotation?.subtotal,
+        vatAmount: quotation?.vatAmount,
+        totalPrice: quotation?.totalPrice,
+        discount: quotation?.discount,
+        finalPrice: quotation?.finalPrice,
+      });
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  app.post("/api/customer-portal/update-products", requirePortalAuth, async (req, res) => {
+    try {
+      const customer = (req as any).portalCustomer;
+      const { quotationId, products: clientProducts } = req.body;
+      if (!quotationId) return res.status(400).json({ message: "معرف عرض السعر مطلوب" });
+
+      const quotation = await storage.getQuotation(quotationId);
+      if (!quotation) return res.status(404).json({ message: "عرض السعر غير موجود" });
+      if (quotation.customerId !== customer.id) return res.status(403).json({ message: "غير مصرح" });
+      if (quotation.status !== "sent" && quotation.status !== "draft") {
+        return res.status(400).json({ message: "لا يمكن تعديل عرض سعر معتمد" });
+      }
+
+      if (!Array.isArray(clientProducts) || clientProducts.length === 0) {
+        return res.status(400).json({ message: "يجب تحديد منتج واحد على الأقل" });
+      }
+
+      const optionPrices: Record<string, Record<string, number>> = {
+        drawerType: { standard: 0, soft_close: 150, full_extension: 250, tandem: 400 },
+        hingeType: { standard: 0, soft_close: 80, concealed: 120, hydraulic: 200 },
+        liftMechanism: { none: 0, gas_strut: 300, aventos_hf: 600, aventos_hl: 500, servo_drive: 900 },
+      };
+
+      const existingItems = Array.isArray(quotation.items) ? quotation.items as Array<{
+        productId?: number; code?: string; unitPrice?: number; nameAr?: string; nameEn?: string;
+        optionsCost?: number; optionDetails?: Record<string, { name: string; price: number }>;
+        quantity?: number; dimensions?: { w: number; h: number; d: number };
+      }> : [];
+
+      const validatedProducts: Array<{
+        productId: number | null; code: string; description: string;
+        nameAr: string; nameEn: string; quantity: number;
+        unitPrice: number; optionsCost: number;
+        optionDetails: Record<string, { name: string; price: number }>;
+        amount: number; dimensions: { w: number; h: number; d: number } | null;
+        wallIndex: number;
+      }> = [];
+      let subtotal = 0;
+
+      for (const cp of clientProducts) {
+        const productId = parseInt(cp.productId) || 0;
+        const quantity = Math.max(1, parseInt(cp.quantity) || 1);
+
+        if (productId > 0) {
+          const adeko = await storage.getAdekoProduct(productId);
+          if (!adeko) continue;
+
+          const catalogPrice = parseFloat(adeko.priceBeforeVat?.toString() || "0");
+
+          const rawOptions = cp.optionDetails || {};
+          let optionsCost = 0;
+          const optionDetails: Record<string, { name: string; price: number }> = {};
+          for (const [optKey, optVal] of Object.entries(rawOptions)) {
+            if (!optionPrices[optKey]) continue;
+            const optName = typeof optVal === "object" && optVal !== null ? (optVal as Record<string, unknown>).name as string : String(optVal);
+            if (optName && optionPrices[optKey][optName] !== undefined) {
+              const price = optionPrices[optKey][optName];
+              optionsCost += price;
+              optionDetails[optKey] = { name: optName, price };
+            }
+          }
+
+          const lineTotal = (catalogPrice + optionsCost) * quantity;
+          subtotal += lineTotal;
+
+          validatedProducts.push({
+            productId: adeko.id,
+            code: adeko.code,
+            description: adeko.descriptionAr || adeko.code,
+            nameAr: adeko.descriptionAr || adeko.code,
+            nameEn: adeko.descriptionEn || adeko.code,
+            quantity,
+            unitPrice: catalogPrice,
+            optionsCost,
+            optionDetails,
+            amount: lineTotal,
+            dimensions: {
+              w: parseFloat(adeko.designW?.toString() || adeko.manufacturingW?.toString() || "60"),
+              h: parseFloat(adeko.designH?.toString() || adeko.manufacturingH?.toString() || "80"),
+              d: parseFloat(adeko.designD?.toString() || adeko.manufacturingD?.toString() || "55"),
+            },
+            wallIndex: cp.wallIndex ?? validatedProducts.length % 3,
+          });
+        } else {
+          const existingManual = existingItems.find(
+            (ei: any) => !ei.productId && ei.code === cp.code
+          );
+          if (!existingManual) continue;
+
+          const manualPrice = parseFloat(existingManual.unitPrice?.toString() || "0");
+          const manualOptionsCost = parseFloat(existingManual.optionsCost?.toString() || "0");
+          const lineTotal = (manualPrice + manualOptionsCost) * quantity;
+          subtotal += lineTotal;
+
+          validatedProducts.push({
+            productId: null,
+            code: existingManual.code || cp.code || "",
+            description: existingManual.nameAr || cp.description || "",
+            nameAr: existingManual.nameAr || cp.nameAr || "",
+            nameEn: existingManual.nameEn || cp.nameEn || "",
+            quantity,
+            unitPrice: manualPrice,
+            optionsCost: manualOptionsCost,
+            optionDetails: existingManual.optionDetails || {},
+            amount: lineTotal,
+            dimensions: existingManual.dimensions || null,
+            wallIndex: cp.wallIndex ?? validatedProducts.length % 3,
+          });
+        }
+      }
+
+      if (validatedProducts.length === 0) {
+        return res.status(400).json({ message: "لم يتم التعرف على أي منتج صالح" });
+      }
+
+      const discountVal = Math.max(0, Math.min(parseFloat(quotation.discount || "0"), subtotal));
+      const afterDiscount = Math.max(0, subtotal - discountVal);
+      const vat = afterDiscount * 0.15;
+      const total = afterDiscount + vat;
+
+      const updated = await storage.updateQuotation(quotationId, {
+        items: validatedProducts,
+        subtotal: String(subtotal),
+        discount: String(discountVal),
+        vatAmount: String(vat),
+        totalPrice: String(total),
+        finalPrice: String(total),
+      });
+
+      const allSurveys = await storage.getSiteSurveys({});
+      const linkedSurvey = allSurveys.find(s => s.quotationId === quotationId);
+      if (linkedSurvey) {
+        await storage.updateSiteSurvey(linkedSurvey.id, {
+          selectedProducts: validatedProducts.map((p: any) => ({
+            productId: p.productId,
+            code: p.code,
+            name: p.nameAr || p.description || p.code,
+            unitPrice: p.unitPrice,
+            quantity: p.quantity || 1,
+            optionsCost: p.optionsCost || 0,
+            optionDetails: p.optionDetails || {},
+            dimensions: p.dimensions,
+          })),
+        } as any);
+      }
+
+      const staffUsers = (await storage.getUsers()).filter(u => ["owner", "assistant", "sales"].includes(u.role));
+      for (const staff of staffUsers) {
+        await storage.createNotification({
+          userId: staff.id,
+          titleAr: "العميل عدّل المنتجات",
+          titleEn: "Customer Modified Products",
+          messageAr: `العميل ${customer.fullName} عدّل منتجات عرض السعر #${quotationId}`,
+          messageEn: `Customer ${customer.fullName} modified products in quotation #${quotationId}`,
+          type: "info",
+          relatedEntity: "quotation",
+          relatedId: quotationId,
+          isRead: false,
+        });
+      }
+
+      res.json({ message: "تم تحديث المنتجات", quotation: updated });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  app.get("/api/customer-portal/site-surveys", requirePortalAuth, async (req, res) => {
+    try {
+      const customer = (req as any).portalCustomer;
+      const quotations = await storage.getQuotationsByCustomer(customer.id);
+      const quotationIds = quotations.map(q => q.id);
+      const allSurveys = await storage.getSiteSurveys({});
+      const customerSurveys = allSurveys
+        .filter(s => s.quotationId && quotationIds.includes(s.quotationId))
+        .map(s => ({ ...s, shareToken: generateShareToken(s.id) }));
+      res.json(customerSurveys);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ" });
     }
   });
 

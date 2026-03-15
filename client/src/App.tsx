@@ -198,6 +198,7 @@ function Router() {
       <Route path="/track-order" component={TrackOrderPage} />
       <Route path="/portal/login" component={CustomerPortalLogin} />
       <Route path="/portal" component={CustomerPortal} />
+      <Route path="/view-3d" component={Scene3DPage} />
       <Route path="/dashboard" nest component={DashboardRoutes} />
       <Route component={NotFound} />
     </Switch>
