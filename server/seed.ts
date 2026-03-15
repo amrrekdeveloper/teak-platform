@@ -116,14 +116,19 @@ async function seedRealUsers() {
 
   const realPassword = await hashPassword("14001400");
   let seeded = 0;
+  let updated = 0;
   for (const u of realUsers) {
     const existing = await db.select().from(users).where(eq(users.username, u.username)).limit(1);
     if (existing.length === 0) {
       await db.insert(users).values({ ...u, password: realPassword, active: true });
       seeded++;
+    } else {
+      await db.update(users).set({ fullNameAr: u.fullNameAr, fullNameEn: u.fullNameEn, role: u.role, phone: u.phone, email: u.email }).where(eq(users.username, u.username));
+      updated++;
     }
   }
   if (seeded > 0) console.log(`Seeded ${seeded} new real users`);
+  if (updated > 0) console.log(`Updated ${updated} existing real users (profile/role only, password preserved)`);
 }
 
 export async function seedDatabase() {
