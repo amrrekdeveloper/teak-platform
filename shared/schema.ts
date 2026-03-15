@@ -801,6 +801,57 @@ export const insertAdekoProductSchema = createInsertSchema(adekoProducts).omit({
 export type InsertAdekoProduct = z.infer<typeof insertAdekoProductSchema>;
 export type AdekoProduct = typeof adekoProducts.$inferSelect;
 
+// ─── Task #3: Calendar & Site Survey ─────────────────────────────────────────
+export const appointmentStatusEnum = pgEnum("appointment_status", [
+  "scheduled",
+  "attended",
+  "no_show",
+  "client_refused",
+  "rescheduled",
+  "cancelled",
+]);
+
+export const appointments = pgTable("appointments", {
+  id: serial("id").primaryKey(),
+  salesPersonId: integer("sales_person_id").notNull(),
+  quotationId: integer("quotation_id"),
+  title: text("title").notNull(),
+  dateStart: timestamp("date_start").notNull(),
+  dateEnd: timestamp("date_end").notNull(),
+  status: appointmentStatusEnum("status").notNull().default("scheduled"),
+  notes: text("notes"),
+  cancellationReason: text("cancellation_reason"),
+  rescheduleCount: integer("reschedule_count").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertAppointmentSchema = createInsertSchema(appointments).omit({ id: true, createdAt: true });
+export type InsertAppointment = z.infer<typeof insertAppointmentSchema>;
+export type Appointment = typeof appointments.$inferSelect;
+
+export const siteSurveys = pgTable("site_surveys", {
+  id: serial("id").primaryKey(),
+  appointmentId: integer("appointment_id"),
+  quotationId: integer("quotation_id"),
+  salesPersonId: integer("sales_person_id").notNull(),
+  roomDimensions: jsonb("room_dimensions"),
+  walls: jsonb("walls"),
+  selectedProducts: jsonb("selected_products"),
+  notes: text("notes"),
+  images: jsonb("images"),
+  constructionStatus: text("construction_status"),
+  constructionPhase: text("construction_phase"),
+  electricalOutlets: jsonb("electrical_outlets"),
+  drains: jsonb("drains"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertSiteSurveySchema = createInsertSchema(siteSurveys).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertSiteSurvey = z.infer<typeof insertSiteSurveySchema>;
+export type SiteSurvey = typeof siteSurveys.$inferSelect;
+
+// ─── Task #5: Payment schedules on contracts ─────────────────────────────────
 export const quoteProductCategories = pgTable("quote_product_categories", {
   id: serial("id").primaryKey(),
   nameAr: text("name_ar").notNull(),

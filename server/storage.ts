@@ -1,4 +1,4 @@
-import { eq, desc, like, and, sql } from "drizzle-orm";
+import { eq, desc, like, and, sql, gte, lte, or } from "drizzle-orm";
 import { db } from "./db";
 import {
   users, type User, type InsertUser,
@@ -28,6 +28,8 @@ import {
   warranties, type Warranty, type InsertWarranty,
   adekoProducts, type AdekoProduct, type InsertAdekoProduct,
   quoteProductCategories, type QuoteProductCategory, type InsertQuoteProductCategory,
+  appointments, type Appointment, type InsertAppointment,
+  siteSurveys, type SiteSurvey, type InsertSiteSurvey,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -164,6 +166,20 @@ export interface IStorage {
   createQuoteProductCategory(cat: InsertQuoteProductCategory): Promise<QuoteProductCategory>;
   updateQuoteProductCategory(id: number, data: Partial<InsertQuoteProductCategory>): Promise<QuoteProductCategory | undefined>;
   deleteQuoteProductCategory(id: number): Promise<boolean>;
+
+  // Appointments (Task #3)
+  getAppointments(filters?: { salesPersonId?: number; dateFrom?: Date; dateTo?: Date }): Promise<Appointment[]>;
+  getAppointment(id: number): Promise<Appointment | undefined>;
+  createAppointment(appt: InsertAppointment): Promise<Appointment>;
+  updateAppointment(id: number, data: Partial<InsertAppointment>): Promise<Appointment | undefined>;
+  checkAppointmentConflict(salesPersonId: number, dateStart: Date, dateEnd: Date, excludeId?: number): Promise<boolean>;
+
+  // Site Surveys (Task #3)
+  getSiteSurveys(filters?: { salesPersonId?: number; quotationId?: number }): Promise<SiteSurvey[]>;
+  getSiteSurvey(id: number): Promise<SiteSurvey | undefined>;
+  getSiteSurveyByAppointment(appointmentId: number): Promise<SiteSurvey | undefined>;
+  createSiteSurvey(survey: InsertSiteSurvey): Promise<SiteSurvey>;
+  updateSiteSurvey(id: number, data: Partial<InsertSiteSurvey>): Promise<SiteSurvey | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -651,7 +667,7 @@ export class DatabaseStorage implements IStorage {
     }
     if (search) {
       conditions.push(
-        sql`(${adekoProducts.code} ILIKE ${'%' + search + '%'} OR ${adekoProducts.descriptionEn} ILIKE ${'%' + search + '%'} OR ${adekoProducts.descriptionAr} ILIKE ${'%' + search + '%'})`
+        sql`(${adekoProducts.code} ILIKE ${'%' + search + '%'} OR ${adekoProducts.descriptionEn} ILIKE ${'%' + search + '%'} OR ${adekoProducts.descriptionAr} ILIKE ${'%' + search + '%'} OR ${adekoProducts.groupNameAr} ILIKE ${'%' + search + '%'} OR ${adekoProducts.groupNameEn} ILIKE ${'%' + search + '%'})`
       );
     }
     if (conditions.length > 0) {
@@ -702,6 +718,74 @@ export class DatabaseStorage implements IStorage {
   async deleteQuoteProductCategory(id: number): Promise<boolean> {
     const result = await db.delete(quoteProductCategories).where(eq(quoteProductCategories.id, id)).returning();
     return result.length > 0;
+  }
+
+  // ── Appointments (Task #3) ───────────────────────────────────────────────
+  async getAppointments(filters?: { salesPersonId?: number; dateFrom?: Date; dateTo?: Date }): Promise<Appointment[]> {
+    const conditions = [];
+    if (filters?.salesPersonId) conditions.push(eq(appointments.salesPersonId, filters.salesPersonId));
+    if (filters?.dateFrom) conditions.push(gte(appointments.dateStart, filters.dateFrom));
+    if (filters?.dateTo) conditions.push(lte(appointments.dateEnd, filters.dateTo));
+    const query = conditions.length
+      ? db.select().from(appointments).where(and(...conditions)).orderBy(appointments.dateStart)
+      : db.select().from(appointments).orderBy(appointments.dateStart);
+    return query;
+  }
+
+  async getAppointment(id: number): Promise<Appointment | undefined> {
+    const [appt] = await db.select().from(appointments).where(eq(appointments.id, id));
+    return appt;
+  }
+
+  async createAppointment(appt: InsertAppointment): Promise<Appointment> {
+    const [created] = await db.insert(appointments).values(appt).returning();
+    return created;
+  }
+
+  async updateAppointment(id: number, data: Partial<InsertAppointment>): Promise<Appointment | undefined> {
+    const [updated] = await db.update(appointments).set(data).where(eq(appointments.id, id)).returning();
+    return updated;
+  }
+
+  async checkAppointmentConflict(salesPersonId: number, dateStart: Date, dateEnd: Date, excludeId?: number): Promise<boolean> {
+    const conditions = [
+      eq(appointments.salesPersonId, salesPersonId),
+      lte(appointments.dateStart, dateEnd),
+      gte(appointments.dateEnd, dateStart),
+    ];
+    if (excludeId) conditions.push(sql`${appointments.id} != ${excludeId}` as any);
+    const result = await db.select({ id: appointments.id }).from(appointments).where(and(...conditions)).limit(1);
+    return result.length > 0;
+  }
+
+  // ── Site Surveys (Task #3) ───────────────────────────────────────────────
+  async getSiteSurveys(filters?: { salesPersonId?: number; quotationId?: number }): Promise<SiteSurvey[]> {
+    const conditions = [];
+    if (filters?.salesPersonId) conditions.push(eq(siteSurveys.salesPersonId, filters.salesPersonId));
+    if (filters?.quotationId) conditions.push(eq(siteSurveys.quotationId, filters.quotationId));
+    return conditions.length
+      ? db.select().from(siteSurveys).where(and(...conditions)).orderBy(desc(siteSurveys.createdAt))
+      : db.select().from(siteSurveys).orderBy(desc(siteSurveys.createdAt));
+  }
+
+  async getSiteSurvey(id: number): Promise<SiteSurvey | undefined> {
+    const [s] = await db.select().from(siteSurveys).where(eq(siteSurveys.id, id));
+    return s;
+  }
+
+  async getSiteSurveyByAppointment(appointmentId: number): Promise<SiteSurvey | undefined> {
+    const [s] = await db.select().from(siteSurveys).where(eq(siteSurveys.appointmentId, appointmentId));
+    return s;
+  }
+
+  async createSiteSurvey(survey: InsertSiteSurvey): Promise<SiteSurvey> {
+    const [created] = await db.insert(siteSurveys).values(survey).returning();
+    return created;
+  }
+
+  async updateSiteSurvey(id: number, data: Partial<InsertSiteSurvey>): Promise<SiteSurvey | undefined> {
+    const [updated] = await db.update(siteSurveys).set({ ...data, updatedAt: new Date() }).where(eq(siteSurveys.id, id)).returning();
+    return updated;
   }
 }
 

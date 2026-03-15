@@ -40,6 +40,10 @@ import MyOrdersPage from "@/pages/my-orders";
 import DesignStudioPage from "@/pages/design-studio";
 import CustomerPortalLogin from "@/pages/customer-portal-login";
 import CustomerPortal from "@/pages/customer-portal";
+import MyCalendarPage from "@/pages/my-calendar";
+import SiteSurveyPage from "@/pages/site-survey";
+import Scene3DPage from "@/pages/scene-3d";
+import FinanceDashboardPage from "@/pages/finance-dashboard";
 import AppLayout from "@/components/app-layout";
 import NotFound from "@/pages/not-found";
 import teakLogo from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
@@ -162,6 +166,10 @@ function DashboardRoutes() {
         <Route path="/employees" component={EmployeesPage} />
         <Route path="/order-center" component={OrderCenterPage} />
         <Route path="/my-orders" component={MyOrdersPage} />
+        <Route path="/my-calendar" component={MyCalendarPage} />
+        <Route path="/site-survey" component={SiteSurveyPage} />
+        <Route path="/scene-3d" component={Scene3DPage} />
+        <Route path="/finance" component={FinanceDashboardPage} />
         <Route path="/design-studio/:orderId" component={DesignStudioPage} />
         <Route path="/designer-board" component={DesignerBoardPage} />
         <Route path="/settings/products" component={SettingsProductsPage} />

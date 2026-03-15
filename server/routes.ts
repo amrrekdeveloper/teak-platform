@@ -2473,5 +2473,278 @@ export async function registerRoutes(
     }
   });
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // TASK #3: Appointments (Calendar)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  app.get("/api/appointments", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const user = await storage.getUser(userId);
+      const isManager = user?.role === "owner" || user?.role === "assistant";
+      const salesPersonId = isManager ? (req.query.salesPersonId ? parseInt(req.query.salesPersonId as string) : undefined) : userId;
+      const dateFrom = req.query.dateFrom ? new Date(req.query.dateFrom as string) : undefined;
+      const dateTo = req.query.dateTo ? new Date(req.query.dateTo as string) : undefined;
+      const list = await storage.getAppointments({ salesPersonId, dateFrom, dateTo });
+      res.json(list);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ في جلب المواعيد" });
+    }
+  });
+
+  app.get("/api/appointments/:id", requireAuth, async (req, res) => {
+    try {
+      const appt = await storage.getAppointment(parseInt(req.params.id));
+      if (!appt) return res.status(404).json({ message: "الموعد غير موجود" });
+      res.json(appt);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  app.post("/api/appointments", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const { title, dateStart, dateEnd, quotationId, notes, salesPersonId: spId } = req.body;
+      const salesPersonId = spId || userId;
+      const start = new Date(dateStart);
+      const end = new Date(dateEnd);
+
+      if (start >= end) return res.status(400).json({ message: "وقت النهاية يجب أن يكون بعد وقت البداية" });
+
+      const conflict = await storage.checkAppointmentConflict(salesPersonId, start, end);
+      if (conflict) return res.status(409).json({ message: "يوجد موعد آخر في هذا الوقت لنفس المندوب" });
+
+      const appt = await storage.createAppointment({
+        title,
+        dateStart: start,
+        dateEnd: end,
+        quotationId: quotationId || null,
+        notes: notes || null,
+        salesPersonId,
+        status: "scheduled",
+        cancellationReason: null,
+        rescheduleCount: 0,
+      });
+      res.status(201).json(appt);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ في إنشاء الموعد" });
+    }
+  });
+
+  app.patch("/api/appointments/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const appt = await storage.getAppointment(id);
+      if (!appt) return res.status(404).json({ message: "الموعد غير موجود" });
+
+      const { dateStart, dateEnd, salesPersonId, ...rest } = req.body;
+      let updateData: any = { ...rest };
+
+      if (dateStart || dateEnd) {
+        const start = dateStart ? new Date(dateStart) : appt.dateStart;
+        const end = dateEnd ? new Date(dateEnd) : appt.dateEnd;
+        const conflict = await storage.checkAppointmentConflict(appt.salesPersonId, start, end, id);
+        if (conflict) return res.status(409).json({ message: "يوجد موعد آخر في هذا الوقت" });
+        updateData.dateStart = start;
+        updateData.dateEnd = end;
+      }
+
+      if (rest.status === "rescheduled") {
+        updateData.rescheduleCount = (appt.rescheduleCount || 0) + 1;
+      }
+
+      if (rest.status === "client_refused") {
+        const managers = await storage.getUsers();
+        for (const u of managers.filter(u => u.role === "owner" || u.role === "assistant")) {
+          await storage.createNotification({
+            userId: u.id, type: "warning",
+            messageAr: `العميل رفض الزيارة للموعد: ${appt.title}`,
+            messageEn: `Client refused visit for: ${appt.title}`,
+            relatedId: id, relatedType: "appointment",
+          });
+        }
+      }
+
+      const updated = await storage.updateAppointment(id, updateData);
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ في تحديث الموعد" });
+    }
+  });
+
+  app.delete("/api/appointments/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.updateAppointment(id, { status: "cancelled" });
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // TASK #3: Site Surveys
+  // ══════════════════════════════════════════════════════════════════════════
+
+  app.get("/api/site-surveys", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const user = await storage.getUser(userId);
+      const isManager = user?.role === "owner" || user?.role === "assistant";
+      const filters: any = {};
+      if (!isManager) filters.salesPersonId = userId;
+      if (req.query.quotationId) filters.quotationId = parseInt(req.query.quotationId as string);
+      const list = await storage.getSiteSurveys(filters);
+      res.json(list);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ في جلب الزيارات" });
+    }
+  });
+
+  app.get("/api/site-surveys/:id", requireAuth, async (req, res) => {
+    try {
+      const survey = await storage.getSiteSurvey(parseInt(req.params.id));
+      if (!survey) return res.status(404).json({ message: "الزيارة غير موجودة" });
+      res.json(survey);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  app.get("/api/site-surveys/by-appointment/:appointmentId", requireAuth, async (req, res) => {
+    try {
+      const survey = await storage.getSiteSurveyByAppointment(parseInt(req.params.appointmentId));
+      res.json(survey || null);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  app.post("/api/site-surveys", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const survey = await storage.createSiteSurvey({ ...req.body, salesPersonId: userId });
+      res.status(201).json(survey);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ في إنشاء الزيارة" });
+    }
+  });
+
+  app.patch("/api/site-surveys/:id", requireAuth, async (req, res) => {
+    try {
+      const updated = await storage.updateSiteSurvey(parseInt(req.params.id), req.body);
+      if (!updated) return res.status(404).json({ message: "الزيارة غير موجودة" });
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ في تحديث الزيارة" });
+    }
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // TASK #4: Pricing Engine
+  // ══════════════════════════════════════════════════════════════════════════
+
+  app.post("/api/pricing/calculate", requireAuth, async (req, res) => {
+    try {
+      const { products: prods, discount = 0 } = req.body as {
+        products: Array<{ productId: number; quantity: number; optionsPrice?: number }>;
+        discount?: number;
+      };
+
+      let subtotal = 0;
+      const lineItems = [];
+
+      for (const item of prods) {
+        const adeko = await storage.getAdekoProduct(item.productId);
+        if (!adeko) continue;
+        const unitPrice = parseFloat(adeko.price?.toString() || "0");
+        const optionsCost = item.optionsPrice || 0;
+        const lineTotal = (unitPrice + optionsCost) * item.quantity;
+        subtotal += lineTotal;
+        lineItems.push({
+          productId: item.productId,
+          code: adeko.code,
+          nameAr: adeko.nameAr,
+          nameEn: adeko.nameEn,
+          unitPrice,
+          optionsCost,
+          quantity: item.quantity,
+          lineTotal,
+          dimensions: { w: adeko.width, h: adeko.height, d: adeko.depth },
+        });
+      }
+
+      const discountAmount = (subtotal * discount) / 100;
+      const afterDiscount = subtotal - discountAmount;
+      const vat = afterDiscount * 0.15;
+      const total = afterDiscount + vat;
+
+      res.json({ lineItems, subtotal, discountPercent: discount, discountAmount, afterDiscount, vat, total });
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ في الحساب" });
+    }
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // TASK #5: Payment Receipts
+  // ══════════════════════════════════════════════════════════════════════════
+
+  app.get("/api/payments/:id/receipt-data", requireAuth, async (req, res) => {
+    try {
+      const payment = await storage.getPayment(parseInt(req.params.id));
+      if (!payment) return res.status(404).json({ message: "الدفعة غير موجودة" });
+
+      const contract = payment.contractId ? await storage.getContract(payment.contractId) : null;
+      const customer = contract?.customerId ? await storage.getCustomer(contract.customerId) : null;
+      const settings = await storage.getCompanySettings();
+
+      res.json({
+        payment,
+        contract,
+        customer,
+        company: settings,
+        receiptNumber: `RCP-${String(payment.id).padStart(5, "0")}`,
+        issuedAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ في جلب بيانات السند" });
+    }
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // TASK #5: Financial Manager — approved orders ready for invoicing
+  // ══════════════════════════════════════════════════════════════════════════
+
+  app.get("/api/finance/ready-to-invoice", requireRole("owner", "assistant", "finance"), async (req, res) => {
+    try {
+      const allContracts = await storage.getContracts();
+      const allQuotations = await storage.getQuotations();
+      const approvedQuotations = allQuotations.filter(q => q.status === "approved");
+
+      const result = [];
+      for (const q of approvedQuotations) {
+        const existingContract = allContracts.find(c => c.quotationId === q.id);
+        if (!existingContract) {
+          const customer = q.customerId ? await storage.getCustomer(q.customerId) : null;
+          result.push({ quotation: q, customer, contract: null });
+        }
+      }
+
+      const contractsWithoutInvoice = [];
+      for (const c of allContracts) {
+        if (c.status === "active" || c.status === "signed") {
+          const payments = await storage.getPaymentsByContract(c.contractId);
+          const customer = c.customerId ? await storage.getCustomer(c.customerId) : null;
+          contractsWithoutInvoice.push({ contract: c, customer, payments });
+        }
+      }
+
+      res.json({ readyForContract: result, readyForPayment: contractsWithoutInvoice });
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
   return httpServer;
 }
