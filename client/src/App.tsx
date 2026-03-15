@@ -174,7 +174,11 @@ function DashboardRoutes() {
         <Route path="/design-studio/:orderId" component={DesignStudioPage} />
         <Route path="/designer-board" component={DesignerBoardPage} />
         <Route path="/my-profile" component={MyProfilePage} />
-        <Route path="/settings/users" component={() => <SettingsPage initialTab="users" />} />
+        <Route path="/settings/users">{() => {
+          const { user: authUser } = useAuth();
+          if (authUser && authUser.role !== "owner" && authUser.role !== "it") return <NotFound />;
+          return <SettingsPage initialTab="users" />;
+        }}</Route>
         <Route path="/settings/products" component={SettingsProductsPage} />
         <Route path="/settings" component={SettingsPage} />
         <Route component={NotFound} />

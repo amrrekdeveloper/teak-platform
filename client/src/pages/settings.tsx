@@ -53,7 +53,7 @@ export default function SettingsPage({ initialTab }: { initialTab?: string }) {
   const [companyForm, setCompanyForm] = useState<any>(null);
   const [editUser, setEditUser] = useState<User | null>(null);
   const [newUserDialog, setNewUserDialog] = useState(false);
-  const [newUser, setNewUser] = useState({ username: "", password: "", fullNameAr: "", fullNameEn: "", role: "sales", phone: "", email: "" });
+  const [newUser, setNewUser] = useState({ username: "", password: "", fullNameAr: "", fullNameEn: "", role: "sales", phone: "", email: "", active: true });
   const [userSearch, setUserSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
   const [resetPasswordUser, setResetPasswordUser] = useState<User | null>(null);
@@ -69,7 +69,7 @@ export default function SettingsPage({ initialTab }: { initialTab?: string }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/users"] });
       setNewUserDialog(false);
-      setNewUser({ username: "", password: "", fullNameAr: "", fullNameEn: "", role: "sales", phone: "", email: "" });
+      setNewUser({ username: "", password: "", fullNameAr: "", fullNameEn: "", role: "sales", phone: "", email: "", active: true });
       toast({ title: t("تم إنشاء المستخدم", "User created") });
     },
     onError: () => { toast({ title: t("حدث خطأ", "Error"), variant: "destructive" }); },
@@ -247,6 +247,10 @@ export default function SettingsPage({ initialTab }: { initialTab?: string }) {
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1"><Label>{t("الهاتف", "Phone")}</Label><Input value={newUser.phone} onChange={e => setNewUser({ ...newUser, phone: e.target.value })} /></div>
                       <div className="space-y-1"><Label>{t("البريد", "Email")}</Label><Input value={newUser.email} onChange={e => setNewUser({ ...newUser, email: e.target.value })} /></div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <Switch checked={newUser.active} onCheckedChange={v => setNewUser({ ...newUser, active: v })} data-testid="switch-new-user-active" />
+                      <Label>{t("مفعّل", "Active")}</Label>
                     </div>
                     <Button className="w-full" disabled={!newUser.username || !newUser.password || !newUser.fullNameAr || !newUser.fullNameEn || createUserMutation.isPending} onClick={() => createUserMutation.mutate(newUser)} data-testid="button-create-user">
                       {createUserMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : t("إنشاء", "Create")}
