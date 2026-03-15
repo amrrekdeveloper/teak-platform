@@ -123,7 +123,7 @@ async function seedRealUsers() {
       await db.insert(users).values({ ...u, password: realPassword, active: true });
       seeded++;
     } else {
-      await db.update(users).set({ fullNameAr: u.fullNameAr, fullNameEn: u.fullNameEn, role: u.role, phone: u.phone, email: u.email, password: realPassword }).where(eq(users.username, u.username));
+      await db.update(users).set({ fullNameAr: u.fullNameAr, fullNameEn: u.fullNameEn, role: u.role, phone: u.phone, email: u.email }).where(eq(users.username, u.username));
       updated++;
     }
   }
@@ -134,11 +134,11 @@ async function seedRealUsers() {
 export async function seedDatabase() {
   await seedQuoteProductCategories();
   await seedAdekoProducts();
-  await seedRealUsers();
 
   const existingUsers = await db.select().from(users).limit(1);
   if (existingUsers.length > 0) {
-    console.log("Database already seeded, skipping...");
+    await seedRealUsers();
+    console.log("Database already seeded, skipping baseline...");
     return;
   }
 
@@ -285,5 +285,6 @@ export async function seedDatabase() {
   });
   console.log("Seeded company settings");
 
+  await seedRealUsers();
   console.log("Database seeding completed successfully!");
 }
