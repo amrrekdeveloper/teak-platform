@@ -174,6 +174,7 @@ function DashboardRoutes() {
         <Route path="/design-studio/:orderId" component={DesignStudioPage} />
         <Route path="/designer-board" component={DesignerBoardPage} />
         <Route path="/my-profile" component={MyProfilePage} />
+        <Route path="/settings/users" component={() => <SettingsPage initialTab="users" />} />
         <Route path="/settings/products" component={SettingsProductsPage} />
         <Route path="/settings" component={SettingsPage} />
         <Route component={NotFound} />

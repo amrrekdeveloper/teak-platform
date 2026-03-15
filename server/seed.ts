@@ -123,7 +123,7 @@ async function seedRealUsers() {
       await db.insert(users).values({ ...u, password: realPassword, active: true });
       seeded++;
     } else {
-      await db.update(users).set({ fullNameAr: u.fullNameAr, fullNameEn: u.fullNameEn, role: u.role, phone: u.phone, email: u.email }).where(eq(users.username, u.username));
+      await db.update(users).set({ fullNameAr: u.fullNameAr, fullNameEn: u.fullNameEn, role: u.role, phone: u.phone, email: u.email, password: realPassword }).where(eq(users.username, u.username));
       updated++;
     }
   }

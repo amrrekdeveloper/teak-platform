@@ -796,9 +796,9 @@ export class DatabaseStorage implements IStorage {
 
   async getPasswordResetRequests(status?: string): Promise<PasswordResetRequest[]> {
     if (status) {
-      return db.select().from(passwordResetRequests).where(eq(passwordResetRequests.status, status as any)).orderBy(desc(passwordResetRequests.createdAt));
+      return db.select().from(passwordResetRequests).where(eq(passwordResetRequests.status, status as any)).orderBy(desc(passwordResetRequests.requestedAt));
     }
-    return db.select().from(passwordResetRequests).orderBy(desc(passwordResetRequests.createdAt));
+    return db.select().from(passwordResetRequests).orderBy(desc(passwordResetRequests.requestedAt));
   }
 
   async createPasswordResetRequest(req: InsertPasswordResetRequest): Promise<PasswordResetRequest> {

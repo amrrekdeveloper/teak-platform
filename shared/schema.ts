@@ -875,12 +875,12 @@ export const passwordResetRequests = pgTable("password_reset_requests", {
   note: text("note"),
   resolvedBy: integer("resolved_by").references(() => users.id),
   resolvedAt: timestamp("resolved_at"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+  requestedAt: timestamp("created_at").notNull().defaultNow(),
 });
 
 export const insertPasswordResetRequestSchema = createInsertSchema(passwordResetRequests).omit({
   id: true,
-  createdAt: true,
+  requestedAt: true,
 });
 export type InsertPasswordResetRequest = z.infer<typeof insertPasswordResetRequestSchema>;
 export type PasswordResetRequest = typeof passwordResetRequests.$inferSelect;

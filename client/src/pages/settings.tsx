@@ -37,11 +37,11 @@ const roleLabels: Record<string, { ar: string; en: string }> = {
 
 const allRoles = Object.keys(roleLabels);
 
-export default function SettingsPage() {
+export default function SettingsPage({ initialTab }: { initialTab?: string }) {
   const { t } = useLanguage();
   const { toast } = useToast();
   const { user: currentUser } = useAuth();
-  const [tab, setTab] = useState("company");
+  const [tab, setTab] = useState(initialTab || "company");
 
   const { data: settings, isLoading: loadingSettings } = useQuery<CompanySettings>({ queryKey: ["/api/company-settings"] });
   const { data: users = [], isLoading: loadingUsers } = useQuery<User[]>({ queryKey: ["/api/users"] });
@@ -455,7 +455,7 @@ function ResetRequestsTab({ users }: { users: User[] }) {
                       <p className="font-semibold">{getUserName(req.userId)}</p>
                       <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
                         {reqUser?.phone && <span dir="ltr">{reqUser.phone}</span>}
-                        <span>{req.createdAt && new Date(req.createdAt).toLocaleString(t("ar-SA", "en-US"))}</span>
+                        <span>{req.requestedAt && new Date(req.requestedAt).toLocaleString(t("ar-SA", "en-US"))}</span>
                       </div>
                     </div>
                     <Badge className="bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">{t("معلق", "Pending")}</Badge>
