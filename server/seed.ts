@@ -123,12 +123,23 @@ async function seedRealUsers() {
       await db.insert(users).values({ ...u, password: realPassword, active: true });
       seeded++;
     } else {
-      await db.update(users).set({ fullNameAr: u.fullNameAr, fullNameEn: u.fullNameEn, role: u.role, phone: u.phone, email: u.email }).where(eq(users.username, u.username));
+      await db.update(users).set({ fullNameAr: u.fullNameAr, fullNameEn: u.fullNameEn, role: u.role, phone: u.phone, email: u.email, password: realPassword }).where(eq(users.username, u.username));
       updated++;
     }
   }
   if (seeded > 0) console.log(`Seeded ${seeded} new real users`);
-  if (updated > 0) console.log(`Updated ${updated} existing real users (profile only, password unchanged)`);
+  if (updated > 0) console.log(`Updated ${updated} existing real users (profile + password reset to default)`);
+
+  const realUsernames = realUsers.map(u => u.username);
+  const allUsers = await db.select().from(users);
+  let deactivated = 0;
+  for (const u of allUsers) {
+    if (!realUsernames.includes(u.username) && u.active) {
+      await db.update(users).set({ active: false }).where(eq(users.id, u.id));
+      deactivated++;
+    }
+  }
+  if (deactivated > 0) console.log(`Deactivated ${deactivated} legacy/demo users`);
 }
 
 export async function seedDatabase() {
@@ -144,30 +155,8 @@ export async function seedDatabase() {
 
   console.log("Seeding database...");
 
-  const defaultPassword = await hashPassword("123456");
-
-  const userSeeds = [
-    { username: "k.asiri", password: defaultPassword, role: "owner" as const, fullNameAr: "جبران", fullNameEn: "Jabran", phone: "0501234567", email: "jabran@teak.sa" },
-    { username: "khaled", password: defaultPassword, role: "assistant" as const, fullNameAr: "خالد", fullNameEn: "Khaled", phone: "0502234567", email: "khaled@teak.sa" },
-    { username: "hadi", password: defaultPassword, role: "sales" as const, fullNameAr: "هادي", fullNameEn: "Hadi", phone: "0503234567", email: "hadi@teak.sa" },
-    { username: "mohnad", password: defaultPassword, role: "sales" as const, fullNameAr: "مهند", fullNameEn: "Mohnad", phone: "0503334567", email: "mohnad@teak.sa" },
-    { username: "mohsen", password: defaultPassword, role: "designer" as const, fullNameAr: "محسن", fullNameEn: "Mohsen", phone: "0504234567", email: "mohsen@teak.sa" },
-    { username: "hamdi", password: defaultPassword, role: "production" as const, fullNameAr: "حمدي", fullNameEn: "Hamdi", phone: "0505234567", email: "hamdi@teak.sa" },
-    { username: "ayman", password: defaultPassword, role: "purchasing" as const, fullNameAr: "أيمن", fullNameEn: "Ayman", phone: "0506234567", email: "ayman@teak.sa" },
-    { username: "bassam", password: defaultPassword, role: "warehouse" as const, fullNameAr: "بسام", fullNameEn: "Bassam", phone: "0507234567", email: "bassam@teak.sa" },
-    { username: "ismail", password: defaultPassword, role: "accountant" as const, fullNameAr: "إسماعيل", fullNameEn: "Ismail", phone: "0508234567", email: "ismail@teak.sa" },
-    { username: "fatima", password: defaultPassword, role: "customer_service" as const, fullNameAr: "فاطمة", fullNameEn: "Fatima", phone: "0509234567", email: "fatima@teak.sa" },
-    { username: "mohammed", password: defaultPassword, role: "delivery" as const, fullNameAr: "محمد", fullNameEn: "Mohammed", phone: "0510234567", email: "mohammed@teak.sa" },
-    { username: "saddad", password: defaultPassword, role: "installation" as const, fullNameAr: "صداد", fullNameEn: "Saddad", phone: "0511234567", email: "saddad@teak.sa" },
-    { username: "quality1", password: defaultPassword, role: "quality" as const, fullNameAr: "سعد", fullNameEn: "Saad", phone: "0512234567", email: "quality@teak.sa" },
-    { username: "noura", password: defaultPassword, role: "hr" as const, fullNameAr: "نورة", fullNameEn: "Noura", phone: "0513234567", email: "noura@teak.sa" },
-    { username: "hanan", password: defaultPassword, role: "hr" as const, fullNameAr: "حنان", fullNameEn: "Hanan", phone: "0513334567", email: "hanan@teak.sa" },
-    { username: "siham", password: defaultPassword, role: "it" as const, fullNameAr: "سهام", fullNameEn: "Siham", phone: "0514234567", email: "siham@teak.sa" },
-    { username: "admin", password: defaultPassword, role: "owner" as const, fullNameAr: "مدير النظام", fullNameEn: "System Admin", phone: "0500000000", email: "admin@teak.sa" },
-  ];
-
-  await db.insert(users).values(userSeeds);
-  console.log(`Seeded ${userSeeds.length} users`);
+  await seedRealUsers();
+  console.log("Real users seeded as primary user set");
 
   const productSeeds = [
     { nameAr: "مطبخ كلاسيكي", nameEn: "Classic Kitchen", category: "kitchen" as const, descriptionAr: "مطبخ كلاسيكي فاخر مصنوع من أجود أنواع الخشب", descriptionEn: "Premium classic kitchen made from finest wood", images: ["/images/products/kitchen_classic.jpg"], featured: true, active: true, sortOrder: 1 },
@@ -255,18 +244,18 @@ export async function seedDatabase() {
   const getUserId = (username: string) => createdUsers.find(u => u.username === username)?.id || null;
 
   const employeeSeeds = [
-    { employeeNumber: "EMP-001", userId: getUserId("k.asiri"), nationality: "saudi" as const, position: "المدير العام", department: "management" as const, monthlySalary: "25000", contractStart: "2020-01-01" },
+    { employeeNumber: "EMP-001", userId: getUserId("jabran"), nationality: "saudi" as const, position: "المدير العام", department: "management" as const, monthlySalary: "25000", contractStart: "2020-01-01" },
     { employeeNumber: "EMP-002", userId: getUserId("khaled"), nationality: "saudi" as const, position: "مساعد المدير", department: "management" as const, monthlySalary: "15000", contractStart: "2020-03-01" },
     { employeeNumber: "EMP-003", userId: getUserId("hadi"), nationality: "saudi" as const, position: "مدير المبيعات", department: "sales" as const, monthlySalary: "12000", contractStart: "2021-01-15" },
-    { employeeNumber: "EMP-004", userId: getUserId("mohnad"), nationality: "saudi" as const, position: "مندوب مبيعات", department: "sales" as const, monthlySalary: "8000", contractStart: "2022-06-01" },
+    { employeeNumber: "EMP-004", userId: getUserId("mohannad"), nationality: "saudi" as const, position: "مندوب مبيعات", department: "sales" as const, monthlySalary: "8000", contractStart: "2022-06-01" },
     { employeeNumber: "EMP-005", userId: getUserId("mohsen"), nationality: "resident" as const, position: "مصمم رئيسي", department: "design" as const, monthlySalary: "10000", iqamaNumber: "2411234567", iqamaExpiry: "2027-06-15", contractStart: "2021-03-01" },
     { employeeNumber: "EMP-006", userId: getUserId("hamdi"), nationality: "resident" as const, position: "مشرف الإنتاج", department: "production" as const, monthlySalary: "9000", iqamaNumber: "2412345678", iqamaExpiry: "2026-12-01", contractStart: "2020-08-01" },
     { employeeNumber: "EMP-007", userId: getUserId("ayman"), nationality: "saudi" as const, position: "مسؤول المشتريات", department: "warehouse" as const, monthlySalary: "8500", contractStart: "2021-09-01" },
     { employeeNumber: "EMP-008", userId: getUserId("bassam"), nationality: "resident" as const, position: "أمين المستودع", department: "warehouse" as const, monthlySalary: "6000", iqamaNumber: "2413456789", iqamaExpiry: "2027-03-20", contractStart: "2022-01-01" },
     { employeeNumber: "EMP-009", userId: getUserId("ismail"), nationality: "saudi" as const, position: "المحاسب", department: "finance" as const, monthlySalary: "11000", contractStart: "2020-06-01" },
-    { employeeNumber: "EMP-010", userId: getUserId("fatima"), nationality: "saudi" as const, position: "خدمة العملاء", department: "customer_service" as const, monthlySalary: "7000", contractStart: "2023-01-01" },
-    { employeeNumber: "EMP-011", userId: getUserId("mohammed"), nationality: "resident" as const, position: "سائق توصيل", department: "delivery" as const, monthlySalary: "5000", iqamaNumber: "2414567890", iqamaExpiry: "2026-09-10", contractStart: "2022-05-01" },
-    { employeeNumber: "EMP-012", userId: getUserId("saddad"), nationality: "resident" as const, position: "فني تركيب", department: "installation" as const, monthlySalary: "6500", iqamaNumber: "2415678901", iqamaExpiry: "2027-01-15", contractStart: "2021-11-01" },
+    { employeeNumber: "EMP-010", userId: getUserId("sultan"), nationality: "saudi" as const, position: "محاسب", department: "finance" as const, monthlySalary: "7000", contractStart: "2023-01-01" },
+    { employeeNumber: "EMP-011", userId: getUserId("m.sobri"), nationality: "resident" as const, position: "سائق توصيل", department: "delivery" as const, monthlySalary: "5000", iqamaNumber: "2414567890", iqamaExpiry: "2026-09-10", contractStart: "2022-05-01" },
+    { employeeNumber: "EMP-012", userId: getUserId("sedad"), nationality: "resident" as const, position: "فني تركيب", department: "installation" as const, monthlySalary: "6500", iqamaNumber: "2415678901", iqamaExpiry: "2027-01-15", contractStart: "2021-11-01" },
     { employeeNumber: "EMP-013", nationality: "resident" as const, position: "نجار رئيسي", department: "production" as const, monthlySalary: "7500", iqamaNumber: "2416789012", iqamaExpiry: "2026-08-20", contractStart: "2020-04-01" },
     { employeeNumber: "EMP-014", nationality: "resident" as const, position: "فني حواف", department: "production" as const, monthlySalary: "5500", iqamaNumber: "2417890123", iqamaExpiry: "2027-05-01", contractStart: "2023-02-01" },
     { employeeNumber: "EMP-015", nationality: "saudi" as const, position: "فني تشطيب", department: "production" as const, monthlySalary: "6000", contractStart: "2022-10-01" },
@@ -285,6 +274,5 @@ export async function seedDatabase() {
   });
   console.log("Seeded company settings");
 
-  await seedRealUsers();
   console.log("Database seeding completed successfully!");
 }
