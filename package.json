@@ -60,6 +60,8 @@
     "firebase-admin": "^13.7.0",
     "framer-motion": "^11.13.1",
     "input-otp": "^1.4.2",
+    "jspdf": "^4.2.0",
+    "jspdf-autotable": "^5.0.7",
     "konva": "^9.3.22",
     "lucide-react": "^0.453.0",
     "memorystore": "^1.6.7",

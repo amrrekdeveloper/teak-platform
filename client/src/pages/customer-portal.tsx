@@ -14,7 +14,7 @@ import {
   AlertCircle, X, ClipboardList, ChevronDown, ChevronUp,
   User, MapPin, Phone, Package, CalendarPlus,
   Palette, ThumbsUp, MessageSquare, Maximize, Image,
-  Upload, CreditCard, Banknote, RotateCcw,
+  Upload, CreditCard, Banknote, RotateCcw, Download, FileDown,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { apiRequest } from "@/lib/queryClient";
@@ -25,6 +25,8 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import teakLogo from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
 import { DeliveryCountdown } from "@/components/delivery-countdown";
+import { ExportEngineeringPdfButton } from "@/components/engineering-pdf";
+import { PaymentReceiptModal } from "@/components/payment-receipt";
 
 function ZatcaQRCode({ data, size = 120 }: { data: string; size?: number }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -567,8 +569,8 @@ function DesignViewSection({ design, quotationId, hideApprovalButtons }: { desig
   );
 }
 
-function OrdersTab({ quotations, contracts, production, designs }: {
-  quotations: any[]; contracts: any[]; production: any[]; designs: any[];
+function OrdersTab({ quotations, contracts, production, designs, customerName }: {
+  quotations: any[]; contracts: any[]; production: any[]; designs: any[]; customerName?: string;
 }) {
   const { t } = useLanguage();
   const [expandedOrder, setExpandedOrder] = useState<number | null>(null);
@@ -698,6 +700,41 @@ function OrdersTab({ quotations, contracts, production, designs }: {
 
                   {design && (design.sketchImage || design.screenshot3d) && (
                     <DesignViewSection design={design} quotationId={q.id} />
+                  )}
+
+                  {q.items && Array.isArray(q.items) && q.items.length > 0 && (
+                    <div className="mt-3" data-testid={`engineering-pdf-section-${q.id}`}>
+                      <ExportEngineeringPdfButton
+                        roomData={{
+                          length: design?.measurements?.roomLength || 400,
+                          width: design?.measurements?.roomWidth || 300,
+                          height: design?.measurements?.roomHeight || 270,
+                          doors: design?.measurements?.doors || [],
+                          windows: design?.measurements?.windows || [],
+                        }}
+                        products={q.items.map((item: any, idx: number) => ({
+                          code: item.adekoCode || item.code || `P${idx + 1}`,
+                          description: item.description || item.productType || "",
+                          nameAr: item.adekoNameAr || item.description || "",
+                          nameEn: item.adekoNameEn || item.description || "",
+                          width: item.designW || item.width || 60,
+                          height: item.designH || item.height || 80,
+                          depth: item.designD || item.depth || 60,
+                          designW: item.designW || item.width || 60,
+                          designH: item.designH || item.height || 80,
+                          designD: item.designD || item.depth || 60,
+                          manufacturingW: item.manufacturingW || item.designW || item.width || 60,
+                          manufacturingH: item.manufacturingH || item.designH || item.height || 80,
+                          manufacturingD: item.manufacturingD || item.designD || item.depth || 60,
+                          price: item.total || item.amount || 0,
+                          quantity: item.quantity || item.qty || 1,
+                          wallIndex: idx % 4,
+                        }))}
+                        customerName={customerName || ""}
+                        projectTitle={q.notes || ""}
+                        quotationNumber={q.id}
+                      />
+                    </div>
                   )}
                 </div>
               )}
@@ -1543,9 +1580,11 @@ function InvoicePreviewModal({ invoice, onClose }: { invoice: any; onClose: () =
   );
 }
 
-function InvoicesTab({ invoices }: { invoices: any[] }) {
+function InvoicesTab({ invoices, contracts, payments, customerName }: { invoices: any[]; contracts: any[]; payments: any[]; customerName?: string }) {
   const { t } = useLanguage();
   const [previewInvoice, setPreviewInvoice] = useState<any | null>(null);
+  const [receiptPayment, setReceiptPayment] = useState<any | null>(null);
+  const [receiptContract, setReceiptContract] = useState<any | null>(null);
 
   if (!invoices.length) return <EmptyState icon={Receipt} titleAr="لا توجد فواتير" titleEn="No invoices yet" />;
 
@@ -1556,6 +1595,12 @@ function InvoicesTab({ invoices }: { invoices: any[] }) {
       <div className="space-y-3">
         {sorted.map((inv: any) => {
           const isTaxInvoice = inv.type === "simplified_tax_invoice";
+          const contract = contracts.find((c: any) => c.id === inv.contractId);
+          const contractPayments = contract ? payments.filter((p: any) => p.contractId === contract.id && p.status === "confirmed") : [];
+          const paymentSchedule = contract?.paymentSchedule || [];
+          const totalPaid = contractPayments.reduce((s: number, p: any) => s + parseFloat(p.amount || 0), 0);
+          const totalAmount = parseFloat(inv.totalWithVat || 0);
+
           return (
             <Card key={inv.id} className={`overflow-hidden ${isTaxInvoice ? "border-green-200 dark:border-green-900" : ""}`} data-testid={`card-invoice-${inv.id}`}>
               <CardContent className="p-0">
@@ -1586,9 +1631,54 @@ function InvoicesTab({ invoices }: { invoices: any[] }) {
                       {new Date(inv.issuedAt || inv.createdAt).toLocaleDateString("ar-SA", { year: "numeric", month: "short", day: "numeric" })}
                     </div>
                   )}
+
+                  {paymentSchedule.length > 0 && (
+                    <div className="border rounded-lg p-2.5 bg-muted/30 space-y-1.5 mt-2" data-testid={`payment-schedule-${inv.id}`}>
+                      <p className="text-[11px] font-semibold text-muted-foreground">{t("جدول الدفعات", "Payment Schedule")}</p>
+                      {paymentSchedule.map((item: any, idx: number) => (
+                        <div key={idx} className="flex items-center justify-between text-xs" data-testid={`schedule-item-${inv.id}-${idx}`}>
+                          <span>{item.label || `${t("دفعة", "Payment")} ${idx + 1}`}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">{Number(item.amount || 0).toLocaleString()} {t("ريال", "SAR")}</span>
+                            {item.dueDate && <span className="text-[10px] text-muted-foreground">{new Date(item.dueDate).toLocaleDateString("ar-SA")}</span>}
+                          </div>
+                        </div>
+                      ))}
+                      <div className="border-t pt-1.5 mt-1 flex items-center justify-between text-xs">
+                        <span className="font-semibold">{t("المدفوع", "Paid")}</span>
+                        <span className={`font-bold ${totalPaid >= totalAmount ? "text-green-600" : "text-amber-600"}`}>
+                          {totalPaid.toLocaleString()} / {totalAmount.toLocaleString()} {t("ريال", "SAR")}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {contractPayments.length > 0 && (
+                    <div className="space-y-1.5 mt-2">
+                      <p className="text-[11px] font-semibold text-muted-foreground">{t("المدفوعات المؤكدة", "Confirmed Payments")}</p>
+                      {contractPayments.map((p: any) => (
+                        <div key={p.id} className="flex items-center justify-between text-xs bg-green-50 dark:bg-green-950/20 rounded-md px-2.5 py-1.5 border border-green-200 dark:border-green-800" data-testid={`confirmed-payment-${p.id}`}>
+                          <div className="flex items-center gap-1.5">
+                            <CheckCircle2 className="w-3 h-3 text-green-600" />
+                            <span className="font-medium">{Number(p.amount).toLocaleString()} {t("ريال", "SAR")}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] text-muted-foreground">{new Date(p.createdAt).toLocaleDateString("ar-SA")}</span>
+                            <button
+                              onClick={() => { setReceiptPayment(p); setReceiptContract(contract); }}
+                              className="text-primary hover:underline text-[10px]"
+                              data-testid={`button-receipt-portal-${p.id}`}
+                            >
+                              {t("سند قبض", "Receipt")}
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
-                <div className="px-4 pb-3">
+                <div className="px-4 pb-3 space-y-2">
                   <Button
                     variant="outline"
                     className="w-full h-9 text-xs"
@@ -1607,6 +1697,23 @@ function InvoicesTab({ invoices }: { invoices: any[] }) {
 
       {previewInvoice && (
         <InvoicePreviewModal invoice={previewInvoice} onClose={() => setPreviewInvoice(null)} />
+      )}
+
+      {receiptPayment && (
+        <PaymentReceiptModal
+          data={{
+            receiptNumber: `RCP-${String(receiptPayment.id).padStart(5, "0")}`,
+            customerName: customerName || "",
+            amount: receiptPayment.amount,
+            paymentMethod: receiptPayment.method,
+            bankReference: receiptPayment.bankReference || "",
+            paymentStage: receiptPayment.paymentStage,
+            contractNumber: receiptContract?.contractNumber || "",
+            date: receiptPayment.confirmedAt || receiptPayment.createdAt,
+            notes: receiptPayment.notes || "",
+          }}
+          onClose={() => { setReceiptPayment(null); setReceiptContract(null); }}
+        />
       )}
     </>
   );
@@ -1919,6 +2026,7 @@ export default function CustomerPortal() {
             contracts={data.contracts || []}
             production={data.production || []}
             designs={data.designs || []}
+            customerName={data.customer?.fullName}
           />
         )}
         {activeTab === "quotes" && (
@@ -1932,7 +2040,7 @@ export default function CustomerPortal() {
             approving={approveMutation.isPending}
           />
         )}
-        {activeTab === "invoices" && <InvoicesTab invoices={data.invoices || []} />}
+        {activeTab === "invoices" && <InvoicesTab invoices={data.invoices || []} contracts={data.contracts || []} payments={data.payments || []} customerName={data.customer?.fullName} />}
         {activeTab === "warranty" && <WarrantyTab warranties={data.warranties || []} />}
         {activeTab === "maintenance" && (
           <MaintenanceTab

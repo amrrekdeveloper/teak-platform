@@ -9,8 +9,9 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { useState } from "react";
-import { Search, Loader2, CreditCard, CheckCircle2, XCircle, Clock, AlertTriangle, Image as ImageIcon } from "lucide-react";
+import { Search, Loader2, CreditCard, CheckCircle2, XCircle, Clock, AlertTriangle, Image as ImageIcon, FileText } from "lucide-react";
 import { Link } from "wouter";
+import { PaymentReceiptModal } from "@/components/payment-receipt";
 
 const stageLabels: Record<string, { ar: string; en: string; color: string }> = {
   deposit: { ar: "عربون", en: "Deposit", color: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300" },
@@ -40,6 +41,11 @@ export default function PaymentsPage() {
   const [rejectingId, setRejectingId] = useState<number | null>(null);
   const [rejectionReason, setRejectionReason] = useState("");
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [receiptPayment, setReceiptPayment] = useState<any | null>(null);
+
+  const { data: companySettings } = useQuery<any>({
+    queryKey: ["/api/company-settings"],
+  });
 
   const { data: payments = [], isLoading } = useQuery<Payment[]>({
     queryKey: ["/api/payments"],
@@ -225,6 +231,17 @@ export default function PaymentsPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
+                      {payment.status === "confirmed" && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setReceiptPayment(payment)}
+                          data-testid={`button-receipt-${payment.id}`}
+                        >
+                          <FileText className="w-4 h-4 me-1" />
+                          {t("سند قبض", "Receipt")}
+                        </Button>
+                      )}
                       {payment.attachmentUrl && (
                         <Button
                           variant="ghost"
@@ -233,7 +250,7 @@ export default function PaymentsPage() {
                           data-testid={`button-view-receipt-${payment.id}`}
                         >
                           <ImageIcon className="w-4 h-4 me-1" />
-                          {t("الإيصال", "Receipt")}
+                          {t("الإيصال", "Attachment")}
                         </Button>
                       )}
                       <span className="text-lg font-bold text-green-600" data-testid={`text-payment-amount-${payment.id}`}>
@@ -305,6 +322,29 @@ export default function PaymentsPage() {
             );
           })}
         </div>
+      )}
+
+      {receiptPayment && (
+        <PaymentReceiptModal
+          data={{
+            receiptNumber: `RCP-${String(receiptPayment.id).padStart(5, "0")}`,
+            customerName: getCustomerName(receiptPayment.customerId),
+            amount: receiptPayment.amount,
+            paymentMethod: receiptPayment.method,
+            bankReference: receiptPayment.bankReference || "",
+            paymentStage: receiptPayment.paymentStage,
+            contractNumber: getContractNumber(receiptPayment.contractId),
+            date: receiptPayment.confirmedAt || receiptPayment.createdAt,
+            companyName: companySettings?.nameAr || "مصنع تيك للمنتجات الخشبية",
+            companyVat: companySettings?.vatNumber || "",
+            companyAddress: companySettings?.address || "الرياض - المملكة العربية السعودية",
+            companyPhone: companySettings?.phone || "",
+            companyLogo: companySettings?.logo || "",
+            companyStamp: companySettings?.stampImage || "",
+            notes: receiptPayment.notes || "",
+          }}
+          onClose={() => setReceiptPayment(null)}
+        />
       )}
 
       {previewImage && (

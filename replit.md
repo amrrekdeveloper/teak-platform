@@ -51,3 +51,9 @@ The application utilizes a modern full-stack architecture.
 -   **Frontend State/Queries:** TanStack React Query v5
 -   **2D Sketching:** Konva.js
 -   **3D Viewer:** Three.js
+-   **PDF Generation:** jsPDF with jspdf-autotable for engineering drawings and document exports
+
+## PDF & Document Features
+-   **Payment Receipt (سند قبض):** Professional bilingual receipt modal (`client/src/components/payment-receipt.tsx`) with company branding, amount in Arabic words, Hijri/Gregorian dates, signature area, and print/share support. Available on confirmed payments in both staff payments page and customer portal.
+-   **Engineering PDF Drawings:** A4 landscape 2-page PDF (`client/src/components/engineering-pdf.tsx`) with room floor plan (Page 1) and product schedule table (Page 2). Uses jsPDF for client-side generation. Available in customer portal order details.
+-   **Invoice Cycle:** Finance dashboard supports contract creation with payment schedules, ZATCA invoice issuance with duplicate prevention, and ready-to-invoice queue. Contracts table includes `payment_schedule` jsonb column.

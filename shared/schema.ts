@@ -249,6 +249,7 @@ export const contracts = pgTable("contracts", {
   status: contractStatusEnum("status").notNull().default("active"),
   signedDate: date("signed_date"),
   expectedDeliveryDate: date("expected_delivery_date"),
+  paymentSchedule: jsonb("payment_schedule").default([]),
   notes: text("notes"),
   createdBy: integer("created_by").references(() => users.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),

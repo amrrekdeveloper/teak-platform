@@ -974,7 +974,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/contracts", requireRole("owner", "assistant", "sales"), async (req, res) => {
+  app.post("/api/contracts", requireRole("owner", "assistant", "sales", "accountant"), async (req, res) => {
     try {
       const data = { ...req.body, createdBy: req.session.userId };
       const contract = await storage.createContract(data);
@@ -1231,6 +1231,69 @@ export async function registerRoutes(
       res.json(invoice);
     } catch (error) {
       res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  app.post("/api/invoices", requireRole("owner", "assistant", "accountant"), async (req, res) => {
+    try {
+      const { contractId } = req.body;
+      if (!contractId) return res.status(400).json({ message: "contractId مطلوب" });
+
+      const parsedContractId = parseInt(contractId);
+      if (isNaN(parsedContractId)) return res.status(400).json({ message: "contractId غير صالح" });
+
+      const contract = await storage.getContract(parsedContractId);
+      if (!contract) return res.status(404).json({ message: "العقد غير موجود" });
+
+      const existingInvoices = await storage.getInvoices();
+      const duplicateInvoice = existingInvoices.find((inv: any) => inv.contractId === parsedContractId && inv.status !== "cancelled");
+      if (duplicateInvoice) return res.status(409).json({ message: "توجد فاتورة سارية لهذا العقد", invoice: duplicateInvoice });
+
+      const customer = contract.customerId ? await storage.getCustomer(contract.customerId) : null;
+      const settings = await storage.getCompanySettings();
+
+      const quotation = contract.quotationId ? await storage.getQuotation(contract.quotationId) : null;
+      const items = quotation?.items || [];
+
+      const subtotal = parseFloat(contract.totalAmount || "0") / 1.15;
+      const vatAmount = parseFloat(contract.totalAmount || "0") - subtotal;
+
+      const invoiceData = {
+        contractId: contract.id,
+        quotationId: contract.quotationId || undefined,
+        customerId: contract.customerId,
+        type: "simplified_tax_invoice" as const,
+        items: items,
+        subtotal: subtotal.toFixed(2),
+        vatRate: "15",
+        vatAmount: vatAmount.toFixed(2),
+        totalWithVat: contract.totalAmount,
+        sellerName: settings?.nameAr || "مصنع تيك للمنتجات الخشبية",
+        sellerVatNumber: settings?.vatNumber || "310012345600003",
+        sellerAddress: settings?.address || "الرياض - المملكة العربية السعودية",
+        buyerName: customer?.fullName || "",
+        buyerPhone: customer?.phone || "",
+        paymentMethod: "bank_transfer",
+        status: "issued" as const,
+        issuedAt: new Date(),
+        createdBy: req.session.userId,
+      };
+
+      const invoice = await storage.createInvoice(invoiceData);
+
+      const qrData = generateQRData({
+        sellerName: invoiceData.sellerName,
+        sellerVatNumber: invoiceData.sellerVatNumber,
+        issuedAt: invoiceData.issuedAt,
+        totalWithVat: invoiceData.totalWithVat,
+        vatAmount: invoiceData.vatAmount,
+      });
+      const updated = await storage.updateInvoice(invoice.id, { qrCodeData: qrData });
+
+      res.status(201).json(updated || invoice);
+    } catch (error) {
+      console.error("Invoice creation error:", error);
+      res.status(500).json({ message: "حدث خطأ في إصدار الفاتورة" });
     }
   });
 
@@ -3453,13 +3516,20 @@ export async function registerRoutes(
   // TASK #5: Financial Manager — approved orders ready for invoicing
   // ══════════════════════════════════════════════════════════════════════════
 
-  app.get("/api/finance/ready-to-invoice", requireRole("owner", "assistant", "finance"), async (req, res) => {
+  app.get("/api/finance/ready-to-invoice", requireRole("owner", "assistant", "accountant"), async (req, res) => {
     try {
       const allContracts = await storage.getContracts();
       const allQuotations = await storage.getQuotations();
+      const allInvoices = await storage.getInvoices();
       const approvedQuotations = allQuotations.filter(q => q.status === "approved");
 
-      const result = [];
+      const contractIdsWithActiveInvoice = new Set(
+        allInvoices
+          .filter((inv: { status: string; contractId: number | null }) => inv.contractId && inv.status !== "cancelled")
+          .map((inv: { contractId: number | null }) => inv.contractId)
+      );
+
+      const result: Array<{ quotation: typeof allQuotations[0]; customer: Awaited<ReturnType<typeof storage.getCustomer>> | null; contract: null }> = [];
       for (const q of approvedQuotations) {
         const existingContract = allContracts.find(c => c.quotationId === q.id);
         if (!existingContract) {
@@ -3468,16 +3538,19 @@ export async function registerRoutes(
         }
       }
 
-      const contractsWithoutInvoice = [];
+      const contractsReadyForInvoice: Array<{ contract: typeof allContracts[0]; customer: Awaited<ReturnType<typeof storage.getCustomer>> | null; payments: Awaited<ReturnType<typeof storage.getPaymentsByContract>>; hasInvoice: boolean }> = [];
       for (const c of allContracts) {
-        if (c.status === "active" || c.status === "signed") {
-          const payments = await storage.getPaymentsByContract(c.contractId);
-          const customer = c.customerId ? await storage.getCustomer(c.customerId) : null;
-          contractsWithoutInvoice.push({ contract: c, customer, payments });
+        if (c.status === "active") {
+          const hasInvoice = contractIdsWithActiveInvoice.has(c.id);
+          if (!hasInvoice) {
+            const payments = await storage.getPaymentsByContract(c.id);
+            const customer = c.customerId ? await storage.getCustomer(c.customerId) : null;
+            contractsReadyForInvoice.push({ contract: c, customer, payments, hasInvoice: false });
+          }
         }
       }
 
-      res.json({ readyForContract: result, readyForPayment: contractsWithoutInvoice });
+      res.json({ readyForContract: result, readyForPayment: contractsReadyForInvoice });
     } catch (error) {
       res.status(500).json({ message: "حدث خطأ" });
     }
