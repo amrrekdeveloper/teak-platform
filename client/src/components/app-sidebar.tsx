@@ -24,6 +24,7 @@ import {
   X,
   ClipboardList,
   Calendar,
+  CalendarDays,
   MapPin,
   Box,
   DollarSign,

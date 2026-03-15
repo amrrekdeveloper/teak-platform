@@ -1,448 +1,782 @@
 import { useState, useMemo } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLanguage } from "@/components/language-provider";
 import { useAuth } from "@/hooks/use-auth";
-import { apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { useLocation } from "wouter";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { useToast } from "@/hooks/use-toast";
 import {
-  format, startOfWeek, endOfWeek, eachDayOfInterval, addWeeks, subWeeks,
-  addMonths, subMonths, startOfMonth, endOfMonth, isSameDay, isSameMonth,
-  parseISO, getHours, getMinutes, isToday,
-} from "date-fns";
-import { ar } from "date-fns/locale";
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
-  ChevronLeft, ChevronRight, Plus, Calendar, Clock,
-  CheckCircle, XCircle, AlertCircle, RotateCcw, Link2
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Loader2,
+  Plus,
+  ChevronLeft,
+  ChevronRight,
+  Calendar as CalendarIcon,
+  Clock,
+  User,
+  MapPin,
+  AlertTriangle,
+  RotateCcw,
+  CheckCircle2,
+  XCircle,
+  Eye,
+  FileText,
 } from "lucide-react";
-import { Link } from "wouter";
 
-type ViewMode = "week" | "month";
+type ViewMode = "day" | "week" | "month";
 
-const STATUS_CONFIG: Record<string, { labelAr: string; labelEn: string; color: string; icon: any }> = {
-  scheduled: { labelAr: "مجدول", labelEn: "Scheduled", color: "bg-blue-100 text-blue-800 border-blue-200", icon: Clock },
-  attended: { labelAr: "تمت الزيارة", labelEn: "Attended", color: "bg-green-100 text-green-800 border-green-200", icon: CheckCircle },
-  no_show: { labelAr: "لم يحضر", labelEn: "No Show", color: "bg-orange-100 text-orange-800 border-orange-200", icon: AlertCircle },
-  client_refused: { labelAr: "العميل رفض", labelEn: "Client Refused", color: "bg-red-100 text-red-800 border-red-200", icon: XCircle },
-  rescheduled: { labelAr: "أعيد جدولته", labelEn: "Rescheduled", color: "bg-purple-100 text-purple-800 border-purple-200", icon: RotateCcw },
-  cancelled: { labelAr: "ملغي", labelEn: "Cancelled", color: "bg-gray-100 text-gray-500 border-gray-200", icon: XCircle },
+const statusColors: Record<string, string> = {
+  scheduled: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 border-blue-300",
+  attended: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300 border-green-300",
+  no_show: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300 border-red-300",
+  client_refused: "bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300 border-orange-300",
+  rescheduled: "bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300 border-purple-300",
 };
 
-const HOURS = Array.from({ length: 13 }, (_, i) => i + 7); // 7am-7pm
+const statusLabels: Record<string, { ar: string; en: string }> = {
+  scheduled: { ar: "مجدول", en: "Scheduled" },
+  attended: { ar: "تم الحضور", en: "Attended" },
+  no_show: { ar: "لم يحضر", en: "No Show" },
+  client_refused: { ar: "رفض العميل", en: "Client Refused" },
+  rescheduled: { ar: "أعيد جدولته", en: "Rescheduled" },
+};
+
+const failReasonLabels: Record<string, { ar: string; en: string }> = {
+  lazy: { ar: "تأجيل شخصي", en: "Personal Postponement" },
+  emergency: { ar: "طارئ", en: "Emergency" },
+  client_not_available: { ar: "العميل لم يفتح", en: "Client Not Available" },
+  client_cancelled: { ar: "العميل ألغى", en: "Client Cancelled" },
+};
+
+function getDaysInMonth(year: number, month: number) {
+  return new Date(year, month + 1, 0).getDate();
+}
+
+function getWeekDates(date: Date) {
+  const d = new Date(date);
+  const day = d.getDay();
+  const diff = d.getDate() - day;
+  const dates = [];
+  for (let i = 0; i < 7; i++) {
+    const wd = new Date(d);
+    wd.setDate(diff + i);
+    dates.push(wd);
+  }
+  return dates;
+}
+
+function formatDate(d: Date) {
+  return d.toISOString().split("T")[0];
+}
 
 export default function MyCalendarPage() {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const { user } = useAuth();
   const { toast } = useToast();
-  const qc = useQueryClient();
-
-  const [view, setView] = useState<ViewMode>("week");
-  const [currentDate, setCurrentDate] = useState(new Date());
-  const [selectedAppt, setSelectedAppt] = useState<any>(null);
-  const [showAddDialog, setShowAddDialog] = useState(false);
-  const [showStatusDialog, setShowStatusDialog] = useState(false);
-  const [filterSalesPerson, setFilterSalesPerson] = useState<string>("all");
+  const [, navigate] = useLocation();
 
   const isManager = user?.role === "owner" || user?.role === "assistant";
+  const [viewMode, setViewMode] = useState<ViewMode>("week");
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [selectedUserId, setSelectedUserId] = useState<string>("all");
+  const [createDialog, setCreateDialog] = useState(false);
+  const [detailDialog, setDetailDialog] = useState<any>(null);
+  const [failDialog, setFailDialog] = useState<any>(null);
+  const [rescheduleDialog, setRescheduleDialog] = useState<any>(null);
 
-  const weekStart = startOfWeek(currentDate, { weekStartsOn: 0 });
-  const weekEnd = endOfWeek(currentDate, { weekStartsOn: 0 });
-  const monthStart = startOfMonth(currentDate);
-  const monthEnd = endOfMonth(currentDate);
-
-  const dateFrom = view === "week" ? weekStart : monthStart;
-  const dateTo = view === "week" ? weekEnd : monthEnd;
-
-  const { data: appointments = [], isLoading } = useQuery<any[]>({
-    queryKey: ["/api/appointments", format(dateFrom, "yyyy-MM-dd"), format(dateTo, "yyyy-MM-dd"), filterSalesPerson],
-    queryFn: async () => {
-      const params = new URLSearchParams({
-        dateFrom: dateFrom.toISOString(),
-        dateTo: dateTo.toISOString(),
-      });
-      if (isManager && filterSalesPerson !== "all") params.set("salesPersonId", filterSalesPerson);
-      const res = await fetch(`/api/appointments?${params}`, { credentials: "include" });
-      if (!res.ok) throw new Error("Failed");
-      return res.json();
-    },
-    staleTime: 30000,
-  });
-
-  const { data: users = [] } = useQuery<any[]>({
-    queryKey: ["/api/users"],
-    enabled: isManager,
-    staleTime: 60000,
-  });
-
-  const { data: quotations = [] } = useQuery<any[]>({
-    queryKey: ["/api/quotations"],
-    staleTime: 60000,
-  });
-
-  const salesUsers = (users as any[]).filter(u => u.role === "sales");
-
-  const [form, setForm] = useState({
+  const [formData, setFormData] = useState({
     title: "",
-    dateStart: "",
-    dateEnd: "",
+    appointmentDate: formatDate(new Date()),
+    startTime: "09:00",
+    endTime: "10:00",
+    assignedTo: user?.id?.toString() || "",
+    customerId: "",
     quotationId: "",
     notes: "",
-    salesPersonId: "",
   });
 
-  const createAppt = useMutation({
-    mutationFn: (data: any) => apiRequest("POST", "/api/appointments", data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/appointments"] });
-      setShowAddDialog(false);
-      setForm({ title: "", dateStart: "", dateEnd: "", quotationId: "", notes: "", salesPersonId: "" });
-      toast({ title: t("تم إضافة الموعد", "Appointment added") });
+  const [failData, setFailData] = useState({
+    failReason: "",
+    failNotes: "",
+  });
+
+  const [rescheduleData, setRescheduleData] = useState({
+    appointmentDate: "",
+    startTime: "09:00",
+    endTime: "10:00",
+    notes: "",
+  });
+
+  const queryParams = isManager && selectedUserId !== "all" ? `?assignedTo=${selectedUserId}` : "";
+  const { data: appointments = [], isLoading } = useQuery<any[]>({
+    queryKey: ["/api/appointments", queryParams],
+  });
+  const { data: usersData = [] } = useQuery<any[]>({ queryKey: ["/api/users"] });
+  const { data: customers = [] } = useQuery<any[]>({ queryKey: ["/api/customers"] });
+  const { data: quotations = [] } = useQuery<any[]>({ queryKey: ["/api/quotations"] });
+
+  const salesUsers = useMemo(() => {
+    return usersData.filter((u: any) =>
+      ["sales", "owner", "assistant"].includes(u.role)
+    );
+  }, [usersData]);
+
+  const createMutation = useMutation({
+    mutationFn: async (data: any) => {
+      const res = await apiRequest("POST", "/api/appointments", data);
+      return res.json();
     },
-    onError: (e: any) => toast({ title: e.message || t("خطأ", "Error"), variant: "destructive" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/appointments"] });
+      setCreateDialog(false);
+      resetForm();
+      toast({ title: t("تم إنشاء الموعد", "Appointment created") });
+    },
+    onError: (error: any) => {
+      toast({ title: error.message || t("فشل إنشاء الموعد", "Failed to create"), variant: "destructive" });
+    },
   });
 
-  const updateAppt = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: any }) => apiRequest("PATCH", `/api/appointments/${id}`, data),
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: any }) => {
+      const res = await apiRequest("PATCH", `/api/appointments/${id}`, data);
+      return res.json();
+    },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/appointments"] });
-      setShowStatusDialog(false);
-      setSelectedAppt(null);
+      queryClient.invalidateQueries({ queryKey: ["/api/appointments"] });
+      setDetailDialog(null);
+      setFailDialog(null);
       toast({ title: t("تم تحديث الموعد", "Appointment updated") });
     },
-    onError: (e: any) => toast({ title: e.message || t("خطأ", "Error"), variant: "destructive" }),
+    onError: () => {
+      toast({ title: t("حدث خطأ", "Error"), variant: "destructive" });
+    },
   });
 
-  const handleCreate = () => {
-    if (!form.title || !form.dateStart || !form.dateEnd)
-      return toast({ title: t("يرجى ملء جميع الحقول المطلوبة", "Fill required fields"), variant: "destructive" });
-    createAppt.mutate({
-      title: form.title,
-      dateStart: new Date(form.dateStart).toISOString(),
-      dateEnd: new Date(form.dateEnd).toISOString(),
-      quotationId: form.quotationId ? parseInt(form.quotationId) : null,
-      notes: form.notes || null,
-      salesPersonId: isManager && form.salesPersonId ? parseInt(form.salesPersonId) : undefined,
+  const rescheduleMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: any }) => {
+      const res = await apiRequest("POST", `/api/appointments/${id}/reschedule`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/appointments"] });
+      setRescheduleDialog(null);
+      toast({ title: t("تمت إعادة الجدولة", "Rescheduled successfully") });
+    },
+    onError: (error: any) => {
+      toast({ title: error.message || t("فشل إعادة الجدولة", "Reschedule failed"), variant: "destructive" });
+    },
+  });
+
+  function resetForm() {
+    setFormData({
+      title: "",
+      appointmentDate: formatDate(new Date()),
+      startTime: "09:00",
+      endTime: "10:00",
+      assignedTo: user?.id?.toString() || "",
+      customerId: "",
+      quotationId: "",
+      notes: "",
     });
-  };
+  }
 
-  const weekDays = eachDayOfInterval({ start: weekStart, end: weekEnd });
-  const monthDays = eachDayOfInterval({ start: monthStart, end: monthEnd });
+  function navigateDate(direction: number) {
+    const d = new Date(currentDate);
+    if (viewMode === "day") d.setDate(d.getDate() + direction);
+    else if (viewMode === "week") d.setDate(d.getDate() + direction * 7);
+    else d.setMonth(d.getMonth() + direction);
+    setCurrentDate(d);
+  }
 
-  const getApptForDay = (day: Date) =>
-    appointments.filter(a => isSameDay(parseISO(a.dateStart), day));
-
-  const getApptForDayHour = (day: Date, hour: number) =>
-    appointments.filter(a => {
-      const s = parseISO(a.dateStart);
-      return isSameDay(s, day) && getHours(s) === hour;
+  function getDateLabel() {
+    if (viewMode === "day") {
+      return currentDate.toLocaleDateString(lang === "ar" ? "ar-SA" : "en-US", {
+        weekday: "long", year: "numeric", month: "long", day: "numeric",
+      });
+    }
+    if (viewMode === "week") {
+      const week = getWeekDates(currentDate);
+      return `${week[0].toLocaleDateString(lang === "ar" ? "ar-SA" : "en-US", { month: "short", day: "numeric" })} - ${week[6].toLocaleDateString(lang === "ar" ? "ar-SA" : "en-US", { month: "short", day: "numeric", year: "numeric" })}`;
+    }
+    return currentDate.toLocaleDateString(lang === "ar" ? "ar-SA" : "en-US", {
+      year: "numeric", month: "long",
     });
+  }
 
-  const prev = () => view === "week" ? setCurrentDate(subWeeks(currentDate, 1)) : setCurrentDate(subMonths(currentDate, 1));
-  const next = () => view === "week" ? setCurrentDate(addWeeks(currentDate, 1)) : setCurrentDate(addMonths(currentDate, 1));
-
-  const headerLabel = view === "week"
-    ? `${format(weekStart, "d MMM", { locale: ar })} - ${format(weekEnd, "d MMM yyyy", { locale: ar })}`
-    : format(currentDate, "MMMM yyyy", { locale: ar });
+  const filteredAppointments = useMemo(() => {
+    return appointments.filter((app: any) => {
+      const appDate = new Date(app.appointmentDate);
+      if (viewMode === "day") {
+        return formatDate(appDate) === formatDate(currentDate);
+      } else if (viewMode === "week") {
+        const week = getWeekDates(currentDate);
+        const start = formatDate(week[0]);
+        const end = formatDate(week[6]);
+        const current = formatDate(appDate);
+        return current >= start && current <= end;
+      } else {
+        return appDate.getMonth() === currentDate.getMonth() &&
+               appDate.getFullYear() === currentDate.getFullYear();
+      }
+    });
+  }, [appointments, currentDate, viewMode]);
 
   return (
-    <div className="p-4 md:p-6 space-y-4">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+    <div className="container mx-auto p-4 md:p-6 pb-24">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-bold">{t("التقويم الذكي", "Smart Calendar")}</h1>
-          <p className="text-muted-foreground text-sm">{t("إدارة مواعيد الزيارات الميدانية", "Manage site visit appointments")}</p>
+          <p className="text-muted-foreground">{t("إدارة ومتابعة مواعيد الزيارات الميدانية", "Manage and track site visit appointments")}</p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-2">
           {isManager && (
-            <Select value={filterSalesPerson} onValueChange={setFilterSalesPerson}>
-              <SelectTrigger className="w-36 h-8 text-sm" data-testid="select-filter-salesperson">
-                <SelectValue placeholder={t("كل المناديب", "All Sales")} />
+            <Select value={selectedUserId} onValueChange={setSelectedUserId}>
+              <SelectTrigger className="w-[180px]" data-testid="select-sales-filter">
+                <SelectValue placeholder={t("تصفية حسب المندوب", "Filter by sales")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">{t("كل المناديب", "All Sales")}</SelectItem>
-                {salesUsers.map(u => (
-                  <SelectItem key={u.id} value={String(u.id)}>{u.fullNameAr}</SelectItem>
+                <SelectItem value="all">{t("جميع المناديب", "All Sales")}</SelectItem>
+                {salesUsers.map((u: any) => (
+                  <SelectItem key={u.id} value={u.id.toString()}>
+                    {u.fullNameAr || u.username}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           )}
-          <div className="flex border rounded-lg overflow-hidden">
-            <Button variant={view === "week" ? "default" : "ghost"} size="sm" onClick={() => setView("week")} data-testid="btn-view-week">
-              {t("أسبوعي", "Week")}
-            </Button>
-            <Button variant={view === "month" ? "default" : "ghost"} size="sm" onClick={() => setView("month")} data-testid="btn-view-month">
-              {t("شهري", "Month")}
-            </Button>
-          </div>
-          <Button size="sm" onClick={() => setShowAddDialog(true)} data-testid="btn-add-appointment">
-            <Plus className="h-4 w-4 me-1" />
+          <Button onClick={() => setCreateDialog(true)} data-testid="button-new-appointment">
+            <Plus className="w-4 h-4 me-1" />
             {t("موعد جديد", "New Appointment")}
           </Button>
         </div>
       </div>
 
-      {/* Navigation */}
-      <div className="flex items-center justify-between">
-        <Button variant="outline" size="icon" onClick={prev} data-testid="btn-prev"><ChevronRight className="h-4 w-4" /></Button>
-        <div className="flex items-center gap-2">
-          <Calendar className="h-4 w-4 text-muted-foreground" />
-          <span className="font-semibold text-base">{headerLabel}</span>
-        </div>
-        <Button variant="outline" size="icon" onClick={next} data-testid="btn-next"><ChevronLeft className="h-4 w-4" /></Button>
-      </div>
-
-      {/* Week View */}
-      {view === "week" && (
-        <div className="overflow-x-auto">
-          <div className="min-w-[700px]">
-            {/* Day headers */}
-            <div className="grid grid-cols-8 border-b">
-              <div className="p-2 text-xs text-muted-foreground text-center" />
-              {weekDays.map(day => (
-                <div key={day.toISOString()} className={`p-2 text-center border-s ${isToday(day) ? "bg-primary/5" : ""}`}>
-                  <div className="text-xs text-muted-foreground">{format(day, "EEE", { locale: ar })}</div>
-                  <div className={`text-sm font-bold mt-0.5 w-7 h-7 rounded-full flex items-center justify-center mx-auto ${isToday(day) ? "bg-primary text-primary-foreground" : ""}`}>
-                    {format(day, "d")}
-                  </div>
-                </div>
-              ))}
+      <Card className="mb-6">
+        <CardContent className="p-4">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="icon" onClick={() => navigateDate(-1)}>
+                <ChevronRight className="w-4 h-4" />
+              </Button>
+              <Button variant="outline" className="min-w-[200px] justify-start font-normal">
+                <CalendarIcon className="w-4 h-4 me-2 text-muted-foreground" />
+                {getDateLabel()}
+              </Button>
+              <Button variant="outline" size="icon" onClick={() => navigateDate(1)}>
+                <ChevronLeft className="w-4 h-4" />
+              </Button>
+              <Button variant="ghost" onClick={() => setCurrentDate(new Date())}>
+                {t("اليوم", "Today")}
+              </Button>
             </div>
-            {/* Time slots */}
-            {HOURS.map(hour => (
-              <div key={hour} className="grid grid-cols-8 border-b min-h-[60px]">
-                <div className="p-1 text-xs text-muted-foreground text-center border-e py-2">
-                  {hour}:00
-                </div>
-                {weekDays.map(day => {
-                  const appts = getApptForDayHour(day, hour);
-                  return (
-                    <div key={day.toISOString()} className={`border-s p-1 relative ${isToday(day) ? "bg-primary/5" : ""}`}>
-                      {appts.map(a => {
-                        const cfg = STATUS_CONFIG[a.status] || STATUS_CONFIG.scheduled;
-                        return (
-                          <div
-                            key={a.id}
-                            className={`text-xs rounded px-1 py-0.5 mb-0.5 border cursor-pointer truncate ${cfg.color}`}
-                            onClick={() => { setSelectedAppt(a); setShowStatusDialog(true); }}
-                            data-testid={`appt-block-${a.id}`}
-                          >
-                            {format(parseISO(a.dateStart), "HH:mm")} {a.title}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  );
-                })}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Month View */}
-      {view === "month" && (
-        <div>
-          <div className="grid grid-cols-7 border-b">
-            {["أحد", "اثن", "ثلا", "أرب", "خمي", "جمع", "سبت"].map(d => (
-              <div key={d} className="p-2 text-center text-xs font-medium text-muted-foreground">{d}</div>
-            ))}
-          </div>
-          <div className="grid grid-cols-7">
-            {/* Leading blanks */}
-            {Array.from({ length: monthStart.getDay() }).map((_, i) => (
-              <div key={`blank-${i}`} className="border p-1 min-h-[80px] bg-muted/10" />
-            ))}
-            {monthDays.map(day => {
-              const dayAppts = getApptForDay(day);
-              return (
-                <div key={day.toISOString()} className={`border p-1 min-h-[80px] ${!isSameMonth(day, currentDate) ? "bg-muted/10" : ""} ${isToday(day) ? "bg-primary/5" : ""}`}>
-                  <div className={`text-xs font-semibold mb-1 w-6 h-6 rounded-full flex items-center justify-center ${isToday(day) ? "bg-primary text-primary-foreground" : ""}`}>
-                    {format(day, "d")}
-                  </div>
-                  {dayAppts.slice(0, 3).map(a => {
-                    const cfg = STATUS_CONFIG[a.status] || STATUS_CONFIG.scheduled;
-                    return (
-                      <div
-                        key={a.id}
-                        className={`text-[10px] rounded px-1 mb-0.5 border truncate cursor-pointer ${cfg.color}`}
-                        onClick={() => { setSelectedAppt(a); setShowStatusDialog(true); }}
-                        data-testid={`month-appt-${a.id}`}
-                      >
-                        {format(parseISO(a.dateStart), "HH:mm")} {a.title}
-                      </div>
-                    );
-                  })}
-                  {dayAppts.length > 3 && (
-                    <div className="text-[10px] text-muted-foreground">+{dayAppts.length - 3}</div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Upcoming appointments list */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">{t("المواعيد القادمة", "Upcoming Appointments")}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <p className="text-muted-foreground text-sm text-center py-4">{t("جاري التحميل...", "Loading...")}</p>
-          ) : appointments.filter(a => a.status === "scheduled").length === 0 ? (
-            <p className="text-muted-foreground text-sm text-center py-4">{t("لا توجد مواعيد مجدولة", "No scheduled appointments")}</p>
-          ) : (
-            <div className="space-y-2">
-              {appointments.filter(a => a.status === "scheduled").map(a => {
-                const cfg = STATUS_CONFIG[a.status];
-                const Icon = cfg.icon;
-                return (
-                  <div key={a.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50 cursor-pointer"
-                    onClick={() => { setSelectedAppt(a); setShowStatusDialog(true); }}
-                    data-testid={`appt-row-${a.id}`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <Icon className="h-4 w-4 text-blue-500 flex-shrink-0" />
-                      <div>
-                        <p className="font-medium text-sm">{a.title}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {format(parseISO(a.dateStart), "yyyy/MM/dd HH:mm")} - {format(parseISO(a.dateEnd), "HH:mm")}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {a.quotationId && (
-                        <Link href={`/quotations/${a.quotationId}`} onClick={e => e.stopPropagation()}>
-                          <Badge variant="outline" className="text-xs gap-1"><Link2 className="h-3 w-3" />#{a.quotationId}</Badge>
-                        </Link>
-                      )}
-                      <Badge className={`text-xs border ${cfg.color}`}>{t(cfg.labelAr, cfg.labelEn)}</Badge>
-                    </div>
-                  </div>
-                );
-              })}
+            <div className="flex bg-muted p-1 rounded-lg">
+              <Button
+                variant={viewMode === "day" ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setViewMode("day")}
+              >
+                {t("يوم", "Day")}
+              </Button>
+              <Button
+                variant={viewMode === "week" ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setViewMode("week")}
+              >
+                {t("أسبوع", "Week")}
+              </Button>
+              <Button
+                variant={viewMode === "month" ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setViewMode("month")}
+              >
+                {t("شهر", "Month")}
+              </Button>
             </div>
-          )}
+          </div>
         </CardContent>
       </Card>
 
-      {/* Add Appointment Dialog */}
-      <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
-        <DialogContent className="max-w-md">
+      {isLoading ? (
+        <div className="flex items-center justify-center p-12">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {viewMode === "month" ? (
+            <div className="grid grid-cols-7 gap-px bg-muted border rounded-lg overflow-hidden">
+              {["الأحد", "الأثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"].map((day) => (
+                <div key={day} className="bg-background p-2 text-center text-xs font-medium text-muted-foreground">
+                  {t(day, day)}
+                </div>
+              ))}
+              {(() => {
+                const year = currentDate.getFullYear();
+                const month = currentDate.getMonth();
+                const firstDay = new Date(year, month, 1).getDay();
+                const daysInMonth = getDaysInMonth(year, month);
+                const cells = [];
+                for (let i = 0; i < firstDay; i++) {
+                  cells.push(<div key={`empty-\${i}`} className="bg-muted/50 min-h-[100px]" />);
+                }
+                for (let d = 1; d <= daysInMonth; d++) {
+                  const dateStr = formatDate(new Date(year, month, d));
+                  const dayApps = appointments.filter((a: any) => a.appointmentDate === dateStr);
+                  const isToday = formatDate(new Date()) === dateStr;
+                  cells.push(
+                    <div key={d} className={`bg-background min-h-[100px] p-2 border-t border-r \${isToday ? "bg-primary/5" : ""}`}>
+                      <span className={`text-xs font-medium \${isToday ? "text-primary bg-primary/10 w-6 h-6 flex items-center justify-center rounded-full" : ""}`}>
+                        {d}
+                      </span>
+                      <div className="mt-1 space-y-1">
+                        {dayApps.map((app: any) => (
+                          <div
+                            key={app.id}
+                            className={`text-[10px] p-1 rounded border truncate cursor-pointer \${statusColors[app.status]}`}
+                            onClick={() => setDetailDialog(app)}
+                          >
+                            {app.startTime} {app.title}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                }
+                return cells;
+              })()}
+            </div>
+          ) : (
+            <div className="grid gap-4">
+              {filteredAppointments.length === 0 ? (
+                <div className="text-center p-12 border rounded-lg bg-muted/20">
+                  <CalendarIcon className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                  <p className="text-muted-foreground">{t("لا توجد مواعيد في هذه الفترة", "No appointments for this period")}</p>
+                </div>
+              ) : (
+                filteredAppointments.sort((a: any, b: any) => a.startTime.localeCompare(b.startTime)).map((app: any) => (
+                  <Card key={app.id} className="cursor-pointer hover:border-primary transition-colors" onClick={() => setDetailDialog(app)}>
+                    <CardContent className="p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                          <div className="text-center min-w-[60px]">
+                            <div className="text-sm font-bold">{app.startTime}</div>
+                            <div className="text-[10px] text-muted-foreground">{app.endTime}</div>
+                          </div>
+                          <div className="w-px h-8 bg-border" />
+                          <div>
+                            <div className="font-medium">{app.title}</div>
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
+                              <MapPin className="w-3 h-3" />
+                              {(() => {
+                                const customer = customers.find((c: any) => c.id === app.customerId);
+                                return customer ? customer.fullName : t("عميل غير محدد", "Unknown Customer");
+                              })()}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className={statusColors[app.status]}>
+                            {t(statusLabels[app.status]?.ar || "", statusLabels[app.status]?.en || "")}
+                          </Badge>
+                          <ChevronLeft className="w-4 h-4 text-muted-foreground" />
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      <Dialog open={createDialog} onOpenChange={setCreateDialog}>
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto" data-testid="dialog-create-appointment">
           <DialogHeader>
             <DialogTitle>{t("إضافة موعد جديد", "Add New Appointment")}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-3">
-            <div>
-              <Label>{t("عنوان الموعد *", "Appointment Title *")}</Label>
-              <Input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
-                placeholder={t("مثال: زيارة ميدانية - أحمد التميمي", "e.g. Site Visit - Ahmed")}
-                data-testid="input-appt-title" />
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>{t("عنوان الموعد", "Appointment Title")}</Label>
+              <Input
+                value={formData.title}
+                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                placeholder={t("مثال: زيارة رفع مقاسات", "e.g., Measurement Visit")}
+                data-testid="input-appointment-title"
+              />
+            </div>
+            <div className="grid grid-cols-1 gap-4">
+              <div className="space-y-2">
+                <Label>{t("التاريخ", "Date")}</Label>
+                <Input
+                  type="date"
+                  value={formData.appointmentDate}
+                  onChange={(e) => setFormData({ ...formData, appointmentDate: e.target.value })}
+                  data-testid="input-appointment-date"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-2">
+                  <Label>{t("وقت البدء", "Start Time")}</Label>
+                  <Input
+                    type="time"
+                    value={formData.startTime}
+                    onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
+                    data-testid="input-appointment-start"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>{t("وقت الانتهاء", "End Time")}</Label>
+                  <Input
+                    type="time"
+                    value={formData.endTime}
+                    onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
+                    data-testid="input-appointment-end"
+                  />
+                </div>
+              </div>
             </div>
             {isManager && (
-              <div>
-                <Label>{t("المندوب", "Sales Person")}</Label>
-                <Select value={form.salesPersonId} onValueChange={v => setForm(f => ({ ...f, salesPersonId: v }))}>
-                  <SelectTrigger data-testid="select-appt-salesperson">
-                    <SelectValue placeholder={t("اختر المندوب", "Select sales person")} />
+              <div className="space-y-2">
+                <Label>{t("إسناد إلى", "Assign To")}</Label>
+                <Select
+                  value={formData.assignedTo}
+                  onValueChange={(v) => setFormData({ ...formData, assignedTo: v })}
+                >
+                  <SelectTrigger data-testid="select-assigned-to">
+                    <SelectValue placeholder={t("اختر المندوب", "Select sales")} />
                   </SelectTrigger>
                   <SelectContent>
-                    {salesUsers.map(u => <SelectItem key={u.id} value={String(u.id)}>{u.fullNameAr}</SelectItem>)}
+                    {salesUsers.map((u: any) => (
+                      <SelectItem key={u.id} value={u.id.toString()}>
+                        {u.fullNameAr || u.username}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
             )}
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <Label>{t("وقت البداية *", "Start Time *")}</Label>
-                <Input type="datetime-local" value={form.dateStart}
-                  onChange={e => setForm(f => ({ ...f, dateStart: e.target.value }))}
-                  data-testid="input-appt-start" />
-              </div>
-              <div>
-                <Label>{t("وقت النهاية *", "End Time *")}</Label>
-                <Input type="datetime-local" value={form.dateEnd}
-                  onChange={e => setForm(f => ({ ...f, dateEnd: e.target.value }))}
-                  data-testid="input-appt-end" />
-              </div>
-            </div>
-            <div>
-              <Label>{t("ربط بطلب (اختياري)", "Link to Order (Optional)")}</Label>
-              <Select value={form.quotationId || "none"} onValueChange={v => setForm(f => ({ ...f, quotationId: v === "none" ? "" : v }))}>
-                <SelectTrigger data-testid="select-appt-quotation">
-                  <SelectValue placeholder={t("اختر الطلب", "Select order")} />
+            <div className="space-y-2">
+              <Label>{t("العميل (اختياري)", "Customer (Optional)")}</Label>
+              <Select
+                value={formData.customerId}
+                onValueChange={(v) => setFormData({ ...formData, customerId: v })}
+              >
+                <SelectTrigger data-testid="select-customer">
+                  <SelectValue placeholder={t("اختر العميل", "Select customer")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">{t("بدون ربط", "No link")}</SelectItem>
-                  {(quotations as any[]).map(q => (
-                    <SelectItem key={q.id} value={String(q.id)}>#{q.quotationNumber}</SelectItem>
+                  <SelectItem value="none">{t("بدون عميل", "No Customer")}</SelectItem>
+                  {customers.map((c: any) => (
+                    <SelectItem key={c.id} value={c.id.toString()}>
+                      {c.fullName}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-            <div>
+            <div className="space-y-2">
+              <Label>{t("عرض السعر (اختياري)", "Quotation (Optional)")}</Label>
+              <Select
+                value={formData.quotationId}
+                onValueChange={(v) => setFormData({ ...formData, quotationId: v })}
+              >
+                <SelectTrigger data-testid="select-quotation">
+                  <SelectValue placeholder={t("اختر العرض", "Select quotation")} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">{t("بدون عرض", "No Quotation")}</SelectItem>
+                  {quotations.filter((q: any) => q.customerId.toString() === formData.customerId).map((q: any) => (
+                    <SelectItem key={q.id} value={q.id.toString()}>
+                      #{q.id} - {q.status}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
               <Label>{t("ملاحظات", "Notes")}</Label>
-              <Textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-                rows={2} data-testid="textarea-appt-notes" />
+              <Textarea
+                value={formData.notes}
+                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                placeholder={t("أي تفاصيل إضافية", "Any additional details")}
+                data-testid="input-appointment-notes"
+              />
             </div>
           </div>
-          <DialogFooter className="gap-2 flex-col sm:flex-row">
-            <Button variant="outline" onClick={() => setShowAddDialog(false)}>{t("إلغاء", "Cancel")}</Button>
-            <Button onClick={handleCreate} disabled={createAppt.isPending} data-testid="btn-confirm-add-appt">
-              {createAppt.isPending ? t("جاري الحفظ...", "Saving...") : t("إضافة الموعد", "Add Appointment")}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateDialog(false)}>
+              {t("إلغاء", "Cancel")}
+            </Button>
+            <Button
+              onClick={() => {
+                const data: any = {
+                  title: formData.title,
+                  appointmentDate: formData.appointmentDate,
+                  startTime: formData.startTime,
+                  endTime: formData.endTime,
+                  assignedTo: parseInt(formData.assignedTo) || user?.id,
+                  notes: formData.notes || null,
+                };
+                if (formData.customerId && formData.customerId !== "none") data.customerId = parseInt(formData.customerId);
+                if (formData.quotationId && formData.quotationId !== "none") data.quotationId = parseInt(formData.quotationId);
+                createMutation.mutate(data);
+              }}
+              disabled={createMutation.isPending || !formData.title || !formData.appointmentDate}
+              data-testid="button-save-appointment"
+            >
+              {createMutation.isPending && <Loader2 className="w-4 h-4 me-1 animate-spin" />}
+              {t("حفظ", "Save")}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Status Update Dialog */}
-      {selectedAppt && (
-        <Dialog open={showStatusDialog} onOpenChange={setShowStatusDialog}>
-          <DialogContent className="max-w-md">
+      {detailDialog && (
+        <Dialog open={!!detailDialog} onOpenChange={() => setDetailDialog(null)}>
+          <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto" data-testid="dialog-appointment-detail">
             <DialogHeader>
-              <DialogTitle>{selectedAppt.title}</DialogTitle>
+              <DialogTitle>{detailDialog.title}</DialogTitle>
             </DialogHeader>
             <div className="space-y-3">
-              <div className="text-sm text-muted-foreground">
-                <p>{format(parseISO(selectedAppt.dateStart), "yyyy/MM/dd HH:mm")} — {format(parseISO(selectedAppt.dateEnd), "HH:mm")}</p>
-                {selectedAppt.notes && <p className="mt-1">{selectedAppt.notes}</p>}
+              <div className="flex items-center gap-2">
+                <Badge className={statusColors[detailDialog.status]}>
+                  {t(statusLabels[detailDialog.status]?.ar || "", statusLabels[detailDialog.status]?.en || "")}
+                </Badge>
+              </div>
+              <div className="space-y-2 text-sm">
+                <div className="flex items-center gap-2">
+                  <CalendarIcon className="w-4 h-4 text-muted-foreground" />
+                  <span>{new Date(detailDialog.appointmentDate + "T00:00:00").toLocaleDateString(lang === "ar" ? "ar-SA" : "en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-muted-foreground" />
+                  <span>{detailDialog.startTime} - {detailDialog.endTime}</span>
+                </div>
+                {(() => {
+                  const customer = customers.find((c: any) => c.id === detailDialog.customerId);
+                  return customer ? (
+                    <div className="flex items-center gap-2">
+                      <User className="w-4 h-4 text-muted-foreground" />
+                      <span>{customer.fullName} - {customer.phone}</span>
+                    </div>
+                  ) : null;
+                })()}
+                {detailDialog.notes && (
+                  <div className="text-muted-foreground bg-muted/50 p-2 rounded text-xs">{detailDialog.notes}</div>
+                )}
+                {detailDialog.failReason && (
+                  <div className="flex items-center gap-2 text-orange-600">
+                    <AlertTriangle className="w-4 h-4" />
+                    <span>{t(failReasonLabels[detailDialog.failReason]?.ar || "", failReasonLabels[detailDialog.failReason]?.en || "")}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+            <DialogFooter className="flex-col sm:flex-row gap-2">
+              {detailDialog.status === "scheduled" && (
+                <>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={() => navigate(`/site-survey/\${detailDialog.id}`)}
+                    data-testid="button-start-survey"
+                  >
+                    <FileText className="w-4 h-4 me-1" />
+                    {t("بدء الزيارة", "Start Survey")}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setRescheduleData({
+                        appointmentDate: "",
+                        startTime: detailDialog.startTime,
+                        endTime: detailDialog.endTime,
+                        notes: "",
+                      });
+                      setRescheduleDialog(detailDialog);
+                      setDetailDialog(null);
+                    }}
+                    data-testid="button-reschedule"
+                  >
+                    <RotateCcw className="w-4 h-4 me-1" />
+                    {t("إعادة جدولة", "Reschedule")}
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => {
+                      setFailData({ failReason: "", failNotes: "" });
+                      setFailDialog(detailDialog);
+                      setDetailDialog(null);
+                    }}
+                    data-testid="button-cant-visit"
+                  >
+                    <XCircle className="w-4 h-4 me-1" />
+                    {t("لم أتمكن من الزيارة", "Unable to Visit")}
+                  </Button>
+                </>
+              )}
+              {detailDialog.status === "attended" && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => navigate(`/site-survey/\${detailDialog.id}`)}
+                  data-testid="button-view-survey"
+                >
+                  <Eye className="w-4 h-4 me-1" />
+                  {t("عرض نموذج الزيارة", "View Survey")}
+                </Button>
+              )}
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {failDialog && (
+        <Dialog open={!!failDialog} onOpenChange={() => setFailDialog(null)}>
+          <DialogContent className="max-w-sm" data-testid="dialog-fail-reason">
+            <DialogHeader>
+              <DialogTitle>{t("سبب عدم الزيارة", "Reason for Not Visiting")}</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3">
+              <div>
+                <Label>{t("السبب", "Reason")}</Label>
+                <Select
+                  value={failData.failReason}
+                  onValueChange={(v) => setFailData({ ...failData, failReason: v })}
+                >
+                  <SelectTrigger data-testid="select-fail-reason">
+                    <SelectValue placeholder={t("اختر السبب", "Select reason")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(failReasonLabels).map(([key, label]) => (
+                      <SelectItem key={key} value={key}>
+                        {t(label.ar, label.en)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div>
-                <Label>{t("تحديث الحالة", "Update Status")}</Label>
-                <div className="grid grid-cols-2 gap-2 mt-2">
-                  {Object.entries(STATUS_CONFIG).filter(([k]) => k !== "scheduled").map(([k, cfg]) => (
-                    <Button key={k} variant="outline" size="sm"
-                      className={selectedAppt.status === k ? "ring-2 ring-primary" : ""}
-                      onClick={() => updateAppt.mutate({ id: selectedAppt.id, data: { status: k } })}
-                      disabled={updateAppt.isPending}
-                      data-testid={`btn-status-${k}`}
-                    >
-                      {t(cfg.labelAr, cfg.labelEn)}
-                    </Button>
-                  ))}
-                </div>
+                <Label>{t("ملاحظات", "Notes")}</Label>
+                <Textarea
+                  value={failData.failNotes}
+                  onChange={(e) => setFailData({ ...failData, failNotes: e.target.value })}
+                  placeholder={t("تفاصيل إضافية", "Additional details")}
+                  data-testid="input-fail-notes"
+                />
               </div>
-              {selectedAppt.status === "attended" && (
-                <div className="pt-2 border-t">
-                  <Link href={`/site-survey?appointmentId=${selectedAppt.id}&quotationId=${selectedAppt.quotationId || ""}`}>
-                    <Button className="w-full" data-testid="btn-start-survey">
-                      {t("بدء نموذج الزيارة الميدانية", "Start Site Survey Form")}
-                    </Button>
-                  </Link>
-                </div>
-              )}
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => { setShowStatusDialog(false); setSelectedAppt(null); }}>
-                {t("إغلاق", "Close")}
+              <Button variant="outline" onClick={() => setFailDialog(null)}>
+                {t("إلغاء", "Cancel")}
+              </Button>
+              <Button
+                variant="destructive"
+                disabled={!failData.failReason || updateMutation.isPending}
+                onClick={() => {
+                  const status = failData.failReason === "client_cancelled" ? "client_refused" : "no_show";
+                  updateMutation.mutate({
+                    id: failDialog.id,
+                    data: {
+                      status,
+                      failReason: failData.failReason,
+                      failNotes: failData.failNotes || null,
+                    },
+                  });
+                }}
+                data-testid="button-confirm-fail"
+              >
+                {updateMutation.isPending && <Loader2 className="w-4 h-4 me-1 animate-spin" />}
+                {t("تأكيد", "Confirm")}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {rescheduleDialog && (
+        <Dialog open={!!rescheduleDialog} onOpenChange={() => setRescheduleDialog(null)}>
+          <DialogContent className="max-w-sm" data-testid="dialog-reschedule">
+            <DialogHeader>
+              <DialogTitle>{t("إعادة جدولة الموعد", "Reschedule Appointment")}</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3">
+              <div>
+                <Label>{t("التاريخ الجديد", "New Date")}</Label>
+                <Input
+                  type="date"
+                  value={rescheduleData.appointmentDate}
+                  onChange={(e) => setRescheduleData({ ...rescheduleData, appointmentDate: e.target.value })}
+                  data-testid="input-reschedule-date"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label>{t("من", "From")}</Label>
+                  <Input
+                    type="time"
+                    value={rescheduleData.startTime}
+                    onChange={(e) => setRescheduleData({ ...rescheduleData, startTime: e.target.value })}
+                    data-testid="input-reschedule-start"
+                  />
+                </div>
+                <div>
+                  <Label>{t("إلى", "To")}</Label>
+                  <Input
+                    type="time"
+                    value={rescheduleData.endTime}
+                    onChange={(e) => setRescheduleData({ ...rescheduleData, endTime: e.target.value })}
+                    data-testid="input-reschedule-end"
+                  />
+                </div>
+              </div>
+              <div>
+                <Label>{t("ملاحظات", "Notes")}</Label>
+                <Textarea
+                  value={rescheduleData.notes}
+                  onChange={(e) => setRescheduleData({ ...rescheduleData, notes: e.target.value })}
+                  data-testid="input-reschedule-notes"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setRescheduleDialog(null)}>
+                {t("إلغاء", "Cancel")}
+              </Button>
+              <Button
+                disabled={!rescheduleData.appointmentDate || rescheduleMutation.isPending}
+                onClick={() => {
+                  rescheduleMutation.mutate({
+                    id: rescheduleDialog.id,
+                    data: rescheduleData,
+                  });
+                }}
+                data-testid="button-confirm-reschedule"
+              >
+                {rescheduleMutation.isPending && <Loader2 className="w-4 h-4 me-1 animate-spin" />}
+                {t("إعادة الجدولة", "Reschedule")}
               </Button>
             </DialogFooter>
           </DialogContent>

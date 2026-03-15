@@ -169,14 +169,14 @@ export interface IStorage {
   deleteQuoteProductCategory(id: number): Promise<boolean>;
 
   // Appointments (Task #3)
-  getAppointments(filters?: { salesPersonId?: number; dateFrom?: Date; dateTo?: Date }): Promise<Appointment[]>;
+  getAppointments(filters?: { userId?: number }): Promise<Appointment[]>;
   getAppointment(id: number): Promise<Appointment | undefined>;
   createAppointment(appt: InsertAppointment): Promise<Appointment>;
   updateAppointment(id: number, data: Partial<InsertAppointment>): Promise<Appointment | undefined>;
-  checkAppointmentConflict(salesPersonId: number, dateStart: Date, dateEnd: Date, excludeId?: number): Promise<boolean>;
+  getAppointmentsByDate(date: string, userId?: number): Promise<Appointment[]>;
 
   // Site Surveys (Task #3)
-  getSiteSurveys(filters?: { salesPersonId?: number; quotationId?: number }): Promise<SiteSurvey[]>;
+  getSiteSurveys(filters?: { quotationId?: number }): Promise<SiteSurvey[]>;
   getSiteSurvey(id: number): Promise<SiteSurvey | undefined>;
   getSiteSurveyByAppointment(appointmentId: number): Promise<SiteSurvey | undefined>;
   createSiteSurvey(survey: InsertSiteSurvey): Promise<SiteSurvey>;
@@ -727,47 +727,41 @@ export class DatabaseStorage implements IStorage {
   }
 
   // ── Appointments (Task #3) ───────────────────────────────────────────────
-  async getAppointments(filters?: { salesPersonId?: number; dateFrom?: Date; dateTo?: Date }): Promise<Appointment[]> {
+  async getAppointments(filters?: { userId?: number }): Promise<Appointment[]> {
     const conditions = [];
-    if (filters?.salesPersonId) conditions.push(eq(appointments.salesPersonId, filters.salesPersonId));
-    if (filters?.dateFrom) conditions.push(gte(appointments.dateStart, filters.dateFrom));
-    if (filters?.dateTo) conditions.push(lte(appointments.dateEnd, filters.dateTo));
+    if (filters?.userId) conditions.push(eq(appointments.assignedTo, filters.userId));
     const query = conditions.length
-      ? db.select().from(appointments).where(and(...conditions)).orderBy(appointments.dateStart)
-      : db.select().from(appointments).orderBy(appointments.dateStart);
+      ? db.select().from(appointments).where(and(...conditions)).orderBy(desc(appointments.createdAt))
+      : db.select().from(appointments).orderBy(desc(appointments.createdAt));
     return query;
   }
 
   async getAppointment(id: number): Promise<Appointment | undefined> {
-    const [appt] = await db.select().from(appointments).where(eq(appointments.id, id));
-    return appt;
+    const [appointment] = await db.select().from(appointments).where(eq(appointments.id, id));
+    return appointment;
   }
 
-  async createAppointment(appt: InsertAppointment): Promise<Appointment> {
-    const [created] = await db.insert(appointments).values(appt).returning();
+  async createAppointment(appointment: InsertAppointment): Promise<Appointment> {
+    const [created] = await db.insert(appointments).values(appointment).returning();
     return created;
   }
 
   async updateAppointment(id: number, data: Partial<InsertAppointment>): Promise<Appointment | undefined> {
-    const [updated] = await db.update(appointments).set(data).where(eq(appointments.id, id)).returning();
+    const [updated] = await db.update(appointments).set({ ...data, updatedAt: new Date() }).where(eq(appointments.id, id)).returning();
     return updated;
   }
 
-  async checkAppointmentConflict(salesPersonId: number, dateStart: Date, dateEnd: Date, excludeId?: number): Promise<boolean> {
-    const conditions = [
-      eq(appointments.salesPersonId, salesPersonId),
-      lte(appointments.dateStart, dateEnd),
-      gte(appointments.dateEnd, dateStart),
-    ];
-    if (excludeId) conditions.push(sql`${appointments.id} != ${excludeId}` as any);
-    const result = await db.select({ id: appointments.id }).from(appointments).where(and(...conditions)).limit(1);
-    return result.length > 0;
+  async getAppointmentsByDate(date: string, userId?: number): Promise<Appointment[]> {
+    const conditions = [eq(appointments.appointmentDate, date)];
+    if (userId) {
+      conditions.push(eq(appointments.assignedTo, userId));
+    }
+    return db.select().from(appointments).where(and(...conditions)).orderBy(appointments.startTime);
   }
 
   // ── Site Surveys (Task #3) ───────────────────────────────────────────────
-  async getSiteSurveys(filters?: { salesPersonId?: number; quotationId?: number }): Promise<SiteSurvey[]> {
+  async getSiteSurveys(filters?: { quotationId?: number }): Promise<SiteSurvey[]> {
     const conditions = [];
-    if (filters?.salesPersonId) conditions.push(eq(siteSurveys.salesPersonId, filters.salesPersonId));
     if (filters?.quotationId) conditions.push(eq(siteSurveys.quotationId, filters.quotationId));
     return conditions.length
       ? db.select().from(siteSurveys).where(and(...conditions)).orderBy(desc(siteSurveys.createdAt))
@@ -775,13 +769,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getSiteSurvey(id: number): Promise<SiteSurvey | undefined> {
-    const [s] = await db.select().from(siteSurveys).where(eq(siteSurveys.id, id));
-    return s;
+    const [survey] = await db.select().from(siteSurveys).where(eq(siteSurveys.id, id));
+    return survey;
   }
 
   async getSiteSurveyByAppointment(appointmentId: number): Promise<SiteSurvey | undefined> {
-    const [s] = await db.select().from(siteSurveys).where(eq(siteSurveys.appointmentId, appointmentId));
-    return s;
+    const [survey] = await db.select().from(siteSurveys).where(eq(siteSurveys.appointmentId, appointmentId));
+    return survey;
   }
 
   async createSiteSurvey(survey: InsertSiteSurvey): Promise<SiteSurvey> {

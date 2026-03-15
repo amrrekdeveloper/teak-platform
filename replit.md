@@ -44,6 +44,13 @@ The application follows a modern full-stack architecture.
 -   **2D Sketching:** Konva.js.
 -   **3D Viewer:** Three.js.
 
+## Calendar & Site Survey Feature
+-   **Appointments/Calendar System:** `appointments` table with date/time/status/conflict detection. Statuses: scheduled, attended, no_show, client_refused, rescheduled. Fail reasons: lazy, emergency, client_not_available, client_cancelled.
+-   **Calendar Page (`/my-calendar`):** Interactive calendar with day/week/month views. Managers see all reps, reps see own appointments. Create/view/reschedule/cancel from UI.
+-   **Site Survey Form (`/site-survey/:appointmentId`):** Multi-step wizard (4 steps): Room Details (dimensions, building status, doors/windows), Wall Layout (per-wall items), Products (Adeko library search with groups), Notes & Photos (camera capture). Data stored in `site_surveys` table with JSONB for walls/products.
+-   **API Endpoints:** CRUD `/api/appointments` with conflict detection, `/api/appointments/:id/reschedule`, `/api/site-surveys` CRUD, `/api/appointments/:id/site-survey`.
+-   **Notifications:** Client cancellation triggers manager notifications.
+
 ## Recent Features
 -   **Inspection Scheduling:** Quotations table has `inspectionDate` (date, nullable) column. Sales users schedule inspections via `PATCH /api/quotations/:id/inspection-date` with server-side date validation. Design Studio button is disabled until inspection is booked. `GET /api/inspections` returns upcoming inspections with customer/user data, role-filtered.
 -   **Upcoming Inspections (Order Center):** Collapsible section showing inspection cards sorted by date, with customer info, phone, product, assigned salesperson. Today's inspections highlighted.

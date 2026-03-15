@@ -169,7 +169,7 @@ function DashboardRoutes() {
         <Route path="/order-center" component={OrderCenterPage} />
         <Route path="/my-orders" component={MyOrdersPage} />
         <Route path="/my-calendar" component={MyCalendarPage} />
-        <Route path="/site-survey" component={SiteSurveyPage} />
+        <Route path="/site-survey/:appointmentId" component={SiteSurveyPage} />
         <Route path="/scene-3d" component={Scene3DPage} />
         <Route path="/finance" component={FinanceDashboardPage} />
         <Route path="/design-studio/:orderId" component={DesignStudioPage} />

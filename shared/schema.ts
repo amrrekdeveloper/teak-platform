@@ -811,43 +811,76 @@ export const appointmentStatusEnum = pgEnum("appointment_status", [
   "cancelled",
 ]);
 
+export const appointmentFailReasonEnum = pgEnum("appointment_fail_reason", [
+  "lazy",
+  "emergency",
+  "client_not_available",
+  "client_cancelled",
+]);
+
 export const appointments = pgTable("appointments", {
   id: serial("id").primaryKey(),
-  salesPersonId: integer("sales_person_id").notNull(),
-  quotationId: integer("quotation_id"),
+  assignedTo: integer("assigned_to").references(() => users.id).notNull(),
+  customerId: integer("customer_id").references(() => customers.id),
+  quotationId: integer("quotation_id").references(() => quotations.id),
   title: text("title").notNull(),
-  dateStart: timestamp("date_start").notNull(),
-  dateEnd: timestamp("date_end").notNull(),
+  appointmentDate: date("appointment_date").notNull(),
+  startTime: text("start_time").notNull(),
+  endTime: text("end_time").notNull(),
   status: appointmentStatusEnum("status").notNull().default("scheduled"),
+  failReason: appointmentFailReasonEnum("fail_reason"),
+  failNotes: text("fail_notes"),
   notes: text("notes"),
-  cancellationReason: text("cancellation_reason"),
-  rescheduleCount: integer("reschedule_count").notNull().default(0),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-});
-
-export const insertAppointmentSchema = createInsertSchema(appointments).omit({ id: true, createdAt: true });
-export type InsertAppointment = z.infer<typeof insertAppointmentSchema>;
-export type Appointment = typeof appointments.$inferSelect;
-
-export const siteSurveys = pgTable("site_surveys", {
-  id: serial("id").primaryKey(),
-  appointmentId: integer("appointment_id"),
-  quotationId: integer("quotation_id"),
-  salesPersonId: integer("sales_person_id").notNull(),
-  roomDimensions: jsonb("room_dimensions"),
-  walls: jsonb("walls"),
-  selectedProducts: jsonb("selected_products"),
-  notes: text("notes"),
-  images: jsonb("images"),
-  constructionStatus: text("construction_status"),
-  constructionPhase: text("construction_phase"),
-  electricalOutlets: jsonb("electrical_outlets"),
-  drains: jsonb("drains"),
+  rescheduledTo: integer("rescheduled_to"),
+  createdBy: integer("created_by").references(() => users.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
-export const insertSiteSurveySchema = createInsertSchema(siteSurveys).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertAppointmentSchema = createInsertSchema(appointments).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertAppointment = z.infer<typeof insertAppointmentSchema>;
+export type Appointment = typeof appointments.$inferSelect;
+
+export const buildingStatusEnum = pgEnum("building_status_type", [
+  "ready",
+  "under_construction",
+]);
+
+export const siteSurveys = pgTable("site_surveys", {
+  id: serial("id").primaryKey(),
+  appointmentId: integer("appointment_id").references(() => appointments.id).notNull(),
+  customerId: integer("customer_id").references(() => customers.id),
+  quotationId: integer("quotation_id").references(() => quotations.id),
+  roomLength: decimal("room_length", { precision: 10, scale: 2 }),
+  roomWidth: decimal("room_width", { precision: 10, scale: 2 }),
+  roomHeight: decimal("room_height", { precision: 10, scale: 2 }),
+  buildingStatus: text("building_status"),
+  constructionPhase: text("construction_phase"),
+  doorsCount: integer("doors_count"),
+  windowsCount: integer("windows_count"),
+  doorDetails: jsonb("door_details"),
+  windowDetails: jsonb("window_details"),
+  electricalOutlets: jsonb("electrical_outlets"),
+  drainagePoints: jsonb("drainage_points"),
+  obstacles: text("obstacles"),
+  walls: jsonb("walls"),
+  selectedProducts: jsonb("selected_products"),
+  notes: text("notes"),
+  photos: text("photos").array(),
+  createdBy: integer("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertSiteSurveySchema = createInsertSchema(siteSurveys).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
 export type InsertSiteSurvey = z.infer<typeof insertSiteSurveySchema>;
 export type SiteSurvey = typeof siteSurveys.$inferSelect;
 

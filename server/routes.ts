@@ -2485,6 +2485,267 @@ export async function registerRoutes(
     }
   });
 
+  // ==================== APPOINTMENTS / CALENDAR ====================
+
+  app.get("/api/appointments", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const user = await storage.getUser(userId);
+      const assignedTo = req.query.assignedTo as string | undefined;
+
+      if (user?.role === "owner" || user?.role === "assistant") {
+        if (assignedTo) {
+          res.json(await storage.getAppointments(parseInt(assignedTo)));
+        } else {
+          res.json(await storage.getAppointments());
+        }
+      } else {
+        res.json(await storage.getAppointments(userId));
+      }
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  app.get("/api/appointments/:id", requireAuth, async (req, res) => {
+    try {
+      const appointment = await storage.getAppointment(parseInt(req.params.id));
+      if (!appointment) return res.status(404).json({ message: "الموعد غير موجود" });
+      res.json(appointment);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  app.post("/api/appointments", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const currentUser = await storage.getUser(userId);
+      const isManagerRole = currentUser?.role === "owner" || currentUser?.role === "assistant";
+
+      const data = { ...req.body, createdBy: userId };
+
+      if (!isManagerRole) {
+        data.assignedTo = userId;
+      }
+
+      if (!data.appointmentDate || !data.startTime || !data.endTime || !data.assignedTo || !data.title) {
+        return res.status(400).json({ message: "جميع الحقول مطلوبة", messageEn: "All fields are required" });
+      }
+
+      if (data.startTime >= data.endTime) {
+        return res.status(400).json({ message: "وقت البداية يجب أن يكون قبل وقت النهاية", messageEn: "Start time must be before end time" });
+      }
+
+      const existing = await storage.getAppointmentsByDate(data.appointmentDate, data.assignedTo);
+      const conflict = existing.find((a: any) =>
+        a.status === "scheduled" &&
+        ((data.startTime >= a.startTime && data.startTime < a.endTime) ||
+         (data.endTime > a.startTime && data.endTime <= a.endTime) ||
+         (data.startTime <= a.startTime && data.endTime >= a.endTime))
+      );
+
+      if (conflict) {
+        return res.status(409).json({
+          message: "يوجد تعارض مع موعد آخر",
+          messageEn: "Time conflict with another appointment",
+          conflictWith: conflict,
+        });
+      }
+
+      const appointment = await storage.createAppointment(data);
+      res.status(201).json(appointment);
+    } catch (error) {
+      console.error("Create appointment error:", error);
+      res.status(500).json({ message: "حدث خطأ في إنشاء الموعد" });
+    }
+  });
+
+  app.patch("/api/appointments/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const userId = req.session.userId!;
+      const currentUser = await storage.getUser(userId);
+      const appointment = await storage.getAppointment(id);
+      if (!appointment) return res.status(404).json({ message: "الموعد غير موجود" });
+
+      const isManagerRole = currentUser?.role === "owner" || currentUser?.role === "assistant";
+      if (!isManagerRole && appointment.assignedTo !== userId) {
+        return res.status(403).json({ message: "غير مصرح لك بتعديل هذا الموعد" });
+      }
+
+      const data = { ...req.body };
+      delete data.id;
+      delete data.createdAt;
+
+      if (!isManagerRole) {
+        delete data.assignedTo;
+      }
+
+      const checkDate = data.appointmentDate || appointment.appointmentDate;
+      const checkStart = data.startTime || appointment.startTime;
+      const checkEnd = data.endTime || appointment.endTime;
+      const checkAssignedTo = data.assignedTo || appointment.assignedTo;
+
+      if (checkStart >= checkEnd) {
+        return res.status(400).json({ message: "وقت البداية يجب أن يكون قبل وقت النهاية" });
+      }
+
+      if (data.appointmentDate || data.startTime || data.endTime) {
+        const existing = await storage.getAppointmentsByDate(checkDate, checkAssignedTo);
+        const conflict = existing.find((a: any) =>
+          a.id !== id &&
+          a.status === "scheduled" &&
+          ((checkStart >= a.startTime && checkStart < a.endTime) ||
+           (checkEnd > a.startTime && checkEnd <= a.endTime) ||
+           (checkStart <= a.startTime && checkEnd >= a.endTime))
+        );
+        if (conflict) {
+          return res.status(409).json({ message: "يوجد تعارض مع موعد آخر", messageEn: "Time conflict" });
+        }
+      }
+
+      const updated = await storage.updateAppointment(id, data);
+      if (!updated) return res.status(404).json({ message: "الموعد غير موجود" });
+
+      if (data.status === "client_refused" || (data.failReason === "client_cancelled")) {
+        const appointment = updated;
+        const customer = appointment.customerId ? await storage.getCustomer(appointment.customerId) : null;
+        const ownerUsers = (await storage.getUsers()).filter(u => u.role === "owner" || u.role === "assistant");
+        for (const owner of ownerUsers) {
+          await storage.createNotification({
+            userId: owner.id,
+            titleAr: "العميل ألغى الموعد",
+            titleEn: "Client Cancelled Appointment",
+            messageAr: `العميل ${customer?.fullName || "—"} ألغى موعد الزيارة بتاريخ ${appointment.appointmentDate}`,
+            messageEn: `Client ${customer?.fullName || "—"} cancelled appointment on ${appointment.appointmentDate}`,
+            type: "warning",
+            relatedEntity: "appointment",
+            relatedId: id,
+            isRead: false,
+          });
+        }
+      }
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Update appointment error:", error);
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  app.post("/api/appointments/:id/reschedule", requireAuth, async (req, res) => {
+    try {
+      const oldId = parseInt(req.params.id);
+      const oldAppointment = await storage.getAppointment(oldId);
+      if (!oldAppointment) return res.status(404).json({ message: "الموعد غير موجود" });
+
+      const { appointmentDate, startTime, endTime, notes } = req.body;
+      if (!appointmentDate || !startTime || !endTime) {
+        return res.status(400).json({ message: "التاريخ والوقت مطلوبان" });
+      }
+
+      if (startTime >= endTime) {
+        return res.status(400).json({ message: "وقت البداية يجب أن يكون قبل وقت النهاية" });
+      }
+
+      const existing = await storage.getAppointmentsByDate(appointmentDate, oldAppointment.assignedTo);
+      const conflict = existing.find((a: any) =>
+        a.status === "scheduled" &&
+        ((startTime >= a.startTime && startTime < a.endTime) ||
+         (endTime > a.startTime && endTime <= a.endTime) ||
+         (startTime <= a.startTime && endTime >= a.endTime))
+      );
+      if (conflict) {
+        return res.status(409).json({ message: "يوجد تعارض مع موعد آخر" });
+      }
+
+      const newAppointment = await storage.createAppointment({
+        assignedTo: oldAppointment.assignedTo,
+        customerId: oldAppointment.customerId,
+        quotationId: oldAppointment.quotationId,
+        title: oldAppointment.title,
+        appointmentDate,
+        startTime,
+        endTime,
+        status: "scheduled",
+        notes: notes || oldAppointment.notes,
+        createdBy: req.session.userId!,
+      });
+
+      await storage.updateAppointment(oldId, {
+        status: "rescheduled",
+        rescheduledTo: newAppointment.id,
+      });
+
+      res.status(201).json(newAppointment);
+    } catch (error) {
+      console.error("Reschedule error:", error);
+      res.status(500).json({ message: "حدث خطأ في إعادة الجدولة" });
+    }
+  });
+
+  // ==================== SITE SURVEYS ====================
+
+  app.get("/api/site-surveys", requireAuth, async (_req, res) => {
+    try {
+      res.json(await storage.getSiteSurveys());
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  app.get("/api/site-surveys/:id", requireAuth, async (req, res) => {
+    try {
+      const survey = await storage.getSiteSurvey(parseInt(req.params.id));
+      if (!survey) return res.status(404).json({ message: "النموذج غير موجود" });
+      res.json(survey);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  app.get("/api/appointments/:id/site-survey", requireAuth, async (req, res) => {
+    try {
+      const survey = await storage.getSiteSurveyByAppointment(parseInt(req.params.id));
+      if (!survey) return res.status(404).json({ message: "لا يوجد نموذج زيارة لهذا الموعد" });
+      res.json(survey);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  app.post("/api/site-surveys", requireAuth, async (req, res) => {
+    try {
+      const data = { ...req.body, createdBy: req.session.userId };
+
+      if (!data.appointmentId) {
+        return res.status(400).json({ message: "معرف الموعد مطلوب" });
+      }
+
+      const appointment = await storage.getAppointment(data.appointmentId);
+      if (!appointment) return res.status(404).json({ message: "الموعد غير موجود" });
+
+      await storage.updateAppointment(data.appointmentId, { status: "attended" });
+
+      const survey = await storage.createSiteSurvey(data);
+      res.status(201).json(survey);
+    } catch (error) {
+      console.error("Create site survey error:", error);
+      res.status(500).json({ message: "حدث خطأ في إنشاء نموذج الزيارة" });
+    }
+  });
+
+  app.patch("/api/site-surveys/:id", requireAuth, async (req, res) => {
+    try {
+      const updated = await storage.updateSiteSurvey(parseInt(req.params.id), req.body);
+      if (!updated) return res.status(404).json({ message: "النموذج غير موجود" });
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
   app.get("/api/inspections", requireAuth, async (req, res) => {
     try {
       const quotations = await storage.getQuotations();
