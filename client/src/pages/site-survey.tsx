@@ -44,6 +44,9 @@ import {
   Grid3X3,
   Plug,
   Droplets,
+  Box,
+  FileText,
+  Calendar,
 } from "lucide-react";
 
 type WizardStep = 1 | 2 | 3 | 4;
@@ -155,6 +158,9 @@ export default function SiteSurveyPage() {
     }
   }, [existingSurvey]);
 
+  const [savedSurveyId, setSavedSurveyId] = useState<number | null>(null);
+  const [nextStepsDialog, setNextStepsDialog] = useState(false);
+
   const saveMutation = useMutation({
     mutationFn: async (data: any) => {
       if (existingSurvey?.id) {
@@ -164,11 +170,12 @@ export default function SiteSurveyPage() {
       const res = await apiRequest("POST", "/api/site-surveys", data);
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (saved: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/site-surveys"] });
       queryClient.invalidateQueries({ queryKey: ["/api/appointments"] });
-      toast({ title: t("تم حفظ نموذج الزيارة", "Survey saved successfully") });
-      navigate("/my-calendar");
+      toast({ title: t("تم حفظ نموذج الزيارة بنجاح", "Survey saved successfully") });
+      setSavedSurveyId(saved?.id || existingSurvey?.id || null);
+      setNextStepsDialog(true);
     },
     onError: () => {
       toast({ title: t("حدث خطأ في الحفظ", "Save failed"), variant: "destructive" });
@@ -862,6 +869,65 @@ export default function SiteSurveyPage() {
                 {t("لا توجد منتجات مطابقة", "No matching products")}
               </div>
             )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={nextStepsDialog} onOpenChange={setNextStepsDialog}>
+        <DialogContent className="max-w-sm" data-testid="dialog-next-steps">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckCircle2 className="w-5 h-5 text-green-600" />
+              {t("تم حفظ الزيارة بنجاح", "Survey Saved Successfully")}
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground pb-1">
+            {t("اختر الخطوة التالية:", "Choose the next step:")}
+          </p>
+          <div className="grid gap-3">
+            <Button
+              className="w-full justify-start gap-3 h-14"
+              onClick={() => {
+                setNextStepsDialog(false);
+                const sid = savedSurveyId || existingSurvey?.id;
+                navigate(`/scene-3d?surveyId=${sid}`);
+              }}
+              data-testid="button-view-3d"
+            >
+              <Box className="w-5 h-5 shrink-0" />
+              <div className="text-start">
+                <div className="font-semibold text-sm">{t("عرض التصميم ثلاثي الأبعاد", "View 3D Design")}</div>
+                <div className="text-xs opacity-75">{t("شاهد المنتجات في الغرفة", "See products in room")}</div>
+              </div>
+            </Button>
+            <Button
+              variant="outline"
+              className="w-full justify-start gap-3 h-14"
+              onClick={() => {
+                setNextStepsDialog(false);
+                const cid = appointment?.customerId;
+                navigate(`/quotations/new${cid ? `?customerId=${cid}` : ""}`);
+              }}
+              data-testid="button-create-quotation"
+            >
+              <FileText className="w-5 h-5 shrink-0" />
+              <div className="text-start">
+                <div className="font-semibold text-sm">{t("إنشاء عرض سعر", "Create Quotation")}</div>
+                <div className="text-xs opacity-75">{t("أنشئ عرض سعر للعميل", "Build a price quotation")}</div>
+              </div>
+            </Button>
+            <Button
+              variant="ghost"
+              className="w-full justify-start gap-3 h-14"
+              onClick={() => { setNextStepsDialog(false); navigate("/my-calendar"); }}
+              data-testid="button-back-calendar"
+            >
+              <Calendar className="w-5 h-5 shrink-0" />
+              <div className="text-start">
+                <div className="font-semibold text-sm">{t("العودة للتقويم", "Back to Calendar")}</div>
+                <div className="text-xs opacity-75">{t("مواعيدك وزياراتك", "Your appointments")}</div>
+              </div>
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

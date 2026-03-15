@@ -18,21 +18,36 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Trash2, Loader2, Calculator, ArrowLeft, ArrowRight, Paperclip, Image, FileText } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Plus, Trash2, Loader2, Calculator, ArrowLeft, ArrowRight, Paperclip, Image, FileText, Search, Package, Ruler } from "lucide-react";
+
+type ItemMode = "area" | "product";
 
 interface LineItem {
   id: string;
+  mode: ItemMode;
   productType: string;
   woodType: string;
   doorType: string;
   description: string;
   area: number;
   pricePerMeter: number;
+  adekoProductId: number | null;
+  adekoCode: string;
+  adekoNameAr: string;
+  adekoNameEn: string;
+  qty: number;
+  unitPrice: number;
   total: number;
 }
 
 export default function QuotationBuilderPage() {
-  const { t, isRTL } = useLanguage();
+  const { t, isRTL, lang } = useLanguage();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
 
@@ -44,11 +59,14 @@ export default function QuotationBuilderPage() {
   const [discount, setDiscount] = useState(0);
   const [deliveryDays, setDeliveryDays] = useState<number | null>(null);
   const [notes, setNotes] = useState("");
+  const [adekoSearch, setAdekoSearch] = useState("");
+  const [adekoDialog, setAdekoDialog] = useState<string | null>(null);
 
   const { data: customers = [] } = useQuery<Customer[]>({ queryKey: ["/api/customers"] });
   const { data: products = [] } = useQuery<Product[]>({ queryKey: ["/api/products"] });
   const { data: woodTypes = [] } = useQuery<WoodType[]>({ queryKey: ["/api/wood-types"] });
   const { data: doorTypes = [] } = useQuery<DoorType[]>({ queryKey: ["/api/door-types"] });
+  const { data: adekoProducts = [] } = useQuery<any[]>({ queryKey: ["/api/adeko-products"] });
 
   const { data: designAssignments = [] } = useQuery<DesignAssignment[]>({
     queryKey: ["/api/design-assignments/customer", customerId],
@@ -71,25 +89,30 @@ export default function QuotationBuilderPage() {
     hotel: { ar: "تجهيز فنادق", en: "Hotel Furnishing" },
   };
 
-  const addItem = () => {
-    setItems([
-      ...items,
-      {
-        id: Date.now().toString(),
-        productType: "",
-        woodType: "",
-        doorType: "",
-        description: "",
-        area: 0,
-        pricePerMeter: 0,
-        total: 0,
-      },
-    ]);
-  };
+  function newItem(mode: ItemMode): LineItem {
+    return {
+      id: Date.now().toString(),
+      mode,
+      productType: "",
+      woodType: "",
+      doorType: "",
+      description: "",
+      area: 0,
+      pricePerMeter: 0,
+      adekoProductId: null,
+      adekoCode: "",
+      adekoNameAr: "",
+      adekoNameEn: "",
+      qty: 1,
+      unitPrice: 0,
+      total: 0,
+    };
+  }
 
-  const removeItem = (id: string) => {
-    setItems(items.filter((i) => i.id !== id));
-  };
+  const addAreaItem = () => setItems([...items, newItem("area")]);
+  const addProductItem = () => setItems([...items, newItem("product")]);
+
+  const removeItem = (id: string) => setItems(items.filter((i) => i.id !== id));
 
   const updateItem = (id: string, field: string, value: any) => {
     setItems(
@@ -97,22 +120,36 @@ export default function QuotationBuilderPage() {
         if (item.id !== id) return item;
         const updated = { ...item, [field]: value };
 
-        if (field === "woodType") {
-          const wt = woodTypes.find((w) => w.id === parseInt(value));
-          if (wt) {
-            updated.pricePerMeter = parseFloat(wt.pricePerMeter);
-            updated.total = updated.area * parseFloat(wt.pricePerMeter);
+        if (item.mode === "area") {
+          if (field === "woodType") {
+            const wt = woodTypes.find((w) => w.id === parseInt(value));
+            if (wt) {
+              updated.pricePerMeter = parseFloat(wt.pricePerMeter);
+              updated.total = updated.area * parseFloat(wt.pricePerMeter);
+            }
+          }
+          if (field === "doorType") {
+            const dt = doorTypes.find((d) => d.id === parseInt(value));
+            if (dt) {
+              updated.pricePerMeter = parseFloat(dt.pricePerMeter);
+              updated.total = updated.area * parseFloat(dt.pricePerMeter);
+            }
+          }
+          if (field === "area") {
+            updated.total = parseFloat(value) * updated.pricePerMeter;
+          }
+          if (field === "pricePerMeter") {
+            updated.total = updated.area * parseFloat(value || "0");
           }
         }
-        if (field === "doorType") {
-          const dt = doorTypes.find((d) => d.id === parseInt(value));
-          if (dt) {
-            updated.pricePerMeter = parseFloat(dt.pricePerMeter);
-            updated.total = updated.area * parseFloat(dt.pricePerMeter);
+
+        if (item.mode === "product") {
+          if (field === "qty") {
+            updated.total = parseFloat(value || "1") * updated.unitPrice;
           }
-        }
-        if (field === "area") {
-          updated.total = parseFloat(value) * updated.pricePerMeter;
+          if (field === "unitPrice") {
+            updated.total = updated.qty * parseFloat(value || "0");
+          }
         }
 
         return updated;
@@ -120,9 +157,30 @@ export default function QuotationBuilderPage() {
     );
   };
 
+  const selectAdekoProduct = (itemId: string, product: any) => {
+    setItems(
+      items.map((item) => {
+        if (item.id !== itemId) return item;
+        const unitPrice = parseFloat(product.priceBeforeVat || product.price || "0");
+        return {
+          ...item,
+          adekoProductId: product.id,
+          adekoCode: product.code,
+          adekoNameAr: product.nameAr,
+          adekoNameEn: product.nameEn,
+          description: lang === "ar" ? product.nameAr : product.nameEn,
+          unitPrice,
+          total: item.qty * unitPrice,
+        };
+      })
+    );
+    setAdekoDialog(null);
+    setAdekoSearch("");
+  };
+
   const totals = useMemo(() => {
-    const totalArea = items.reduce((sum, i) => sum + (i.area || 0), 0);
     const subtotal = items.reduce((sum, i) => sum + (i.total || 0), 0);
+    const totalArea = items.filter(i => i.mode === "area").reduce((sum, i) => sum + (i.area || 0), 0);
     const vatAmount = subtotal * 0.15;
     const totalPrice = subtotal + vatAmount;
     const finalPrice = totalPrice - discount;
@@ -158,12 +216,19 @@ export default function QuotationBuilderPage() {
     createMutation.mutate({
       customerId: parseInt(customerId),
       items: items.map((i) => ({
+        mode: i.mode,
         productType: i.productType,
         woodType: i.woodType,
         doorType: i.doorType,
         description: i.description,
-        area: i.area,
-        pricePerMeter: i.pricePerMeter,
+        area: i.mode === "area" ? i.area : 0,
+        pricePerMeter: i.mode === "area" ? i.pricePerMeter : 0,
+        adekoProductId: i.adekoProductId,
+        adekoCode: i.adekoCode,
+        adekoNameAr: i.adekoNameAr,
+        adekoNameEn: i.adekoNameEn,
+        qty: i.mode === "product" ? i.qty : 1,
+        unitPrice: i.mode === "product" ? i.unitPrice : i.pricePerMeter,
         total: i.total,
       })),
       totalArea: String(totals.totalArea),
@@ -179,6 +244,16 @@ export default function QuotationBuilderPage() {
       designFile: completedDesign?.sketchImage || null,
     });
   };
+
+  const filteredAdeko = useMemo(() => {
+    if (!adekoSearch.trim()) return adekoProducts.slice(0, 60);
+    const q = adekoSearch.toLowerCase();
+    return adekoProducts.filter((p: any) =>
+      p.nameAr?.toLowerCase().includes(q) ||
+      p.nameEn?.toLowerCase().includes(q) ||
+      p.code?.toLowerCase().includes(q)
+    ).slice(0, 60);
+  }, [adekoProducts, adekoSearch]);
 
   const BackIcon = isRTL ? ArrowRight : ArrowLeft;
 
@@ -247,7 +322,6 @@ export default function QuotationBuilderPage() {
                   </div>
                 </div>
               )}
-
               {completedDesign.designFiles && completedDesign.designFiles.length > 0 && (
                 <div className="space-y-1">
                   <p className={`text-sm font-medium flex items-center gap-1 ${isRTL ? "text-right" : "text-left"}`}>
@@ -255,7 +329,7 @@ export default function QuotationBuilderPage() {
                     {t("ملفات التصميم", "Design Files")}
                   </p>
                   <div className="flex flex-wrap gap-2">
-                    {completedDesign.designFiles.map((file, idx) => (
+                    {completedDesign.designFiles.map((file: string, idx: number) => (
                       <a
                         key={idx}
                         href={file}
@@ -270,42 +344,37 @@ export default function QuotationBuilderPage() {
                   </div>
                 </div>
               )}
-
-              {completedDesign.measurements != null && (
-                <div className="space-y-1">
-                  <p className={`text-sm font-medium ${isRTL ? "text-right" : "text-left"}`}>{t("القياسات", "Measurements")}</p>
-                  <pre className="text-xs bg-muted p-2 rounded-md overflow-x-auto" dir="ltr" data-testid="text-measurements">
-                    {String(typeof completedDesign.measurements === "string"
-                      ? completedDesign.measurements
-                      : JSON.stringify(completedDesign.measurements, null, 2))}
-                  </pre>
-                </div>
-              )}
-
-              {completedDesign.notes && (
-                <div className="space-y-1">
-                  <p className={`text-sm font-medium ${isRTL ? "text-right" : "text-left"}`}>{t("ملاحظات المصمم", "Designer Notes")}</p>
-                  <p className={`text-sm text-muted-foreground ${isRTL ? "text-right" : "text-left"}`} data-testid="text-designer-notes">
-                    {completedDesign.notes}
-                  </p>
-                </div>
-              )}
             </CardContent>
           </Card>
         )}
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
+          <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2">
             <CardTitle>{t("البنود", "Line Items")}</CardTitle>
-            <Button size="sm" onClick={addItem} data-testid="button-add-item">
-              <Plus className="w-3 h-3 me-1" /> {t("إضافة بند", "Add Item")}
-            </Button>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" onClick={addProductItem} data-testid="button-add-product-item">
+                <Package className="w-3 h-3 me-1" /> {t("منتج Adeko", "Adeko Product")}
+              </Button>
+              <Button size="sm" onClick={addAreaItem} data-testid="button-add-item">
+                <Ruler className="w-3 h-3 me-1" /> {t("تسعير بالمتر", "By m²")}
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
             {items.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-4">
-                {t("اضغط 'إضافة بند' لبدء بناء عرض السعر", "Click 'Add Item' to start building the quotation")}
-              </p>
+              <div className="text-center py-8 space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  {t("اضغط لإضافة بند — منتج Adeko أو تسعير بالمتر المربع", "Add an item — Adeko product or m² pricing")}
+                </p>
+                <div className="flex gap-2 justify-center">
+                  <Button variant="outline" onClick={addProductItem} data-testid="button-add-product-empty">
+                    <Package className="w-4 h-4 me-1" /> {t("منتج Adeko", "Adeko Product")}
+                  </Button>
+                  <Button onClick={addAreaItem} data-testid="button-add-area-empty">
+                    <Ruler className="w-4 h-4 me-1" /> {t("تسعير بالمتر²", "By m²")}
+                  </Button>
+                </div>
+              </div>
             ) : (
               items.map((item, index) => (
                 <div
@@ -314,9 +383,14 @@ export default function QuotationBuilderPage() {
                   data-testid={`item-${index}`}
                 >
                   <div className="flex items-center justify-between">
-                    <span className="font-medium text-sm">
-                      {t(`بند ${index + 1}`, `Item ${index + 1}`)}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-sm">
+                        {t(`بند ${index + 1}`, `Item ${index + 1}`)}
+                      </span>
+                      <Badge variant={item.mode === "product" ? "secondary" : "outline"} className="text-[10px]">
+                        {item.mode === "product" ? t("منتج", "Product") : t("متر²", "m²")}
+                      </Badge>
+                    </div>
                     <Button
                       size="icon"
                       variant="ghost"
@@ -328,95 +402,166 @@ export default function QuotationBuilderPage() {
                     </Button>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <Label className="text-xs">{t("نوع المنتج", "Product Type")}</Label>
-                      <Select
-                        value={item.productType}
-                        onValueChange={(v) => updateItem(item.id, "productType", v)}
+                  {item.mode === "product" ? (
+                    <div className="space-y-3">
+                      <Button
+                        variant="outline"
+                        className="w-full justify-start gap-2 text-sm h-10"
+                        onClick={() => { setAdekoDialog(item.id); setAdekoSearch(""); }}
+                        data-testid={`button-select-adeko-${index}`}
                       >
-                        <SelectTrigger data-testid={`select-product-${index}`}>
-                          <SelectValue placeholder={t("اختر", "Select")} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {Object.entries(categoryLabels).map(([key, label]) => (
-                            <SelectItem key={key} value={key}>
-                              {t(label.ar, label.en)}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-1">
-                      <Label className="text-xs">{t("نوع الخشب", "Wood Type")}</Label>
-                      <Select
-                        value={item.woodType}
-                        onValueChange={(v) => updateItem(item.id, "woodType", v)}
-                      >
-                        <SelectTrigger data-testid={`select-wood-${index}`}>
-                          <SelectValue placeholder={t("اختر", "Select")} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {woodTypes.map((wt) => (
-                            <SelectItem key={wt.id} value={String(wt.id)}>
-                              {t(wt.nameAr, wt.nameEn)} - {parseFloat(wt.pricePerMeter).toLocaleString()} SAR/م²
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    {item.productType === "door" && (
+                        <Search className="w-4 h-4 text-muted-foreground shrink-0" />
+                        {item.adekoProductId ? (
+                          <span className="truncate font-medium">{lang === "ar" ? item.adekoNameAr : item.adekoNameEn} <span className="font-normal text-muted-foreground">({item.adekoCode})</span></span>
+                        ) : (
+                          <span className="text-muted-foreground">{t("اختر منتج من مكتبة Adeko", "Choose product from Adeko library")}</span>
+                        )}
+                      </Button>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <Label className="text-xs">{t("الكمية", "Quantity")}</Label>
+                          <Input
+                            type="number"
+                            min="1"
+                            step="1"
+                            value={item.qty || ""}
+                            onChange={(e) => updateItem(item.id, "qty", parseFloat(e.target.value) || 1)}
+                            data-testid={`input-qty-${index}`}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">{t("سعر الوحدة (ريال)", "Unit Price (SAR)")}</Label>
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={item.unitPrice || ""}
+                            onChange={(e) => updateItem(item.id, "unitPrice", parseFloat(e.target.value) || 0)}
+                            placeholder="0.00"
+                            data-testid={`input-unit-price-${index}`}
+                          />
+                        </div>
+                      </div>
                       <div className="space-y-1">
-                        <Label className="text-xs">{t("نوع الباب", "Door Type")}</Label>
+                        <Label className="text-xs">{t("وصف إضافي", "Description")}</Label>
+                        <Input
+                          value={item.description}
+                          onChange={(e) => updateItem(item.id, "description", e.target.value)}
+                          placeholder={t("اختياري", "Optional")}
+                          data-testid={`input-description-${index}`}
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <Label className="text-xs">{t("نوع المنتج", "Product Type")}</Label>
                         <Select
-                          value={item.doorType}
-                          onValueChange={(v) => updateItem(item.id, "doorType", v)}
+                          value={item.productType}
+                          onValueChange={(v) => updateItem(item.id, "productType", v)}
                         >
-                          <SelectTrigger data-testid={`select-door-${index}`}>
+                          <SelectTrigger data-testid={`select-product-${index}`}>
                             <SelectValue placeholder={t("اختر", "Select")} />
                           </SelectTrigger>
                           <SelectContent>
-                            {doorTypes.map((dt) => (
-                              <SelectItem key={dt.id} value={String(dt.id)}>
-                                {t(dt.nameAr, dt.nameEn)} - {parseFloat(dt.pricePerMeter).toLocaleString()} SAR/م²
+                            {Object.entries(categoryLabels).map(([key, label]) => (
+                              <SelectItem key={key} value={key}>
+                                {t(label.ar, label.en)}
                               </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
                       </div>
-                    )}
 
-                    <div className="space-y-1">
-                      <Label className="text-xs">{t("المساحة (م²)", "Area (m²)")}</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={item.area || ""}
-                        onChange={(e) => updateItem(item.id, "area", parseFloat(e.target.value) || 0)}
-                        data-testid={`input-area-${index}`}
-                      />
-                    </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">{t("نوع الخشب", "Wood Type")}</Label>
+                        <Select
+                          value={item.woodType}
+                          onValueChange={(v) => updateItem(item.id, "woodType", v)}
+                        >
+                          <SelectTrigger data-testid={`select-wood-${index}`}>
+                            <SelectValue placeholder={t("اختر", "Select")} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {woodTypes.map((wt) => (
+                              <SelectItem key={wt.id} value={String(wt.id)}>
+                                {t(wt.nameAr, wt.nameEn)} - {parseFloat(wt.pricePerMeter).toLocaleString()} SAR/م²
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
 
-                    <div className="space-y-1">
-                      <Label className="text-xs">{t("وصف إضافي", "Description")}</Label>
-                      <Input
-                        value={item.description}
-                        onChange={(e) => updateItem(item.id, "description", e.target.value)}
-                        placeholder={t("اختياري", "Optional")}
-                        data-testid={`input-description-${index}`}
-                      />
+                      {item.productType === "door" && (
+                        <div className="space-y-1">
+                          <Label className="text-xs">{t("نوع الباب", "Door Type")}</Label>
+                          <Select
+                            value={item.doorType}
+                            onValueChange={(v) => updateItem(item.id, "doorType", v)}
+                          >
+                            <SelectTrigger data-testid={`select-door-${index}`}>
+                              <SelectValue placeholder={t("اختر", "Select")} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {doorTypes.map((dt) => (
+                                <SelectItem key={dt.id} value={String(dt.id)}>
+                                  {t(dt.nameAr, dt.nameEn)} - {parseFloat(dt.pricePerMeter).toLocaleString()} SAR/م²
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+
+                      <div className="space-y-1">
+                        <Label className="text-xs">{t("المساحة (م²)", "Area (m²)")}</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={item.area || ""}
+                          onChange={(e) => updateItem(item.id, "area", parseFloat(e.target.value) || 0)}
+                          data-testid={`input-area-${index}`}
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <Label className="text-xs">{t("سعر/م² (ريال)", "Price/m² (SAR)")}</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={item.pricePerMeter || ""}
+                          onChange={(e) => updateItem(item.id, "pricePerMeter", parseFloat(e.target.value) || 0)}
+                          placeholder="0.00"
+                          data-testid={`input-price-per-meter-${index}`}
+                        />
+                      </div>
+
+                      <div className="space-y-1 sm:col-span-2">
+                        <Label className="text-xs">{t("وصف إضافي", "Description")}</Label>
+                        <Input
+                          value={item.description}
+                          onChange={(e) => updateItem(item.id, "description", e.target.value)}
+                          placeholder={t("اختياري", "Optional")}
+                          data-testid={`input-description-${index}`}
+                        />
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   <div className="flex items-center justify-between pt-2 border-t text-sm">
-                    <span className="text-muted-foreground">
-                      {t("السعر/م²:", "Price/m²:")} {item.pricePerMeter.toLocaleString()} SAR
-                    </span>
+                    {item.mode === "product" ? (
+                      <span className="text-muted-foreground">
+                        {item.qty} × {item.unitPrice.toLocaleString()} SAR
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">
+                        {t("السعر/م²:", "Price/m²:")} {item.pricePerMeter.toLocaleString()} SAR
+                      </span>
+                    )}
                     <span className="font-bold text-primary">
-                      {t("الإجمالي:", "Total:")} {item.total.toLocaleString()} SAR
+                      {t("الإجمالي:", "Total:")} {item.total.toLocaleString(undefined, { maximumFractionDigits: 2 })} SAR
                     </span>
                   </div>
                 </div>
@@ -471,13 +616,15 @@ export default function QuotationBuilderPage() {
                   <span className="font-bold">{t("ملخص السعر", "Price Summary")}</span>
                 </div>
                 <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">{t("إجمالي المساحة", "Total Area")}</span>
-                    <span>{totals.totalArea.toFixed(2)} {t("م²", "m²")}</span>
-                  </div>
+                  {totals.totalArea > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">{t("إجمالي المساحة", "Total Area")}</span>
+                      <span>{totals.totalArea.toFixed(2)} {t("م²", "m²")}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">{t("المجموع قبل الضريبة", "Subtotal")}</span>
-                    <span>{totals.subtotal.toLocaleString()} SAR</span>
+                    <span>{totals.subtotal.toLocaleString(undefined, { maximumFractionDigits: 2 })} SAR</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">{t("ضريبة القيمة المضافة (15%)", "VAT (15%)")}</span>
@@ -521,6 +668,53 @@ export default function QuotationBuilderPage() {
           </>
         )}
       </div>
+
+      <Dialog open={!!adekoDialog} onOpenChange={(o) => { if (!o) { setAdekoDialog(null); setAdekoSearch(""); } }}>
+        <DialogContent className="max-w-lg max-h-[80vh] flex flex-col" data-testid="dialog-adeko-picker">
+          <DialogHeader>
+            <DialogTitle>{t("اختيار منتج Adeko", "Select Adeko Product")}</DialogTitle>
+          </DialogHeader>
+          <div className="relative mb-3">
+            <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              className="ps-9"
+              placeholder={t("ابحث بالاسم أو الكود...", "Search by name or code...")}
+              value={adekoSearch}
+              onChange={(e) => setAdekoSearch(e.target.value)}
+              autoFocus
+              data-testid="input-adeko-search"
+            />
+          </div>
+          <div className="overflow-y-auto flex-1 space-y-1">
+            {filteredAdeko.length === 0 ? (
+              <p className="text-center py-6 text-sm text-muted-foreground">{t("لا توجد نتائج", "No results")}</p>
+            ) : (
+              filteredAdeko.map((p: any) => (
+                <button
+                  key={p.id}
+                  className="w-full text-start px-3 py-2.5 rounded-lg hover:bg-muted/60 transition-colors border border-transparent hover:border-border"
+                  onClick={() => adekoDialog && selectAdekoProduct(adekoDialog, p)}
+                  data-testid={`adeko-product-${p.id}`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{lang === "ar" ? p.nameAr : p.nameEn}</p>
+                      <p className="text-xs text-muted-foreground">{p.code} · {lang === "ar" ? p.groupNameAr : p.groupNameEn}</p>
+                    </div>
+                    {parseFloat(p.priceBeforeVat || "0") > 0 ? (
+                      <span className="text-xs font-semibold text-primary shrink-0">
+                        {parseFloat(p.priceBeforeVat).toLocaleString()} SAR
+                      </span>
+                    ) : (
+                      <span className="text-xs text-muted-foreground shrink-0">{t("السعر يدوي", "Manual price")}</span>
+                    )}
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

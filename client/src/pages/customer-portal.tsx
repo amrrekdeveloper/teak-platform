@@ -938,12 +938,13 @@ function PaymentSection({ invoice, contract, quotation, payments, setPreviewInvo
 function QuotationsTab({ quotations, designs, invoices, contracts, payments, onApprove, approving }: {
   quotations: any[]; designs: any[]; invoices: any[]; contracts: any[]; payments: any[]; onApprove: (id: number) => void; approving: boolean;
 }) {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const { toast } = useToast();
   const [viewDesign, setViewDesign] = useState<number | null>(null);
   const [previewInvoice, setPreviewInvoice] = useState<any | null>(null);
   const [revisionForQuote, setRevisionForQuote] = useState<number | null>(null);
   const [revisionNotes, setRevisionNotes] = useState("");
+  const [expandedItems, setExpandedItems] = useState<number | null>(null);
 
   const revisionMutation = useMutation({
     mutationFn: async ({ designId }: { designId: number }) => {
@@ -990,14 +991,55 @@ function QuotationsTab({ quotations, designs, invoices, contracts, payments, onA
                   </div>
                   {q.vatAmount && (
                     <div className="flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">{t("شامل الضريبة", "Including VAT")}</span>
+                      <span className="text-xs text-muted-foreground">{t("ضريبة القيمة المضافة", "VAT (15%)")}</span>
                       <span className="text-xs text-muted-foreground">{Number(q.vatAmount).toLocaleString()} {t("ريال", "SAR")}</span>
+                    </div>
+                  )}
+                  {q.discount && Number(q.discount) > 0 && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-green-600">{t("خصم", "Discount")}</span>
+                      <span className="text-xs text-green-600">-{Number(q.discount).toLocaleString()} {t("ريال", "SAR")}</span>
                     </div>
                   )}
                   {q.createdAt && (
                     <div className="flex items-center gap-1 text-xs text-muted-foreground">
                       <Calendar className="w-3 h-3" />
                       {new Date(q.createdAt).toLocaleDateString("ar-SA", { year: "numeric", month: "short", day: "numeric" })}
+                    </div>
+                  )}
+
+                  {q.items && Array.isArray(q.items) && q.items.length > 0 && (
+                    <div>
+                      <button
+                        className="text-xs text-primary flex items-center gap-1 hover:underline mt-1"
+                        onClick={() => setExpandedItems(expandedItems === q.id ? null : q.id)}
+                        data-testid={`button-toggle-items-${q.id}`}
+                      >
+                        <Package className="w-3 h-3" />
+                        {expandedItems === q.id ? t("إخفاء البنود", "Hide items") : t(`عرض ${q.items.length} بند`, `View ${q.items.length} item(s)`)}
+                        {expandedItems === q.id ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                      </button>
+                      {expandedItems === q.id && (
+                        <div className="mt-2 space-y-1.5 border rounded-lg p-2 bg-muted/30" data-testid={`items-list-${q.id}`}>
+                          {q.items.map((item: any, idx: number) => (
+                            <div key={idx} className="flex items-start justify-between gap-2 text-xs" data-testid={`item-row-${q.id}-${idx}`}>
+                              <div className="min-w-0">
+                                <p className="font-medium truncate">
+                                  {item.adekoNameAr && lang === "ar" ? item.adekoNameAr :
+                                   item.adekoNameEn && lang === "en" ? item.adekoNameEn :
+                                   item.description || (item.productType ? t(item.productType, item.productType) : t("بند", "Item"))}
+                                </p>
+                                {item.mode === "product" || item.qty > 1 ? (
+                                  <p className="text-muted-foreground">{item.qty || 1} × {Number(item.unitPrice || item.pricePerMeter || 0).toLocaleString()} SAR</p>
+                                ) : item.area > 0 ? (
+                                  <p className="text-muted-foreground">{item.area} م² × {Number(item.pricePerMeter || 0).toLocaleString()} SAR</p>
+                                ) : null}
+                              </div>
+                              <span className="font-semibold text-primary shrink-0">{Number(item.total || 0).toLocaleString()} SAR</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
 

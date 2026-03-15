@@ -1,85 +1,50 @@
 # Teak Manufacturing | تيك للتصنيع
 
 ## Overview
-Teak Manufacturing is an integrated platform designed for a Saudi wood products factory. It combines Manufacturing, CRM, and Project Management functionalities. The platform supports bilingual (Arabic/English) interfaces, features light/dark modes, and is built as a responsive PWA. A key capability is ZATCA-compliant invoicing. The project aims to streamline operations from customer engagement to production, delivery, and after-sales support, enhancing efficiency and customer satisfaction in the wood products market.
+Teak Manufacturing is an integrated platform for a Saudi wood products factory, encompassing Manufacturing, CRM, and Project Management. Key features include bilingual (Arabic/English) support, light/dark modes, responsive PWA design, and ZATCA-compliant invoicing. The platform aims to optimize operations from customer engagement through production, delivery, and after-sales support, boosting efficiency and customer satisfaction in the wood products sector.
 
 ## User Preferences
 I prefer simple language and clear, concise explanations. I want iterative development with frequent, small updates rather than large, infrequent ones. Please ask before making any major architectural changes or significant modifications to existing features. I value a collaborative approach where I'm kept informed of progress and potential issues.
 
 ## System Architecture
-The application follows a modern full-stack architecture.
+The application utilizes a modern full-stack architecture.
 
 **Frontend:**
--   **Frameworks:** React, TypeScript, Tailwind CSS for styling, Framer Motion for animations, and Shadcn/ui for UI components.
--   **Design:** Bilingual (Arabic/English) interface with a unified "Zain" font. Features both light and dark modes. The primary color scheme uses red from the company logo, complemented by gray/silver tones.
--   **Routing:** Utilizes `wouter v3` with nested routing for the dashboard.
--   **State Management:** TanStack React Query v5 for data fetching and caching.
--   **UI/UX Features:** Splash screen, role-based sidebar, branded loading overlays, responsive design for mobile (hamburger menu, scrollable tabs).
--   **Key Pages:** Includes a public landing page with product showcases, a quote request form (with geolocation and dynamic product categories), and a public order tracking system. The authenticated dashboard features comprehensive modules for order management, customer relations, quotations, contracts, payments, ZATCA-compliant invoices, work orders, production, inventory, HR, deliveries, installations, quality control, and system settings.
--   **Designer Tools:** Integrated Design Studio with 2D sketching (Konva.js) and 3D viewing (Three.js) capabilities, allowing for detailed product specification, measurements, and file uploads. Features fixture drag-and-drop library (kitchen, bathroom, plants, door patterns, furniture), searchable manufacturing dimensions guide, and camera presets with panoramic 360° auto-rotate in 3D viewer.
--   **RTL/LTR:** Radix `DirectionProvider` is wrapped globally in `LanguageProvider` to ensure all Radix UI components (Tabs, Select, Dialog, etc.) inherit the correct direction. The `<html>` element also gets `dir` attribute set via `useLayoutEffect`.
+-   **Technology Stack:** React, TypeScript, Tailwind CSS, Framer Motion, Shadcn/ui.
+-   **Design & UI/UX:** Bilingual (Arabic/English) interface with a unified "Zain" font, light/dark modes, and a primary red color scheme. Features include a splash screen, role-based sidebar, branded loading, and responsive design.
+-   **Routing:** `wouter v3` with nested dashboard routing.
+-   **State Management:** TanStack React Query v5 for data fetching.
+-   **Core Modules:** Public landing page with product showcases, quote request, and order tracking. Authenticated dashboard with modules for order management, CRM, quotations, contracts, payments, ZATCA invoices, work orders, production, inventory, HR, deliveries, installations, quality control, and system settings.
+-   **Designer Tools:** Integrated Design Studio with 2D sketching (Konva.js) and 3D viewing (Three.js), supporting product specification, measurements, file uploads, fixture libraries, and a searchable manufacturing dimensions guide.
+-   **Internationalization:** Global `DirectionProvider` ensures correct RTL/LTR display for all UI components.
 
 **Backend:**
 -   **Framework:** Express.js.
--   **Database:** PostgreSQL, managed with Drizzle ORM.
--   **Authentication:** Session-based authentication using `scrypt` for password hashing and `connect-pg-simple` for session storage. Role-Based Access Control (RBAC) is implemented for API routes.
--   **API:** Comprehensive RESTful API supporting all frontend functionalities, including ZATCA QR generation and manufacturing process management.
--   **Customer Portal:** Implements Firebase Phone Authentication (SMS-based OTP) for secure customer login, allowing customers to track orders, view invoices, and manage maintenance requests.
+-   **Database:** PostgreSQL with Drizzle ORM.
+-   **Authentication:** Session-based authentication using `scrypt` and `connect-pg-simple`. Role-Based Access Control (RBAC) is enforced.
+-   **API:** Comprehensive RESTful API, including ZATCA QR generation and manufacturing process management.
+-   **Customer Portal:** Uses Firebase Phone Authentication (SMS-based OTP) for secure customer access to track orders, view invoices, and manage maintenance requests.
 
 **Core Features & Implementations:**
--   **ZATCA Invoice:** Generates simplified tax invoices with a real scannable QR code containing 5 TLV tags (seller name, VAT#, timestamp, total, VAT amount).
--   **Sales Cycle:** End-to-end flow from quote request, design assignment, quotation, customer approval, payment, production, delivery, installation, to auto-generated warranty.
--   **Notifications:** Real-time notification system with various types (info, warning, action, success) and an auto-refreshing dropdown panel.
--   **Logos:** Utilizes a single white PNG logo with CSS filters to dynamically adjust its color (red, auto-variant) based on context and theme.
+-   **ZATCA Invoice:** Generates simplified tax invoices with scannable QR codes.
+-   **Sales Cycle:** Manages the entire sales process from quote request to warranty.
+-   **Notifications:** Real-time notification system with various types.
+-   **Dynamic Logos:** Uses a single white PNG logo with CSS filters for dynamic color adjustment.
+-   **Calendar & Site Survey:** Integrated appointment scheduling with conflict detection, and a multi-step site survey form for detailed room, wall, and product specifications.
+-   **Workflow Automation:** Includes features like inspection scheduling, direct sales order creation, automated work order generation upon payment confirmation, and a customer design approval flow.
+-   **Product Management:** Adeko product library integration with manufacturing and design dimensions, and inline price editing.
+-   **Order Assignment:** System for claiming and transferring sales orders among agents with RBAC.
+-   **Payment Workflow:** Supports payment status tracking (pending/confirmed/rejected) with receipt upload and management.
+-   **Delivery Tracking:** Delivery countdown timers integrated into relevant dashboards and customer portal.
+-   **User Profiles:** Comprehensive user and customer profile management with image upload and password change functionalities.
 
 ## External Dependencies
 -   **Database:** PostgreSQL
 -   **ORM:** Drizzle ORM
--   **Authentication:** Firebase Phone Authentication (for customer portal), Firebase Admin SDK (for backend token verification)
--   **Payment:** Integration for payment recording and receipt uploads (no direct payment gateway integration specified).
--   **Mapping:** Google Maps embed (for landing page location display).
--   **QR Code Generation:** `qrcode` library (for ZATCA invoices).
--   **UI Libraries:** Shadcn/ui, Framer Motion.
--   **Frontend State/Queries:** TanStack React Query v5.
--   **2D Sketching:** Konva.js.
--   **3D Viewer:** Three.js.
-
-## Calendar & Site Survey Feature
--   **Appointments/Calendar System:** `appointments` table with date/time/status/conflict detection. Statuses: scheduled, attended, no_show, client_refused, rescheduled. Fail reasons: lazy, emergency, client_not_available, client_cancelled.
--   **Calendar Page (`/my-calendar`):** Interactive calendar with day/week/month views. Managers see all reps, reps see own appointments. Create/view/reschedule/cancel from UI.
--   **Site Survey Form (`/site-survey/:appointmentId`):** Multi-step wizard (4 steps): Room Details (dimensions, building status, doors/windows), Wall Layout (per-wall items), Products (Adeko library search with groups), Notes & Photos (camera capture). Data stored in `site_surveys` table with JSONB for walls/products.
--   **API Endpoints:** CRUD `/api/appointments` with conflict detection, `/api/appointments/:id/reschedule`, `/api/site-surveys` CRUD, `/api/appointments/:id/site-survey`.
--   **Notifications:** Client cancellation triggers manager notifications.
-
-## Recent Features
--   **Inspection Scheduling:** Quotations table has `inspectionDate` (date, nullable) column. Sales users schedule inspections via `PATCH /api/quotations/:id/inspection-date` with server-side date validation. Design Studio button is disabled until inspection is booked. `GET /api/inspections` returns upcoming inspections with customer/user data, role-filtered.
--   **Upcoming Inspections (Order Center):** Collapsible section showing inspection cards sorted by date, with customer info, phone, product, assigned salesperson. Today's inspections highlighted.
--   **Inspection Dashboard (Admin):** Owner dashboard shows today's inspections count, this week count, and upcoming inspections list.
--   **Customer Portal Inspections:** Shows inspection appointment card with formatted date and "Add to Calendar" (.ics download) button.
--   **Direct Sales Order Creation:** Sales users create orders for walk-in customers via "New Order" button → dialog (name, phone, product). `POST /api/orders/create-direct` creates/finds customer and quotation.
--   **Designer Board Removed from Sidebar:** Design Studio is now only accessible from within order detail cards.
--   **User Profile System:** Users table has `profileImage` column (base64 TEXT). Dashboard header includes a clickable avatar that opens a professional profile popover (name, role, email, phone, username). "Edit Profile" dialog allows profile image upload and password change via `PATCH /api/users/profile/me`.
--   **Customer Portal Profile:** Mobile-optimized bottom sheet profile view with customer info and logout.
--   **Design Studio Mobile:** Fully responsive layout with horizontally scrollable tabs, stacking grids, responsive canvas heights, and `xs: 480px` Tailwind breakpoint.
--   **Payment Confirmation Workflow:** Payments table has `status` (pending/confirmed/rejected), `confirmedBy`, `confirmedAt`, `rejectionReason` columns. `PATCH /api/payments/:id/confirm` confirms a payment (updates contract amounts, auto-creates work order on first deposit confirmation with 4 production stages). `PATCH /api/payments/:id/reject` rejects with reason. Payments page has pending/all tabs with confirm/reject UI. Customer portal shows payment status (pending=amber, confirmed=green, rejected=red) with re-upload flow for rejected payments.
--   **Delivery Countdown Timer:** Reusable `DeliveryCountdown` component (`client/src/components/delivery-countdown.tsx`) shows days remaining with progress bar (green→yellow→red). Displayed in: production board cards (compact), work order detail, order center dialog, customer portal orders tab. Uses `deliveryDays` and `productionStartDate` from work orders.
--   **Auto Work Order Creation:** On first confirmed payment, system auto-creates work order with `deliveryDays` copied from quotation, `productionStartDate` = now, and 4 stages (cutting, edging, assembly, finishing). Notifications sent to production staff.
--   **Delivery Days on Quotations:** `deliveryDays` integer field on quotations table, editable in quotation builder beside discount.
--   **Building Status:** Product specs include `buildingStatus` ("ready" / "under_construction") with conditional `constructionPhase` selector (7 phases from construction to finishing).
--   **Room Openings:** Optional room openings (doors, windows, open entrances) in product specs with wall position, dimensions, and sill height for windows. Collapsible editor UI.
--   **Design Studio Fixture Library:** Drag-and-drop fixture library in 2D canvas with 30+ items across 5 categories (kitchen appliances, bathroom, indoor plants, door patterns, furniture). Searchable, categorized with horizontal tabs. Placement mode: select fixture → click canvas to place at grid-snapped position.
--   **Enhanced Mfg Dimensions Guide:** Comprehensive searchable reference with product type dimensions (kitchen/wardrobe/door/decoration), hardware specs (hinges, runners, handles), material specifications (density, weight, bend radius), and clearance formulas. Expandable/collapsible sections with bilingual search.
--   **3D Viewer Enhancements:** Camera preset buttons (Front, Side, Top, Panoramic 360°), auto-rotate panoramic mode, improved lighting with hemisphere/contact shadows, material texture cycling, and fullscreen button.
--   **Customer Design Approval Flow:** `customerApproval` and `customerApprovalNotes` columns on design_assignments. Customer portal shows 2D sketch + 3D screenshot with fullscreen zoom. Approval/revision request buttons. `POST /api/customer-portal/approve-design/:id` and `POST /api/customer-portal/request-revision/:id` endpoints with notifications to staff.
--   **Design Approval Dashboard:** Dashboard shows design approval status section with approved/pending/revision counts. Order center table shows inline design approval badges (green=approved, yellow=pending, amber=revision).
--   **Role-Based Order Filtering (RBAC):** Sales users see only their assigned quotations and design assignments. Owner/assistant see all. Backend enforces ownership checks on `PATCH /api/quotations/:id` (sales can't modify others' quotations or reassign). Frontend hides staff filter, assign button, and assigned-to column for sales role. `staleTime` changed from `Infinity` to `30s` for fresher data.
--   **Unified Design + Quotation Flow:** Design studio has 5th "Quotation" tab for line item pricing (description, qty, unit price, VAT 15%, discount). "Send to Customer" button validates price > 0 and design exists, then PATCHes quotation (items+price+status:sent) and design assignment (status:completed) together.
--   **Awaiting Payment Stage:** `awaiting_payment` stage in order center (purple, Wallet icon). `getOrderStage` returns `awaiting_payment` when quotation is approved but no payment exists. Stage filter and counts updated.
--   **Unified Customer Portal Approval:** Customer portal shows design images directly (not collapsed) for "sent" quotations. Single "Approve Design & Quotation" button calls `POST /api/customer-portal/approve-quotation/:id` which auto-approves both design and quotation, creates contract + tax invoice. Server enforces `status === "sent"` before approval.
--   **Payment Receipt Upload:** After approval, customer sees PaymentSection with invoice preview, amount due, and drag-to-upload receipt image. `POST /api/customer-portal/upload-receipt` validates contractId ownership and requires receipt image.
--   **Cancel Order Button:** Manager-only (owner/assistant) cancel button in order detail dialog with confirm/undo pattern. Sets quotation status to `expired`.
--   **Mobile Responsiveness (Task #6):** Comprehensive mobile-first fixes across the app: (1) `html`/`body` have `overflow-x: hidden` to prevent RTL animation artifacts from causing scrollWidth overflow. (2) Profile popover and notification panel use physical `right-0` instead of logical `end-0` to stay within viewport in RTL mode. (3) Employees form dialog: `grid-cols-1 sm:grid-cols-2` (single column on mobile). (4) Purchase order item row: `grid-cols-2 sm:grid-cols-4` (2 columns on mobile). (5) PO detail table wrapped in `overflow-x-auto min-w-[400px]`. (6) `DialogFooter` uses `gap-2` instead of `sm:space-x-2` for RTL compatibility. (7) Input component already has `text-base md:text-sm` to prevent iOS auto-zoom. Most list pages already use card-based responsive grids.
--   **Adeko Product Library:** `adeko_products` table with 252 TEAK products imported from CSV (`client/public/teak_design_dimensions.csv`). Groups: TK1-TK6 (Base, Sink, Wall, Tall, Mechanism, Shelf/Panel). Each product has code, description, manufacturing dimensions (W/H/D), design dimensions, price before/after VAT. Admin page at `/dashboard/settings/products` with search, group filter, inline price editing (auto-calculates 15% VAT). CSV export via `GET /api/adeko-products/export`. API: `GET /api/adeko-products` (search + groupCode filter), `GET /api/adeko-products/groups`, `PATCH /api/adeko-products/:id`.
--   **Order Competition System (Claim/Transfer):** Quotations table has `claimedAt` (timestamp) and `previousAssignees` (JSONB array) columns. Website orders (status=requested, no assignee) appear in an "open pool" visible to all sales users. `POST /api/quotations/:id/claim` lets a sales user claim an open order (first come, first served). `POST /api/quotations/:id/transfer` lets manager transfer orders between agents, preserving transfer history in `previousAssignees`. Notifications sent on claim and transfer.
--   **My Orders Page (`/my-orders`):** Sales user's dedicated page with two cards: "Open Orders" (unclaimed pool) and "My Orders" (claimed/assigned). Claim button on open orders. Mobile-optimized card layout with order details, elapsed time, and quick actions.
--   **Manager Order Center Updates:** Order center for managers now uses transfer API (`POST /api/quotations/:id/transfer`) instead of direct PATCH. View dialog shows current agent with self-claimed indicator, and transfer history from `previousAssignees`.
+-   **Authentication:** Firebase Phone Authentication, Firebase Admin SDK
+-   **Mapping:** Google Maps embed
+-   **QR Code Generation:** `qrcode` library
+-   **UI Libraries:** Shadcn/ui, Framer Motion
+-   **Frontend State/Queries:** TanStack React Query v5
+-   **2D Sketching:** Konva.js
+-   **3D Viewer:** Three.js

@@ -438,10 +438,20 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/customers", requireAuth, async (_req, res) => {
+  app.get("/api/customers", requireAuth, async (req, res) => {
     try {
-      const list = await storage.getCustomers();
-      res.json(list);
+      const userId = (req as any).session.userId!;
+      const user = await storage.getUser(userId);
+      const isManager = user?.role === "owner" || user?.role === "assistant" || user?.role === "it" || user?.role === "accountant" || user?.role === "customer_service";
+      if (isManager) {
+        res.json(await storage.getCustomers());
+      } else {
+        const allQuotations = await storage.getQuotations();
+        const myQuotations = allQuotations.filter((q: any) => q.assignedTo === userId);
+        const myCustomerIds = [...new Set(myQuotations.map((q: any) => q.customerId).filter(Boolean))];
+        const allCustomers = await storage.getCustomers();
+        res.json(allCustomers.filter((c: any) => myCustomerIds.includes(c.id)));
+      }
     } catch (error) {
       res.status(500).json({ message: "حدث خطأ" });
     }
@@ -2495,12 +2505,12 @@ export async function registerRoutes(
 
       if (user?.role === "owner" || user?.role === "assistant") {
         if (assignedTo) {
-          res.json(await storage.getAppointments(parseInt(assignedTo)));
+          res.json(await storage.getAppointments({ userId: parseInt(assignedTo) }));
         } else {
           res.json(await storage.getAppointments());
         }
       } else {
-        res.json(await storage.getAppointments(userId));
+        res.json(await storage.getAppointments({ userId }));
       }
     } catch (error) {
       res.status(500).json({ message: "حدث خطأ" });
@@ -2775,116 +2785,6 @@ export async function registerRoutes(
       } else {
         res.json(inspections.filter(i => i.assignedTo === userId));
       }
-    } catch (error) {
-      res.status(500).json({ message: "حدث خطأ" });
-    }
-  });
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // TASK #3: Appointments (Calendar)
-  // ══════════════════════════════════════════════════════════════════════════
-
-  app.get("/api/appointments", requireAuth, async (req, res) => {
-    try {
-      const userId = req.session.userId!;
-      const user = await storage.getUser(userId);
-      const isManager = user?.role === "owner" || user?.role === "assistant";
-      const salesPersonId = isManager ? (req.query.salesPersonId ? parseInt(req.query.salesPersonId as string) : undefined) : userId;
-      const dateFrom = req.query.dateFrom ? new Date(req.query.dateFrom as string) : undefined;
-      const dateTo = req.query.dateTo ? new Date(req.query.dateTo as string) : undefined;
-      const list = await storage.getAppointments({ salesPersonId, dateFrom, dateTo });
-      res.json(list);
-    } catch (error) {
-      res.status(500).json({ message: "حدث خطأ في جلب المواعيد" });
-    }
-  });
-
-  app.get("/api/appointments/:id", requireAuth, async (req, res) => {
-    try {
-      const appt = await storage.getAppointment(parseInt(req.params.id));
-      if (!appt) return res.status(404).json({ message: "الموعد غير موجود" });
-      res.json(appt);
-    } catch (error) {
-      res.status(500).json({ message: "حدث خطأ" });
-    }
-  });
-
-  app.post("/api/appointments", requireAuth, async (req, res) => {
-    try {
-      const userId = req.session.userId!;
-      const { title, dateStart, dateEnd, quotationId, notes, salesPersonId: spId } = req.body;
-      const salesPersonId = spId || userId;
-      const start = new Date(dateStart);
-      const end = new Date(dateEnd);
-
-      if (start >= end) return res.status(400).json({ message: "وقت النهاية يجب أن يكون بعد وقت البداية" });
-
-      const conflict = await storage.checkAppointmentConflict(salesPersonId, start, end);
-      if (conflict) return res.status(409).json({ message: "يوجد موعد آخر في هذا الوقت لنفس المندوب" });
-
-      const appt = await storage.createAppointment({
-        title,
-        dateStart: start,
-        dateEnd: end,
-        quotationId: quotationId || null,
-        notes: notes || null,
-        salesPersonId,
-        status: "scheduled",
-        cancellationReason: null,
-        rescheduleCount: 0,
-      });
-      res.status(201).json(appt);
-    } catch (error) {
-      res.status(500).json({ message: "حدث خطأ في إنشاء الموعد" });
-    }
-  });
-
-  app.patch("/api/appointments/:id", requireAuth, async (req, res) => {
-    try {
-      const id = parseInt(req.params.id);
-      const appt = await storage.getAppointment(id);
-      if (!appt) return res.status(404).json({ message: "الموعد غير موجود" });
-
-      const { dateStart, dateEnd, salesPersonId, ...rest } = req.body;
-      let updateData: any = { ...rest };
-
-      if (dateStart || dateEnd) {
-        const start = dateStart ? new Date(dateStart) : appt.dateStart;
-        const end = dateEnd ? new Date(dateEnd) : appt.dateEnd;
-        const conflict = await storage.checkAppointmentConflict(appt.salesPersonId, start, end, id);
-        if (conflict) return res.status(409).json({ message: "يوجد موعد آخر في هذا الوقت" });
-        updateData.dateStart = start;
-        updateData.dateEnd = end;
-      }
-
-      if (rest.status === "rescheduled") {
-        updateData.rescheduleCount = (appt.rescheduleCount || 0) + 1;
-      }
-
-      if (rest.status === "client_refused") {
-        const managers = await storage.getUsers();
-        for (const u of managers.filter(u => u.role === "owner" || u.role === "assistant")) {
-          await storage.createNotification({
-            userId: u.id, type: "warning",
-            messageAr: `العميل رفض الزيارة للموعد: ${appt.title}`,
-            messageEn: `Client refused visit for: ${appt.title}`,
-            relatedId: id, relatedType: "appointment",
-          });
-        }
-      }
-
-      const updated = await storage.updateAppointment(id, updateData);
-      res.json(updated);
-    } catch (error) {
-      res.status(500).json({ message: "حدث خطأ في تحديث الموعد" });
-    }
-  });
-
-  app.delete("/api/appointments/:id", requireAuth, async (req, res) => {
-    try {
-      const id = parseInt(req.params.id);
-      await storage.updateAppointment(id, { status: "cancelled" });
-      res.json({ success: true });
     } catch (error) {
       res.status(500).json({ message: "حدث خطأ" });
     }

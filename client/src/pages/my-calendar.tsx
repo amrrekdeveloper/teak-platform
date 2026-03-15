@@ -416,11 +416,29 @@ export default function MyCalendarPage() {
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label>{t("عنوان الموعد", "Appointment Title")}</Label>
+              <Label>{t("نوع الموعد", "Appointment Type")}</Label>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { ar: "زيارة رفع المقاسات", en: "Measurement Visit" },
+                  { ar: "عرض المنتجات", en: "Product Showcase" },
+                  { ar: "متابعة عميل", en: "Client Follow-up" },
+                  { ar: "تسليم مشروع", en: "Project Delivery" },
+                ].map((type) => (
+                  <button
+                    key={type.ar}
+                    type="button"
+                    onClick={() => setFormData({ ...formData, title: lang === "ar" ? type.ar : type.en })}
+                    className={`text-xs p-2 border rounded-lg text-start transition-colors ${formData.title === (lang === "ar" ? type.ar : type.en) ? "border-primary bg-primary/10 text-primary font-semibold" : "hover:bg-muted/50"}`}
+                    data-testid={`button-type-${type.en.toLowerCase().replace(/ /g, "-")}`}
+                  >
+                    {lang === "ar" ? type.ar : type.en}
+                  </button>
+                ))}
+              </div>
               <Input
                 value={formData.title}
                 onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                placeholder={t("مثال: زيارة رفع مقاسات", "e.g., Measurement Visit")}
+                placeholder={t("أو اكتب عنواناً مخصصاً...", "Or type a custom title...")}
                 data-testid="input-appointment-title"
               />
             </div>
@@ -476,10 +494,10 @@ export default function MyCalendarPage() {
               </div>
             )}
             <div className="space-y-2">
-              <Label>{t("العميل (اختياري)", "Customer (Optional)")}</Label>
+              <Label>{t("العميل", "Customer")}</Label>
               <Select
                 value={formData.customerId}
-                onValueChange={(v) => setFormData({ ...formData, customerId: v })}
+                onValueChange={(v) => setFormData({ ...formData, customerId: v, quotationId: "" })}
               >
                 <SelectTrigger data-testid="select-customer">
                   <SelectValue placeholder={t("اختر العميل", "Select customer")} />
@@ -494,25 +512,27 @@ export default function MyCalendarPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">
-              <Label>{t("عرض السعر (اختياري)", "Quotation (Optional)")}</Label>
-              <Select
-                value={formData.quotationId}
-                onValueChange={(v) => setFormData({ ...formData, quotationId: v })}
-              >
-                <SelectTrigger data-testid="select-quotation">
-                  <SelectValue placeholder={t("اختر العرض", "Select quotation")} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">{t("بدون عرض", "No Quotation")}</SelectItem>
-                  {quotations.filter((q: any) => q.customerId.toString() === formData.customerId).map((q: any) => (
-                    <SelectItem key={q.id} value={q.id.toString()}>
-                      #{q.id} - {q.status}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {formData.customerId && formData.customerId !== "none" && (
+              <div className="space-y-2">
+                <Label>{t("عرض السعر المرتبط (اختياري)", "Linked Quotation (Optional)")}</Label>
+                <Select
+                  value={formData.quotationId}
+                  onValueChange={(v) => setFormData({ ...formData, quotationId: v })}
+                >
+                  <SelectTrigger data-testid="select-quotation">
+                    <SelectValue placeholder={t("اختر العرض", "Select quotation")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">{t("بدون عرض", "No Quotation")}</SelectItem>
+                    {quotations.filter((q: any) => q.customerId?.toString() === formData.customerId).map((q: any) => (
+                      <SelectItem key={q.id} value={q.id.toString()}>
+                        {t(`عرض #${q.id}`, `Quote #${q.id}`)} - {q.status}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="space-y-2">
               <Label>{t("ملاحظات", "Notes")}</Label>
               <Textarea
