@@ -3,9 +3,11 @@ import { hashPassword } from "./auth";
 import {
   users, customers, products, woodTypes, doorTypes,
   inventory, suppliers, employees, companySettings,
-  quoteProductCategories,
+  quoteProductCategories, adekoProducts,
 } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import * as fs from "fs";
+import * as path from "path";
 
 async function seedQuoteProductCategories() {
   const existing = await db.select().from(quoteProductCategories).limit(1);
@@ -21,8 +23,82 @@ async function seedQuoteProductCategories() {
   }
 }
 
+async function seedAdekoProducts() {
+  const existing = await db.select().from(adekoProducts).limit(1);
+  if (existing.length > 0) return;
+
+  try {
+    const csvPath = path.resolve("client/public/teak_design_dimensions.csv");
+    const csvContent = fs.readFileSync(csvPath, "utf-8");
+    const lines = csvContent.split("\n").filter(line => line.trim());
+    const dataLines = lines.slice(1);
+
+    const parseCSVLine = (line: string): string[] => {
+      const result: string[] = [];
+      let current = "";
+      let inQuotes = false;
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (ch === '"') {
+          inQuotes = !inQuotes;
+        } else if (ch === ',' && !inQuotes) {
+          result.push(current.trim());
+          current = "";
+        } else {
+          current += ch;
+        }
+      }
+      result.push(current.trim());
+      return result;
+    };
+
+    const productValues = [];
+    for (const line of dataLines) {
+      const cols = parseCSVLine(line);
+      if (cols.length < 12) continue;
+      const [, groupCode, groupNameAr, groupNameEn, code, descriptionEn,
+        mfgW, mfgH, mfgD, desW, desH, desD] = cols;
+
+      const cleanCode = (code || "").replace(/\s*\{[^}]+\}\s*/g, "").trim();
+      const safeFilename = cleanCode.replace(/[^a-zA-Z0-9_-]/g, "_") + ".bmp";
+      const thumbnailPath = `/products/${safeFilename}`;
+      const thumbnailExists = fs.existsSync(path.resolve(`client/public/products/${safeFilename}`));
+
+      productValues.push({
+        code: code || "",
+        descriptionEn: descriptionEn || "",
+        descriptionAr: descriptionEn || "",
+        groupCode: groupCode || "",
+        groupNameAr: groupNameAr || "",
+        groupNameEn: groupNameEn || "",
+        manufacturingW: mfgW || null,
+        manufacturingH: mfgH || null,
+        manufacturingD: mfgD || null,
+        designW: desW || null,
+        designH: desH || null,
+        designD: desD || null,
+        priceBeforeVat: "0",
+        priceAfterVat: "0",
+        thumbnail: thumbnailExists ? thumbnailPath : null,
+        active: true,
+      });
+    }
+
+    if (productValues.length > 0) {
+      const batchSize = 50;
+      for (let i = 0; i < productValues.length; i += batchSize) {
+        await db.insert(adekoProducts).values(productValues.slice(i, i + batchSize));
+      }
+      console.log(`Seeded ${productValues.length} Adeko products`);
+    }
+  } catch (error) {
+    console.error("Error seeding Adeko products:", error);
+  }
+}
+
 export async function seedDatabase() {
   await seedQuoteProductCategories();
+  await seedAdekoProducts();
 
   const existingUsers = await db.select().from(users).limit(1);
   if (existingUsers.length > 0) {

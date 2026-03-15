@@ -491,6 +491,117 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/adeko-products", requireAuth, async (req, res) => {
+    try {
+      const search = req.query.search as string | undefined;
+      const groupCode = req.query.groupCode as string | undefined;
+      const list = await storage.getAdekoProducts(search, groupCode);
+      res.json(list);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ في جلب المنتجات" });
+    }
+  });
+
+  app.get("/api/adeko-products/groups", requireAuth, async (_req, res) => {
+    try {
+      const groups = await storage.getAdekoProductGroups();
+      res.json(groups);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  app.patch("/api/adeko-products/:id", requireRole("owner", "assistant", "it"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "معرّف غير صالح" });
+      const { priceBeforeVat, priceAfterVat, designW, designH, designD } = req.body as {
+        priceBeforeVat?: string; priceAfterVat?: string; designW?: string; designH?: string; designD?: string;
+      };
+      const updateData: Record<string, string> = {};
+      if (priceBeforeVat !== undefined) {
+        const price = parseFloat(priceBeforeVat);
+        if (isNaN(price) || price < 0) return res.status(400).json({ message: "السعر غير صالح" });
+        updateData.priceBeforeVat = String(price.toFixed(2));
+        updateData.priceAfterVat = String((price * 1.15).toFixed(2));
+      }
+      if (priceAfterVat !== undefined && priceBeforeVat === undefined) {
+        const price = parseFloat(priceAfterVat);
+        if (isNaN(price) || price < 0) return res.status(400).json({ message: "السعر غير صالح" });
+        updateData.priceAfterVat = String(price.toFixed(2));
+        updateData.priceBeforeVat = String((price / 1.15).toFixed(2));
+      }
+      const dimFields: Record<string, string | undefined> = { designW, designH, designD };
+      for (const [key, val] of Object.entries(dimFields)) {
+        if (val !== undefined) {
+          const num = parseFloat(val);
+          if (isNaN(num) || num < 0) return res.status(400).json({ message: `${key} غير صالح` });
+          updateData[key] = String(num.toFixed(2));
+        }
+      }
+      if (Object.keys(updateData).length === 0) return res.status(400).json({ message: "لا توجد بيانات للتحديث" });
+      const updated = await storage.updateAdekoProduct(id, updateData);
+      if (!updated) return res.status(404).json({ message: "المنتج غير موجود" });
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ في تحديث المنتج" });
+    }
+  });
+
+  app.get("/api/adeko-products/export", requireRole("owner", "assistant", "it"), async (req, res) => {
+    try {
+      const ExcelJS = (await import("exceljs")).default;
+      const list = await storage.getAdekoProducts();
+
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = "Teak Manufacturing System";
+      const sheet = workbook.addWorksheet("TEAK Products Pricing");
+
+      sheet.columns = [
+        { header: "Code", key: "code", width: 25 },
+        { header: "Description", key: "desc", width: 35 },
+        { header: "Group", key: "group", width: 25 },
+        { header: "Mfg W (cm)", key: "mfgW", width: 12 },
+        { header: "Mfg H (cm)", key: "mfgH", width: 12 },
+        { header: "Mfg D (cm)", key: "mfgD", width: 12 },
+        { header: "Design W (cm)", key: "desW", width: 14 },
+        { header: "Design H (cm)", key: "desH", width: 14 },
+        { header: "Design D (cm)", key: "desD", width: 14 },
+        { header: "Price Before VAT (SAR)", key: "priceExcl", width: 22 },
+        { header: "Price After VAT 15% (SAR)", key: "priceIncl", width: 24 },
+      ];
+
+      const headerRow = sheet.getRow(1);
+      headerRow.font = { bold: true, color: { argb: "FFFFFFFF" } };
+      headerRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF9E0A0A" } };
+      headerRow.alignment = { horizontal: "center" };
+
+      for (const p of list) {
+        sheet.addRow({
+          code: p.code,
+          desc: p.descriptionEn,
+          group: `${p.groupCode} - ${p.groupNameEn}`,
+          mfgW: p.manufacturingW ? parseFloat(p.manufacturingW) : "",
+          mfgH: p.manufacturingH ? parseFloat(p.manufacturingH) : "",
+          mfgD: p.manufacturingD ? parseFloat(p.manufacturingD) : "",
+          desW: p.designW ? parseFloat(p.designW) : "",
+          desH: p.designH ? parseFloat(p.designH) : "",
+          desD: p.designD ? parseFloat(p.designD) : "",
+          priceExcl: parseFloat(p.priceBeforeVat || "0"),
+          priceIncl: parseFloat(p.priceAfterVat || "0"),
+        });
+      }
+
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", "attachment; filename=teak_products_pricing.xlsx");
+      await workbook.xlsx.write(res);
+      res.end();
+    } catch (error) {
+      console.error("Excel export error:", error);
+      res.status(500).json({ message: "حدث خطأ في التصدير" });
+    }
+  });
+
   app.get("/api/quotations", requireAuth, async (req, res) => {
     try {
       const userId = req.session.userId!;

@@ -14,8 +14,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Loader2, Building2, Users, History, Save, Plus, Pencil, Shield, Tags, Trash2 } from "lucide-react";
+import { Loader2, Building2, Users, History, Save, Plus, Pencil, Shield, Tags, Trash2, Package } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
+import { Link } from "wouter";
 
 const roleLabels: Record<string, { ar: string; en: string }> = {
   owner: { ar: "المالك", en: "Owner" },
@@ -112,6 +113,24 @@ export default function SettingsPage() {
             </TabsTrigger>
           )}
         </TabsList>
+
+        {isOwnerOrIT && (
+          <div className="mb-4">
+            <Link href="/settings/products">
+              <Card className="cursor-pointer hover:bg-muted/50 transition-colors border-dashed" data-testid="link-adeko-products">
+                <CardContent className="p-4 flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <Package className="w-5 h-5 text-primary" />
+                  </div>
+                  <div>
+                    <p className="font-semibold">{t("مكتبة منتجات TEAK (Adeko)", "TEAK Product Library (Adeko)")}</p>
+                    <p className="text-xs text-muted-foreground">{t("252 منتج - إدارة الأسعار والمقاسات", "252 products - Manage prices & dimensions")}</p>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+          </div>
+        )}
 
         <TabsContent value="company" className="space-y-4">
           {companyForm && (

@@ -32,6 +32,7 @@ import DeliveriesPage from "@/pages/deliveries";
 import InstallationsPage from "@/pages/installations";
 import QualityPage from "@/pages/quality";
 import SettingsPage from "@/pages/settings";
+import SettingsProductsPage from "@/pages/settings-products";
 import TrackOrderPage from "@/pages/track-order";
 import DesignerBoardPage from "@/pages/designer-board";
 import OrderCenterPage from "@/pages/order-center";
@@ -161,6 +162,7 @@ function DashboardRoutes() {
         <Route path="/order-center" component={OrderCenterPage} />
         <Route path="/design-studio/:orderId" component={DesignStudioPage} />
         <Route path="/designer-board" component={DesignerBoardPage} />
+        <Route path="/settings/products" component={SettingsProductsPage} />
         <Route path="/settings" component={SettingsPage} />
         <Route component={NotFound} />
       </Switch>

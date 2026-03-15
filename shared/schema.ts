@@ -772,6 +772,32 @@ export const insertWarrantySchema = createInsertSchema(warranties).omit({
 export type InsertWarranty = z.infer<typeof insertWarrantySchema>;
 export type Warranty = typeof warranties.$inferSelect;
 
+export const adekoProducts = pgTable("adeko_products", {
+  id: serial("id").primaryKey(),
+  code: text("code").notNull().unique(),
+  descriptionEn: text("description_en").notNull(),
+  descriptionAr: text("description_ar"),
+  groupCode: text("group_code").notNull(),
+  groupNameAr: text("group_name_ar").notNull(),
+  groupNameEn: text("group_name_en").notNull(),
+  manufacturingW: decimal("manufacturing_w", { precision: 10, scale: 2 }),
+  manufacturingH: decimal("manufacturing_h", { precision: 10, scale: 2 }),
+  manufacturingD: decimal("manufacturing_d", { precision: 10, scale: 2 }),
+  designW: decimal("design_w", { precision: 10, scale: 2 }),
+  designH: decimal("design_h", { precision: 10, scale: 2 }),
+  designD: decimal("design_d", { precision: 10, scale: 2 }),
+  priceBeforeVat: decimal("price_before_vat", { precision: 12, scale: 2 }).default("0"),
+  priceAfterVat: decimal("price_after_vat", { precision: 12, scale: 2 }).default("0"),
+  thumbnail: text("thumbnail"),
+  active: boolean("active").notNull().default(true),
+});
+
+export const insertAdekoProductSchema = createInsertSchema(adekoProducts).omit({
+  id: true,
+});
+export type InsertAdekoProduct = z.infer<typeof insertAdekoProductSchema>;
+export type AdekoProduct = typeof adekoProducts.$inferSelect;
+
 export const quoteProductCategories = pgTable("quote_product_categories", {
   id: serial("id").primaryKey(),
   nameAr: text("name_ar").notNull(),

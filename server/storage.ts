@@ -26,6 +26,7 @@ import {
   employees, type Employee, type InsertEmployee,
   designAssignments, type DesignAssignment, type InsertDesignAssignment,
   warranties, type Warranty, type InsertWarranty,
+  adekoProducts, type AdekoProduct, type InsertAdekoProduct,
   quoteProductCategories, type QuoteProductCategory, type InsertQuoteProductCategory,
 } from "@shared/schema";
 
@@ -151,6 +152,12 @@ export interface IStorage {
   updateWarranty(id: number, data: Partial<InsertWarranty>): Promise<Warranty | undefined>;
 
   getCustomerByPhone(phone: string): Promise<Customer | undefined>;
+
+  getAdekoProducts(search?: string, groupCode?: string): Promise<AdekoProduct[]>;
+  getAdekoProduct(id: number): Promise<AdekoProduct | undefined>;
+  createAdekoProduct(product: InsertAdekoProduct): Promise<AdekoProduct>;
+  updateAdekoProduct(id: number, data: Partial<InsertAdekoProduct>): Promise<AdekoProduct | undefined>;
+  getAdekoProductGroups(): Promise<{ groupCode: string; groupNameAr: string; groupNameEn: string; count: number }[]>;
 
   getQuoteProductCategories(): Promise<QuoteProductCategory[]>;
   createQuoteProductCategory(cat: InsertQuoteProductCategory): Promise<QuoteProductCategory>;
@@ -613,6 +620,47 @@ export class DatabaseStorage implements IStorage {
     const normalized = phone.replace(/^(\+966|00966|966)/, "0");
     const results = await db.select().from(customers);
     return results.find(c => c.phone.replace(/^(\+966|00966|966)/, "0") === normalized);
+  }
+
+  async getAdekoProducts(search?: string, groupCode?: string): Promise<AdekoProduct[]> {
+    const conditions = [];
+    if (groupCode) {
+      conditions.push(eq(adekoProducts.groupCode, groupCode));
+    }
+    if (search) {
+      conditions.push(
+        sql`(${adekoProducts.code} ILIKE ${'%' + search + '%'} OR ${adekoProducts.descriptionEn} ILIKE ${'%' + search + '%'} OR ${adekoProducts.descriptionAr} ILIKE ${'%' + search + '%'})`
+      );
+    }
+    if (conditions.length > 0) {
+      return db.select().from(adekoProducts).where(and(...conditions)).orderBy(adekoProducts.groupCode, adekoProducts.code);
+    }
+    return db.select().from(adekoProducts).orderBy(adekoProducts.groupCode, adekoProducts.code);
+  }
+
+  async getAdekoProduct(id: number): Promise<AdekoProduct | undefined> {
+    const [p] = await db.select().from(adekoProducts).where(eq(adekoProducts.id, id));
+    return p;
+  }
+
+  async createAdekoProduct(product: InsertAdekoProduct): Promise<AdekoProduct> {
+    const [created] = await db.insert(adekoProducts).values(product).returning();
+    return created;
+  }
+
+  async updateAdekoProduct(id: number, data: Partial<InsertAdekoProduct>): Promise<AdekoProduct | undefined> {
+    const [updated] = await db.update(adekoProducts).set(data).where(eq(adekoProducts.id, id)).returning();
+    return updated;
+  }
+
+  async getAdekoProductGroups(): Promise<{ groupCode: string; groupNameAr: string; groupNameEn: string; count: number }[]> {
+    const result = await db.select({
+      groupCode: adekoProducts.groupCode,
+      groupNameAr: adekoProducts.groupNameAr,
+      groupNameEn: adekoProducts.groupNameEn,
+      count: sql<number>`count(*)::int`,
+    }).from(adekoProducts).groupBy(adekoProducts.groupCode, adekoProducts.groupNameAr, adekoProducts.groupNameEn).orderBy(adekoProducts.groupCode);
+    return result;
   }
 
   async getQuoteProductCategories(): Promise<QuoteProductCategory[]> {
