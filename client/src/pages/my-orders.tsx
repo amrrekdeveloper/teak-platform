@@ -17,6 +17,13 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Loader2,
   Search,
   ClipboardList,
@@ -33,6 +40,7 @@ import {
   Plus,
   Hand,
   Zap,
+  CalendarPlus,
 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -78,6 +86,24 @@ function getOrderStage(q: any, workOrders: any[], contracts: any[], userId: numb
   return "mine";
 }
 
+const statusBadgeConfig: Record<string, { ar: string; en: string; className: string }> = {
+  draft: { ar: "مسودة", en: "Draft", className: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300" },
+  requested: { ar: "طلب جديد", en: "Requested", className: "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300" },
+  open: { ar: "مفتوح", en: "Open", className: "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300" },
+  sent: { ar: "مُرسل", en: "Sent", className: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300" },
+  approved: { ar: "معتمد", en: "Approved", className: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300" },
+  rejected: { ar: "مرفوض", en: "Rejected", className: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300" },
+  expired: { ar: "منتهي", en: "Expired", className: "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400" },
+  revision: { ar: "مراجعة", en: "Revision", className: "bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300" },
+};
+
+const appointmentTypes = [
+  { value: "زيارة رفع المقاسات", ar: "زيارة رفع المقاسات", en: "Site Measurement" },
+  { value: "عرض المنتجات", ar: "عرض المنتجات", en: "Product Showcase" },
+  { value: "متابعة عميل", ar: "متابعة عميل", en: "Customer Follow-up" },
+  { value: "تسليم مشروع", ar: "تسليم مشروع", en: "Project Delivery" },
+];
+
 export default function MyOrdersPage() {
   const { t, lang } = useLanguage();
   const { user } = useAuth();
@@ -92,6 +118,14 @@ export default function MyOrdersPage() {
   const [newOrderDialog, setNewOrderDialog] = useState(false);
   const [newOrderForm, setNewOrderForm] = useState({ fullName: "", phone: "", productDescription: "", notes: "" });
   const [showNewOrderTransition, setShowNewOrderTransition] = useState(false);
+  const [appointmentDialog, setAppointmentDialog] = useState<any | null>(null);
+  const [appointmentForm, setAppointmentForm] = useState({
+    title: "زيارة رفع المقاسات",
+    appointmentDate: new Date().toISOString().split("T")[0],
+    startTime: "09:00",
+    endTime: "10:00",
+    notes: "",
+  });
   const perPage = 10;
 
   const { data: quotations = [], isLoading } = useQuery<any[]>({
@@ -117,6 +151,7 @@ export default function MyOrdersPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/quotations"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
       setShowClaimTransition(true);
     },
     onError: (error: any) => {
@@ -137,6 +172,32 @@ export default function MyOrdersPage() {
     },
     onError: (error: any) => {
       toast({ title: error?.message || t("فشل إنشاء الطلب", "Failed to create order"), variant: "destructive" });
+    },
+  });
+
+  const appointmentMutation = useMutation({
+    mutationFn: async (data: any) => {
+      return apiRequest("POST", "/api/appointments", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/appointments"] });
+      setAppointmentDialog(null);
+      setAppointmentForm({
+        title: "زيارة رفع المقاسات",
+        appointmentDate: new Date().toISOString().split("T")[0],
+        startTime: "09:00",
+        endTime: "10:00",
+        notes: "",
+      });
+      toast({ title: t("تم حجز الموعد بنجاح!", "Appointment booked successfully!") });
+    },
+    onError: (error: any) => {
+      const msg = error?.message || "";
+      if (msg.includes("تعارض") || msg.includes("conflict")) {
+        toast({ title: t("يوجد تعارض مع موعد آخر في نفس الوقت", "Time conflict with another appointment"), variant: "destructive" });
+      } else {
+        toast({ title: t("فشل حجز الموعد", "Failed to book appointment"), variant: "destructive" });
+      }
     },
   });
 
@@ -177,6 +238,42 @@ export default function MyOrdersPage() {
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
   const paginated = filtered.slice((currentPage - 1) * perPage, currentPage * perPage);
+
+  function openAppointmentDialog(order: any) {
+    setAppointmentDialog(order);
+    setAppointmentForm({
+      title: "زيارة رفع المقاسات",
+      appointmentDate: new Date().toISOString().split("T")[0],
+      startTime: "09:00",
+      endTime: "10:00",
+      notes: t(
+        `طلب #${order.quotationNumber || order.id} — ${order.customer?.fullName || ""}`,
+        `Order #${order.quotationNumber || order.id} — ${order.customer?.fullName || ""}`
+      ),
+    });
+  }
+
+  function submitAppointment() {
+    if (!appointmentDialog || !user) return;
+    appointmentMutation.mutate({
+      title: appointmentForm.title,
+      appointmentDate: appointmentForm.appointmentDate,
+      startTime: appointmentForm.startTime,
+      endTime: appointmentForm.endTime,
+      customerId: appointmentDialog.customerId || null,
+      quotationId: appointmentDialog.id,
+      assignedTo: user.id,
+      notes: appointmentForm.notes,
+    });
+  }
+
+  function formatDate(dateStr: string) {
+    if (!dateStr) return "—";
+    return new Date(dateStr).toLocaleDateString(lang === "ar" ? "ar-SA" : "en-US", {
+      month: "short",
+      day: "numeric",
+    });
+  }
 
   if (isLoading) {
     return (
@@ -285,62 +382,173 @@ export default function MyOrdersPage() {
               {t("لا توجد طلبات", "No orders found")}
             </div>
           ) : (
-            <div className="divide-y">
-              {paginated.map((order: any) => {
-                const itemDesc = order.items?.[0]?.description || order.items?.[0]?.productType || "—";
-                const amount = Number(order.finalPrice || order.totalPrice || 0);
-                const isOpen = order.stage === "open";
-                return (
-                  <div
-                    key={order.id}
-                    className={`p-4 hover:bg-muted/30 transition-colors ${isOpen ? "bg-amber-50/30 dark:bg-amber-950/10" : ""}`}
-                    data-testid={`card-order-${order.id}`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
+            <>
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full text-sm" data-testid="table-orders">
+                  <thead>
+                    <tr className="border-b bg-muted/40">
+                      <th className="text-start px-4 py-3 font-semibold text-xs text-muted-foreground">#</th>
+                      <th className="text-start px-4 py-3 font-semibold text-xs text-muted-foreground">{t("العميل", "Customer")}</th>
+                      <th className="text-start px-4 py-3 font-semibold text-xs text-muted-foreground">{t("الهاتف", "Phone")}</th>
+                      <th className="text-start px-4 py-3 font-semibold text-xs text-muted-foreground">{t("المنتج", "Product")}</th>
+                      <th className="text-start px-4 py-3 font-semibold text-xs text-muted-foreground">{t("المبلغ", "Amount")}</th>
+                      <th className="text-start px-4 py-3 font-semibold text-xs text-muted-foreground">{t("الحالة", "Status")}</th>
+                      <th className="text-start px-4 py-3 font-semibold text-xs text-muted-foreground">{t("التاريخ", "Date")}</th>
+                      <th className="text-start px-4 py-3 font-semibold text-xs text-muted-foreground">{t("الإجراءات", "Actions")}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {paginated.map((order: any) => {
+                      const itemDesc = order.items?.[0]?.description || order.items?.[0]?.productType || "—";
+                      const amount = Number(order.finalPrice || order.totalPrice || 0);
+                      const isOpen = order.stage === "open";
+                      const statusCfg = statusBadgeConfig[order.status] || statusBadgeConfig.draft;
+                      return (
+                        <tr
+                          key={order.id}
+                          className={`hover:bg-muted/30 transition-colors ${isOpen ? "bg-amber-50/30 dark:bg-amber-950/10" : ""}`}
+                          data-testid={`row-order-${order.id}`}
+                        >
+                          <td className="px-4 py-3">
+                            <span className="font-mono text-xs font-bold text-muted-foreground">
+                              {order.quotationNumber || order.id}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <p className="font-medium text-sm truncate max-w-[160px]" data-testid={`text-customer-${order.id}`}>
+                              {order.customer?.fullName || "—"}
+                            </p>
+                            {order.customer?.city && (
+                              <p className="text-[11px] text-muted-foreground flex items-center gap-1 mt-0.5">
+                                <MapPin className="w-3 h-3" />{order.customer.city}
+                              </p>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            {order.customer?.phone ? (
+                              <span className="text-xs text-muted-foreground" dir="ltr">{order.customer.phone}</span>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            <p className="text-xs truncate max-w-[140px]" title={itemDesc}>{itemDesc}</p>
+                          </td>
+                          <td className="px-4 py-3">
+                            {amount > 0 ? (
+                              <span className="text-xs font-semibold">{amount.toLocaleString()} {t("ر.س", "SAR")}</span>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            <Badge variant="secondary" className={`text-[10px] px-2 py-0.5 ${statusCfg.className}`} data-testid={`badge-status-${order.id}`}>
+                              {t(statusCfg.ar, statusCfg.en)}
+                            </Badge>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className="text-xs text-muted-foreground">{formatDate(order.createdAt)}</span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-1">
+                              {isOpen ? (
+                                <Button
+                                  size="sm"
+                                  className="bg-green-600 hover:bg-green-700 text-white h-7 px-2.5 text-xs"
+                                  onClick={() => claimMutation.mutate(order.id)}
+                                  disabled={claimMutation.isPending}
+                                  data-testid={`button-claim-${order.id}`}
+                                >
+                                  {claimMutation.isPending ? (
+                                    <Loader2 className="w-3 h-3 animate-spin me-1" />
+                                  ) : (
+                                    <Hand className="w-3 h-3 me-1" />
+                                  )}
+                                  {t("التقاط", "Claim")}
+                                </Button>
+                              ) : (
+                                <>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 w-7 p-0"
+                                    onClick={() => setViewOrder(order)}
+                                    title={t("عرض التفاصيل", "View Details")}
+                                    data-testid={`button-view-my-${order.id}`}
+                                  >
+                                    <Eye className="w-3.5 h-3.5" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 w-7 p-0 text-primary hover:text-primary"
+                                    onClick={() => openAppointmentDialog(order)}
+                                    title={t("حجز موعد", "Book Appointment")}
+                                    data-testid={`button-book-appt-${order.id}`}
+                                  >
+                                    <CalendarPlus className="w-3.5 h-3.5" />
+                                  </Button>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="md:hidden divide-y">
+                {paginated.map((order: any) => {
+                  const itemDesc = order.items?.[0]?.description || order.items?.[0]?.productType || "—";
+                  const amount = Number(order.finalPrice || order.totalPrice || 0);
+                  const isOpen = order.stage === "open";
+                  const statusCfg = statusBadgeConfig[order.status] || statusBadgeConfig.draft;
+                  return (
+                    <div
+                      key={order.id}
+                      className={`p-4 hover:bg-muted/30 transition-colors ${isOpen ? "bg-amber-50/30 dark:bg-amber-950/10" : ""}`}
+                      data-testid={`card-order-${order.id}`}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
                           <span className="font-mono text-xs font-bold text-muted-foreground">
                             #{order.quotationNumber || order.id}
                           </span>
-                          {isOpen && (
-                            <Badge variant="secondary" className="bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-400 text-[10px]" data-testid={`badge-open-${order.id}`}>
-                              <Zap className="w-2.5 h-2.5 me-0.5" />
-                              {t("مفتوح", "Open")}
-                            </Badge>
-                          )}
-                          {order.createdAt && (
-                            <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
-                              <Clock className="w-2.5 h-2.5" />
-                              {t("منذ", "Since")} {formatElapsed(order.createdAt, now, t)}
-                            </span>
-                          )}
+                          <Badge variant="secondary" className={`text-[10px] px-1.5 py-0 ${statusCfg.className}`}>
+                            {t(statusCfg.ar, statusCfg.en)}
+                          </Badge>
                         </div>
-                        <p className="font-medium text-sm truncate">{order.customer?.fullName || "—"}</p>
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
-                          {order.customer?.phone && (
-                            <span className="text-[11px] text-muted-foreground flex items-center gap-1" dir="ltr">
-                              <Phone className="w-3 h-3" />{order.customer.phone}
-                            </span>
-                          )}
-                          {order.customer?.city && (
-                            <span className="text-[11px] text-muted-foreground flex items-center gap-1">
-                              <MapPin className="w-3 h-3" />{order.customer.city}
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-1 truncate" title={itemDesc}>{itemDesc}</p>
-                        {amount > 0 && (
-                          <p className="text-xs font-semibold mt-1">{amount.toLocaleString()} {t("ر.س", "SAR")}</p>
+                        <span className="text-[10px] text-muted-foreground">{formatDate(order.createdAt)}</span>
+                      </div>
+                      <p className="font-medium text-sm truncate" data-testid={`text-customer-mobile-${order.id}`}>
+                        {order.customer?.fullName || "—"}
+                      </p>
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
+                        {order.customer?.phone && (
+                          <span className="text-[11px] text-muted-foreground flex items-center gap-1" dir="ltr">
+                            <Phone className="w-3 h-3" />{order.customer.phone}
+                          </span>
+                        )}
+                        {order.customer?.city && (
+                          <span className="text-[11px] text-muted-foreground flex items-center gap-1">
+                            <MapPin className="w-3 h-3" />{order.customer.city}
+                          </span>
                         )}
                       </div>
-                      <div className="flex flex-col gap-1.5 items-end flex-shrink-0">
+                      <p className="text-xs text-muted-foreground mt-1 truncate" title={itemDesc}>{itemDesc}</p>
+                      {amount > 0 && (
+                        <p className="text-xs font-semibold mt-1">{amount.toLocaleString()} {t("ر.س", "SAR")}</p>
+                      )}
+                      <div className="flex items-center gap-2 mt-3 pt-2 border-t">
                         {isOpen ? (
                           <Button
                             size="sm"
-                            className="bg-green-600 hover:bg-green-700 text-white"
+                            className="bg-green-600 hover:bg-green-700 text-white h-8 flex-1"
                             onClick={() => claimMutation.mutate(order.id)}
                             disabled={claimMutation.isPending}
-                            data-testid={`button-claim-${order.id}`}
+                            data-testid={`button-claim-mobile-${order.id}`}
                           >
                             {claimMutation.isPending ? (
                               <Loader2 className="w-3.5 h-3.5 animate-spin me-1" />
@@ -350,23 +558,35 @@ export default function MyOrdersPage() {
                             {t("التقاط", "Claim")}
                           </Button>
                         ) : (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 px-2 text-xs"
-                            onClick={() => setViewOrder(order)}
-                            data-testid={`button-view-my-${order.id}`}
-                          >
-                            <Eye className="w-3.5 h-3.5 me-1" />
-                            {t("عرض", "View")}
-                          </Button>
+                          <>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-8 flex-1 text-xs"
+                              onClick={() => setViewOrder(order)}
+                              data-testid={`button-view-mobile-${order.id}`}
+                            >
+                              <Eye className="w-3.5 h-3.5 me-1" />
+                              {t("عرض", "View")}
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-8 flex-1 text-xs text-primary border-primary/30"
+                              onClick={() => openAppointmentDialog(order)}
+                              data-testid={`button-book-appt-mobile-${order.id}`}
+                            >
+                              <CalendarPlus className="w-3.5 h-3.5 me-1" />
+                              {t("حجز موعد", "Book Appt")}
+                            </Button>
+                          </>
                         )}
                       </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            </>
           )}
 
           {filtered.length > perPage && (
@@ -466,10 +686,20 @@ export default function MyOrdersPage() {
                 </div>
               )}
             </div>
-            <DialogFooter>
+            <DialogFooter className="flex-col sm:flex-row gap-2">
               <Button variant="outline" onClick={() => setViewOrder(null)} data-testid="button-close-view-my">
                 {t("إغلاق", "Close")}
               </Button>
+              {viewOrder.assignedTo === user?.id && !viewOrder.inspectionDate && (
+                <Button
+                  variant="default"
+                  onClick={() => { setViewOrder(null); openAppointmentDialog(viewOrder); }}
+                  data-testid="button-book-from-view"
+                >
+                  <CalendarPlus className="w-3.5 h-3.5 me-1.5" />
+                  {t("حجز موعد رفع مقاسات", "Book Measurement")}
+                </Button>
+              )}
               {viewOrder.assignedTo === user?.id && viewOrder.inspectionDate && (
                 <Button
                   variant="secondary"
@@ -480,6 +710,103 @@ export default function MyOrdersPage() {
                   {t("استوديو التصميم", "Design Studio")}
                 </Button>
               )}
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {appointmentDialog && (
+        <Dialog open onOpenChange={() => setAppointmentDialog(null)}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>{t("حجز موعد", "Book Appointment")}</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <div className="bg-muted/50 rounded-lg p-3 flex items-center gap-3">
+                <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                  <ClipboardList className="w-4 h-4 text-primary" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs text-muted-foreground">{t("للطلب", "For Order")} #{appointmentDialog.quotationNumber || appointmentDialog.id}</p>
+                  <p className="text-sm font-semibold truncate">{appointmentDialog.customer?.fullName || "—"}</p>
+                  {appointmentDialog.customer?.phone && (
+                    <p className="text-[11px] text-muted-foreground" dir="ltr">{appointmentDialog.customer.phone}</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>{t("نوع الموعد", "Appointment Type")}</Label>
+                <Select value={appointmentForm.title} onValueChange={(val) => setAppointmentForm({ ...appointmentForm, title: val })}>
+                  <SelectTrigger data-testid="select-appt-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {appointmentTypes.map((at) => (
+                      <SelectItem key={at.value} value={at.value}>
+                        {t(at.ar, at.en)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>{t("التاريخ", "Date")}</Label>
+                <Input
+                  type="date"
+                  value={appointmentForm.appointmentDate}
+                  onChange={(e) => setAppointmentForm({ ...appointmentForm, appointmentDate: e.target.value })}
+                  min={new Date().toISOString().split("T")[0]}
+                  data-testid="input-appt-date"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>{t("وقت البدء", "Start Time")}</Label>
+                  <Input
+                    type="time"
+                    value={appointmentForm.startTime}
+                    onChange={(e) => setAppointmentForm({ ...appointmentForm, startTime: e.target.value })}
+                    data-testid="input-appt-start"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>{t("وقت الانتهاء", "End Time")}</Label>
+                  <Input
+                    type="time"
+                    value={appointmentForm.endTime}
+                    onChange={(e) => setAppointmentForm({ ...appointmentForm, endTime: e.target.value })}
+                    data-testid="input-appt-end"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>{t("ملاحظات", "Notes")}</Label>
+                <Textarea
+                  value={appointmentForm.notes}
+                  onChange={(e) => setAppointmentForm({ ...appointmentForm, notes: e.target.value })}
+                  placeholder={t("ملاحظات إضافية...", "Additional notes...")}
+                  className="resize-none"
+                  rows={2}
+                  data-testid="input-appt-notes"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setAppointmentDialog(null)} data-testid="button-cancel-appt">
+                {t("إلغاء", "Cancel")}
+              </Button>
+              <Button
+                disabled={!appointmentForm.appointmentDate || !appointmentForm.startTime || !appointmentForm.endTime || appointmentMutation.isPending}
+                onClick={submitAppointment}
+                data-testid="button-submit-appt"
+              >
+                {appointmentMutation.isPending && <Loader2 className="w-4 h-4 animate-spin me-2" />}
+                {t("حفظ الموعد", "Save Appointment")}
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
