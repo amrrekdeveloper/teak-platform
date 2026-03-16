@@ -569,20 +569,81 @@ function DesignViewSection({ design, quotationId, hideApprovalButtons }: { desig
   );
 }
 
+type OrderFilter = "pending" | "active" | "done";
+
+function classifyOrder(q: any, stageIdx: number): OrderFilter {
+  if (q.status === "rejected" || q.status === "expired") return "done";
+  if (stageIdx <= 4) return "pending";
+  if (stageIdx <= 8) return "active";
+  return "done";
+}
+
 function OrdersTab({ quotations, contracts, production, designs, customerName }: {
   quotations: any[]; contracts: any[]; production: any[]; designs: any[]; customerName?: string;
 }) {
   const { t } = useLanguage();
   const [expandedOrder, setExpandedOrder] = useState<number | null>(null);
+  const [orderFilter, setOrderFilter] = useState<OrderFilter>("pending");
 
   if (!quotations.length) return <EmptyState icon={ClipboardList} titleAr="لا توجد طلبات" titleEn="No orders yet" />;
 
   const sorted = [...quotations].sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
 
+  const withStage = sorted.map((q: any) => {
+    const stageIdx = getOrderStageIndex(q, contracts, production);
+    return { q, stageIdx, category: classifyOrder(q, stageIdx) };
+  });
+
+  const counts: Record<OrderFilter, number> = {
+    pending: withStage.filter(x => x.category === "pending").length,
+    active:  withStage.filter(x => x.category === "active").length,
+    done:    withStage.filter(x => x.category === "done").length,
+  };
+
+  const filtered = withStage.filter(x => x.category === orderFilter);
+
+  const filterTabs: { key: OrderFilter; ar: string; en: string; color: string; activeColor: string }[] = [
+    { key: "pending", ar: "معلّقة",  en: "Pending",     color: "border-amber-300 text-amber-700 dark:text-amber-400", activeColor: "bg-amber-500 text-white border-amber-500" },
+    { key: "active",  ar: "جارية",   en: "In Progress", color: "border-blue-300 text-blue-700 dark:text-blue-400",   activeColor: "bg-blue-500 text-white border-blue-500" },
+    { key: "done",    ar: "مكتملة",  en: "Done",        color: "border-green-300 text-green-700 dark:text-green-400", activeColor: "bg-green-600 text-white border-green-600" },
+  ];
+
   return (
-    <div className="space-y-3 md:grid md:grid-cols-2 md:gap-4 md:space-y-0">
-      {sorted.map((q: any) => {
-        const stageIdx = getOrderStageIndex(q, contracts, production);
+    <div className="space-y-4">
+      <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide" role="tablist" aria-label={t("تصنيف الطلبات", "Order filters")}>
+        {filterTabs.map(tab => {
+          const isActive = orderFilter === tab.key;
+          return (
+            <button
+              key={tab.key}
+              role="tab"
+              aria-selected={isActive}
+              onClick={() => { setOrderFilter(tab.key); setExpandedOrder(null); }}
+              data-testid={`filter-orders-${tab.key}`}
+              className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full border text-sm font-medium whitespace-nowrap transition-all shrink-0 ${
+                isActive ? tab.activeColor : `bg-transparent ${tab.color} hover:bg-muted/60`
+              }`}
+            >
+              {t(tab.ar, tab.en)}
+              <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center ${
+                isActive ? "bg-white/25 text-white" : "bg-muted text-muted-foreground"
+              }`}>
+                {counts[tab.key]}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {filtered.length === 0 ? (
+        <EmptyState
+          icon={ClipboardList}
+          titleAr={orderFilter === "pending" ? "لا توجد طلبات معلقة" : orderFilter === "active" ? "لا توجد طلبات جارية" : "لا توجد طلبات مكتملة"}
+          titleEn={orderFilter === "pending" ? "No pending orders" : orderFilter === "active" ? "No active orders" : "No completed orders"}
+        />
+      ) : (
+        <div className="space-y-3 md:grid md:grid-cols-2 md:gap-4 md:space-y-0">
+          {filtered.map(({ q, stageIdx }) => {
         const isRejected = q.status === "rejected";
         const isExpired = q.status === "expired";
         const isExpanded = expandedOrder === q.id;
@@ -754,7 +815,9 @@ function OrdersTab({ quotations, contracts, production, designs, customerName }:
             </CardContent>
           </Card>
         );
-      })}
+          })}
+        </div>
+      )}
     </div>
   );
 }
