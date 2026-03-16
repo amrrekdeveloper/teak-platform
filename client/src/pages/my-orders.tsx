@@ -86,16 +86,16 @@ function getOrderStage(q: any, workOrders: any[], contracts: any[], userId: numb
   return "mine";
 }
 
-const statusBadgeConfig: Record<string, { ar: string; en: string; className: string }> = {
-  draft: { ar: "مسودة", en: "Draft", className: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300" },
-  requested: { ar: "طلب جديد", en: "Requested", className: "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300" },
+const stageBadgeConfig: Record<string, { ar: string; en: string; className: string }> = {
   open: { ar: "مفتوح", en: "Open", className: "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300" },
+  mine: { ar: "مسودة", en: "Draft", className: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300" },
   sent: { ar: "مُرسل", en: "Sent", className: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300" },
   approved: { ar: "معتمد", en: "Approved", className: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300" },
-  rejected: { ar: "مرفوض", en: "Rejected", className: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300" },
-  expired: { ar: "منتهي", en: "Expired", className: "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400" },
-  revision: { ar: "مراجعة", en: "Revision", className: "bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300" },
+  production: { ar: "قيد التصنيع", en: "In Production", className: "bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300" },
+  completed: { ar: "مكتمل", en: "Completed", className: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300" },
 };
+
+const fallbackBadge = { ar: "غير محدد", en: "Unknown", className: "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400" };
 
 const appointmentTypes = [
   { value: "زيارة رفع المقاسات", ar: "زيارة رفع المقاسات", en: "Site Measurement" },
@@ -255,6 +255,10 @@ export default function MyOrdersPage() {
 
   function submitAppointment() {
     if (!appointmentDialog || !user) return;
+    if (appointmentForm.startTime >= appointmentForm.endTime) {
+      toast({ title: t("وقت البدء يجب أن يكون قبل وقت الانتهاء", "Start time must be before end time"), variant: "destructive" });
+      return;
+    }
     appointmentMutation.mutate({
       title: appointmentForm.title,
       appointmentDate: appointmentForm.appointmentDate,
@@ -402,7 +406,7 @@ export default function MyOrdersPage() {
                       const itemDesc = order.items?.[0]?.description || order.items?.[0]?.productType || "—";
                       const amount = Number(order.finalPrice || order.totalPrice || 0);
                       const isOpen = order.stage === "open";
-                      const statusCfg = statusBadgeConfig[order.status] || statusBadgeConfig.draft;
+                      const badgeCfg = stageBadgeConfig[order.stage] || fallbackBadge;
                       return (
                         <tr
                           key={order.id}
@@ -442,8 +446,8 @@ export default function MyOrdersPage() {
                             )}
                           </td>
                           <td className="px-4 py-3">
-                            <Badge variant="secondary" className={`text-[10px] px-2 py-0.5 ${statusCfg.className}`} data-testid={`badge-status-${order.id}`}>
-                              {t(statusCfg.ar, statusCfg.en)}
+                            <Badge variant="secondary" className={`text-[10px] px-2 py-0.5 ${badgeCfg.className}`} data-testid={`badge-status-${order.id}`}>
+                              {t(badgeCfg.ar, badgeCfg.en)}
                             </Badge>
                           </td>
                           <td className="px-4 py-3">
@@ -504,7 +508,7 @@ export default function MyOrdersPage() {
                   const itemDesc = order.items?.[0]?.description || order.items?.[0]?.productType || "—";
                   const amount = Number(order.finalPrice || order.totalPrice || 0);
                   const isOpen = order.stage === "open";
-                  const statusCfg = statusBadgeConfig[order.status] || statusBadgeConfig.draft;
+                  const badgeCfg = stageBadgeConfig[order.stage] || fallbackBadge;
                   return (
                     <div
                       key={order.id}
@@ -516,8 +520,8 @@ export default function MyOrdersPage() {
                           <span className="font-mono text-xs font-bold text-muted-foreground">
                             #{order.quotationNumber || order.id}
                           </span>
-                          <Badge variant="secondary" className={`text-[10px] px-1.5 py-0 ${statusCfg.className}`}>
-                            {t(statusCfg.ar, statusCfg.en)}
+                          <Badge variant="secondary" className={`text-[10px] px-1.5 py-0 ${badgeCfg.className}`}>
+                            {t(badgeCfg.ar, badgeCfg.en)}
                           </Badge>
                         </div>
                         <span className="text-[10px] text-muted-foreground">{formatDate(order.createdAt)}</span>
