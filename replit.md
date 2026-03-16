@@ -40,6 +40,8 @@ The application utilizes a modern full-stack architecture.
 -   **Pricing Engine:** Automated pricing calculation based on Adeko catalog and product options, with discount management.
 -   **Quotation Builder:** Enhanced builder with dual-mode line items (Adeko/manual) and real-time pricing.
 -   **3D Scene Customer Interaction:** Public sharing links for 3D visualization with real-time price updates and sharing options.
+-   **Role-Specific Dashboard:** Dashboard (/) shows tailored content per role — sales sees their quotations/customers/appointments; production sees WO pipeline; accountant sees finance; warehouse/purchasing see inventory; delivery/installation/quality/HR/customer_service each see their relevant KPIs and quick links. All roles now have "لوحة التحكم" link in sidebar.
+-   **Sidebar Navigation Fix:** All 14 roles now have the dashboard link in the sidebar (was missing for non-owner/assistant/it roles causing inability to return to dashboard).
 
 ## External Dependencies
 -   **Database:** PostgreSQL
