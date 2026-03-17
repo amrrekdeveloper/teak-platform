@@ -31,6 +31,8 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
+  ChevronDown,
   Eye,
   Phone,
   MapPin,
@@ -41,6 +43,10 @@ import {
   Hand,
   Zap,
   CalendarPlus,
+  CalendarCheck,
+  CalendarX,
+  Filter,
+  X,
 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -119,6 +125,7 @@ export default function MyOrdersPage() {
   const [newOrderForm, setNewOrderForm] = useState({ fullName: "", phone: "", productDescription: "", notes: "" });
   const [showNewOrderTransition, setShowNewOrderTransition] = useState(false);
   const [appointmentDialog, setAppointmentDialog] = useState<any | null>(null);
+  const [editingApptId, setEditingApptId] = useState<number | null>(null);
 
   const _today = new Date();
   const _currentYear = _today.getFullYear();
@@ -133,6 +140,11 @@ export default function MyOrdersPage() {
   const [apptMinute, setApptMinute] = useState("00");
   const [apptDuration, setApptDuration] = useState("60");
 
+  const [sortCol, setSortCol] = useState<string>("date");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [stageFilter, setStageFilter] = useState<string>("all");
+  const [apptFilter, setApptFilter] = useState<string>("all");
+
   const perPage = 10;
 
   const { data: quotations = [], isLoading } = useQuery<any[]>({
@@ -144,6 +156,7 @@ export default function MyOrdersPage() {
   const { data: workOrders = [] } = useQuery<any[]>({ queryKey: ["/api/work-orders"] });
   const { data: contracts = [] } = useQuery<any[]>({ queryKey: ["/api/contracts"] });
   const { data: designAssignments = [] } = useQuery<any[]>({ queryKey: ["/api/design-assignments"] });
+  const { data: appointments = [] } = useQuery<any[]>({ queryKey: ["/api/appointments"] });
 
   const workOrdersWithContract = useMemo(() => {
     return workOrders.map((wo: any) => ({
@@ -182,6 +195,18 @@ export default function MyOrdersPage() {
     },
   });
 
+  function resetApptForm() {
+    const d = new Date();
+    setEditingApptId(null);
+    setApptTitle("زيارة رفع المقاسات");
+    setApptNotes("");
+    setApptDay(String(d.getDate()));
+    setApptMonth(String(d.getMonth() + 1));
+    setApptHour("9");
+    setApptMinute("00");
+    setApptDuration("60");
+  }
+
   const appointmentMutation = useMutation({
     mutationFn: async (data: any) => {
       return apiRequest("POST", "/api/appointments", data);
@@ -189,14 +214,7 @@ export default function MyOrdersPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/appointments"] });
       setAppointmentDialog(null);
-      const d = new Date();
-      setApptTitle("زيارة رفع المقاسات");
-      setApptNotes("");
-      setApptDay(String(d.getDate()));
-      setApptMonth(String(d.getMonth() + 1));
-      setApptHour("9");
-      setApptMinute("00");
-      setApptDuration("60");
+      resetApptForm();
       toast({ title: t("تم حجز الموعد بنجاح!", "Appointment booked successfully!") });
     },
     onError: (error: any) => {
@@ -209,15 +227,44 @@ export default function MyOrdersPage() {
     },
   });
 
+  const updateAppointmentMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: any }) => {
+      return apiRequest("PATCH", `/api/appointments/${id}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/appointments"] });
+      setAppointmentDialog(null);
+      resetApptForm();
+      toast({ title: t("تم تعديل الموعد بنجاح!", "Appointment updated successfully!") });
+    },
+    onError: (error: any) => {
+      const msg = error?.message || "";
+      if (msg.includes("تعارض") || msg.includes("conflict")) {
+        toast({ title: t("يوجد تعارض مع موعد آخر في نفس الوقت", "Time conflict with another appointment"), variant: "destructive" });
+      } else {
+        toast({ title: t("فشل تعديل الموعد", "Failed to update appointment"), variant: "destructive" });
+      }
+    },
+  });
+
+  const appointmentByQuotation = useMemo(() => {
+    const map: Record<number, any> = {};
+    for (const appt of appointments as any[]) {
+      if (appt.quotationId) map[appt.quotationId] = appt;
+    }
+    return map;
+  }, [appointments]);
+
   const enrichedOrders = useMemo(() => {
     if (!user) return [];
     return quotations.map((q: any) => {
       const customer = customers.find((c: any) => c.id === q.customerId);
       const assignedUser = q.assignedTo ? usersData.find((u: any) => u.id === q.assignedTo) : null;
       const stage = getOrderStage(q, workOrdersWithContract, contracts, user.id);
-      return { ...q, customer, assignedUser, stage };
+      const _appointment = appointmentByQuotation[q.id] || null;
+      return { ...q, customer, assignedUser, stage, _appointment };
     });
-  }, [quotations, customers, usersData, workOrdersWithContract, contracts, user]);
+  }, [quotations, customers, usersData, workOrdersWithContract, contracts, user, appointmentByQuotation]);
 
   const openOrders = useMemo(() => {
     return enrichedOrders.filter((o: any) => o.stage === "open");
@@ -230,8 +277,19 @@ export default function MyOrdersPage() {
 
   const currentList = activeTab === "open" ? openOrders : myOrders;
 
+  function handleSortClick(col: string) {
+    if (sortCol === col) {
+      setSortDir(sortDir === "asc" ? "desc" : "asc");
+    } else {
+      setSortCol(col);
+      setSortDir("asc");
+    }
+    setCurrentPage(1);
+  }
+
   const filtered = useMemo(() => {
     let list = currentList;
+
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase();
       list = list.filter((o: any) =>
@@ -241,8 +299,44 @@ export default function MyOrdersPage() {
         String(o.quotationNumber).includes(q)
       );
     }
-    return list.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  }, [currentList, searchQuery]);
+
+    if (stageFilter !== "all") {
+      list = list.filter((o: any) => o.stage === stageFilter);
+    }
+
+    if (apptFilter === "booked") {
+      list = list.filter((o: any) => !!o._appointment);
+    } else if (apptFilter === "not-booked") {
+      list = list.filter((o: any) => !o._appointment);
+    }
+
+    return [...list].sort((a: any, b: any) => {
+      let valA: any, valB: any;
+      if (sortCol === "id") {
+        valA = a.quotationNumber || a.id;
+        valB = b.quotationNumber || b.id;
+      } else if (sortCol === "customer") {
+        valA = a.customer?.fullName || "";
+        valB = b.customer?.fullName || "";
+      } else if (sortCol === "stage") {
+        valA = a.stage || "";
+        valB = b.stage || "";
+      } else if (sortCol === "amount") {
+        valA = Number(a.finalPrice || a.totalPrice || 0);
+        valB = Number(b.finalPrice || b.totalPrice || 0);
+      } else if (sortCol === "appt") {
+        valA = a._appointment ? new Date(a._appointment.appointmentDate).getTime() : 0;
+        valB = b._appointment ? new Date(b._appointment.appointmentDate).getTime() : 0;
+      } else {
+        valA = new Date(a.createdAt).getTime();
+        valB = new Date(b.createdAt).getTime();
+      }
+      if (typeof valA === "string") {
+        return sortDir === "asc" ? valA.localeCompare(valB) : valB.localeCompare(valA);
+      }
+      return sortDir === "asc" ? valA - valB : valB - valA;
+    });
+  }, [currentList, searchQuery, stageFilter, apptFilter, sortCol, sortDir]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
   const paginated = filtered.slice((currentPage - 1) * perPage, currentPage * perPage);
@@ -253,18 +347,41 @@ export default function MyOrdersPage() {
   }
 
   function openAppointmentDialog(order: any) {
-    const d = new Date();
+    const existingAppt = order._appointment;
     setAppointmentDialog(order);
-    setApptTitle("زيارة رفع المقاسات");
-    setApptNotes(t(
-      `طلب #${order.quotationNumber || order.id} — ${order.customer?.fullName || ""}`,
-      `Order #${order.quotationNumber || order.id} — ${order.customer?.fullName || ""}`
-    ));
-    setApptDay(String(d.getDate()));
-    setApptMonth(String(d.getMonth() + 1));
-    setApptHour("9");
-    setApptMinute("00");
-    setApptDuration("60");
+    if (existingAppt) {
+      setEditingApptId(existingAppt.id);
+      setApptTitle(existingAppt.title || "زيارة رفع المقاسات");
+      setApptNotes(existingAppt.notes || "");
+      if (existingAppt.appointmentDate) {
+        const parts = existingAppt.appointmentDate.split("-");
+        setApptMonth(String(parseInt(parts[1])));
+        setApptDay(String(parseInt(parts[2])));
+      }
+      if (existingAppt.startTime) {
+        const timeParts = existingAppt.startTime.split(":");
+        setApptHour(String(parseInt(timeParts[0])));
+        setApptMinute(timeParts[1] || "00");
+      }
+      const startMins = existingAppt.startTime ? parseInt(existingAppt.startTime.split(":")[0]) * 60 + parseInt(existingAppt.startTime.split(":")[1] || "0") : 0;
+      const endMins = existingAppt.endTime ? parseInt(existingAppt.endTime.split(":")[0]) * 60 + parseInt(existingAppt.endTime.split(":")[1] || "0") : 0;
+      const diff = endMins - startMins;
+      const durOptions = [30, 60, 90, 120, 180];
+      setApptDuration(String(durOptions.includes(diff) ? diff : 60));
+    } else {
+      const d = new Date();
+      setEditingApptId(null);
+      setApptTitle("زيارة رفع المقاسات");
+      setApptNotes(t(
+        `طلب #${order.quotationNumber || order.id} — ${order.customer?.fullName || ""}`,
+        `Order #${order.quotationNumber || order.id} — ${order.customer?.fullName || ""}`
+      ));
+      setApptDay(String(d.getDate()));
+      setApptMonth(String(d.getMonth() + 1));
+      setApptHour("9");
+      setApptMinute("00");
+      setApptDuration("60");
+    }
   }
 
   function submitAppointment() {
@@ -278,7 +395,7 @@ export default function MyOrdersPage() {
     const appointmentDate = `${y}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
     const startTime = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
     const endTime = addMinutesToTime(h, m, dur);
-    appointmentMutation.mutate({
+    const payload = {
       title: apptTitle,
       appointmentDate,
       startTime,
@@ -287,7 +404,12 @@ export default function MyOrdersPage() {
       quotationId: appointmentDialog.id,
       assignedTo: user.id,
       notes: apptNotes,
-    });
+    };
+    if (editingApptId) {
+      updateAppointmentMutation.mutate({ id: editingApptId, data: payload });
+    } else {
+      appointmentMutation.mutate(payload);
+    }
   }
 
   function formatDate(dateStr: string) {
@@ -381,15 +503,63 @@ export default function MyOrdersPage() {
         </Card>
       </div>
 
-      <div className="relative">
-        <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-        <Input
-          placeholder={t("بحث بالاسم أو الهاتف أو رقم الطلب...", "Search by name, phone or order #...")}
-          value={searchQuery}
-          onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
-          className="ps-9 h-9 text-sm"
-          data-testid="input-search-my-orders"
-        />
+      <div className="space-y-2">
+        <div className="relative">
+          <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            placeholder={t("بحث بالاسم أو الهاتف أو رقم الطلب...", "Search by name, phone or order #...")}
+            value={searchQuery}
+            onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
+            className="ps-9 h-9 text-sm"
+            data-testid="input-search-my-orders"
+          />
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <Filter className="w-3.5 h-3.5" />
+            {t("تصفية:", "Filter:")}
+          </div>
+          <Select value={stageFilter} onValueChange={(v) => { setStageFilter(v); setCurrentPage(1); }}>
+            <SelectTrigger className="h-7 text-xs w-[130px]" data-testid="select-stage-filter">
+              <SelectValue placeholder={t("المرحلة", "Stage")} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{t("كل المراحل", "All Stages")}</SelectItem>
+              <SelectItem value="mine">{t("مسودة", "Draft")}</SelectItem>
+              <SelectItem value="sent">{t("مُرسل", "Sent")}</SelectItem>
+              <SelectItem value="approved">{t("معتمد", "Approved")}</SelectItem>
+              <SelectItem value="production">{t("قيد التصنيع", "In Production")}</SelectItem>
+              <SelectItem value="completed">{t("مكتمل", "Completed")}</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={apptFilter} onValueChange={(v) => { setApptFilter(v); setCurrentPage(1); }}>
+            <SelectTrigger className="h-7 text-xs w-[140px]" data-testid="select-appt-filter">
+              <SelectValue placeholder={t("المواعيد", "Appointments")} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{t("كل الطلبات", "All Orders")}</SelectItem>
+              <SelectItem value="booked">{t("تم حجز موعد", "Appointment Booked")}</SelectItem>
+              <SelectItem value="not-booked">{t("بدون موعد", "No Appointment")}</SelectItem>
+            </SelectContent>
+          </Select>
+          {(stageFilter !== "all" || apptFilter !== "all" || searchQuery) && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-xs text-muted-foreground"
+              onClick={() => { setStageFilter("all"); setApptFilter("all"); setSearchQuery(""); setCurrentPage(1); }}
+              data-testid="button-clear-filters"
+            >
+              <X className="w-3 h-3 me-1" />
+              {t("مسح الفلاتر", "Clear")}
+            </Button>
+          )}
+          {filtered.length > 0 && (
+            <span className="text-xs text-muted-foreground ms-auto">
+              {t(`${filtered.length} طلب`, `${filtered.length} orders`)}
+            </span>
+          )}
+        </div>
       </div>
 
       <Card>
@@ -410,14 +580,33 @@ export default function MyOrdersPage() {
                 <table className="w-full text-sm" data-testid="table-orders">
                   <thead>
                     <tr className="border-b bg-muted/40">
-                      <th className="text-start px-4 py-3 font-semibold text-xs text-muted-foreground">#</th>
-                      <th className="text-start px-4 py-3 font-semibold text-xs text-muted-foreground">{t("العميل", "Customer")}</th>
-                      <th className="text-start px-4 py-3 font-semibold text-xs text-muted-foreground">{t("الهاتف", "Phone")}</th>
-                      <th className="text-start px-4 py-3 font-semibold text-xs text-muted-foreground">{t("المنتج", "Product")}</th>
-                      <th className="text-start px-4 py-3 font-semibold text-xs text-muted-foreground">{t("المبلغ", "Amount")}</th>
-                      <th className="text-start px-4 py-3 font-semibold text-xs text-muted-foreground">{t("الحالة", "Status")}</th>
-                      <th className="text-start px-4 py-3 font-semibold text-xs text-muted-foreground">{t("التاريخ", "Date")}</th>
-                      <th className="text-start px-4 py-3 font-semibold text-xs text-muted-foreground">{t("الإجراءات", "Actions")}</th>
+                      {[
+                        { col: "id", labelAr: "#", labelEn: "#", cls: "w-16" },
+                        { col: "customer", labelAr: "العميل", labelEn: "Customer", cls: "" },
+                        { col: "none", labelAr: "الهاتف", labelEn: "Phone", cls: "" },
+                        { col: "none2", labelAr: "المنتج", labelEn: "Product", cls: "" },
+                        { col: "amount", labelAr: "المبلغ", labelEn: "Amount", cls: "" },
+                        { col: "stage", labelAr: "المرحلة", labelEn: "Stage", cls: "" },
+                        { col: "date", labelAr: "التاريخ", labelEn: "Date", cls: "" },
+                        { col: "appt", labelAr: "الموعد", labelEn: "Appointment", cls: "" },
+                        { col: "actions", labelAr: "إجراءات", labelEn: "Actions", cls: "w-24" },
+                      ].map(({ col, labelAr, labelEn, cls }) => (
+                        <th
+                          key={col}
+                          className={`text-start px-4 py-3 font-semibold text-xs text-muted-foreground select-none ${cls} ${!["none", "none2", "actions"].includes(col) ? "cursor-pointer hover:text-foreground transition-colors" : ""}`}
+                          onClick={() => !["none", "none2", "actions"].includes(col) && handleSortClick(col)}
+                          data-testid={`th-${col}`}
+                        >
+                          <span className="inline-flex items-center gap-1">
+                            {t(labelAr, labelEn)}
+                            {sortCol === col && (
+                              sortDir === "asc"
+                                ? <ChevronUp className="w-3 h-3" />
+                                : <ChevronDown className="w-3 h-3" />
+                            )}
+                          </span>
+                        </th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y">
@@ -426,6 +615,7 @@ export default function MyOrdersPage() {
                       const amount = Number(order.finalPrice || order.totalPrice || 0);
                       const isOpen = order.stage === "open";
                       const badgeCfg = stageBadgeConfig[order.stage] || fallbackBadge;
+                      const appt = order._appointment;
                       return (
                         <tr
                           key={order.id}
@@ -472,6 +662,24 @@ export default function MyOrdersPage() {
                           <td className="px-4 py-3">
                             <span className="text-xs text-muted-foreground">{formatDate(order.createdAt)}</span>
                           </td>
+                          <td className="px-4 py-3" data-testid={`td-appt-${order.id}`}>
+                            {appt ? (
+                              <div className="flex flex-col gap-0.5">
+                                <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full w-fit">
+                                  <CalendarCheck className="w-3 h-3" />
+                                  {t("تم الحجز", "Booked")}
+                                </span>
+                                <span className="text-[10px] text-muted-foreground">
+                                  {formatDate(appt.appointmentDate)} {appt.startTime ? appt.startTime.slice(0, 5) : ""}
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+                                <CalendarX className="w-3 h-3" />
+                                {t("لا يوجد", "None")}
+                              </span>
+                            )}
+                          </td>
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-1">
                               {isOpen ? (
@@ -504,12 +712,12 @@ export default function MyOrdersPage() {
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    className="h-7 w-7 p-0 text-primary hover:text-primary"
+                                    className={`h-7 w-7 p-0 ${appt ? "text-emerald-600 hover:text-emerald-700" : "text-primary hover:text-primary"}`}
                                     onClick={() => openAppointmentDialog(order)}
-                                    title={t("حجز موعد", "Book Appointment")}
+                                    title={appt ? t("تعديل الموعد", "Edit Appointment") : t("حجز موعد", "Book Appointment")}
                                     data-testid={`button-book-appt-${order.id}`}
                                   >
-                                    <CalendarPlus className="w-3.5 h-3.5" />
+                                    {appt ? <CalendarCheck className="w-3.5 h-3.5" /> : <CalendarPlus className="w-3.5 h-3.5" />}
                                   </Button>
                                 </>
                               )}
@@ -528,6 +736,7 @@ export default function MyOrdersPage() {
                   const amount = Number(order.finalPrice || order.totalPrice || 0);
                   const isOpen = order.stage === "open";
                   const badgeCfg = stageBadgeConfig[order.stage] || fallbackBadge;
+                  const appt = order._appointment;
                   return (
                     <div
                       key={order.id}
@@ -542,6 +751,12 @@ export default function MyOrdersPage() {
                           <Badge variant="secondary" className={`text-[10px] px-1.5 py-0 ${badgeCfg.className}`}>
                             {t(badgeCfg.ar, badgeCfg.en)}
                           </Badge>
+                          {appt && (
+                            <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0 rounded-full">
+                              <CalendarCheck className="w-2.5 h-2.5" />
+                              {formatDate(appt.appointmentDate)}
+                            </span>
+                          )}
                         </div>
                         <span className="text-[10px] text-muted-foreground">{formatDate(order.createdAt)}</span>
                       </div>
@@ -595,12 +810,12 @@ export default function MyOrdersPage() {
                             <Button
                               variant="outline"
                               size="sm"
-                              className="h-8 flex-1 text-xs text-primary border-primary/30"
+                              className={`h-8 flex-1 text-xs ${appt ? "text-emerald-700 border-emerald-300 dark:border-emerald-800" : "text-primary border-primary/30"}`}
                               onClick={() => openAppointmentDialog(order)}
                               data-testid={`button-book-appt-mobile-${order.id}`}
                             >
-                              <CalendarPlus className="w-3.5 h-3.5 me-1" />
-                              {t("حجز موعد", "Book Appt")}
+                              {appt ? <CalendarCheck className="w-3.5 h-3.5 me-1" /> : <CalendarPlus className="w-3.5 h-3.5 me-1" />}
+                              {appt ? t("تعديل الموعد", "Edit Appt") : t("حجز موعد", "Book Appt")}
                             </Button>
                           </>
                         )}
@@ -761,10 +976,15 @@ export default function MyOrdersPage() {
         const startLabel = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
         const endLabel = addMinutesToTime(h, m, dur);
         return (
-          <Dialog open onOpenChange={() => setAppointmentDialog(null)}>
+          <Dialog open onOpenChange={() => { setAppointmentDialog(null); resetApptForm(); }}>
             <DialogContent className="sm:max-w-md">
               <DialogHeader>
-                <DialogTitle>{t("حجز موعد", "Book Appointment")}</DialogTitle>
+                <DialogTitle className="flex items-center gap-2">
+                  {editingApptId
+                    ? <><CalendarCheck className="w-4 h-4 text-emerald-600" />{t("تعديل الموعد", "Edit Appointment")}</>
+                    : <><CalendarPlus className="w-4 h-4 text-primary" />{t("حجز موعد جديد", "Book New Appointment")}</>
+                  }
+                </DialogTitle>
               </DialogHeader>
               <div className="space-y-4 py-2">
                 <div className="bg-muted/50 rounded-lg p-3 flex items-center gap-3">
@@ -903,16 +1123,17 @@ export default function MyOrdersPage() {
                 </div>
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setAppointmentDialog(null)} data-testid="button-cancel-appt">
+                <Button variant="outline" onClick={() => { setAppointmentDialog(null); resetApptForm(); }} data-testid="button-cancel-appt">
                   {t("إلغاء", "Cancel")}
                 </Button>
                 <Button
-                  disabled={appointmentMutation.isPending}
+                  disabled={appointmentMutation.isPending || updateAppointmentMutation.isPending}
                   onClick={submitAppointment}
+                  className={editingApptId ? "bg-emerald-600 hover:bg-emerald-700 text-white" : ""}
                   data-testid="button-submit-appt"
                 >
-                  {appointmentMutation.isPending && <Loader2 className="w-4 h-4 animate-spin me-2" />}
-                  {t("حفظ الموعد", "Save Appointment")}
+                  {(appointmentMutation.isPending || updateAppointmentMutation.isPending) && <Loader2 className="w-4 h-4 animate-spin me-2" />}
+                  {editingApptId ? t("تعديل الموعد", "Update Appointment") : t("حجز الموعد", "Book Appointment")}
                 </Button>
               </DialogFooter>
             </DialogContent>
