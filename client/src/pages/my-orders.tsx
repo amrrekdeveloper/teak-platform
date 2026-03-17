@@ -119,13 +119,20 @@ export default function MyOrdersPage() {
   const [newOrderForm, setNewOrderForm] = useState({ fullName: "", phone: "", productDescription: "", notes: "" });
   const [showNewOrderTransition, setShowNewOrderTransition] = useState(false);
   const [appointmentDialog, setAppointmentDialog] = useState<any | null>(null);
-  const [appointmentForm, setAppointmentForm] = useState({
-    title: "زيارة رفع المقاسات",
-    appointmentDate: new Date().toISOString().split("T")[0],
-    startTime: "09:00",
-    endTime: "10:00",
-    notes: "",
-  });
+
+  const _today = new Date();
+  const _currentYear = _today.getFullYear();
+  const _currentMonth = _today.getMonth() + 1;
+  const _currentDay = _today.getDate();
+
+  const [apptTitle, setApptTitle] = useState("زيارة رفع المقاسات");
+  const [apptNotes, setApptNotes] = useState("");
+  const [apptDay, setApptDay] = useState(String(_currentDay));
+  const [apptMonth, setApptMonth] = useState(String(_currentMonth));
+  const [apptHour, setApptHour] = useState("9");
+  const [apptMinute, setApptMinute] = useState("00");
+  const [apptDuration, setApptDuration] = useState("60");
+
   const perPage = 10;
 
   const { data: quotations = [], isLoading } = useQuery<any[]>({
@@ -182,13 +189,14 @@ export default function MyOrdersPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/appointments"] });
       setAppointmentDialog(null);
-      setAppointmentForm({
-        title: "زيارة رفع المقاسات",
-        appointmentDate: new Date().toISOString().split("T")[0],
-        startTime: "09:00",
-        endTime: "10:00",
-        notes: "",
-      });
+      const d = new Date();
+      setApptTitle("زيارة رفع المقاسات");
+      setApptNotes("");
+      setApptDay(String(d.getDate()));
+      setApptMonth(String(d.getMonth() + 1));
+      setApptHour("9");
+      setApptMinute("00");
+      setApptDuration("60");
       toast({ title: t("تم حجز الموعد بنجاح!", "Appointment booked successfully!") });
     },
     onError: (error: any) => {
@@ -239,35 +247,46 @@ export default function MyOrdersPage() {
   const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
   const paginated = filtered.slice((currentPage - 1) * perPage, currentPage * perPage);
 
+  function addMinutesToTime(h: number, m: number, mins: number): string {
+    const total = h * 60 + m + mins;
+    return `${String(Math.floor(total / 60) % 24).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+  }
+
   function openAppointmentDialog(order: any) {
+    const d = new Date();
     setAppointmentDialog(order);
-    setAppointmentForm({
-      title: "زيارة رفع المقاسات",
-      appointmentDate: new Date().toISOString().split("T")[0],
-      startTime: "09:00",
-      endTime: "10:00",
-      notes: t(
-        `طلب #${order.quotationNumber || order.id} — ${order.customer?.fullName || ""}`,
-        `Order #${order.quotationNumber || order.id} — ${order.customer?.fullName || ""}`
-      ),
-    });
+    setApptTitle("زيارة رفع المقاسات");
+    setApptNotes(t(
+      `طلب #${order.quotationNumber || order.id} — ${order.customer?.fullName || ""}`,
+      `Order #${order.quotationNumber || order.id} — ${order.customer?.fullName || ""}`
+    ));
+    setApptDay(String(d.getDate()));
+    setApptMonth(String(d.getMonth() + 1));
+    setApptHour("9");
+    setApptMinute("00");
+    setApptDuration("60");
   }
 
   function submitAppointment() {
     if (!appointmentDialog || !user) return;
-    if (appointmentForm.startTime >= appointmentForm.endTime) {
-      toast({ title: t("وقت البدء يجب أن يكون قبل وقت الانتهاء", "Start time must be before end time"), variant: "destructive" });
-      return;
-    }
+    const y = _currentYear;
+    const mm = parseInt(apptMonth);
+    const dd = parseInt(apptDay);
+    const h = parseInt(apptHour);
+    const m = parseInt(apptMinute);
+    const dur = parseInt(apptDuration);
+    const appointmentDate = `${y}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
+    const startTime = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+    const endTime = addMinutesToTime(h, m, dur);
     appointmentMutation.mutate({
-      title: appointmentForm.title,
-      appointmentDate: appointmentForm.appointmentDate,
-      startTime: appointmentForm.startTime,
-      endTime: appointmentForm.endTime,
+      title: apptTitle,
+      appointmentDate,
+      startTime,
+      endTime,
       customerId: appointmentDialog.customerId || null,
       quotationId: appointmentDialog.id,
       assignedTo: user.id,
-      notes: appointmentForm.notes,
+      notes: apptNotes,
     });
   }
 
@@ -719,102 +738,187 @@ export default function MyOrdersPage() {
         </Dialog>
       )}
 
-      {appointmentDialog && (
-        <Dialog open onOpenChange={() => setAppointmentDialog(null)}>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>{t("حجز موعد", "Book Appointment")}</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4 py-2">
-              <div className="bg-muted/50 rounded-lg p-3 flex items-center gap-3">
-                <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                  <ClipboardList className="w-4 h-4 text-primary" />
+      {appointmentDialog && (() => {
+        const monthNames = [
+          { num: 1, ar: "يناير", en: "Jan" }, { num: 2, ar: "فبراير", en: "Feb" },
+          { num: 3, ar: "مارس", en: "Mar" }, { num: 4, ar: "أبريل", en: "Apr" },
+          { num: 5, ar: "مايو", en: "May" }, { num: 6, ar: "يونيو", en: "Jun" },
+          { num: 7, ar: "يوليو", en: "Jul" }, { num: 8, ar: "أغسطس", en: "Aug" },
+          { num: 9, ar: "سبتمبر", en: "Sep" }, { num: 10, ar: "أكتوبر", en: "Oct" },
+          { num: 11, ar: "نوفمبر", en: "Nov" }, { num: 12, ar: "ديسمبر", en: "Dec" },
+        ];
+        const availableMonths = monthNames.filter(m => m.num >= _currentMonth);
+        const selectedMonthNum = parseInt(apptMonth);
+        const isCurrentMonth = selectedMonthNum === _currentMonth;
+        const daysInSelectedMonth = new Date(_currentYear, selectedMonthNum, 0).getDate();
+        const minDay = isCurrentMonth ? _currentDay : 1;
+        const availableDays = Array.from({ length: daysInSelectedMonth - minDay + 1 }, (_, i) => minDay + i);
+        const selectedDay = parseInt(apptDay);
+        const safeDay = availableDays.includes(selectedDay) ? selectedDay : minDay;
+        const h = parseInt(apptHour);
+        const m = parseInt(apptMinute);
+        const dur = parseInt(apptDuration);
+        const startLabel = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+        const endLabel = addMinutesToTime(h, m, dur);
+        return (
+          <Dialog open onOpenChange={() => setAppointmentDialog(null)}>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle>{t("حجز موعد", "Book Appointment")}</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 py-2">
+                <div className="bg-muted/50 rounded-lg p-3 flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                    <ClipboardList className="w-4 h-4 text-primary" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs text-muted-foreground">{t("للطلب", "For Order")} #{appointmentDialog.quotationNumber || appointmentDialog.id}</p>
+                    <p className="text-sm font-semibold truncate">{appointmentDialog.customer?.fullName || "—"}</p>
+                    {appointmentDialog.customer?.phone && (
+                      <p className="text-[11px] text-muted-foreground" dir="ltr">{appointmentDialog.customer.phone}</p>
+                    )}
+                  </div>
                 </div>
-                <div className="min-w-0">
-                  <p className="text-xs text-muted-foreground">{t("للطلب", "For Order")} #{appointmentDialog.quotationNumber || appointmentDialog.id}</p>
-                  <p className="text-sm font-semibold truncate">{appointmentDialog.customer?.fullName || "—"}</p>
-                  {appointmentDialog.customer?.phone && (
-                    <p className="text-[11px] text-muted-foreground" dir="ltr">{appointmentDialog.customer.phone}</p>
-                  )}
+
+                <div className="space-y-1.5">
+                  <Label>{t("نوع الموعد", "Appointment Type")}</Label>
+                  <Select value={apptTitle} onValueChange={setApptTitle}>
+                    <SelectTrigger data-testid="select-appt-type">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {appointmentTypes.map((at) => (
+                        <SelectItem key={at.value} value={at.value}>{t(at.ar, at.en)}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-              </div>
 
-              <div className="space-y-1.5">
-                <Label>{t("نوع الموعد", "Appointment Type")}</Label>
-                <Select value={appointmentForm.title} onValueChange={(val) => setAppointmentForm({ ...appointmentForm, title: val })}>
-                  <SelectTrigger data-testid="select-appt-type">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {appointmentTypes.map((at) => (
-                      <SelectItem key={at.value} value={at.value}>
-                        {t(at.ar, at.en)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+                <div className="space-y-1.5">
+                  <Label>{t("التاريخ", "Date")}</Label>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <p className="text-[11px] text-muted-foreground mb-1">{t("اليوم", "Day")}</p>
+                      <Select value={String(safeDay)} onValueChange={(v) => setApptDay(v)}>
+                        <SelectTrigger className="h-9" data-testid="select-appt-day">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availableDays.map((d) => (
+                            <SelectItem key={d} value={String(d)}>{d}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <p className="text-[11px] text-muted-foreground mb-1">{t("الشهر", "Month")}</p>
+                      <Select value={String(selectedMonthNum)} onValueChange={(v) => {
+                        setApptMonth(v);
+                        const newMonth = parseInt(v);
+                        const newIsCurrentMonth = newMonth === _currentMonth;
+                        const newMinDay = newIsCurrentMonth ? _currentDay : 1;
+                        if (parseInt(apptDay) < newMinDay) setApptDay(String(newMinDay));
+                      }}>
+                        <SelectTrigger className="h-9" data-testid="select-appt-month">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availableMonths.map((mo) => (
+                            <SelectItem key={mo.num} value={String(mo.num)}>{t(mo.ar, mo.en)}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <p className="text-[11px] text-muted-foreground mb-1">{t("السنة", "Year")}</p>
+                      <div className="h-9 flex items-center px-3 border rounded-md bg-muted/50 text-sm font-medium" data-testid="text-appt-year">
+                        {_currentYear}
+                      </div>
+                    </div>
+                  </div>
+                </div>
 
-              <div className="space-y-1.5">
-                <Label>{t("التاريخ", "Date")}</Label>
-                <Input
-                  type="date"
-                  value={appointmentForm.appointmentDate}
-                  onChange={(e) => setAppointmentForm({ ...appointmentForm, appointmentDate: e.target.value })}
-                  min={new Date().toISOString().split("T")[0]}
-                  data-testid="input-appt-date"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label>{t("وقت البدء", "Start Time")}</Label>
-                  <Input
-                    type="time"
-                    value={appointmentForm.startTime}
-                    onChange={(e) => setAppointmentForm({ ...appointmentForm, startTime: e.target.value })}
-                    data-testid="input-appt-start"
-                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <p className="text-[11px] text-muted-foreground mb-1">{t("الساعة", "Hour")}</p>
+                      <Select value={apptHour} onValueChange={setApptHour}>
+                        <SelectTrigger className="h-9" data-testid="select-appt-hour">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Array.from({ length: 24 }, (_, i) => i).map((h) => (
+                            <SelectItem key={h} value={String(h)}>{String(h).padStart(2, "0")}:00</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <p className="text-[11px] text-muted-foreground mb-1">{t("الدقيقة", "Minute")}</p>
+                      <Select value={apptMinute} onValueChange={setApptMinute}>
+                        <SelectTrigger className="h-9" data-testid="select-appt-minute">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {["00", "15", "30", "45"].map((min) => (
+                            <SelectItem key={min} value={min}>{min}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
                 </div>
-                <div className="space-y-1.5">
-                  <Label>{t("وقت الانتهاء", "End Time")}</Label>
-                  <Input
-                    type="time"
-                    value={appointmentForm.endTime}
-                    onChange={(e) => setAppointmentForm({ ...appointmentForm, endTime: e.target.value })}
-                    data-testid="input-appt-end"
-                  />
-                </div>
-              </div>
 
-              <div className="space-y-1.5">
-                <Label>{t("ملاحظات", "Notes")}</Label>
-                <Textarea
-                  value={appointmentForm.notes}
-                  onChange={(e) => setAppointmentForm({ ...appointmentForm, notes: e.target.value })}
-                  placeholder={t("ملاحظات إضافية...", "Additional notes...")}
-                  className="resize-none"
-                  rows={2}
-                  data-testid="input-appt-notes"
-                />
+                <div className="space-y-1.5">
+                  <Label>{t("المدة", "Duration")}</Label>
+                  <Select value={apptDuration} onValueChange={setApptDuration}>
+                    <SelectTrigger data-testid="select-appt-duration">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="30">{t("30 دقيقة", "30 min")}</SelectItem>
+                      <SelectItem value="60">{t("ساعة واحدة", "1 hour")}</SelectItem>
+                      <SelectItem value="90">{t("ساعة ونصف", "1.5 hours")}</SelectItem>
+                      <SelectItem value="120">{t("ساعتان", "2 hours")}</SelectItem>
+                      <SelectItem value="180">{t("ثلاث ساعات", "3 hours")}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[11px] text-muted-foreground flex items-center gap-1 mt-1">
+                    <Clock className="w-3 h-3" />
+                    {t(`من ${startLabel} إلى ${endLabel}`, `From ${startLabel} to ${endLabel}`)}
+                  </p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label>{t("ملاحظات", "Notes")}</Label>
+                  <Textarea
+                    value={apptNotes}
+                    onChange={(e) => setApptNotes(e.target.value)}
+                    placeholder={t("ملاحظات إضافية...", "Additional notes...")}
+                    className="resize-none"
+                    rows={2}
+                    data-testid="input-appt-notes"
+                  />
+                </div>
               </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setAppointmentDialog(null)} data-testid="button-cancel-appt">
-                {t("إلغاء", "Cancel")}
-              </Button>
-              <Button
-                disabled={!appointmentForm.appointmentDate || !appointmentForm.startTime || !appointmentForm.endTime || appointmentMutation.isPending}
-                onClick={submitAppointment}
-                data-testid="button-submit-appt"
-              >
-                {appointmentMutation.isPending && <Loader2 className="w-4 h-4 animate-spin me-2" />}
-                {t("حفظ الموعد", "Save Appointment")}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      )}
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setAppointmentDialog(null)} data-testid="button-cancel-appt">
+                  {t("إلغاء", "Cancel")}
+                </Button>
+                <Button
+                  disabled={appointmentMutation.isPending}
+                  onClick={submitAppointment}
+                  data-testid="button-submit-appt"
+                >
+                  {appointmentMutation.isPending && <Loader2 className="w-4 h-4 animate-spin me-2" />}
+                  {t("حفظ الموعد", "Save Appointment")}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        );
+      })()}
 
       {newOrderDialog && (
         <Dialog open onOpenChange={() => { setNewOrderDialog(false); setNewOrderForm({ fullName: "", phone: "", productDescription: "", notes: "" }); }}>
