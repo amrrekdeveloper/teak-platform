@@ -1219,13 +1219,19 @@ function QuotationsTab({ quotations, designs, invoices, contracts, payments, onA
           return (
             <Card key={q.id} className={`overflow-hidden ${isApproved ? "border-green-200 dark:border-green-900" : ""}`} data-testid={`card-quotation-${q.id}`}>
               <CardContent className="p-0">
-                <div className={`px-4 py-3 flex items-center justify-between ${isApproved ? "bg-green-50/50 dark:bg-green-950/20" : ""}`}>
+                <div className={`px-4 py-3 flex items-center justify-between ${isApproved ? "bg-green-50/50 dark:bg-green-950/20" : q.status === "sent" ? "bg-blue-50/40 dark:bg-blue-950/20" : ""}`}>
                   <div className="flex items-center gap-2">
-                    <FileText className={`w-4 h-4 ${isApproved ? "text-green-600" : "text-blue-600"}`} />
+                    <FileText className={`w-4 h-4 ${isApproved ? "text-green-600" : q.status === "sent" ? "text-blue-600" : "text-muted-foreground"}`} />
                     <span className="text-sm font-semibold">{t("عرض سعر", "Quotation")} #{q.id}</span>
                   </div>
                   <StatusBadge status={q.status} />
                 </div>
+                {q.status === "sent" && (
+                  <div className="px-4 py-2 bg-blue-50/70 dark:bg-blue-950/30 border-b border-blue-100 dark:border-blue-900 flex items-center gap-2 text-xs text-blue-700 dark:text-blue-400 font-medium" data-testid={`banner-awaiting-approval-${q.id}`}>
+                    <span className="text-base leading-none">⏳</span>
+                    {t("ينتظر اعتمادك — راجع التفاصيل وأعتمد عرض السعر", "Awaiting your approval — review details and approve")}
+                  </div>
+                )}
 
                 <div className="px-4 py-3 space-y-2">
                   <div className="flex items-center justify-between">
@@ -1318,19 +1324,25 @@ function QuotationsTab({ quotations, designs, invoices, contracts, payments, onA
 
                   {Array.isArray(q.items) && q.items.length > 0 && (
                     <>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="w-full h-8 text-xs"
-                        onClick={() => setExpandedProducts(expandedProducts === q.id ? null : q.id)}
-                        data-testid={`button-toggle-products-${q.id}`}
-                      >
-                        <Package className="w-3 h-3 me-1" />
-                        {expandedProducts === q.id ? t("إخفاء المنتجات", "Hide Products") : t("عرض المنتجات والأسعار", "View Products & Prices")}
-                        {expandedProducts === q.id ? <ChevronUp className="w-3 h-3 ms-1" /> : <ChevronDown className="w-3 h-3 ms-1" />}
-                      </Button>
-                      {expandedProducts === q.id && (
+                      {q.status === "sent" ? (
                         <ProductDetailsTable items={q.items} quotation={q} />
+                      ) : (
+                        <>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-full h-8 text-xs"
+                            onClick={() => setExpandedProducts(expandedProducts === q.id ? null : q.id)}
+                            data-testid={`button-toggle-products-${q.id}`}
+                          >
+                            <Package className="w-3 h-3 me-1" />
+                            {expandedProducts === q.id ? t("إخفاء المنتجات", "Hide Products") : t("عرض المنتجات والأسعار", "View Products & Prices")}
+                            {expandedProducts === q.id ? <ChevronUp className="w-3 h-3 ms-1" /> : <ChevronDown className="w-3 h-3 ms-1" />}
+                          </Button>
+                          {expandedProducts === q.id && (
+                            <ProductDetailsTable items={q.items} quotation={q} />
+                          )}
+                        </>
                       )}
                     </>
                   )}

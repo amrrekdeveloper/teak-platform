@@ -494,6 +494,15 @@ export default function QuotationBuilderPage() {
       toast({ title: t("يجب إضافة عنصر واحد على الأقل", "Add at least one item"), variant: "destructive" });
       return;
     }
+    const zeroPricedItems = items.filter(i => (i.unitPrice === 0 || !i.unitPrice) && (i.useAdeko || i.productId));
+    if (zeroPricedItems.length > 0) {
+      toast({
+        title: t(`${zeroPricedItems.length} بند بدون سعر`, `${zeroPricedItems.length} item(s) with no price`),
+        description: t("أدخل سعر الوحدة لجميع المنتجات قبل الحفظ", "Enter unit price for all products before saving"),
+        variant: "destructive",
+      });
+      return;
+    }
     saveMutation.mutate(status);
   };
 
@@ -721,18 +730,28 @@ export default function QuotationBuilderPage() {
                         </div>
                       )}
 
+                      {item.unitPrice === 0 && (
+                        <div className="flex items-center gap-1.5 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-md px-2.5 py-1.5 text-xs text-amber-700 dark:text-amber-400">
+                          <span className="text-base leading-none">⚠</span>
+                          <span className="font-medium">{t("أدخل سعر الوحدة — جميع منتجات Adeko تحتاج سعراً يدوياً", "Enter unit price — all Adeko products require manual pricing")}</span>
+                        </div>
+                      )}
                       <div className="grid grid-cols-2 gap-2">
                         <div className="space-y-1">
-                          <Label className="text-xs">{t("سعر الوحدة (ريال)", "Unit Price (SAR)")}</Label>
+                          <Label className={`text-xs font-semibold ${item.unitPrice === 0 ? "text-amber-600 dark:text-amber-400" : ""}`}>
+                            {t("سعر الوحدة (ريال)", "Unit Price (SAR)")}
+                            {item.unitPrice === 0 && <span className="ms-1 text-red-500">*</span>}
+                          </Label>
                           <Input
                             type="number"
                             min="0"
                             step="0.01"
                             value={item.unitPrice || ""}
                             onChange={(e) => updateItem(item.id, "unitPrice", e.target.value)}
-                            className="h-8 text-sm"
-                            placeholder="0.00"
+                            className={`h-9 text-sm font-semibold ${item.unitPrice === 0 ? "border-amber-400 dark:border-amber-600 focus:ring-amber-400 bg-amber-50/50 dark:bg-amber-950/20" : "border-green-400 dark:border-green-700"}`}
+                            placeholder={t("أدخل السعر...", "Enter price...")}
                             data-testid={`input-unit-price-${index}`}
+                            autoFocus={item.unitPrice === 0 && !!item.productId}
                           />
                         </div>
                         <div className="space-y-1">
@@ -742,7 +761,7 @@ export default function QuotationBuilderPage() {
                             min="1"
                             value={item.quantity}
                             onChange={(e) => updateItem(item.id, "quantity", e.target.value)}
-                            className="h-8 text-sm"
+                            className="h-9 text-sm"
                             data-testid={`input-quantity-${index}`}
                           />
                         </div>

@@ -126,6 +126,7 @@ export default function MyOrdersPage() {
   const [showNewOrderTransition, setShowNewOrderTransition] = useState(false);
   const [appointmentDialog, setAppointmentDialog] = useState<any | null>(null);
   const [editingApptId, setEditingApptId] = useState<number | null>(null);
+  const [rescheduleReason, setRescheduleReason] = useState("");
 
   const _today = new Date();
   const _currentYear = _today.getFullYear();
@@ -195,9 +196,43 @@ export default function MyOrdersPage() {
     },
   });
 
+  function isAppointmentPast(appt: any): boolean {
+    if (!appt?.appointmentDate) return false;
+    const apptDateTime = new Date(`${appt.appointmentDate}T${appt.endTime || appt.startTime || "23:59"}`);
+    return apptDateTime < new Date();
+  }
+
+  function formatApptCountdown(appt: any, nowTs: number): { label: string; urgent: boolean; past: boolean } {
+    if (!appt?.appointmentDate) return { label: "", urgent: false, past: false };
+    const apptDateTime = new Date(`${appt.appointmentDate}T${appt.startTime || "09:00"}`);
+    const diffMs = apptDateTime.getTime() - nowTs;
+    if (diffMs <= 0) {
+      const pastMs = Math.abs(diffMs);
+      const pastDays = Math.floor(pastMs / 86400000);
+      if (pastDays > 0) return { label: t(`منذ ${pastDays} يوم`, `${pastDays}d ago`), urgent: false, past: true };
+      const pastHrs = Math.floor(pastMs / 3600000);
+      if (pastHrs > 0) return { label: t(`منذ ${pastHrs} ساعة`, `${pastHrs}h ago`), urgent: false, past: true };
+      return { label: t("منذ قليل", "Just passed"), urgent: false, past: true };
+    }
+    const days = Math.floor(diffMs / 86400000);
+    const hrs = Math.floor((diffMs % 86400000) / 3600000);
+    const mins = Math.floor((diffMs % 3600000) / 60000);
+    if (days > 0) return { label: t(`بعد ${days} يوم و${hrs} ساعة`, `In ${days}d ${hrs}h`), urgent: days <= 1, past: false };
+    if (hrs > 0) return { label: t(`بعد ${hrs} ساعة و${mins} دقيقة`, `In ${hrs}h ${mins}m`), urgent: true, past: false };
+    return { label: t(`بعد ${mins} دقيقة`, `In ${mins}m`), urgent: true, past: false };
+  }
+
+  function formatApptFullDate(appt: any): string {
+    if (!appt?.appointmentDate) return "—";
+    return new Date(appt.appointmentDate).toLocaleDateString(lang === "ar" ? "ar-SA" : "en-US", {
+      weekday: "long", year: "numeric", month: "long", day: "numeric",
+    });
+  }
+
   function resetApptForm() {
     const d = new Date();
     setEditingApptId(null);
+    setRescheduleReason("");
     setApptTitle("زيارة رفع المقاسات");
     setApptNotes("");
     setApptDay(String(d.getDate()));
@@ -250,7 +285,15 @@ export default function MyOrdersPage() {
   const appointmentByQuotation = useMemo(() => {
     const map: Record<number, any> = {};
     for (const appt of appointments as any[]) {
-      if (appt.quotationId) map[appt.quotationId] = appt;
+      if (!appt.quotationId) continue;
+      const existing = map[appt.quotationId];
+      if (!existing) {
+        map[appt.quotationId] = appt;
+      } else {
+        const apptDate = new Date(`${appt.appointmentDate}T${appt.startTime || "00:00"}`).getTime();
+        const existingDate = new Date(`${existing.appointmentDate}T${existing.startTime || "00:00"}`).getTime();
+        if (apptDate > existingDate) map[appt.quotationId] = appt;
+      }
     }
     return map;
   }, [appointments]);
@@ -384,7 +427,7 @@ export default function MyOrdersPage() {
     }
   }
 
-  function submitAppointment() {
+  async function submitAppointment() {
     if (!appointmentDialog || !user) return;
     const y = _currentYear;
     const mm = parseInt(apptMonth);
@@ -405,7 +448,20 @@ export default function MyOrdersPage() {
       assignedTo: user.id,
       notes: apptNotes,
     };
-    if (editingApptId) {
+
+    const existingAppt = appointmentDialog._appointment;
+    const isPast = existingAppt && isAppointmentPast(existingAppt);
+
+    if (editingApptId && isPast) {
+      updateAppointmentMutation.mutate({
+        id: editingApptId,
+        data: { status: "rescheduled", failNotes: rescheduleReason || t("إعادة تعيين بدون سبب", "Rescheduled without reason") },
+      }, {
+        onSuccess: () => {
+          appointmentMutation.mutate(payload);
+        },
+      });
+    } else if (editingApptId) {
       updateAppointmentMutation.mutate({ id: editingApptId, data: payload });
     } else {
       appointmentMutation.mutate(payload);
@@ -923,31 +979,86 @@ export default function MyOrdersPage() {
                   </p>
                 </div>
               )}
+
+              {(() => {
+                const appt = viewOrder._appointment;
+                if (!appt) return null;
+                const countdown = formatApptCountdown(appt, now);
+                return (
+                  <div className={`rounded-lg p-3 border ${countdown.past ? "bg-amber-50/60 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900" : "bg-blue-50/50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-900"}`}>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <p className={`text-[11px] font-semibold flex items-center gap-1 ${countdown.past ? "text-amber-700 dark:text-amber-400" : "text-blue-700 dark:text-blue-400"}`}>
+                        {countdown.past
+                          ? <><CalendarX className="w-3.5 h-3.5" />{t("موعد منتهٍ — يحتاج إعادة تعيين", "Expired Appointment — Needs Reschedule")}</>
+                          : <><CalendarCheck className="w-3.5 h-3.5" />{t("موعد محجوز", "Appointment Booked")}</>
+                        }
+                      </p>
+                      <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${countdown.past ? "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300" : countdown.urgent ? "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300" : "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300"}`}>
+                        {countdown.label}
+                      </span>
+                    </div>
+                    <p className="text-xs font-medium">{appt.title}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
+                      <Calendar className="w-3 h-3" />
+                      {formatApptFullDate(appt)}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      {appt.startTime?.slice(0, 5)} — {appt.endTime?.slice(0, 5)}
+                    </p>
+                    {appt.notes && (
+                      <p className="text-[11px] text-muted-foreground mt-1 border-t pt-1">{appt.notes}</p>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
             <DialogFooter className="flex-col sm:flex-row gap-2">
               <Button variant="outline" onClick={() => setViewOrder(null)} data-testid="button-close-view-my">
                 {t("إغلاق", "Close")}
               </Button>
-              {viewOrder.assignedTo === user?.id && !viewOrder.inspectionDate && (
-                <Button
-                  variant="default"
-                  onClick={() => { setViewOrder(null); openAppointmentDialog(viewOrder); }}
-                  data-testid="button-book-from-view"
-                >
-                  <CalendarPlus className="w-3.5 h-3.5 me-1.5" />
-                  {t("حجز موعد رفع مقاسات", "Book Measurement")}
-                </Button>
-              )}
-              {viewOrder.assignedTo === user?.id && viewOrder.inspectionDate && (
-                <Button
-                  variant="secondary"
-                  onClick={() => { window.location.href = `/dashboard/design-studio/${viewOrder.id}`; }}
-                  data-testid="button-design-studio-my"
-                >
-                  <Pencil className="w-3.5 h-3.5 me-1.5" />
-                  {t("استوديو التصميم", "Design Studio")}
-                </Button>
-              )}
+              {viewOrder.assignedTo === user?.id && (() => {
+                const appt = viewOrder._appointment;
+                if (viewOrder.inspectionDate) {
+                  return (
+                    <Button variant="secondary" onClick={() => { window.location.href = `/dashboard/design-studio/${viewOrder.id}`; }} data-testid="button-design-studio-my">
+                      <Pencil className="w-3.5 h-3.5 me-1.5" />
+                      {t("استوديو التصميم", "Design Studio")}
+                    </Button>
+                  );
+                }
+                if (!appt) {
+                  return (
+                    <Button variant="default" onClick={() => { setViewOrder(null); openAppointmentDialog(viewOrder); }} data-testid="button-book-from-view">
+                      <CalendarPlus className="w-3.5 h-3.5 me-1.5" />
+                      {t("حجز موعد رفع مقاسات", "Book Measurement")}
+                    </Button>
+                  );
+                }
+                const isPast = isAppointmentPast(appt);
+                if (isPast) {
+                  return (
+                    <Button
+                      className="bg-amber-600 hover:bg-amber-700 text-white"
+                      onClick={() => { setViewOrder(null); openAppointmentDialog(viewOrder); }}
+                      data-testid="button-reschedule-from-view"
+                    >
+                      <CalendarPlus className="w-3.5 h-3.5 me-1.5" />
+                      {t("إعادة تعيين موعد جديد", "Reschedule Appointment")}
+                    </Button>
+                  );
+                }
+                return (
+                  <Button
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                    onClick={() => { setViewOrder(null); openAppointmentDialog(viewOrder); }}
+                    data-testid="button-edit-appt-from-view"
+                  >
+                    <CalendarCheck className="w-3.5 h-3.5 me-1.5" />
+                    {t("تعديل الموعد المحجوز", "Edit Appointment")}
+                  </Button>
+                );
+              })()}
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -975,14 +1086,20 @@ export default function MyOrdersPage() {
         const dur = parseInt(apptDuration);
         const startLabel = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
         const endLabel = addMinutesToTime(h, m, dur);
+        const existingAppt = appointmentDialog._appointment;
+        const isPastAppt = existingAppt && isAppointmentPast(existingAppt);
+        const existingCountdown = existingAppt ? formatApptCountdown(existingAppt, now) : null;
+        const isRescheduleMode = !!(editingApptId && isPastAppt);
         return (
           <Dialog open onOpenChange={() => { setAppointmentDialog(null); resetApptForm(); }}>
-            <DialogContent className="sm:max-w-md">
+            <DialogContent className="sm:max-w-md max-h-[92vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
-                  {editingApptId
-                    ? <><CalendarCheck className="w-4 h-4 text-emerald-600" />{t("تعديل الموعد", "Edit Appointment")}</>
-                    : <><CalendarPlus className="w-4 h-4 text-primary" />{t("حجز موعد جديد", "Book New Appointment")}</>
+                  {isRescheduleMode
+                    ? <><CalendarPlus className="w-4 h-4 text-amber-600" />{t("إعادة تعيين موعد جديد", "Reschedule Appointment")}</>
+                    : editingApptId
+                      ? <><CalendarCheck className="w-4 h-4 text-emerald-600" />{t("تعديل الموعد", "Edit Appointment")}</>
+                      : <><CalendarPlus className="w-4 h-4 text-primary" />{t("حجز موعد جديد", "Book New Appointment")}</>
                   }
                 </DialogTitle>
               </DialogHeader>
@@ -999,6 +1116,46 @@ export default function MyOrdersPage() {
                     )}
                   </div>
                 </div>
+
+                {existingAppt && existingCountdown && (
+                  <div className={`rounded-lg p-3 border text-xs space-y-1 ${isPastAppt ? "bg-amber-50/60 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800" : "bg-blue-50/50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800"}`}>
+                    <div className="flex items-center justify-between">
+                      <span className={`font-semibold flex items-center gap-1 ${isPastAppt ? "text-amber-700 dark:text-amber-400" : "text-blue-700 dark:text-blue-400"}`}>
+                        {isPastAppt
+                          ? <><CalendarX className="w-3.5 h-3.5" />{t("الموعد السابق — منتهٍ", "Previous Appt — Expired")}</>
+                          : <><CalendarCheck className="w-3.5 h-3.5" />{t("الموعد الحالي", "Current Appointment")}</>
+                        }
+                      </span>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${isPastAppt ? "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300" : "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300"}`}>
+                        {existingCountdown.label}
+                      </span>
+                    </div>
+                    <p className="font-medium">{existingAppt.title}</p>
+                    <p className="text-muted-foreground flex items-center gap-1">
+                      <Calendar className="w-3 h-3" />{formatApptFullDate(existingAppt)}
+                    </p>
+                    <p className="text-muted-foreground flex items-center gap-1">
+                      <Clock className="w-3 h-3" />{existingAppt.startTime?.slice(0, 5)} — {existingAppt.endTime?.slice(0, 5)}
+                    </p>
+                  </div>
+                )}
+
+                {isRescheduleMode && (
+                  <div className="space-y-1.5">
+                    <Label className="flex items-center gap-1 text-amber-700 dark:text-amber-400">
+                      <span>{t("سبب إعادة التعيين", "Reason for Reschedule")}</span>
+                      <span className="text-red-500 text-xs">*</span>
+                    </Label>
+                    <Textarea
+                      value={rescheduleReason}
+                      onChange={(e) => setRescheduleReason(e.target.value)}
+                      placeholder={t("اذكر السبب: لم تتم الزيارة / تغيير مفاجئ / طلب العميل...", "Reason: visit not done / sudden change / client request...")}
+                      className="resize-none border-amber-300 dark:border-amber-700 focus:ring-amber-400"
+                      rows={2}
+                      data-testid="input-reschedule-reason"
+                    />
+                  </div>
+                )}
 
                 <div className="space-y-1.5">
                   <Label>{t("نوع الموعد", "Appointment Type")}</Label>
@@ -1127,13 +1284,27 @@ export default function MyOrdersPage() {
                   {t("إلغاء", "Cancel")}
                 </Button>
                 <Button
-                  disabled={appointmentMutation.isPending || updateAppointmentMutation.isPending}
+                  disabled={
+                    appointmentMutation.isPending || updateAppointmentMutation.isPending ||
+                    (isRescheduleMode && !rescheduleReason.trim())
+                  }
                   onClick={submitAppointment}
-                  className={editingApptId ? "bg-emerald-600 hover:bg-emerald-700 text-white" : ""}
+                  className={
+                    isRescheduleMode
+                      ? "bg-amber-600 hover:bg-amber-700 text-white"
+                      : editingApptId
+                        ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                        : ""
+                  }
                   data-testid="button-submit-appt"
                 >
                   {(appointmentMutation.isPending || updateAppointmentMutation.isPending) && <Loader2 className="w-4 h-4 animate-spin me-2" />}
-                  {editingApptId ? t("تعديل الموعد", "Update Appointment") : t("حجز الموعد", "Book Appointment")}
+                  {isRescheduleMode
+                    ? t("تأكيد إعادة التعيين", "Confirm Reschedule")
+                    : editingApptId
+                      ? t("تعديل الموعد", "Update Appointment")
+                      : t("حجز الموعد", "Book Appointment")
+                  }
                 </Button>
               </DialogFooter>
             </DialogContent>

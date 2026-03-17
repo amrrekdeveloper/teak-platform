@@ -3020,7 +3020,8 @@ export async function registerRoutes(
         if (li.productId) {
           const adeko = await storage.getAdekoProduct(parseInt(li.productId));
           if (adeko) {
-            unitPrice = parseFloat(adeko.priceBeforeVat?.toString() || "0");
+            const adekoPrice = parseFloat(adeko.priceBeforeVat?.toString() || "0");
+            unitPrice = unitPrice > 0 ? unitPrice : adekoPrice;
             code = code || adeko.code;
             nameAr = nameAr || adeko.descriptionAr || adeko.code;
             nameEn = nameEn || adeko.descriptionEn || adeko.code;
