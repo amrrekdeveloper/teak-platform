@@ -308,8 +308,10 @@ export async function registerRoutes(
   app.get("/api/users", requireAuth, async (req, res) => {
     try {
       const allUsers = await storage.getUsers();
-      const isAdmin = req.session.userId && ["owner", "it"].includes((await storage.getUser(req.session.userId))?.role || "");
-      const safeUsers = allUsers.map(({ password, ...u }) => {
+      const currentUser = req.session.userId ? await storage.getUser(req.session.userId) : null;
+      const isAdmin = ["owner", "it"].includes(currentUser?.role || "");
+      const visibleUsers = isAdmin ? allUsers : allUsers.filter(u => u.active !== false);
+      const safeUsers = visibleUsers.map(({ password, ...u }) => {
         if (isAdmin) return u;
         return { id: u.id, username: u.username, fullNameAr: u.fullNameAr, fullNameEn: u.fullNameEn, role: u.role, active: u.active };
       });
@@ -704,10 +706,14 @@ export async function registerRoutes(
       const currentUser = await storage.getUser(req.session.userId!);
       const isSalesRep = currentUser?.role === "sales";
       const data = { ...req.body, createdBy: req.session.userId };
-      if (!isSalesRep) {
+      if (isSalesRep) {
+        data.assignedTo = req.session.userId;
+        data.assignedAt = data.assignedAt || new Date();
+        data.claimedAt = data.claimedAt || new Date();
+      } else {
         const assignedId = data.assignedTo ? parseInt(data.assignedTo) : null;
         const targetUser = assignedId ? await storage.getUser(assignedId) : null;
-        if (!targetUser || targetUser.role !== "sales") {
+        if (!targetUser || targetUser.role !== "sales" || targetUser.active === false) {
           data.assignedTo = null;
           data.assignedAt = null;
           data.claimedAt = null;
