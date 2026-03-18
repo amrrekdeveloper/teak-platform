@@ -907,6 +907,8 @@ export async function registerRoutes(
         });
       }
 
+      const currentUser = await storage.getUser(req.session.userId!);
+      const isSalesRep = currentUser?.role === "sales";
       const items = [{ description: productDescription, quantity: 1, unitPrice: 0, amount: 0 }];
       const quotation = await storage.createQuotation({
         customerId: customer.id,
@@ -917,9 +919,9 @@ export async function registerRoutes(
         totalPrice: "0",
         finalPrice: "0",
         status: "draft",
-        assignedTo: req.session.userId,
-        assignedAt: new Date(),
-        claimedAt: new Date(),
+        assignedTo: isSalesRep ? req.session.userId : null,
+        assignedAt: isSalesRep ? new Date() : null,
+        claimedAt: isSalesRep ? new Date() : null,
         notes: [
           `المنتج: ${productDescription}`,
           notes ? `ملاحظات: ${notes}` : "",

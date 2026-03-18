@@ -194,7 +194,7 @@ export default function OrderCenterPage() {
 
   const salesUsers = useMemo(() => {
     return usersData.filter((u: any) => 
-      u.role === "sales"
+      u.role === "sales" && u.active !== false
     );
   }, [usersData]);
 
