@@ -197,9 +197,9 @@ export async function registerRoutes(
         totalPrice: "0",
         finalPrice: "0",
         status: "open",
+        city: city || null,
         notes: [
           productLabel ? `المنتج: ${productLabel}` : "",
-          city ? `المدينة: ${city}` : "",
         ].filter(Boolean).join(" | ") || "طلب عرض سعر من الموقع",
       });
 
@@ -311,7 +311,7 @@ export async function registerRoutes(
       const isAdmin = req.session.userId && ["owner", "it"].includes((await storage.getUser(req.session.userId))?.role || "");
       const safeUsers = allUsers.map(({ password, ...u }) => {
         if (isAdmin) return u;
-        return { id: u.id, username: u.username, fullNameAr: u.fullNameAr, fullNameEn: u.fullNameEn, role: u.role };
+        return { id: u.id, username: u.username, fullNameAr: u.fullNameAr, fullNameEn: u.fullNameEn, role: u.role, active: u.active };
       });
       res.json(safeUsers);
     } catch (error) {
@@ -701,7 +701,18 @@ export async function registerRoutes(
 
   app.post("/api/quotations", requireRole("owner", "assistant", "sales"), async (req, res) => {
     try {
+      const currentUser = await storage.getUser(req.session.userId!);
+      const isSalesRep = currentUser?.role === "sales";
       const data = { ...req.body, createdBy: req.session.userId };
+      if (!isSalesRep) {
+        const assignedId = data.assignedTo ? parseInt(data.assignedTo) : null;
+        const targetUser = assignedId ? await storage.getUser(assignedId) : null;
+        if (!targetUser || targetUser.role !== "sales") {
+          data.assignedTo = null;
+          data.assignedAt = null;
+          data.claimedAt = null;
+        }
+      }
       const quotation = await storage.createQuotation(data);
 
       const settings = await storage.getCompanySettings();
@@ -2784,8 +2795,14 @@ export async function registerRoutes(
   app.post("/api/appointments/:id/expire", requireAuth, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
+      const userId = req.session.userId!;
+      const currentUser = await storage.getUser(userId);
       const appointment = await storage.getAppointment(id);
       if (!appointment) return res.status(404).json({ message: "الموعد غير موجود" });
+      const isManagerRole = currentUser?.role === "owner" || currentUser?.role === "assistant";
+      if (!isManagerRole && appointment.assignedTo !== userId) {
+        return res.status(403).json({ message: "غير مصرح لك بهذا الإجراء" });
+      }
       if (appointment.status !== "scheduled") {
         return res.json({ message: "already_handled", status: appointment.status });
       }
@@ -3034,7 +3051,7 @@ export async function registerRoutes(
 
   app.post("/api/pricing/save-quotation", requireAuth, async (req, res) => {
     try {
-      const { customerId, lineItems, discountAmount: clientDiscount = 0, notes, deliveryDays, surveyId } = req.body;
+      const { customerId, lineItems, discountAmount: clientDiscount = 0, notes, deliveryDays, surveyId, city } = req.body;
       if (!customerId || !lineItems || lineItems.length === 0) {
         return res.status(400).json({ message: "العميل والمنتجات مطلوبة" });
       }
@@ -3113,6 +3130,8 @@ export async function registerRoutes(
       const serverVat = afterDiscount * 0.15;
       const serverTotal = afterDiscount + serverVat;
 
+      const pricingUser = await storage.getUser(req.session.userId!);
+      const pricingIsSales = pricingUser?.role === "sales";
       const quotation = await storage.createQuotation({
         customerId,
         items,
@@ -3123,7 +3142,11 @@ export async function registerRoutes(
         discount: String(discountVal),
         finalPrice: String(serverTotal),
         status: "draft",
+        assignedTo: pricingIsSales ? req.session.userId : null,
+        assignedAt: pricingIsSales ? new Date() : null,
+        claimedAt: pricingIsSales ? new Date() : null,
         deliveryDays: deliveryDays || null,
+        city: city || null,
         notes: notes || "",
         createdBy: req.session.userId,
       });
