@@ -837,6 +837,9 @@ export async function registerRoutes(
       if (newAssignee.role !== "sales") {
         return res.status(400).json({ message: "يمكن تحويل الطلبات فقط لمناديب المبيعات", messageEn: "Orders can only be transferred to sales agents" });
       }
+      if (newAssignee.active === false) {
+        return res.status(400).json({ message: "لا يمكن تحويل الطلب لمستخدم غير نشط", messageEn: "Cannot transfer order to an inactive user" });
+      }
       const previousAssignees = (quotation.previousAssignees as any[] || []);
       if (quotation.assignedTo) {
         const oldUser = await storage.getUser(quotation.assignedTo);
