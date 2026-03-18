@@ -320,7 +320,7 @@ export class DatabaseStorage implements IStorage {
       .where(
         and(
           eq(quotations.id, id),
-          eq(quotations.status, "open" as any),
+          sql`${quotations.status} IN ('open', 'draft', 'requested')`,
           sql`${quotations.assignedTo} IS NULL`
         )
       )

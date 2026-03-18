@@ -75,7 +75,7 @@ type StageFilter = "all" | "open" | "mine" | "sent" | "approved" | "production" 
 
 function getOrderStage(q: any, workOrders: any[], contracts: any[], userId: number): StageFilter {
   if (q.status === "rejected" || q.status === "expired") return "completed";
-  if ((q.status === "requested" || q.status === "open") && !q.assignedTo) return "open";
+  if ((q.status === "requested" || q.status === "open" || q.status === "draft") && !q.assignedTo) return "open";
   if (q.status === "approved") {
     const wo = workOrders.find((w: any) => {
       const contract = w._contract;

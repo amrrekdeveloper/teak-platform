@@ -668,7 +668,7 @@ export async function registerRoutes(
         const all = await storage.getQuotations();
         const filtered = all.filter((q: any) =>
           q.assignedTo === userId ||
-          (q.status === "open" && !q.assignedTo)
+          ((q.status === "open" || q.status === "draft" || q.status === "requested") && !q.assignedTo)
         );
         res.json(filtered);
       } else {
