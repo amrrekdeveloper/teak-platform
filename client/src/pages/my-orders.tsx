@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
+import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLanguage } from "@/components/language-provider";
 import { useAuth } from "@/hooks/use-auth";
@@ -47,6 +48,7 @@ import {
   CalendarX,
   Filter,
   X,
+  Ruler,
 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -116,6 +118,7 @@ export default function MyOrdersPage() {
   const { toast } = useToast();
   const now = useElapsedTime();
 
+  const [, navigate] = useLocation();
   const [activeTab, setActiveTab] = useState<"open" | "mine">("mine");
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
@@ -775,6 +778,17 @@ export default function MyOrdersPage() {
                                   >
                                     {appt ? <CalendarCheck className="w-3.5 h-3.5" /> : <CalendarPlus className="w-3.5 h-3.5" />}
                                   </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className={`h-7 w-7 p-0 ${appt ? "text-violet-600 hover:text-violet-700 hover:bg-violet-50 dark:hover:bg-violet-950/30" : "text-muted-foreground/30 cursor-not-allowed"}`}
+                                    onClick={() => appt && navigate(`/site-survey/${appt.id}`)}
+                                    disabled={!appt}
+                                    title={appt ? t("رفع المقاسات", "Upload Measurements") : t("يجب حجز موعد أولاً", "Book appointment first")}
+                                    data-testid={`button-survey-${order.id}`}
+                                  >
+                                    <Ruler className="w-3.5 h-3.5" />
+                                  </Button>
                                 </>
                               )}
                             </div>
@@ -872,6 +886,17 @@ export default function MyOrdersPage() {
                             >
                               {appt ? <CalendarCheck className="w-3.5 h-3.5 me-1" /> : <CalendarPlus className="w-3.5 h-3.5 me-1" />}
                               {appt ? t("تعديل الموعد", "Edit Appt") : t("حجز موعد", "Book Appt")}
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className={`h-8 w-9 p-0 ${appt ? "text-violet-600 border-violet-300 dark:border-violet-800 hover:bg-violet-50 dark:hover:bg-violet-950/30" : "text-muted-foreground/30 border-muted cursor-not-allowed"}`}
+                              onClick={() => appt && navigate(`/site-survey/${appt.id}`)}
+                              disabled={!appt}
+                              title={appt ? t("رفع المقاسات", "Upload Measurements") : t("يجب حجز موعد أولاً", "Book appointment first")}
+                              data-testid={`button-survey-mobile-${order.id}`}
+                            >
+                              <Ruler className="w-3.5 h-3.5" />
                             </Button>
                           </>
                         )}

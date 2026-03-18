@@ -47,7 +47,7 @@ const menuItems: MenuItem[] = [
   { titleAr: "لوحة التحكم", titleEn: "Dashboard", icon: LayoutDashboard, path: "/", roles: ["owner", "assistant", "it", "sales", "designer", "production", "accountant", "warehouse", "purchasing", "delivery", "installation", "quality", "hr", "customer_service"], group: "main" },
   { titleAr: "مركز الطلبات", titleEn: "Order Center", icon: ClipboardList, path: "/order-center", roles: ["owner", "assistant"], group: "main" },
   { titleAr: "طلباتي", titleEn: "My Orders", icon: ClipboardCheck, path: "/my-orders", roles: ["sales"], group: "main" },
-  { titleAr: "تقويمي", titleEn: "My Calendar", icon: Calendar, path: "/my-calendar", roles: ["owner", "assistant", "sales"], group: "main" },
+  { titleAr: "تقويمي", titleEn: "My Calendar", icon: Calendar, path: "/my-calendar", roles: ["owner", "assistant"], group: "main" },
   { titleAr: "العملاء", titleEn: "Customers", icon: Users, path: "/customers", roles: ["owner", "assistant", "sales", "customer_service"], group: "crm" },
   { titleAr: "عروض الأسعار", titleEn: "Quotations", icon: FileText, path: "/quotations", roles: ["owner", "assistant", "sales", "designer"], group: "crm" },
   { titleAr: "العقود", titleEn: "Contracts", icon: FolderOpen, path: "/contracts", roles: ["owner", "assistant", "sales", "accountant"], group: "crm" },
