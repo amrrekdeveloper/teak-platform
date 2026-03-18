@@ -217,6 +217,7 @@ export const quotations = pgTable("quotations", {
   validUntil: date("valid_until"),
   inspectionDate: date("inspection_date"),
   deliveryDays: integer("delivery_days"),
+  city: text("city"),
   notes: text("notes"),
   createdBy: integer("created_by").references(() => users.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),

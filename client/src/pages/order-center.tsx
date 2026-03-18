@@ -170,7 +170,7 @@ export default function OrderCenterPage() {
 
   const [inspectionsOpen, setInspectionsOpen] = useState(true);
   const [newOrderDialog, setNewOrderDialog] = useState(false);
-  const [newOrderForm, setNewOrderForm] = useState({ fullName: "", phone: "", productDescription: "", notes: "" });
+  const [newOrderForm, setNewOrderForm] = useState({ fullName: "", phone: "", productDescription: "", notes: "", city: "" });
   const [showNewOrderTransition, setShowNewOrderTransition] = useState(false);
 
   const upcomingInspections = useMemo(() => {
@@ -245,14 +245,14 @@ export default function OrderCenterPage() {
   const [confirmCancel, setConfirmCancel] = useState(false);
 
   const createOrderMutation = useMutation({
-    mutationFn: async (data: { fullName: string; phone: string; productDescription: string; notes: string }) => {
+    mutationFn: async (data: { fullName: string; phone: string; productDescription: string; notes: string; city: string }) => {
       return apiRequest("POST", "/api/orders/create-direct", data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/quotations"] });
       queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
       setNewOrderDialog(false);
-      setNewOrderForm({ fullName: "", phone: "", productDescription: "", notes: "" });
+      setNewOrderForm({ fullName: "", phone: "", productDescription: "", notes: "", city: "" });
       setShowNewOrderTransition(true);
     },
     onError: (error: any) => {
@@ -597,10 +597,10 @@ export default function OrderCenterPage() {
                                 {order.customer.phone}
                               </span>
                             )}
-                            {order.customer?.city && (
+                            {(order.city || order.customer?.city) && (
                               <span className="text-[11px] text-muted-foreground flex items-center gap-1">
                                 <MapPin className="w-3 h-3" />
-                                {order.customer.city}
+                                {order.city || order.customer?.city}
                               </span>
                             )}
                           </div>
@@ -776,9 +776,9 @@ export default function OrderCenterPage() {
                       <Phone className="w-3 h-3" /> {viewOrder.customer.phone}
                     </p>
                   )}
-                  {viewOrder.customer?.city && (
+                  {(viewOrder.city || viewOrder.customer?.city) && (
                     <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
-                      <MapPin className="w-3 h-3" /> {viewOrder.customer.city}
+                      <MapPin className="w-3 h-3" /> {viewOrder.city || viewOrder.customer?.city}
                     </p>
                   )}
                 </div>
@@ -1345,7 +1345,7 @@ export default function OrderCenterPage() {
       )}
 
       {newOrderDialog && (
-        <Dialog open onOpenChange={() => { setNewOrderDialog(false); setNewOrderForm({ fullName: "", phone: "", productDescription: "", notes: "" }); }}>
+        <Dialog open onOpenChange={() => { setNewOrderDialog(false); setNewOrderForm({ fullName: "", phone: "", productDescription: "", notes: "", city: "" }); }}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
               <DialogTitle>{t("طلب جديد", "New Order")}</DialogTitle>
@@ -1373,6 +1373,20 @@ export default function OrderCenterPage() {
                 />
               </div>
               <div className="space-y-1.5">
+                <Label>{t("المدينة", "City")}</Label>
+                <Select value={newOrderForm.city || "none"} onValueChange={(v) => setNewOrderForm({ ...newOrderForm, city: v === "none" ? "" : v })}>
+                  <SelectTrigger data-testid="select-new-order-city">
+                    <SelectValue placeholder={t("اختر المدينة (اختياري)", "Select city (optional)")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">{t("— غير محددة —", "— Not specified —")}</SelectItem>
+                    {["الرياض","جدة","مكة المكرمة","المدينة المنورة","الدمام","الخبر","أبها","خميس مشيط","تبوك","بريدة","حائل","نجران","جازان","ينبع","الطائف","القطيف","الأحساء"].map(c => (
+                      <SelectItem key={c} value={c}>{c}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
                 <Label htmlFor="new-order-product">{t("وصف المنتج", "Product Description")} *</Label>
                 <Input
                   id="new-order-product"
@@ -1396,7 +1410,7 @@ export default function OrderCenterPage() {
               </div>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => { setNewOrderDialog(false); setNewOrderForm({ fullName: "", phone: "", productDescription: "", notes: "" }); }} data-testid="button-cancel-new-order">
+              <Button variant="outline" onClick={() => { setNewOrderDialog(false); setNewOrderForm({ fullName: "", phone: "", productDescription: "", notes: "", city: "" }); }} data-testid="button-cancel-new-order">
                 {t("إلغاء", "Cancel")}
               </Button>
               <Button

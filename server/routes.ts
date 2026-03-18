@@ -878,7 +878,7 @@ export async function registerRoutes(
 
   app.post("/api/orders/create-direct", requireRole("owner", "assistant", "sales"), async (req, res) => {
     try {
-      const { fullName, phone, productDescription, notes } = req.body;
+      const { fullName, phone, productDescription, notes, city } = req.body;
       if (!fullName || !phone || !productDescription) {
         return res.status(400).json({
           message: "الاسم ورقم الجوال ووصف المنتج مطلوبة",
@@ -922,6 +922,7 @@ export async function registerRoutes(
         assignedTo: isSalesRep ? req.session.userId : null,
         assignedAt: isSalesRep ? new Date() : null,
         claimedAt: isSalesRep ? new Date() : null,
+        city: city || null,
         notes: [
           `المنتج: ${productDescription}`,
           notes ? `ملاحظات: ${notes}` : "",
@@ -2776,6 +2777,48 @@ export async function registerRoutes(
       if (!survey) return res.status(404).json({ message: "النموذج غير موجود" });
       res.json(survey);
     } catch (error) {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  app.post("/api/appointments/:id/expire", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const appointment = await storage.getAppointment(id);
+      if (!appointment) return res.status(404).json({ message: "الموعد غير موجود" });
+      if (appointment.status !== "scheduled") {
+        return res.json({ message: "already_handled", status: appointment.status });
+      }
+      const endDateTime = new Date(`${appointment.appointmentDate}T${appointment.endTime || appointment.startTime || "23:59"}`);
+      if (endDateTime > new Date()) {
+        return res.status(400).json({ message: "الموعد لم ينته بعد" });
+      }
+      const updated = await storage.updateAppointment(id, { status: "no_show" });
+      const customer = appointment.customerId ? await storage.getCustomer(appointment.customerId) : null;
+      const ownerUsers = (await storage.getUsers()).filter(u => u.role === "owner" || u.role === "assistant");
+      const notifyUsers = [...ownerUsers];
+      if (appointment.assignedTo) {
+        const assignee = await storage.getUser(appointment.assignedTo);
+        if (assignee && !notifyUsers.find(u => u.id === assignee.id)) {
+          notifyUsers.push(assignee);
+        }
+      }
+      for (const u of notifyUsers) {
+        await storage.createNotification({
+          userId: u.id,
+          titleAr: "موعد انتهى دون زيارة",
+          titleEn: "Appointment Missed",
+          messageAr: `موعد ${customer?.fullName || "العميل"} بتاريخ ${appointment.appointmentDate} الساعة ${appointment.startTime} انتهى دون تسجيل زيارة — يُرجى إعادة الجدولة`,
+          messageEn: `Appointment for ${customer?.fullName || "client"} on ${appointment.appointmentDate} at ${appointment.startTime} expired without a visit — please reschedule`,
+          type: "warning",
+          relatedEntity: "appointment",
+          relatedId: id,
+          isRead: false,
+        });
+      }
+      res.json(updated);
+    } catch (error) {
+      console.error("Expire appointment error:", error);
       res.status(500).json({ message: "حدث خطأ" });
     }
   });
