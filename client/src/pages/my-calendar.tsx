@@ -494,16 +494,15 @@ export default function MyCalendarPage() {
               </div>
             )}
             <div className="space-y-2">
-              <Label>{t("العميل", "Customer")}</Label>
+              <Label>{t("العميل", "Customer")} <span className="text-destructive">*</span></Label>
               <Select
                 value={formData.customerId}
                 onValueChange={(v) => setFormData({ ...formData, customerId: v, quotationId: "" })}
               >
                 <SelectTrigger data-testid="select-customer">
-                  <SelectValue placeholder={t("اختر العميل", "Select customer")} />
+                  <SelectValue placeholder={t("اختر العميل (مطلوب)", "Select customer (required)")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">{t("بدون عميل", "No Customer")}</SelectItem>
                   {customers.map((c: any) => (
                     <SelectItem key={c.id} value={c.id.toString()}>
                       {c.fullName}
@@ -512,7 +511,7 @@ export default function MyCalendarPage() {
                 </SelectContent>
               </Select>
             </div>
-            {formData.customerId && formData.customerId !== "none" && (
+            {formData.customerId && (
               <div className="space-y-2">
                 <Label>{t("عرض السعر المرتبط (اختياري)", "Linked Quotation (Optional)")}</Label>
                 <Select
@@ -557,11 +556,11 @@ export default function MyCalendarPage() {
                   assignedTo: parseInt(formData.assignedTo) || user?.id,
                   notes: formData.notes || null,
                 };
-                if (formData.customerId && formData.customerId !== "none") data.customerId = parseInt(formData.customerId);
+                if (formData.customerId) data.customerId = parseInt(formData.customerId);
                 if (formData.quotationId && formData.quotationId !== "none") data.quotationId = parseInt(formData.quotationId);
                 createMutation.mutate(data);
               }}
-              disabled={createMutation.isPending || !formData.title || !formData.appointmentDate}
+              disabled={createMutation.isPending || !formData.title || !formData.appointmentDate || !formData.customerId}
               data-testid="button-save-appointment"
             >
               {createMutation.isPending && <Loader2 className="w-4 h-4 me-1 animate-spin" />}

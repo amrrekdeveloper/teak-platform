@@ -830,7 +830,7 @@ export const appointments = pgTable("appointments", {
   startTime: text("start_time").notNull(),
   endTime: text("end_time").notNull(),
   status: appointmentStatusEnum("status").notNull().default("scheduled"),
-  failReason: appointmentFailReasonEnum("fail_reason"),
+  failReason: text("fail_reason"),
   failNotes: text("fail_notes"),
   notes: text("notes"),
   rescheduledTo: integer("rescheduled_to"),

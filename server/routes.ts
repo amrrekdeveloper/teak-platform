@@ -80,6 +80,27 @@ export async function registerRoutes(
 
   await seedDatabase();
 
+  // Ensure appointments table has all required columns (safe migration)
+  try {
+    await db.execute(`
+      ALTER TABLE appointments ADD COLUMN IF NOT EXISTS assigned_to INTEGER REFERENCES users(id);
+      ALTER TABLE appointments ADD COLUMN IF NOT EXISTS customer_id INTEGER REFERENCES customers(id);
+      ALTER TABLE appointments ADD COLUMN IF NOT EXISTS quotation_id INTEGER REFERENCES quotations(id);
+      ALTER TABLE appointments ADD COLUMN IF NOT EXISTS title TEXT;
+      ALTER TABLE appointments ADD COLUMN IF NOT EXISTS appointment_date DATE;
+      ALTER TABLE appointments ADD COLUMN IF NOT EXISTS start_time TEXT;
+      ALTER TABLE appointments ADD COLUMN IF NOT EXISTS end_time TEXT;
+      ALTER TABLE appointments ADD COLUMN IF NOT EXISTS fail_reason TEXT;
+      ALTER TABLE appointments ADD COLUMN IF NOT EXISTS fail_notes TEXT;
+      ALTER TABLE appointments ADD COLUMN IF NOT EXISTS notes TEXT;
+      ALTER TABLE appointments ADD COLUMN IF NOT EXISTS rescheduled_to INTEGER;
+      ALTER TABLE appointments ADD COLUMN IF NOT EXISTS created_by INTEGER REFERENCES users(id);
+      ALTER TABLE appointments ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW();
+    `);
+  } catch (migrationError) {
+    console.warn("Appointment migration warning (non-fatal):", migrationError instanceof Error ? migrationError.message : String(migrationError));
+  }
+
   app.get("/api/products/public", async (req, res) => {
     try {
       const category = req.query.category as string | undefined;
@@ -449,8 +470,12 @@ export async function registerRoutes(
         res.json(await storage.getCustomers());
       } else {
         const allQuotations = await storage.getQuotations();
-        const myQuotations = allQuotations.filter((q: any) => q.assignedTo === userId);
-        const myCustomerIds = [...new Set(myQuotations.map((q: any) => q.customerId).filter(Boolean))];
+        const openPoolStatuses = ["open", "draft", "requested"];
+        const relevantQuotations = allQuotations.filter((q: any) =>
+          q.assignedTo === userId ||
+          (q.assignedTo === null && openPoolStatuses.includes(q.status))
+        );
+        const myCustomerIds = [...new Set(relevantQuotations.map((q: any) => q.customerId).filter(Boolean))];
         const allCustomers = await storage.getCustomers();
         res.json(allCustomers.filter((c: any) => myCustomerIds.includes(c.id)));
       }
@@ -461,8 +486,20 @@ export async function registerRoutes(
 
   app.get("/api/customers/:id", requireAuth, async (req, res) => {
     try {
+      const userId = (req as any).session.userId!;
+      const user = await storage.getUser(userId);
+      const isManager = user?.role === "owner" || user?.role === "assistant" || user?.role === "it" || user?.role === "accountant" || user?.role === "customer_service";
       const customer = await storage.getCustomer(parseInt(req.params.id));
       if (!customer) return res.status(404).json({ message: "العميل غير موجود" });
+      if (!isManager) {
+        const allQuotations = await storage.getQuotations();
+        const openPoolStatuses = ["open", "draft", "requested"];
+        const hasAccess = allQuotations.some((q: any) =>
+          q.customerId === customer.id &&
+          (q.assignedTo === userId || (q.assignedTo === null && openPoolStatuses.includes(q.status)))
+        );
+        if (!hasAccess) return res.status(403).json({ message: "غير مصرح لك بعرض هذا العميل" });
+      }
       res.json(customer);
     } catch (error) {
       res.status(500).json({ message: "حدث خطأ" });
