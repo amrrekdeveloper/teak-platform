@@ -63,12 +63,14 @@ const SPACE_TYPES = [
 ];
 
 const CONSTRUCTION_PHASES = [
-  { value: "skeleton", ar: "حفظة الهيكل", en: "Skeleton" },
-  { value: "plaster", ar: "البياض", en: "Plaster" },
-  { value: "frame", ar: "الطارمة", en: "Frame" },
-  { value: "finishing", ar: "التشطيب", en: "Finishing" },
-  { value: "exterior_decor", ar: "الديكور الخارجي", en: "Exterior Decor" },
-  { value: "interior_decor", ar: "ديكور داخلي", en: "Interior Decor" },
+  { value: "planning", ar: "التخطيط", en: "Planning" },
+  { value: "structure", ar: "العظم", en: "Structure" },
+  { value: "mep", ar: "التأسيس كهرباء وسباكة وميكانيك", en: "MEP Foundation" },
+  { value: "plastering", ar: "اللياسة", en: "Plastering" },
+  { value: "gypsum", ar: "الجبس", en: "Gypsum" },
+  { value: "tiling", ar: "البلاط", en: "Tiling" },
+  { value: "painting", ar: "الدهان", en: "Painting" },
+  { value: "installations", ar: "التركيبات", en: "Installations" },
   { value: "other", ar: "أخرى", en: "Other" },
 ];
 
@@ -110,6 +112,7 @@ interface SpaceData {
   buildingStatus: string;
   constructionPhase: string;
   constructionPhaseOther: string;
+  spaceTypeOther: string;
   doorsCount: string;
   windowsCount: string;
   notes: string;
@@ -150,6 +153,7 @@ function newSpace(): SpaceData {
     buildingStatus: "ready",
     constructionPhase: "",
     constructionPhaseOther: "",
+    spaceTypeOther: "",
     doorsCount: "0",
     windowsCount: "0",
     notes: "",
@@ -544,6 +548,15 @@ export default function SiteSurveyPage() {
                         ))}
                       </SelectContent>
                     </Select>
+                    {space.type === "other" && (
+                      <Input
+                        className="mt-2"
+                        value={space.spaceTypeOther}
+                        onChange={(e) => updateSpace(space.id, "spaceTypeOther", e.target.value)}
+                        placeholder={t("اذكر نوع المكان", "Specify space type")}
+                        data-testid={`input-space-type-other-${space.id}`}
+                      />
+                    )}
                   </div>
                 </div>
 
