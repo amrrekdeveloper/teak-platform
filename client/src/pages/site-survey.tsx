@@ -46,6 +46,13 @@ import {
   Box,
   FileText,
   Calendar,
+  Filter,
+  AlertCircle,
+  Zap,
+  UtensilsCrossed,
+  Layers,
+  Columns,
+  Settings2,
 } from "lucide-react";
 
 type WizardStep = 1 | 2 | 3 | 4;
@@ -196,6 +203,16 @@ function autoGenerateWalls(space: SpaceData): WallData[] {
 function t_static(ar: string, en: string) {
   return ar;
 }
+
+const KITCHEN_CATEGORIES = [
+  { groupCode: "TK1", ar: "وحدات القاعدة", en: "Base Units", icon: Layers },
+  { groupCode: "TK2", ar: "وحدات الحوض", en: "Sink Units", icon: UtensilsCrossed },
+  { groupCode: "TK3", ar: "وحدات العلوية", en: "Wall Units", icon: Columns },
+  { groupCode: "TK4", ar: "وحدات البرج/الطويلة", en: "Tall Units", icon: Ruler },
+  { groupCode: "TK5", ar: "ميكانيزم", en: "Mechanisms", icon: Settings2 },
+] as const;
+
+const WARDROBE_SPACE_TYPES = ["bedroom", "dressing", "storage"];
 
 const wallItemIcons: Record<string, typeof DoorOpen> = {
   door: DoorOpen,
@@ -454,8 +471,22 @@ export default function SiteSurveyPage() {
     setSelectedProducts(selectedProducts.filter((p) => p.id !== productId));
   }
 
+  const currentSpace = useMemo(() =>
+    spaces.find((s) => s.id === currentSpaceId) || spaces[0],
+  [spaces, currentSpaceId]);
+
+  const spaceUsageFilter = useMemo((): string[] | null => {
+    if (!currentSpace) return null;
+    if (currentSpace.type === "kitchen") return ["kitchen", "both"];
+    if (WARDROBE_SPACE_TYPES.includes(currentSpace.type)) return ["wardrobe", "both"];
+    return null;
+  }, [currentSpace]);
+
   const filteredAdekoProducts = useMemo(() => {
-    let list = adekoProducts;
+    let list = adekoProducts as any[];
+    if (spaceUsageFilter) {
+      list = list.filter((p: any) => spaceUsageFilter.includes(p.usageType || "kitchen"));
+    }
     if (selectedGroup !== "all") {
       list = list.filter((p: any) => p.groupCode === selectedGroup);
     }
@@ -468,7 +499,7 @@ export default function SiteSurveyPage() {
       );
     }
     return list.slice(0, 50);
-  }, [adekoProducts, selectedGroup, productSearch]);
+  }, [adekoProducts, selectedGroup, productSearch, spaceUsageFilter]);
 
   const customer = customers.find((c: any) => c.id === appointment?.customerId);
 
@@ -1005,12 +1036,123 @@ export default function SiteSurveyPage() {
 
           {spaces.map((space) => {
             const spaceProducts = selectedProducts.filter((p) => p.spaceId === space.id);
-            if (spaceProducts.length === 0) return null;
+            const isKitchen = space.type === "kitchen";
+
+            const kitchenCompleteness = isKitchen ? KITCHEN_CATEGORIES.map((cat) => {
+              const present = spaceProducts.some((p) => {
+                const product = (adekoProducts as any[]).find((ap: any) => ap.id === p.adekoProductId);
+                return product?.groupCode === cat.groupCode;
+              });
+              return { ...cat, present };
+            }) : [];
+
+            const hasWallData = space.walls.length > 0;
+
             return (
-              <div key={space.id}>
-                <div className="text-xs font-semibold text-muted-foreground mb-2">
-                  {space.name || t("مكان", "Space")} ({spaceProducts.length})
+              <div key={space.id} className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="text-xs font-semibold text-muted-foreground">
+                    {space.name || t("مكان", "Space")} ({spaceProducts.length})
+                  </div>
+                  {isKitchen && (
+                    <Badge variant="outline" className="text-[10px] border-orange-300 text-orange-700 dark:text-orange-400">
+                      <UtensilsCrossed className="w-2.5 h-2.5 me-1" />
+                      {t("مطبخ", "Kitchen")}
+                    </Badge>
+                  )}
                 </div>
+
+                {isKitchen && (
+                  <Card className="border-orange-200 dark:border-orange-900/50 bg-orange-50/50 dark:bg-orange-950/10" data-testid={`card-kitchen-completeness-${space.id}`}>
+                    <CardContent className="p-3">
+                      <div className="flex items-center gap-1.5 mb-2.5">
+                        <Zap className="w-3.5 h-3.5 text-orange-600" />
+                        <span className="text-xs font-semibold text-orange-800 dark:text-orange-300">
+                          {t("اكتمال وحدات المطبخ", "Kitchen Units Completeness")}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground ms-auto">
+                          {kitchenCompleteness.filter(c => c.present).length}/{kitchenCompleteness.length}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-1 gap-1.5">
+                        {kitchenCompleteness.map((cat) => {
+                          const CatIcon = cat.icon;
+                          return (
+                            <div key={cat.groupCode} className={`flex items-center gap-2 p-1.5 rounded-md ${cat.present ? "bg-green-50 dark:bg-green-950/20" : "bg-red-50 dark:bg-red-950/20"}`} data-testid={`kitchen-cat-${cat.groupCode}`}>
+                              <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${cat.present ? "bg-green-100 dark:bg-green-900/50" : "bg-red-100 dark:bg-red-900/50"}`}>
+                                {cat.present
+                                  ? <CheckCircle2 className="w-3 h-3 text-green-600" />
+                                  : <AlertCircle className="w-3 h-3 text-red-500" />
+                                }
+                              </div>
+                              <CatIcon className="w-3 h-3 text-muted-foreground shrink-0" />
+                              <span className={`text-[11px] flex-1 ${cat.present ? "text-green-800 dark:text-green-300 font-medium" : "text-red-700 dark:text-red-400"}`}>
+                                {t(cat.ar, cat.en)}
+                              </span>
+                              {!cat.present && (
+                                <button
+                                  className="text-[10px] text-primary font-semibold px-2 py-0.5 rounded border border-primary/30 hover:bg-primary/5 transition-colors flex items-center gap-1"
+                                  onClick={() => {
+                                    setCurrentSpaceId(space.id);
+                                    setProductSearch("");
+                                    setSelectedGroup(cat.groupCode);
+                                    setProductSearchDialog(true);
+                                  }}
+                                  data-testid={`button-quick-add-${cat.groupCode}`}
+                                >
+                                  <Plus className="w-2.5 h-2.5" />
+                                  {t("إضافة", "Add")}
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {hasWallData && (
+                  <Card className="bg-muted/20" data-testid={`card-wall-usage-${space.id}`}>
+                    <CardContent className="p-3">
+                      <div className="text-[10px] font-semibold text-muted-foreground mb-2 uppercase tracking-wide flex items-center gap-1">
+                        <LayoutGrid className="w-3 h-3" />
+                        {t("استهلاك مساحة الجدران", "Wall Space Usage")}
+                      </div>
+                      <div className="space-y-1.5">
+                        {space.walls.map((wall) => {
+                          const wallProducts = spaceProducts.filter(p => p.wallId === wall.id);
+                          const usedCm = wallProducts.reduce((sum, p) => sum + (parseFloat(p.designW || "0") * p.quantity), 0);
+                          const totalCm = parseFloat(wall.length || "0") * 100;
+                          const pct = totalCm > 0 ? Math.min((usedCm / totalCm) * 100, 100) : 0;
+                          const isOver = usedCm > totalCm && totalCm > 0;
+                          const isEmpty = usedCm === 0;
+                          return (
+                            <div key={wall.id}>
+                              <div className="flex justify-between items-center mb-0.5">
+                                <span className="text-[10px] font-medium">{wall.name}</span>
+                                <span className={`text-[10px] tabular-nums ${isOver ? "text-destructive font-bold" : isEmpty ? "text-muted-foreground/60" : "text-muted-foreground"}`}>
+                                  {totalCm > 0
+                                    ? `${(usedCm / 100).toFixed(2)}م / ${wall.length}م${isOver ? ` ⚠ +${((usedCm - totalCm) / 100).toFixed(2)}م` : ""}`
+                                    : t("طول الجدار غير محدد", "Wall length not set")}
+                                </span>
+                              </div>
+                              {totalCm > 0 && (
+                                <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                                  <div
+                                    className={`h-full rounded-full transition-all ${isOver ? "bg-destructive" : isEmpty ? "bg-muted-foreground/20" : pct > 90 ? "bg-amber-500" : "bg-primary"}`}
+                                    style={{ width: `${isEmpty ? 0 : pct}%` }}
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
                 {spaceProducts.map((product) => (
                   <Card key={product.id} className="mb-2">
                     <CardContent className="p-3 space-y-2">
@@ -1146,43 +1288,22 @@ export default function SiteSurveyPage() {
                   </Card>
                 ))}
 
-                {space.walls.length > 0 && spaceProducts.some(p => p.wallId) && (
-                  <div className="mt-3 p-3 rounded-lg border bg-muted/30">
-                    <div className="text-[10px] font-semibold text-muted-foreground mb-2 uppercase tracking-wide">
-                      {t("استهلاك مساحة الجدران", "Wall Space Usage")}
-                    </div>
-                    {space.walls.map((wall) => {
-                      const wallProducts = spaceProducts.filter(p => p.wallId === wall.id);
-                      if (wallProducts.length === 0) return null;
-                      const usedCm = wallProducts.reduce((sum, p) => sum + (parseFloat(p.designW || "0") * p.quantity), 0);
-                      const totalCm = parseFloat(wall.length || "0") * 100;
-                      const pct = totalCm > 0 ? Math.min((usedCm / totalCm) * 100, 100) : 0;
-                      const isOver = usedCm > totalCm && totalCm > 0;
-                      return (
-                        <div key={wall.id} className="mb-2 last:mb-0">
-                          <div className="flex justify-between items-center mb-1">
-                            <span className="text-[10px] font-medium">{wall.name}</span>
-                            <span className={`text-[10px] tabular-nums ${isOver ? "text-destructive font-bold" : "text-muted-foreground"}`}>
-                              {(usedCm / 100).toFixed(2)}م / {wall.length}م
-                              {isOver && ` ⚠ +${((usedCm - totalCm) / 100).toFixed(2)}م`}
-                            </span>
-                          </div>
-                          <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-                            <div
-                              className={`h-full rounded-full transition-all ${isOver ? "bg-destructive" : pct > 90 ? "bg-amber-500" : "bg-primary"}`}
-                              style={{ width: `${pct}%` }}
-                            />
-                          </div>
-                        </div>
-                      );
-                    })}
+                {spaceProducts.length === 0 && (
+                  <div className="text-center py-4 text-muted-foreground text-xs border border-dashed rounded-lg">
+                    {t("لا توجد منتجات في هذا المكان", "No products in this space")}
+                    <button
+                      className="block mx-auto mt-2 text-primary text-xs font-medium hover:underline"
+                      onClick={() => { setCurrentSpaceId(space.id); setProductSearch(""); setSelectedGroup("all"); setProductSearchDialog(true); }}
+                    >
+                      + {t("إضافة أول منتج", "Add first product")}
+                    </button>
                   </div>
                 )}
               </div>
             );
           })}
 
-          {selectedProducts.length === 0 && (
+          {selectedProducts.length === 0 && spaces.every(s => selectedProducts.filter(p => p.spaceId === s.id).length === 0) && (
             <div className="text-center py-8 text-muted-foreground text-sm">
               {t("لم يتم إضافة منتجات بعد", "No products added yet")}
             </div>
@@ -1314,6 +1435,14 @@ export default function SiteSurveyPage() {
         <DialogContent className="max-w-lg max-h-[85vh] overflow-hidden flex flex-col" data-testid="dialog-product-search">
           <DialogHeader>
             <DialogTitle>{t("اختيار منتج من مكتبة Adeko", "Select Product from Adeko Library")}</DialogTitle>
+            {spaceUsageFilter && (
+              <div className="flex items-center gap-1.5 mt-1 text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 px-2 py-1 rounded-md">
+                <Filter className="w-3 h-3 shrink-0" />
+                {spaceUsageFilter[0] === "kitchen"
+                  ? t("يعرض منتجات المطبخ فقط · اسحب للأسفل لرؤية الكل", "Showing kitchen products only")
+                  : t("يعرض منتجات الدولاب فقط", "Showing wardrobe products only")}
+              </div>
+            )}
           </DialogHeader>
 
           <div className="flex gap-2 mb-2">
