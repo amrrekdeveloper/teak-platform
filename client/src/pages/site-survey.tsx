@@ -1065,14 +1065,20 @@ export default function SiteSurveyPage() {
                 {isKitchen && (
                   <Card className="border-orange-200 dark:border-orange-900/50 bg-orange-50/50 dark:bg-orange-950/10" data-testid={`card-kitchen-completeness-${space.id}`}>
                     <CardContent className="p-3">
-                      <div className="flex items-center gap-1.5 mb-2.5">
+                      <div className="flex items-center gap-1.5 mb-1.5">
                         <Zap className="w-3.5 h-3.5 text-orange-600" />
                         <span className="text-xs font-semibold text-orange-800 dark:text-orange-300">
                           {t("اكتمال وحدات المطبخ", "Kitchen Units Completeness")}
                         </span>
-                        <span className="text-[10px] text-muted-foreground ms-auto">
+                        <span className="text-[10px] font-bold ms-auto text-orange-700 dark:text-orange-400">
                           {kitchenCompleteness.filter(c => c.present).length}/{kitchenCompleteness.length}
                         </span>
+                      </div>
+                      <div className="h-2 rounded-full bg-orange-100 dark:bg-orange-900/30 overflow-hidden mb-2.5" data-testid={`progress-kitchen-completeness-${space.id}`}>
+                        <div
+                          className={`h-full rounded-full transition-all ${kitchenCompleteness.filter(c => c.present).length === kitchenCompleteness.length ? "bg-green-500" : "bg-orange-400"}`}
+                          style={{ width: `${(kitchenCompleteness.filter(c => c.present).length / kitchenCompleteness.length) * 100}%` }}
+                        />
                       </div>
                       <div className="grid grid-cols-1 gap-1.5">
                         {kitchenCompleteness.map((cat) => {
@@ -1439,8 +1445,8 @@ export default function SiteSurveyPage() {
               <div className="flex items-center gap-1.5 mt-1 text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 px-2 py-1 rounded-md">
                 <Filter className="w-3 h-3 shrink-0" />
                 {spaceUsageFilter[0] === "kitchen"
-                  ? t("يعرض منتجات المطبخ فقط · اسحب للأسفل لرؤية الكل", "Showing kitchen products only")
-                  : t("يعرض منتجات الدولاب فقط", "Showing wardrobe products only")}
+                  ? t("مفلتر: يعرض منتجات المطبخ فقط", "Filtered: showing kitchen products only")
+                  : t("مفلتر: يعرض منتجات الدولاب فقط", "Filtered: showing wardrobe products only")}
               </div>
             )}
           </DialogHeader>
