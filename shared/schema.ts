@@ -870,6 +870,7 @@ export const siteSurveys = pgTable("site_surveys", {
   drainagePoints: jsonb("drainage_points"),
   obstacles: text("obstacles"),
   walls: jsonb("walls"),
+  spaces: jsonb("spaces"),
   selectedProducts: jsonb("selected_products"),
   notes: text("notes"),
   photos: text("photos").array(),

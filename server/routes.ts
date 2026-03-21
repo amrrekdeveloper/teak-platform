@@ -2898,18 +2898,31 @@ export async function registerRoutes(
 
   app.post("/api/site-surveys", requireAuth, async (req, res) => {
     try {
-      const data = { ...req.body, createdBy: req.session.userId };
+      const userId = req.session.userId!;
+      const body = req.body;
 
-      if (!data.appointmentId) {
+      if (!body.appointmentId) {
         return res.status(400).json({ message: "معرف الموعد مطلوب" });
       }
 
-      const appointment = await storage.getAppointment(data.appointmentId);
+      const appointment = await storage.getAppointment(body.appointmentId);
       if (!appointment) return res.status(404).json({ message: "الموعد غير موجود" });
 
-      await storage.updateAppointment(data.appointmentId, { status: "attended" });
+      await storage.updateAppointment(body.appointmentId, { status: "attended" });
 
-      const survey = await storage.createSiteSurvey(data);
+      const surveyData: any = {
+        appointmentId: body.appointmentId,
+        customerId: body.customerId || appointment.customerId || null,
+        quotationId: body.quotationId || appointment.quotationId || null,
+        spaces: body.spaces || null,
+        walls: body.walls || null,
+        selectedProducts: body.selectedProducts || null,
+        notes: body.notes || null,
+        photos: body.photos || null,
+        createdBy: userId,
+      };
+
+      const survey = await storage.createSiteSurvey(surveyData);
       res.status(201).json(survey);
     } catch (error) {
       console.error("Create site survey error:", error);
@@ -2919,11 +2932,21 @@ export async function registerRoutes(
 
   app.patch("/api/site-surveys/:id", requireAuth, async (req, res) => {
     try {
-      const updated = await storage.updateSiteSurvey(parseInt(req.params.id), req.body);
+      const body = req.body;
+      const updateData: any = {};
+      if (body.spaces !== undefined) updateData.spaces = body.spaces;
+      if (body.walls !== undefined) updateData.walls = body.walls;
+      if (body.selectedProducts !== undefined) updateData.selectedProducts = body.selectedProducts;
+      if (body.notes !== undefined) updateData.notes = body.notes;
+      if (body.photos !== undefined) updateData.photos = body.photos;
+      if (body.customerId !== undefined) updateData.customerId = body.customerId;
+      if (body.quotationId !== undefined) updateData.quotationId = body.quotationId;
+      const updated = await storage.updateSiteSurvey(parseInt(req.params.id), updateData);
       if (!updated) return res.status(404).json({ message: "النموذج غير موجود" });
       res.json(updated);
     } catch (error) {
-      res.status(500).json({ message: "حدث خطأ" });
+      console.error("Update site survey error:", error);
+      res.status(500).json({ message: "حدث خطأ في تحديث النموذج" });
     }
   });
 

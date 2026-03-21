@@ -23,7 +23,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
 } from "@/components/ui/dialog";
 import {
   Loader2,
@@ -51,19 +50,70 @@ import {
 
 type WizardStep = 1 | 2 | 3 | 4;
 
-interface WallData {
-  id: string;
-  name: string;
-  length: string;
-  items: WallItem[];
-}
+const SPACE_TYPES = [
+  { value: "kitchen", ar: "مطبخ", en: "Kitchen" },
+  { value: "bedroom", ar: "غرفة نوم", en: "Bedroom" },
+  { value: "living", ar: "صالة", en: "Living Room" },
+  { value: "salon", ar: "صالون", en: "Salon" },
+  { value: "dressing", ar: "دريسنج", en: "Dressing Room" },
+  { value: "storage", ar: "مستودع", en: "Storage" },
+  { value: "office", ar: "مكتب", en: "Office" },
+  { value: "bathroom", ar: "حمام", en: "Bathroom" },
+  { value: "other", ar: "أخرى", en: "Other" },
+];
+
+const CONSTRUCTION_PHASES = [
+  { value: "skeleton", ar: "حفظة الهيكل", en: "Skeleton" },
+  { value: "plaster", ar: "البياض", en: "Plaster" },
+  { value: "frame", ar: "الطارمة", en: "Frame" },
+  { value: "finishing", ar: "التشطيب", en: "Finishing" },
+  { value: "exterior_decor", ar: "الديكور الخارجي", en: "Exterior Decor" },
+  { value: "interior_decor", ar: "ديكور داخلي", en: "Interior Decor" },
+  { value: "other", ar: "أخرى", en: "Other" },
+];
+
+const LIFT_MECHANISMS = [
+  { value: "none", ar: "لا يوجد", en: "None" },
+  { value: "push_pull", ar: "دفع-سحب", en: "Push-Pull" },
+  { value: "gas_strut", ar: "جاز ستروت", en: "Gas Strut" },
+  { value: "aventos_hf", ar: "أفانتوس HF", en: "Aventos HF" },
+  { value: "aventos_hl", ar: "أفانتوس HL", en: "Aventos HL" },
+  { value: "servo_drive", ar: "سيرفو درايف", en: "Servo Drive" },
+  { value: "other", ar: "أخرى", en: "Other" },
+];
 
 interface WallItem {
   type: "door" | "window" | "outlet" | "drain" | "obstacle";
   width: string;
   height: string;
-  positionFromLeft: string;
+  distanceFromFirst: string;
+  heightFromFloor: string;
+  specs: string;
   notes: string;
+}
+
+interface WallData {
+  id: string;
+  name: string;
+  length: string;
+  wallHeight: string;
+  items: WallItem[];
+}
+
+interface SpaceData {
+  id: string;
+  name: string;
+  type: string;
+  length: string;
+  width: string;
+  height: string;
+  buildingStatus: string;
+  constructionPhase: string;
+  constructionPhaseOther: string;
+  doorsCount: string;
+  windowsCount: string;
+  notes: string;
+  walls: WallData[];
 }
 
 interface SelectedProduct {
@@ -76,16 +126,74 @@ interface SelectedProduct {
   quantity: number;
   doorType: string;
   drawerType: string;
-  mechanism: string;
+  liftMechanism: string;
+  liftMechanismNote: string;
   notes: string;
-  room: string;
+  spaceId: string;
 }
 
 const stepLabels: Record<WizardStep, { ar: string; en: string; icon: typeof Ruler }> = {
-  1: { ar: "تفاصيل المكان", en: "Room Details", icon: Ruler },
-  2: { ar: "الجدران", en: "Wall Layout", icon: LayoutGrid },
+  1: { ar: "الأماكن", en: "Spaces", icon: Building2 },
+  2: { ar: "الجدران", en: "Walls", icon: LayoutGrid },
   3: { ar: "المنتجات", en: "Products", icon: Package },
   4: { ar: "الملاحظات والصور", en: "Notes & Photos", icon: Camera },
+};
+
+function newSpace(): SpaceData {
+  return {
+    id: `space_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    name: "",
+    type: "kitchen",
+    length: "",
+    width: "",
+    height: "",
+    buildingStatus: "ready",
+    constructionPhase: "",
+    constructionPhaseOther: "",
+    doorsCount: "0",
+    windowsCount: "0",
+    notes: "",
+    walls: [],
+  };
+}
+
+function autoGenerateWalls(space: SpaceData): WallData[] {
+  const L = parseFloat(space.length) || 0;
+  const W = parseFloat(space.width) || 0;
+  const wallDefs = [
+    { suffix: "A", len: L },
+    { suffix: "B", len: W },
+    { suffix: "C", len: L },
+    { suffix: "D", len: W },
+  ];
+  const wallHeight = space.height ? String(parseFloat(space.height)) : "";
+  return wallDefs.map((def) => ({
+    id: `wall_${space.id}_${def.suffix}`,
+    name: `${t_static("الجدار", "Wall")} ${def.suffix}${def.len ? ` (${def.len}م)` : ""}`,
+    length: def.len ? String(def.len) : "",
+    wallHeight,
+    items: [],
+  }));
+}
+
+function t_static(ar: string, en: string) {
+  return ar;
+}
+
+const wallItemIcons: Record<string, typeof DoorOpen> = {
+  door: DoorOpen,
+  window: Grid3X3,
+  outlet: Plug,
+  drain: Droplets,
+  obstacle: X,
+};
+
+const wallItemLabels: Record<string, { ar: string; en: string }> = {
+  door: { ar: "باب", en: "Door" },
+  window: { ar: "نافذة", en: "Window" },
+  outlet: { ar: "مخرج كهرباء", en: "Outlet" },
+  drain: { ar: "فتحة صرف", en: "Drain" },
+  obstacle: { ar: "عائق", en: "Obstacle" },
 };
 
 export default function SiteSurveyPage() {
@@ -100,7 +208,8 @@ export default function SiteSurveyPage() {
   const [productSearchDialog, setProductSearchDialog] = useState(false);
   const [productSearch, setProductSearch] = useState("");
   const [selectedGroup, setSelectedGroup] = useState("all");
-  const [currentRoom, setCurrentRoom] = useState("room_1");
+  const [currentSpaceId, setCurrentSpaceId] = useState<string>("");
+  const [activeWallSpaceId, setActiveWallSpaceId] = useState<string>("");
 
   const { data: appointment } = useQuery<any>({
     queryKey: ["/api/appointments", appointmentId],
@@ -117,49 +226,58 @@ export default function SiteSurveyPage() {
   const { data: adekoProducts = [] } = useQuery<any[]>({ queryKey: ["/api/adeko-products"] });
   const { data: adekoGroups = [] } = useQuery<any[]>({ queryKey: ["/api/adeko-products/groups"] });
 
-  const [roomData, setRoomData] = useState({
-    roomLength: "",
-    roomWidth: "",
-    roomHeight: "",
-    buildingStatus: "ready",
-    constructionPhase: "",
-    doorsCount: "0",
-    windowsCount: "0",
-    obstacles: "",
-  });
-
-  const [walls, setWalls] = useState<WallData[]>([
-    { id: "wall_1", name: t("الجدار 1", "Wall 1"), length: "", items: [] },
-    { id: "wall_2", name: t("الجدار 2", "Wall 2"), length: "", items: [] },
-    { id: "wall_3", name: t("الجدار 3", "Wall 3"), length: "", items: [] },
-    { id: "wall_4", name: t("الجدار 4", "Wall 4"), length: "", items: [] },
-  ]);
-
+  const [spaces, setSpaces] = useState<SpaceData[]>([{ ...newSpace(), name: t("المكان الأول", "Space 1") }]);
   const [selectedProducts, setSelectedProducts] = useState<SelectedProduct[]>([]);
   const [surveyNotes, setSurveyNotes] = useState("");
   const [photos, setPhotos] = useState<string[]>([]);
+  const [savedSurveyId, setSavedSurveyId] = useState<number | null>(null);
+  const [nextStepsDialog, setNextStepsDialog] = useState(false);
 
   useEffect(() => {
     if (existingSurvey && existingSurvey.id) {
-      setRoomData({
-        roomLength: existingSurvey.roomLength || "",
-        roomWidth: existingSurvey.roomWidth || "",
-        roomHeight: existingSurvey.roomHeight || "",
-        buildingStatus: existingSurvey.buildingStatus || "ready",
-        constructionPhase: existingSurvey.constructionPhase || "",
-        doorsCount: String(existingSurvey.doorsCount || 0),
-        windowsCount: String(existingSurvey.windowsCount || 0),
-        obstacles: existingSurvey.obstacles || "",
-      });
-      if (existingSurvey.walls) setWalls(existingSurvey.walls as WallData[]);
-      if (existingSurvey.selectedProducts) setSelectedProducts(existingSurvey.selectedProducts as SelectedProduct[]);
+      if (existingSurvey.spaces && Array.isArray(existingSurvey.spaces) && existingSurvey.spaces.length > 0) {
+        setSpaces(existingSurvey.spaces as SpaceData[]);
+      }
+      if (existingSurvey.selectedProducts) {
+        const products = (existingSurvey.selectedProducts as any[]).map((p: any) => ({
+          ...p,
+          liftMechanism: p.liftMechanism || p.mechanism || "none",
+          liftMechanismNote: p.liftMechanismNote || "",
+          spaceId: p.spaceId || p.room || "",
+        })) as SelectedProduct[];
+        setSelectedProducts(products);
+      }
       if (existingSurvey.notes) setSurveyNotes(existingSurvey.notes);
       if (existingSurvey.photos) setPhotos(existingSurvey.photos);
     }
   }, [existingSurvey]);
 
-  const [savedSurveyId, setSavedSurveyId] = useState<number | null>(null);
-  const [nextStepsDialog, setNextStepsDialog] = useState(false);
+  useEffect(() => {
+    if (spaces.length > 0) {
+      const spaceIds = spaces.map((s) => s.id);
+      if (!currentSpaceId || !spaceIds.includes(currentSpaceId)) {
+        setCurrentSpaceId(spaces[0].id);
+      }
+      if (!activeWallSpaceId || !spaceIds.includes(activeWallSpaceId)) {
+        setActiveWallSpaceId(spaces[0].id);
+      }
+    }
+  }, [spaces]);
+
+  function goToStep2() {
+    const updatedSpaces = spaces.map((space) => {
+      if (space.walls.length === 0) {
+        return { ...space, walls: autoGenerateWalls(space) };
+      }
+      const existingIds = new Set(space.walls.map((w) => w.id));
+      const generated = autoGenerateWalls(space);
+      const missing = generated.filter((g) => !existingIds.has(g.id));
+      return { ...space, walls: [...space.walls, ...missing] };
+    });
+    setSpaces(updatedSpaces);
+    if (updatedSpaces.length > 0) setActiveWallSpaceId(updatedSpaces[0].id);
+    setStep(2);
+  }
 
   const saveMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -187,15 +305,7 @@ export default function SiteSurveyPage() {
       appointmentId,
       customerId: appointment?.customerId || null,
       quotationId: appointment?.quotationId || null,
-      roomLength: roomData.roomLength || null,
-      roomWidth: roomData.roomWidth || null,
-      roomHeight: roomData.roomHeight || null,
-      buildingStatus: roomData.buildingStatus,
-      constructionPhase: roomData.constructionPhase || null,
-      doorsCount: parseInt(roomData.doorsCount) || 0,
-      windowsCount: parseInt(roomData.windowsCount) || 0,
-      obstacles: roomData.obstacles || null,
-      walls,
+      spaces,
       selectedProducts,
       notes: surveyNotes || null,
       photos,
@@ -203,33 +313,94 @@ export default function SiteSurveyPage() {
     saveMutation.mutate(data);
   }
 
-  function addWallItem(wallId: string, type: WallItem["type"]) {
-    setWalls(walls.map((w) => {
-      if (w.id !== wallId) return w;
+  function updateSpace(spaceId: string, field: keyof SpaceData, value: any) {
+    setSpaces(spaces.map((s) => (s.id === spaceId ? { ...s, [field]: value } : s)));
+  }
+
+  function removeSpace(spaceId: string) {
+    const updated = spaces.filter((s) => s.id !== spaceId);
+    setSpaces(updated);
+    if (currentSpaceId === spaceId && updated.length > 0) setCurrentSpaceId(updated[0].id);
+    if (activeWallSpaceId === spaceId && updated.length > 0) setActiveWallSpaceId(updated[0].id);
+  }
+
+  function addWallToSpace(spaceId: string) {
+    setSpaces(spaces.map((s) => {
+      if (s.id !== spaceId) return s;
+      const newWall: WallData = {
+        id: `wall_${spaceId}_${Date.now()}`,
+        name: `${t("الجدار", "Wall")} ${s.walls.length + 1}`,
+        length: "",
+        wallHeight: s.height || "",
+        items: [],
+      };
+      return { ...s, walls: [...s.walls, newWall] };
+    }));
+  }
+
+  function updateWall(spaceId: string, wallId: string, field: keyof WallData, value: any) {
+    setSpaces(spaces.map((s) => {
+      if (s.id !== spaceId) return s;
       return {
-        ...w,
-        items: [...w.items, { type, width: "", height: "", positionFromLeft: "", notes: "" }],
+        ...s,
+        walls: s.walls.map((w) => (w.id === wallId ? { ...w, [field]: value } : w)),
       };
     }));
   }
 
-  function updateWallItem(wallId: string, itemIndex: number, field: string, value: string) {
-    setWalls(walls.map((w) => {
-      if (w.id !== wallId) return w;
-      const newItems = [...w.items];
-      newItems[itemIndex] = { ...newItems[itemIndex], [field]: value };
-      return { ...w, items: newItems };
+  function removeWall(spaceId: string, wallId: string) {
+    setSpaces(spaces.map((s) => {
+      if (s.id !== spaceId) return s;
+      return { ...s, walls: s.walls.filter((w) => w.id !== wallId) };
     }));
   }
 
-  function removeWallItem(wallId: string, itemIndex: number) {
-    setWalls(walls.map((w) => {
-      if (w.id !== wallId) return w;
-      return { ...w, items: w.items.filter((_, i) => i !== itemIndex) };
+  function addWallItem(spaceId: string, wallId: string, type: WallItem["type"]) {
+    setSpaces(spaces.map((s) => {
+      if (s.id !== spaceId) return s;
+      return {
+        ...s,
+        walls: s.walls.map((w) => {
+          if (w.id !== wallId) return w;
+          return {
+            ...w,
+            items: [...w.items, { type, width: "", height: "", distanceFromFirst: "", heightFromFloor: "", specs: "", notes: "" }],
+          };
+        }),
+      };
+    }));
+  }
+
+  function updateWallItem(spaceId: string, wallId: string, itemIndex: number, field: string, value: string) {
+    setSpaces(spaces.map((s) => {
+      if (s.id !== spaceId) return s;
+      return {
+        ...s,
+        walls: s.walls.map((w) => {
+          if (w.id !== wallId) return w;
+          const newItems = [...w.items];
+          newItems[itemIndex] = { ...newItems[itemIndex], [field]: value };
+          return { ...w, items: newItems };
+        }),
+      };
+    }));
+  }
+
+  function removeWallItem(spaceId: string, wallId: string, itemIndex: number) {
+    setSpaces(spaces.map((s) => {
+      if (s.id !== spaceId) return s;
+      return {
+        ...s,
+        walls: s.walls.map((w) => {
+          if (w.id !== wallId) return w;
+          return { ...w, items: w.items.filter((_, i) => i !== itemIndex) };
+        }),
+      };
     }));
   }
 
   function addProduct(adekoProduct: any) {
+    const spaceId = currentSpaceId || (spaces[0]?.id ?? "");
     const newProduct: SelectedProduct = {
       id: `prod_${Date.now()}`,
       adekoProductId: adekoProduct.id,
@@ -240,9 +411,10 @@ export default function SiteSurveyPage() {
       quantity: 1,
       doorType: "",
       drawerType: "",
-      mechanism: "",
+      liftMechanism: "none",
+      liftMechanismNote: "",
       notes: "",
-      room: currentRoom,
+      spaceId,
     };
     setSelectedProducts([...selectedProducts, newProduct]);
     setProductSearchDialog(false);
@@ -276,28 +448,7 @@ export default function SiteSurveyPage() {
 
   const customer = customers.find((c: any) => c.id === appointment?.customerId);
 
-  const wallItemIcons: Record<string, typeof DoorOpen> = {
-    door: DoorOpen,
-    window: Grid3X3,
-    outlet: Plug,
-    drain: Droplets,
-    obstacle: X,
-  };
-
-  const wallItemLabels: Record<string, { ar: string; en: string }> = {
-    door: { ar: "باب", en: "Door" },
-    window: { ar: "نافذة", en: "Window" },
-    outlet: { ar: "مخرج كهرباء", en: "Outlet" },
-    drain: { ar: "فتحة صرف", en: "Drain" },
-    obstacle: { ar: "عائق", en: "Obstacle" },
-  };
-
-  const rooms = [
-    { id: "room_1", ar: "الغرفة 1", en: "Room 1" },
-    { id: "room_2", ar: "الغرفة 2", en: "Room 2" },
-    { id: "room_3", ar: "الغرفة 3", en: "Room 3" },
-    { id: "kitchen", ar: "المطبخ", en: "Kitchen" },
-  ];
+  const activeWallSpace = spaces.find((s) => s.id === activeWallSpaceId) || spaces[0];
 
   return (
     <div className="max-w-2xl mx-auto space-y-4 pb-24" data-testid="page-site-survey">
@@ -318,7 +469,7 @@ export default function SiteSurveyPage() {
         </Button>
       </div>
 
-      <div className="flex items-center gap-1 overflow-x-auto pb-2">
+      <div className="flex items-center gap-1 overflow-x-auto pb-2 scrollbar-hide">
         {([1, 2, 3, 4] as WizardStep[]).map((s) => {
           const StepIcon = stepLabels[s].icon;
           const isActive = step === s;
@@ -326,8 +477,11 @@ export default function SiteSurveyPage() {
           return (
             <button
               key={s}
-              onClick={() => setStep(s)}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition-all ${
+              onClick={() => {
+                if (s === 2 && step === 1) { goToStep2(); return; }
+                setStep(s);
+              }}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition-all flex-shrink-0 ${
                 isActive
                   ? "bg-primary text-primary-foreground"
                   : isPast
@@ -344,232 +498,417 @@ export default function SiteSurveyPage() {
       </div>
 
       {step === 1 && (
-        <Card>
-          <CardContent className="p-4 space-y-4" data-testid="section-room-details">
-            <h3 className="font-semibold text-sm flex items-center gap-2">
-              <Ruler className="w-4 h-4 text-primary" />
-              {t("أبعاد الغرفة", "Room Dimensions")}
-            </h3>
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <Label className="text-xs">{t("الطول (م)", "Length (m)")}</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={roomData.roomLength}
-                  onChange={(e) => setRoomData({ ...roomData, roomLength: e.target.value })}
-                  placeholder="0.00"
-                  data-testid="input-room-length"
-                />
-              </div>
-              <div>
-                <Label className="text-xs">{t("العرض (م)", "Width (m)")}</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={roomData.roomWidth}
-                  onChange={(e) => setRoomData({ ...roomData, roomWidth: e.target.value })}
-                  placeholder="0.00"
-                  data-testid="input-room-width"
-                />
-              </div>
-              <div>
-                <Label className="text-xs">{t("الارتفاع (م)", "Height (m)")}</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={roomData.roomHeight}
-                  onChange={(e) => setRoomData({ ...roomData, roomHeight: e.target.value })}
-                  placeholder="0.00"
-                  data-testid="input-room-height"
-                />
-              </div>
-            </div>
-
-            <div>
-              <Label className="text-xs">{t("حالة البناء", "Building Status")}</Label>
-              <Select
-                value={roomData.buildingStatus}
-                onValueChange={(v) => setRoomData({ ...roomData, buildingStatus: v })}
-              >
-                <SelectTrigger data-testid="select-building-status">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ready">{t("جاهز", "Ready")}</SelectItem>
-                  <SelectItem value="under_construction">{t("قيد الإنشاء", "Under Construction")}</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {roomData.buildingStatus === "under_construction" && (
-              <div>
-                <Label className="text-xs">{t("مرحلة البناء", "Construction Phase")}</Label>
-                <Input
-                  value={roomData.constructionPhase}
-                  onChange={(e) => setRoomData({ ...roomData, constructionPhase: e.target.value })}
-                  placeholder={t("مثال: التشطيب", "e.g. Finishing")}
-                  data-testid="input-construction-phase"
-                />
-              </div>
-            )}
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label className="text-xs">{t("عدد الأبواب", "Doors Count")}</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  value={roomData.doorsCount}
-                  onChange={(e) => setRoomData({ ...roomData, doorsCount: e.target.value })}
-                  data-testid="input-doors-count"
-                />
-              </div>
-              <div>
-                <Label className="text-xs">{t("عدد النوافذ", "Windows Count")}</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  value={roomData.windowsCount}
-                  onChange={(e) => setRoomData({ ...roomData, windowsCount: e.target.value })}
-                  data-testid="input-windows-count"
-                />
-              </div>
-            </div>
-
-            <div>
-              <Label className="text-xs">{t("عوائق أخرى", "Other Obstacles")}</Label>
-              <Textarea
-                value={roomData.obstacles}
-                onChange={(e) => setRoomData({ ...roomData, obstacles: e.target.value })}
-                placeholder={t("أي عوائق أو ملاحظات عن المكان", "Any obstacles or notes about the space")}
-                data-testid="input-obstacles"
-              />
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {step === 2 && (
-        <div className="space-y-3" data-testid="section-walls">
-          <div className="flex items-center justify-between">
-            <h3 className="font-semibold text-sm flex items-center gap-2">
-              <LayoutGrid className="w-4 h-4 text-primary" />
-              {t("تفاصيل الجدران", "Wall Details")}
-            </h3>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                const id = `wall_${walls.length + 1}`;
-                setWalls([...walls, { id, name: `${t("الجدار", "Wall")} ${walls.length + 1}`, length: "", items: [] }]);
-              }}
-              data-testid="button-add-wall"
-            >
-              <Plus className="w-3 h-3 me-1" />
-              {t("إضافة جدار", "Add Wall")}
-            </Button>
-          </div>
-
-          {walls.map((wall, wallIndex) => (
-            <Card key={wall.id}>
-              <CardContent className="p-3 space-y-3">
+        <div className="space-y-3" data-testid="section-spaces">
+          {spaces.map((space, spaceIndex) => (
+            <Card key={space.id} data-testid={`card-space-${space.id}`}>
+              <CardContent className="p-4 space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="font-medium text-sm">{wall.name}</span>
-                  <div className="flex items-center gap-1">
+                  <h3 className="font-semibold text-sm flex items-center gap-2">
+                    <Building2 className="w-4 h-4 text-primary" />
+                    {t("المكان", "Space")} {spaceIndex + 1}
+                  </h3>
+                  {spaces.length > 1 && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      onClick={() => removeSpace(space.id)}
+                      data-testid={`button-remove-space-${space.id}`}
+                    >
+                      <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                    </Button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs">{t("اسم المكان", "Space Name")}</Label>
                     <Input
-                      type="number"
-                      step="0.01"
-                      value={wall.length}
-                      onChange={(e) => {
-                        const newWalls = [...walls];
-                        newWalls[wallIndex].length = e.target.value;
-                        setWalls(newWalls);
-                      }}
-                      placeholder={t("الطول (م)", "Length (m)")}
-                      className="w-28 h-8 text-xs"
-                      data-testid={`input-wall-length-${wallIndex}`}
+                      value={space.name}
+                      onChange={(e) => updateSpace(space.id, "name", e.target.value)}
+                      placeholder={t("مثال: المطبخ الرئيسي", "e.g. Main Kitchen")}
+                      data-testid={`input-space-name-${space.id}`}
                     />
-                    {walls.length > 1 && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={() => setWalls(walls.filter((_, i) => i !== wallIndex))}
-                      >
-                        <Trash2 className="w-3.5 h-3.5 text-destructive" />
-                      </Button>
-                    )}
+                  </div>
+                  <div>
+                    <Label className="text-xs">{t("نوع المكان", "Space Type")}</Label>
+                    <Select value={space.type} onValueChange={(v) => updateSpace(space.id, "type", v)}>
+                      <SelectTrigger data-testid={`select-space-type-${space.id}`}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {SPACE_TYPES.map((st) => (
+                          <SelectItem key={st.value} value={st.value}>{t(st.ar, st.en)}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
 
-                {wall.items.map((item, itemIndex) => {
-                  const ItemIcon = wallItemIcons[item.type] || X;
-                  return (
-                    <div key={itemIndex} className="flex items-start gap-2 p-2 bg-muted/50 rounded-lg">
-                      <div className="flex items-center gap-1 min-w-[80px]">
-                        <ItemIcon className="w-3.5 h-3.5 text-muted-foreground" />
-                        <span className="text-xs">{t(wallItemLabels[item.type]?.ar || "", wallItemLabels[item.type]?.en || "")}</span>
-                      </div>
-                      <div className="flex-1 grid grid-cols-3 gap-1.5">
-                        <Input
-                          type="number"
-                          step="0.01"
-                          value={item.width}
-                          onChange={(e) => updateWallItem(wall.id, itemIndex, "width", e.target.value)}
-                          placeholder={t("العرض", "Width")}
-                          className="h-7 text-xs"
-                        />
-                        <Input
-                          type="number"
-                          step="0.01"
-                          value={item.height}
-                          onChange={(e) => updateWallItem(wall.id, itemIndex, "height", e.target.value)}
-                          placeholder={t("الارتفاع", "Height")}
-                          className="h-7 text-xs"
-                        />
-                        <Input
-                          type="number"
-                          step="0.01"
-                          value={item.positionFromLeft}
-                          onChange={(e) => updateWallItem(wall.id, itemIndex, "positionFromLeft", e.target.value)}
-                          placeholder={t("البعد", "Position")}
-                          className="h-7 text-xs"
-                        />
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 flex-shrink-0"
-                        onClick={() => removeWallItem(wall.id, itemIndex)}
-                      >
-                        <X className="w-3 h-3" />
-                      </Button>
-                    </div>
-                  );
-                })}
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <Label className="text-xs">{t("الطول (م)", "Length (m)")}</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={space.length}
+                      onChange={(e) => updateSpace(space.id, "length", e.target.value)}
+                      placeholder="0.00"
+                      data-testid={`input-space-length-${space.id}`}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">{t("العرض (م)", "Width (m)")}</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={space.width}
+                      onChange={(e) => updateSpace(space.id, "width", e.target.value)}
+                      placeholder="0.00"
+                      data-testid={`input-space-width-${space.id}`}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">{t("الارتفاع (م)", "Height (m)")}</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={space.height}
+                      onChange={(e) => updateSpace(space.id, "height", e.target.value)}
+                      placeholder="0.00"
+                      data-testid={`input-space-height-${space.id}`}
+                    />
+                  </div>
+                </div>
 
-                <div className="flex flex-wrap gap-1">
-                  {(["door", "window", "outlet", "drain", "obstacle"] as WallItem["type"][]).map((type) => {
-                    const Icon = wallItemIcons[type];
-                    return (
-                      <Button
-                        key={type}
-                        variant="outline"
-                        size="sm"
-                        className="h-7 text-[11px]"
-                        onClick={() => addWallItem(wall.id, type)}
-                        data-testid={`button-add-${type}-${wallIndex}`}
-                      >
-                        <Icon className="w-3 h-3 me-1" />
-                        {t(wallItemLabels[type].ar, wallItemLabels[type].en)}
-                      </Button>
-                    );
-                  })}
+                <div>
+                  <Label className="text-xs">{t("حالة البناء", "Building Status")}</Label>
+                  <Select value={space.buildingStatus} onValueChange={(v) => updateSpace(space.id, "buildingStatus", v)}>
+                    <SelectTrigger data-testid={`select-building-status-${space.id}`}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ready">{t("جاهز", "Ready")}</SelectItem>
+                      <SelectItem value="under_construction">{t("قيد الإنشاء", "Under Construction")}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {space.buildingStatus === "under_construction" && (
+                  <div>
+                    <Label className="text-xs">{t("مرحلة البناء", "Construction Phase")}</Label>
+                    <Select
+                      value={space.constructionPhase}
+                      onValueChange={(v) => updateSpace(space.id, "constructionPhase", v)}
+                    >
+                      <SelectTrigger data-testid={`select-construction-phase-${space.id}`}>
+                        <SelectValue placeholder={t("اختر المرحلة", "Select phase")} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {CONSTRUCTION_PHASES.map((cp) => (
+                          <SelectItem key={cp.value} value={cp.value}>{t(cp.ar, cp.en)}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {space.constructionPhase === "other" && (
+                      <Input
+                        className="mt-2"
+                        value={space.constructionPhaseOther}
+                        onChange={(e) => updateSpace(space.id, "constructionPhaseOther", e.target.value)}
+                        placeholder={t("اذكر المرحلة", "Specify phase")}
+                        data-testid={`input-construction-phase-other-${space.id}`}
+                      />
+                    )}
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs">{t("عدد الأبواب", "Doors Count")}</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={space.doorsCount}
+                      onChange={(e) => updateSpace(space.id, "doorsCount", e.target.value)}
+                      data-testid={`input-doors-count-${space.id}`}
+                    />
+                    <p className="text-[10px] text-muted-foreground mt-1">{t("يمكن أن يكون صفراً (مكان مفتوح)", "0 if open space with no door")}</p>
+                  </div>
+                  <div>
+                    <Label className="text-xs">{t("عدد النوافذ", "Windows Count")}</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={space.windowsCount}
+                      onChange={(e) => updateSpace(space.id, "windowsCount", e.target.value)}
+                      data-testid={`input-windows-count-${space.id}`}
+                    />
+                    <p className="text-[10px] text-muted-foreground mt-1">{t("يمكن أن يكون صفراً (مكان مفتوح)", "0 if open space with no door")}</p>
+                  </div>
+                </div>
+
+                <div>
+                  <Label className="text-xs">{t("ملاحظات", "Notes")}</Label>
+                  <Textarea
+                    value={space.notes}
+                    onChange={(e) => updateSpace(space.id, "notes", e.target.value)}
+                    placeholder={t("أي ملاحظات عن المكان", "Any notes about the space")}
+                    data-testid={`input-space-notes-${space.id}`}
+                    rows={2}
+                  />
                 </div>
               </CardContent>
             </Card>
           ))}
+
+          <Button
+            variant="outline"
+            className="w-full"
+            onClick={() => {
+              const s = newSpace();
+              s.name = t(`المكان ${spaces.length + 1}`, `Space ${spaces.length + 1}`);
+              setSpaces([...spaces, s]);
+            }}
+            data-testid="button-add-space"
+          >
+            <Plus className="w-4 h-4 me-2" />
+            {t("إضافة مكان آخر", "Add Another Space")}
+          </Button>
+        </div>
+      )}
+
+      {step === 2 && (
+        <div className="space-y-3" data-testid="section-walls">
+          {spaces.length > 1 && (
+            <div className="flex items-center gap-2 overflow-x-auto pb-2">
+              {spaces.map((s) => (
+                <button
+                  key={s.id}
+                  onClick={() => setActiveWallSpaceId(s.id)}
+                  className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                    activeWallSpaceId === s.id
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted text-muted-foreground"
+                  }`}
+                  data-testid={`tab-space-walls-${s.id}`}
+                >
+                  {s.name || t("مكان", "Space")}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {activeWallSpace && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-sm flex items-center gap-2">
+                  <LayoutGrid className="w-4 h-4 text-primary" />
+                  {activeWallSpace.name || t("مكان", "Space")} — {t("الجدران", "Walls")}
+                </h3>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => addWallToSpace(activeWallSpace.id)}
+                  data-testid="button-add-wall"
+                >
+                  <Plus className="w-3 h-3 me-1" />
+                  {t("إضافة جدار", "Add Wall")}
+                </Button>
+              </div>
+
+              {activeWallSpace.walls.map((wall, wallIndex) => (
+                <Card key={wall.id}>
+                  <CardContent className="p-3 space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <Input
+                        value={wall.name}
+                        onChange={(e) => updateWall(activeWallSpace.id, wall.id, "name", e.target.value)}
+                        className="h-8 text-sm font-medium flex-1"
+                        data-testid={`input-wall-name-${wallIndex}`}
+                      />
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={wall.length}
+                          onChange={(e) => updateWall(activeWallSpace.id, wall.id, "length", e.target.value)}
+                          placeholder={t("الطول (م)", "Length (m)")}
+                          className="w-28 h-8 text-xs"
+                          data-testid={`input-wall-length-${wallIndex}`}
+                        />
+                        {activeWallSpace.walls.length > 1 && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => removeWall(activeWallSpace.id, wall.id)}
+                          >
+                            <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+
+                    {wall.items.map((item, itemIndex) => {
+                      const ItemIcon = wallItemIcons[item.type] || X;
+                      const wallLen = parseFloat(wall.length) || 0;
+                      const spaceHeight = parseFloat(activeWallSpace.height) || 0;
+                      const isDoorOrWindow = item.type === "door" || item.type === "window";
+                      const isOutletOrDrain = item.type === "outlet" || item.type === "drain";
+
+                      const distFromSecond = isDoorOrWindow && wallLen > 0
+                        ? (wallLen - (parseFloat(item.distanceFromFirst) || 0) - (parseFloat(item.width) || 0)).toFixed(2)
+                        : null;
+
+                      const heightFromCeiling = isOutletOrDrain && spaceHeight > 0
+                        ? (spaceHeight - (parseFloat(item.heightFromFloor) || 0)).toFixed(2)
+                        : null;
+
+                      return (
+                        <div key={itemIndex} className="p-2 bg-muted/50 rounded-lg space-y-2">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-1">
+                              <ItemIcon className="w-3.5 h-3.5 text-muted-foreground" />
+                              <span className="text-xs font-medium">{t(wallItemLabels[item.type]?.ar || "", wallItemLabels[item.type]?.en || "")}</span>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6"
+                              onClick={() => removeWallItem(activeWallSpace.id, wall.id, itemIndex)}
+                            >
+                              <X className="w-3 h-3" />
+                            </Button>
+                          </div>
+
+                          {isDoorOrWindow && (
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
+                              <div>
+                                <Label className="text-[10px]">{t("العرض (م)", "Width (m)")}</Label>
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  value={item.width}
+                                  onChange={(e) => updateWallItem(activeWallSpace.id, wall.id, itemIndex, "width", e.target.value)}
+                                  className="h-7 text-xs"
+                                />
+                              </div>
+                              <div>
+                                <Label className="text-[10px]">{t("الارتفاع (م)", "Height (m)")}</Label>
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  value={item.height}
+                                  onChange={(e) => updateWallItem(activeWallSpace.id, wall.id, itemIndex, "height", e.target.value)}
+                                  className="h-7 text-xs"
+                                />
+                              </div>
+                              <div>
+                                <Label className="text-[10px]">{t("بُعد عن الحرف الأول (م)", "Distance from First Edge (m)")}</Label>
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  value={item.distanceFromFirst}
+                                  onChange={(e) => updateWallItem(activeWallSpace.id, wall.id, itemIndex, "distanceFromFirst", e.target.value)}
+                                  className="h-7 text-xs"
+                                />
+                              </div>
+                            </div>
+                          )}
+
+                          {isDoorOrWindow && distFromSecond !== null && (
+                            <p className="text-[10px] text-muted-foreground">
+                              {t("بُعد عن الحرف الثاني", "Distance from Second Edge")}: <span className="font-semibold text-foreground">{distFromSecond} م</span>
+                            </p>
+                          )}
+
+                          {isOutletOrDrain && (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                              <div>
+                                <Label className="text-[10px]">{t("ارتفاع عن الأرضية (م)", "Height from Floor (m)")}</Label>
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  value={item.heightFromFloor}
+                                  onChange={(e) => updateWallItem(activeWallSpace.id, wall.id, itemIndex, "heightFromFloor", e.target.value)}
+                                  className="h-7 text-xs"
+                                />
+                              </div>
+                              <div>
+                                <Label className="text-[10px]">{t("بُعد عن الحرف الأول (م)", "Distance from First Edge (m)")}</Label>
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  value={item.distanceFromFirst}
+                                  onChange={(e) => updateWallItem(activeWallSpace.id, wall.id, itemIndex, "distanceFromFirst", e.target.value)}
+                                  className="h-7 text-xs"
+                                />
+                              </div>
+                            </div>
+                          )}
+
+                          {isOutletOrDrain && heightFromCeiling !== null && (
+                            <p className="text-[10px] text-muted-foreground">
+                              {t("مسافة من السقف", "Distance from Ceiling")}: <span className="font-semibold text-foreground">{heightFromCeiling} م</span>
+                            </p>
+                          )}
+
+                          {isOutletOrDrain && (
+                            <div>
+                              <Label className="text-[10px]">{t("مواصفات", "Specs")}</Label>
+                              <Input
+                                value={item.specs}
+                                onChange={(e) => updateWallItem(activeWallSpace.id, wall.id, itemIndex, "specs", e.target.value)}
+                                placeholder={t("مثال: مخرج كهرباء 6 ملم", "e.g. 6mm socket")}
+                                className="h-7 text-xs"
+                              />
+                            </div>
+                          )}
+
+                          {item.type === "obstacle" && (
+                            <div>
+                              <Label className="text-[10px]">{t("وصف العائق", "Obstacle Description")}</Label>
+                              <Input
+                                value={item.notes}
+                                onChange={(e) => updateWallItem(activeWallSpace.id, wall.id, itemIndex, "notes", e.target.value)}
+                                placeholder={t("وصف العائق", "Describe the obstacle")}
+                                className="h-7 text-xs"
+                              />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+
+                    <div className="flex flex-wrap gap-1">
+                      {(["door", "window", "outlet", "drain", "obstacle"] as WallItem["type"][]).map((type) => {
+                        const Icon = wallItemIcons[type];
+                        return (
+                          <Button
+                            key={type}
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-[11px]"
+                            onClick={() => addWallItem(activeWallSpace.id, wall.id, type)}
+                            data-testid={`button-add-${type}-${wallIndex}`}
+                          >
+                            <Icon className="w-3 h-3 me-1" />
+                            {t(wallItemLabels[type].ar, wallItemLabels[type].en)}
+                          </Button>
+                        );
+                      })}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+
+              {activeWallSpace.walls.length === 0 && (
+                <div className="text-center py-6 text-muted-foreground text-sm">
+                  {t("لا توجد جدران — سيتم توليدها تلقائياً عند الانتقال من الخطوة الأولى", "No walls yet — they will be auto-generated from Step 1")}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -581,13 +920,13 @@ export default function SiteSurveyPage() {
               {t("المنتجات المطلوبة", "Required Products")}
             </h3>
             <div className="flex items-center gap-2">
-              <Select value={currentRoom} onValueChange={setCurrentRoom}>
-                <SelectTrigger className="w-[130px] h-8 text-xs" data-testid="select-room">
+              <Select value={currentSpaceId} onValueChange={setCurrentSpaceId}>
+                <SelectTrigger className="w-[130px] h-8 text-xs" data-testid="select-space">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {rooms.map((room) => (
-                    <SelectItem key={room.id} value={room.id}>{t(room.ar, room.en)}</SelectItem>
+                  {spaces.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>{s.name || t("مكان", "Space")}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -602,15 +941,15 @@ export default function SiteSurveyPage() {
             </div>
           </div>
 
-          {rooms.map((room) => {
-            const roomProducts = selectedProducts.filter((p) => p.room === room.id);
-            if (roomProducts.length === 0) return null;
+          {spaces.map((space) => {
+            const spaceProducts = selectedProducts.filter((p) => p.spaceId === space.id);
+            if (spaceProducts.length === 0) return null;
             return (
-              <div key={room.id}>
+              <div key={space.id}>
                 <div className="text-xs font-semibold text-muted-foreground mb-2">
-                  {t(room.ar, room.en)} ({roomProducts.length})
+                  {space.name || t("مكان", "Space")} ({spaceProducts.length})
                 </div>
-                {roomProducts.map((product) => (
+                {spaceProducts.map((product) => (
                   <Card key={product.id} className="mb-2">
                     <CardContent className="p-3 space-y-2">
                       <div className="flex items-start justify-between">
@@ -668,10 +1007,39 @@ export default function SiteSurveyPage() {
                           />
                         </div>
                         <div>
-                          <Label className="text-[10px]">{t("الميكانيزم", "Mechanism")}</Label>
+                          <Label className="text-[10px]">{t("المكان", "Space")}</Label>
+                          <Select value={product.spaceId} onValueChange={(v) => updateProduct(product.id, "spaceId", v)}>
+                            <SelectTrigger className="h-7 text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {spaces.map((s) => (
+                                <SelectItem key={s.id} value={s.id}>{s.name || t("مكان", "Space")}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div>
+                          <Label className="text-[10px]">{t("آلية الفتح", "Lift Mechanism")}</Label>
+                          <Select value={product.liftMechanism} onValueChange={(v) => updateProduct(product.id, "liftMechanism", v)}>
+                            <SelectTrigger className="h-7 text-xs" data-testid={`select-mechanism-${product.id}`}>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {LIFT_MECHANISMS.map((m) => (
+                                <SelectItem key={m.value} value={m.value}>{t(m.ar, m.en)}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label className="text-[10px]">{t("ملاحظات آلية الفتح", "Mechanism Note")}</Label>
                           <Input
-                            value={product.mechanism}
-                            onChange={(e) => updateProduct(product.id, "mechanism", e.target.value)}
+                            value={product.liftMechanismNote}
+                            onChange={(e) => updateProduct(product.id, "liftMechanismNote", e.target.value)}
                             placeholder={t("اختياري", "Optional")}
                             className="h-7 text-xs"
                           />
@@ -765,7 +1133,7 @@ export default function SiteSurveyPage() {
         </Card>
       )}
 
-      <div className="fixed bottom-0 start-0 end-0 md:start-64 bg-card border-t border-border p-3 flex items-center justify-between z-40">
+      <div className="fixed bottom-0 start-0 end-0 bg-card border-t border-border p-3 flex items-center justify-between z-40">
         <Button
           variant="outline"
           onClick={() => step > 1 && setStep((step - 1) as WizardStep)}
@@ -787,7 +1155,10 @@ export default function SiteSurveyPage() {
 
         {step < 4 ? (
           <Button
-            onClick={() => setStep((step + 1) as WizardStep)}
+            onClick={() => {
+              if (step === 1) { goToStep2(); return; }
+              setStep((step + 1) as WizardStep);
+            }}
             data-testid="button-next-step"
           >
             {t("التالي", "Next")}
@@ -920,7 +1291,7 @@ export default function SiteSurveyPage() {
               variant="ghost"
               className="w-full justify-start gap-3 h-14"
               onClick={() => { setNextStepsDialog(false); navigate("/my-calendar"); }}
-              data-testid="button-back-calendar"
+              data-testid="button-back-to-calendar"
             >
               <Calendar className="w-5 h-5 shrink-0" />
               <div className="text-start">
