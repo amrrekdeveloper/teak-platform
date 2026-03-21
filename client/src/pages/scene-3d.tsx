@@ -471,7 +471,9 @@ function FloorPlan2D({ survey }: { survey: any }) {
   const elements: JSX.Element[] = [];
 
   spaces.forEach((space, spaceIdx) => {
-    const spaceProducts = allProducts.filter((p: any) => p.spaceId === space.id);
+    const spaceProducts = allProducts.filter(
+      (p: any) => p.spaceId === space.id || (!p.spaceId && spaceIdx === 0)
+    );
     const roomL = parseFloat(space.length) || 300;
     const roomW = parseFloat(space.width) || 240;
 
@@ -601,12 +603,24 @@ function FloorPlan2D({ survey }: { survey: any }) {
       }
     });
 
+    const wallOffsets: Record<number, number> = { 0: 0, 1: 0, 2: 0, 3: 0 };
+
+    const wallIdToIdx: Record<string, number> = {};
+    walls.forEach((w: any, wi: number) => { if (w?.id) wallIdToIdx[w.id] = wi; });
+
     spaceProducts.forEach((prod: any, pi: number) => {
-      const wIdx = prod.wallIndex ?? pi % 4;
+      let wIdx = 0;
+      if (prod.wallId && wallIdToIdx[prod.wallId] !== undefined) {
+        wIdx = wallIdToIdx[prod.wallId];
+      } else {
+        wIdx = pi % 4;
+      }
       const wDef = wallDefs[wIdx % 4];
-      const pw = Math.max(parseFloat(prod.dimensions?.w || prod.designW || "60") * scale, 6);
-      const pd = Math.max(parseFloat(prod.dimensions?.d || prod.designD || "60") * scale * 0.4, 4);
-      const pOffset = (pi % 5) * (pw + 3);
+      const pw = Math.max(parseFloat(prod.designW || prod.dimensions?.w || "60") * scale, 6);
+      const pd = Math.max(parseFloat(prod.dimensions?.d || "60") * scale * 0.4, 4);
+
+      const pOffset = wallOffsets[wIdx] ?? 0;
+      wallOffsets[wIdx] = pOffset + pw + 2;
 
       let px = 0, py = 0, rectW = pw, rectH = pd;
       if (wDef.side === "top") { px = rx + pOffset; py = ry; rectH = pd; }
@@ -614,7 +628,7 @@ function FloorPlan2D({ survey }: { survey: any }) {
       else if (wDef.side === "bottom") { px = rx + rW - pOffset - pw; py = ry + rH - pd; rectH = pd; }
       else { px = rx; py = ry + rH - pOffset - pw; rectW = pd; rectH = pw; }
 
-      if (px >= rx && py >= ry && px + rectW <= rx + rW + 10 && py + rectH <= ry + rH + 10) {
+      if (px >= rx - 2 && py >= ry - 2 && px + rectW <= rx + rW + 10 && py + rectH <= ry + rH + 10) {
         elements.push(
           <g key={`prod-${spaceIdx}-${pi}`}>
             <rect x={px} y={py} width={rectW} height={rectH}
@@ -622,7 +636,7 @@ function FloorPlan2D({ survey }: { survey: any }) {
             {rectW > 18 && (
               <text x={px + rectW / 2} y={py + rectH / 2} textAnchor="middle"
                 dominantBaseline="middle" fontSize={6} fill={wDef.color} fontWeight="bold">
-                {(prod.code || "").slice(0, 6)}
+                {(prod.code || "").slice(0, 7)}
               </text>
             )}
           </g>
