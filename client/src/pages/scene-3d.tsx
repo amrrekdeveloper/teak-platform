@@ -71,11 +71,12 @@ function getDefaultDepth(product: any): number {
 function DayLighting() {
   return (
     <>
-      <ambientLight intensity={0.65} color="#FFFEF5" />
+      {/* 6500K daylight: neutral white ambient with slight cool tint */}
+      <ambientLight intensity={0.6} color="#EEF4FF" />
       <directionalLight
         position={[6, 10, 6]}
-        intensity={0.9}
-        color="#FFF8F0"
+        intensity={1.0}
+        color="#F5F8FF"
         castShadow
         shadow-mapSize-width={2048}
         shadow-mapSize-height={2048}
@@ -87,7 +88,8 @@ function DayLighting() {
         shadow-camera-bottom={-10}
         shadow-radius={4}
       />
-      <directionalLight position={[-3, 5, -3]} intensity={0.25} color="#C8E0FF" />
+      {/* sky fill — cool blue sky bounce */}
+      <directionalLight position={[-4, 6, -4]} intensity={0.3} color="#B0CEFF" />
     </>
   );
 }
@@ -138,6 +140,17 @@ function NightLighting({ roomL, roomW, roomH }: { roomL: number; roomW: number; 
         distance={spotDist}
       />
       <pointLight position={[0, H * 0.9, 0]} intensity={0.3} color={warmColor} distance={3} />
+      {/* visible lamp fixtures — small glowing spheres at ceiling spotlights */}
+      {[
+        [0, spotY + 0.05, 0],
+        [-L * 0.3, spotY + 0.05, -W * 0.2],
+        [L * 0.3, spotY + 0.05, W * 0.2],
+      ].map(([lx, ly, lz], i) => (
+        <mesh key={`lamp-${i}`} position={[lx, ly, lz]}>
+          <sphereGeometry args={[0.04, 10, 10]} />
+          <meshBasicMaterial color="#FFF0C0" />
+        </mesh>
+      ))}
     </>
   );
 }
