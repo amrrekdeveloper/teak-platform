@@ -413,13 +413,32 @@ function FloorPlan2D({ survey }: { survey: any }) {
     const svg = svgRef.current;
     if (!svg) return;
     const xml = new XMLSerializer().serializeToString(svg);
-    const blob = new Blob([xml], { type: "image/svg+xml" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "floor-plan.svg";
-    a.click();
-    URL.revokeObjectURL(url);
+    const svgBlob = new Blob([xml], { type: "image/svg+xml;charset=utf-8" });
+    const svgUrl = URL.createObjectURL(svgBlob);
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      const scale = 2;
+      canvas.width = CANVAS_W * scale;
+      canvas.height = CANVAS_H * scale;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) { URL.revokeObjectURL(svgUrl); return; }
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.scale(scale, scale);
+      ctx.drawImage(img, 0, 0, CANVAS_W, CANVAS_H);
+      URL.revokeObjectURL(svgUrl);
+      canvas.toBlob((blob) => {
+        if (!blob) return;
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "floor-plan.png";
+        a.click();
+        URL.revokeObjectURL(url);
+      }, "image/png");
+    };
+    img.src = svgUrl;
   }
 
   if (spaces.length === 0) {
@@ -520,28 +539,49 @@ function FloorPlan2D({ survey }: { survey: any }) {
           else if (wd.side === "bottom") { ix = rx + rW - dist - iw; iy = ry + rH; }
           else { ix = rx; iy = ry + rH - dist - iw; }
 
+          const isHoriz = wd.side === "top" || wd.side === "bottom";
+
           if (item.type === "door") {
-            const arcPath = wd.side === "top" || wd.side === "bottom"
+            const arcD = isHoriz
               ? `M ${ix} ${iy} a ${iw} ${iw} 0 0 1 ${iw} ${iw}`
               : `M ${ix} ${iy} a ${iw} ${iw} 0 0 1 ${iw} ${iw}`;
             elements.push(
               <g key={`item-${spaceIdx}-${wi}-${ii}`}>
-                <path d={arcPath} fill="none" stroke="#2563EB" strokeWidth={1.5} strokeDasharray="none" />
-                <line x1={ix} y1={iy} x2={ix + (wd.side === "left" || wd.side === "right" ? 0 : iw)}
-                  y2={iy + (wd.side === "top" || wd.side === "bottom" ? 0 : iw)}
+                <path d={arcD} fill="none" stroke="#2563EB" strokeWidth={1.5} />
+                <line x1={ix} y1={iy}
+                  x2={ix + (isHoriz ? iw : 0)}
+                  y2={iy + (isHoriz ? 0 : iw)}
                   stroke="#2563EB" strokeWidth={1.5} />
               </g>
             );
           } else if (item.type === "window") {
-            const wlen = iw;
             elements.push(
               <line key={`item-${spaceIdx}-${wi}-${ii}`}
-                x1={wd.side === "top" || wd.side === "bottom" ? ix : ix}
-                y1={wd.side === "top" || wd.side === "bottom" ? iy : iy}
-                x2={wd.side === "top" || wd.side === "bottom" ? ix + wlen : ix}
-                y2={wd.side === "top" || wd.side === "bottom" ? iy : iy + wlen}
+                x1={ix} y1={iy}
+                x2={ix + (isHoriz ? iw : 0)}
+                y2={iy + (isHoriz ? 0 : iw)}
                 stroke="#059669" strokeWidth={3} strokeDasharray="4,3"
               />
+            );
+          } else if (item.type === "outlet") {
+            const symX = ix + (isHoriz ? iw / 2 : 0);
+            const symY = iy + (isHoriz ? 0 : iw / 2);
+            elements.push(
+              <g key={`item-${spaceIdx}-${wi}-${ii}`}>
+                <circle cx={symX} cy={symY} r={4} fill="#F59E0B" stroke="#D97706" strokeWidth={1} />
+                <text x={symX} y={symY} textAnchor="middle" dominantBaseline="middle"
+                  fontSize={5} fill="white" fontWeight="bold">⚡</text>
+              </g>
+            );
+          } else if (item.type === "drain") {
+            const symX = ix + (isHoriz ? iw / 2 : 0);
+            const symY = iy + (isHoriz ? 0 : iw / 2);
+            elements.push(
+              <g key={`item-${spaceIdx}-${wi}-${ii}`}>
+                <circle cx={symX} cy={symY} r={4} fill="#3B82F6" stroke="#1D4ED8" strokeWidth={1} />
+                <text x={symX} y={symY} textAnchor="middle" dominantBaseline="middle"
+                  fontSize={5} fill="white">💧</text>
+              </g>
             );
           }
         });
@@ -602,7 +642,7 @@ function FloorPlan2D({ survey }: { survey: any }) {
         </p>
         <Button size="sm" variant="outline" onClick={downloadPNG} data-testid="btn-download-plan">
           <Download className="h-3.5 w-3.5 me-1" />
-          {t("تحميل SVG", "Download SVG")}
+          {t("تحميل PNG", "Download PNG")}
         </Button>
       </div>
       <div className="flex-1 overflow-auto bg-white dark:bg-gray-900 p-2">
@@ -630,7 +670,9 @@ function FloorPlan2D({ survey }: { survey: any }) {
         <div className="flex flex-wrap gap-3 text-[10px] text-muted-foreground">
           <span className="flex items-center gap-1"><span className="w-6 h-1 border-t-2 border-blue-500 block" />{t("باب", "Door")}</span>
           <span className="flex items-center gap-1"><span className="w-6 h-1 border-t-2 border-green-500 border-dashed block" />{t("نافذة", "Window")}</span>
-          <span className="flex items-center gap-1"><span className="w-3 h-3 bg-blue-100 border border-blue-400 rounded-sm block" />{t("منتج على الجدار A", "Product on Wall A")}</span>
+          <span className="flex items-center gap-1"><span className="w-3 h-3 bg-amber-400 rounded-full flex items-center justify-center text-[6px] text-white">⚡</span>{t("كهرباء", "Outlet")}</span>
+          <span className="flex items-center gap-1"><span className="w-3 h-3 bg-blue-500 rounded-full flex items-center justify-center text-[6px] text-white">💧</span>{t("تصريف", "Drain")}</span>
+          <span className="flex items-center gap-1"><span className="w-3 h-3 bg-blue-100 border border-blue-400 rounded-sm block" />{t("منتج", "Product")}</span>
         </div>
       </div>
     </div>
@@ -820,7 +862,11 @@ export default function Scene3DPage() {
     );
   }
 
-  const roomDims = survey?.roomDimensions || { length: 400, width: 300, height: 240 };
+  const roomDims = survey?.roomDimensions || {
+    length: parseFloat(survey?.roomLength || "400"),
+    width: parseFloat(survey?.roomWidth || "300"),
+    height: parseFloat(survey?.roomHeight || "240"),
+  };
 
   return (
     <div className="h-screen flex flex-col">
