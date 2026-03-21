@@ -1309,7 +1309,7 @@ export default function SiteSurveyPage() {
             );
           })}
 
-          {selectedProducts.length === 0 && spaces.every(s => selectedProducts.filter(p => p.spaceId === s.id).length === 0) && (
+          {selectedProducts.length === 0 && (
             <div className="text-center py-8 text-muted-foreground text-sm">
               {t("لم يتم إضافة منتجات بعد", "No products added yet")}
             </div>
