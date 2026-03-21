@@ -168,6 +168,7 @@ export default function Scene3DPage() {
   const searchStr = useSearch();
   const params = new URLSearchParams(searchStr);
   const surveyId = params.get("surveyId");
+  const appointmentIdParam = params.get("appointmentId");
   const isPublic = params.get("public") === "1";
   const quotationIdParam = params.get("quotationId");
   const [key, setKey] = useState(0);
@@ -189,7 +190,7 @@ export default function Scene3DPage() {
   const canEdit = isPublic && isPortalAuth;
 
   const { data: survey, isLoading } = useQuery<any>({
-    queryKey: ["/api/site-surveys", surveyId, isPublic, tokenParam],
+    queryKey: ["/api/site-surveys", surveyId, appointmentIdParam, isPublic, tokenParam],
     queryFn: async () => {
       if (isPublic && surveyId) {
         const tokenQuery = tokenParam ? `?token=${tokenParam}` : "";
@@ -197,9 +198,19 @@ export default function Scene3DPage() {
         if (!res.ok) throw new Error("Not found");
         return res.json();
       }
-      const res = await fetch(`/api/site-surveys/${surveyId}`, { credentials: "include" });
-      if (!res.ok) throw new Error("Not found");
-      const data = await res.json();
+      let data: any;
+      if (surveyId) {
+        const res = await fetch(`/api/site-surveys/${surveyId}`, { credentials: "include" });
+        if (!res.ok) throw new Error("Not found");
+        data = await res.json();
+      } else if (appointmentIdParam) {
+        const res = await fetch(`/api/appointments/${appointmentIdParam}/site-survey`, { credentials: "include" });
+        if (!res.ok) throw new Error("Not found");
+        data = await res.json();
+        if (!data) throw new Error("No survey for this appointment");
+      } else {
+        throw new Error("No survey id");
+      }
       data.roomDimensions = {
         length: parseFloat(data.roomLength || "400"),
         width: parseFloat(data.roomWidth || "300"),
@@ -207,7 +218,7 @@ export default function Scene3DPage() {
       };
       return data;
     },
-    enabled: !!surveyId,
+    enabled: !!(surveyId || appointmentIdParam),
     staleTime: 30000,
   });
 

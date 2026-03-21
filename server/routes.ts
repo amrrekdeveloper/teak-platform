@@ -2948,9 +2948,16 @@ export async function registerRoutes(
 
   app.get("/api/appointments/:id/site-survey", requireAuth, async (req, res) => {
     try {
-      const survey = await storage.getSiteSurveyByAppointment(parseInt(req.params.id));
-      if (!survey) return res.status(404).json({ message: "لا يوجد نموذج زيارة لهذا الموعد" });
-      res.json(survey);
+      const appointmentId = parseInt(req.params.id);
+      let survey = await storage.getSiteSurveyByAppointment(appointmentId);
+      if (!survey) {
+        const appt = await storage.getAppointment(appointmentId);
+        if (appt?.quotationId) {
+          const all = await storage.getSiteSurveys({ quotationId: appt.quotationId });
+          survey = all[0];
+        }
+      }
+      res.json(survey || null);
     } catch (error) {
       res.status(500).json({ message: "حدث خطأ" });
     }

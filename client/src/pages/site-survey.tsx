@@ -312,6 +312,7 @@ export default function SiteSurveyPage() {
     onSuccess: (saved: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/site-surveys"] });
       queryClient.invalidateQueries({ queryKey: ["/api/appointments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/appointments", appointmentId, "site-survey"] });
       toast({ title: t("تم حفظ نموذج الزيارة بنجاح", "Survey saved successfully") });
       setSavedSurveyId(saved?.id || existingSurvey?.id || null);
       setNextStepsDialog(true);
@@ -1253,15 +1254,29 @@ export default function SiteSurveyPage() {
       )}
 
       <div className="fixed bottom-0 start-0 end-0 bg-card border-t border-border p-3 flex items-center justify-between z-40">
-        <Button
-          variant="outline"
-          onClick={() => step > 1 && setStep((step - 1) as WizardStep)}
-          disabled={step === 1}
-          data-testid="button-prev-step"
-        >
-          {lang === "ar" ? <ChevronRight className="w-4 h-4 me-1" /> : <ChevronLeft className="w-4 h-4 me-1" />}
-          {t("السابق", "Previous")}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => step > 1 && setStep((step - 1) as WizardStep)}
+            disabled={step === 1}
+            data-testid="button-prev-step"
+          >
+            {lang === "ar" ? <ChevronRight className="w-4 h-4 me-1" /> : <ChevronLeft className="w-4 h-4 me-1" />}
+            {t("السابق", "Previous")}
+          </Button>
+          {(savedSurveyId || existingSurvey?.id) && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs text-violet-600 border-violet-300 dark:border-violet-700 hover:bg-violet-50 dark:hover:bg-violet-950/30"
+              onClick={() => navigate(`/scene-3d?surveyId=${savedSurveyId || existingSurvey?.id}`)}
+              data-testid="button-quick-3d"
+            >
+              <Box className="w-3.5 h-3.5 me-1" />
+              {t("3D", "3D")}
+            </Button>
+          )}
+        </div>
 
         <div className="flex items-center gap-1">
           {([1, 2, 3, 4] as WizardStep[]).map((s) => (
