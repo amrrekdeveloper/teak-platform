@@ -796,7 +796,7 @@ export default function MyOrdersPage() {
                                     variant="ghost"
                                     size="sm"
                                     className={`h-7 w-7 p-0 ${appt ? "text-violet-600 hover:text-violet-700 hover:bg-violet-50 dark:hover:bg-violet-950/30" : "text-muted-foreground/30 cursor-not-allowed"}`}
-                                    onClick={() => appt && navigate(`/site-survey/${appt.id}`)}
+                                    onClick={() => appt && navigate(`/site-survey/${appt.id}?returnTo=/my-orders`)}
                                     disabled={!appt}
                                     title={appt ? t("رفع المقاسات", "Upload Measurements") : t("يجب حجز موعد أولاً", "Book appointment first")}
                                     data-testid={`button-survey-${order.id}`}
@@ -905,7 +905,7 @@ export default function MyOrdersPage() {
                               variant="outline"
                               size="sm"
                               className={`h-8 w-9 p-0 ${appt ? "text-violet-600 border-violet-300 dark:border-violet-800 hover:bg-violet-50 dark:hover:bg-violet-950/30" : "text-muted-foreground/30 border-muted cursor-not-allowed"}`}
-                              onClick={() => appt && navigate(`/site-survey/${appt.id}`)}
+                              onClick={() => appt && navigate(`/site-survey/${appt.id}?returnTo=/my-orders`)}
                               disabled={!appt}
                               title={appt ? t("رفع المقاسات", "Upload Measurements") : t("يجب حجز موعد أولاً", "Book appointment first")}
                               data-testid={`button-survey-mobile-${order.id}`}

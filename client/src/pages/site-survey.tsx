@@ -4,7 +4,7 @@ import { useLanguage } from "@/components/language-provider";
 import { useAuth } from "@/hooks/use-auth";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { useLocation, useParams } from "wouter";
+import { useLocation, useParams, useSearch } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -201,8 +201,10 @@ export default function SiteSurveyPage() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [, navigate] = useLocation();
+  const search = useSearch();
   const params = useParams<{ appointmentId: string }>();
   const appointmentId = parseInt(params.appointmentId || "0");
+  const returnTo = new URLSearchParams(search).get("returnTo") || "/my-orders";
 
   const [step, setStep] = useState<WizardStep>(1);
   const [productSearchDialog, setProductSearchDialog] = useState(false);
@@ -463,7 +465,7 @@ export default function SiteSurveyPage() {
             </p>
           )}
         </div>
-        <Button variant="ghost" size="sm" onClick={() => navigate("/my-calendar")} data-testid="button-back-calendar">
+        <Button variant="ghost" size="sm" onClick={() => navigate(returnTo)} data-testid="button-back-calendar">
           {lang === "ar" ? <ChevronRight className="w-4 h-4 me-1" /> : <ChevronLeft className="w-4 h-4 me-1" />}
           {t("العودة", "Back")}
         </Button>
@@ -1290,13 +1292,17 @@ export default function SiteSurveyPage() {
             <Button
               variant="ghost"
               className="w-full justify-start gap-3 h-14"
-              onClick={() => { setNextStepsDialog(false); navigate("/my-calendar"); }}
+              onClick={() => { setNextStepsDialog(false); navigate(returnTo); }}
               data-testid="button-back-to-calendar"
             >
               <Calendar className="w-5 h-5 shrink-0" />
               <div className="text-start">
-                <div className="font-semibold text-sm">{t("العودة للتقويم", "Back to Calendar")}</div>
-                <div className="text-xs opacity-75">{t("مواعيدك وزياراتك", "Your appointments")}</div>
+                <div className="font-semibold text-sm">
+                  {returnTo === "/my-orders" ? t("العودة للطلبات", "Back to Orders") : t("العودة للتقويم", "Back to Calendar")}
+                </div>
+                <div className="text-xs opacity-75">
+                  {returnTo === "/my-orders" ? t("قائمة طلباتك", "Your orders list") : t("مواعيدك وزياراتك", "Your appointments")}
+                </div>
               </div>
             </Button>
           </div>
