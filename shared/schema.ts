@@ -794,6 +794,7 @@ export const adekoProducts = pgTable("adeko_products", {
   priceBeforeVat: decimal("price_before_vat", { precision: 12, scale: 2 }).default("0"),
   priceAfterVat: decimal("price_after_vat", { precision: 12, scale: 2 }).default("0"),
   thumbnail: text("thumbnail"),
+  usageType: text("usage_type").notNull().default("kitchen"),
   active: boolean("active").notNull().default(true),
 });
 

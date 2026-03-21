@@ -606,14 +606,56 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/adeko-products", requireRole("owner", "assistant", "it"), async (req, res) => {
+    try {
+      const { code, descriptionAr, descriptionEn, groupCode, groupNameAr, groupNameEn,
+        manufacturingW, manufacturingH, manufacturingD, designW, designH, designD,
+        priceBeforeVat, usageType } = req.body;
+      if (!code || !descriptionEn || !groupCode) return res.status(400).json({ message: "الكود والوصف والمجموعة مطلوبة" });
+      const price = parseFloat(priceBeforeVat || "0");
+      const groupNames: Record<string, { ar: string; en: string }> = {
+        TK1: { ar: "وحدات قاعدة", en: "TEAK BASE UNIT" },
+        TK2: { ar: "وحدات حوض", en: "TEAK SINK UNIT" },
+        TK3: { ar: "وحدات علوية", en: "TEAK WALL UNIT" },
+        TK4: { ar: "وحدات طويلة", en: "TEAK TALL UNIT" },
+        TK5: { ar: "وحدات ميكانيزم", en: "TEAK MECANISM UNIT" },
+        TK6: { ar: "ألواح وجوانب", en: "TEAK shelf-panel-side" },
+      };
+      const gn = groupNames[groupCode] || { ar: groupNameAr || groupCode, en: groupNameEn || groupCode };
+      const product = await storage.createAdekoProduct({
+        code: code.trim().toUpperCase(),
+        descriptionEn: descriptionEn.trim(),
+        descriptionAr: descriptionAr?.trim() || descriptionEn.trim(),
+        groupCode,
+        groupNameAr: gn.ar,
+        groupNameEn: gn.en,
+        manufacturingW: manufacturingW ? String(parseFloat(manufacturingW).toFixed(2)) : null,
+        manufacturingH: manufacturingH ? String(parseFloat(manufacturingH).toFixed(2)) : null,
+        manufacturingD: manufacturingD ? String(parseFloat(manufacturingD).toFixed(2)) : null,
+        designW: designW ? String(parseFloat(designW).toFixed(2)) : null,
+        designH: designH ? String(parseFloat(designH).toFixed(2)) : null,
+        designD: designD ? String(parseFloat(designD).toFixed(2)) : null,
+        priceBeforeVat: String(price.toFixed(2)),
+        priceAfterVat: String((price * 1.15).toFixed(2)),
+        usageType: usageType || "kitchen",
+        active: true,
+      });
+      res.status(201).json(product);
+    } catch (error: any) {
+      if (error?.code === "23505") return res.status(400).json({ message: "الكود مستخدم مسبقاً" });
+      res.status(500).json({ message: "حدث خطأ في إضافة المنتج" });
+    }
+  });
+
   app.patch("/api/adeko-products/:id", requireRole("owner", "assistant", "it"), async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ message: "معرّف غير صالح" });
-      const { priceBeforeVat, priceAfterVat, designW, designH, designD } = req.body as {
+      const { priceBeforeVat, priceAfterVat, designW, designH, designD, usageType, active } = req.body as {
         priceBeforeVat?: string; priceAfterVat?: string; designW?: string; designH?: string; designD?: string;
+        usageType?: string; active?: boolean;
       };
-      const updateData: Record<string, string> = {};
+      const updateData: Record<string, string | boolean> = {};
       if (priceBeforeVat !== undefined) {
         const price = parseFloat(priceBeforeVat);
         if (isNaN(price) || price < 0) return res.status(400).json({ message: "السعر غير صالح" });
@@ -634,6 +676,10 @@ export async function registerRoutes(
           updateData[key] = String(num.toFixed(2));
         }
       }
+      if (usageType !== undefined && ["kitchen", "wardrobe", "both"].includes(usageType)) {
+        updateData.usageType = usageType;
+      }
+      if (active !== undefined) updateData.active = active;
       if (Object.keys(updateData).length === 0) return res.status(400).json({ message: "لا توجد بيانات للتحديث" });
       const updated = await storage.updateAdekoProduct(id, updateData);
       if (!updated) return res.status(404).json({ message: "المنتج غير موجود" });

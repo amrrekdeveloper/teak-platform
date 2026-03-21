@@ -74,6 +74,17 @@ const CONSTRUCTION_PHASES = [
   { value: "other", ar: "أخرى", en: "Other" },
 ];
 
+const OUTLET_SPECS = [
+  { value: "single_switch", ar: "مفتاح كهرباء فردي", en: "Single Switch" },
+  { value: "double_switch", ar: "مفتاح كهرباء ثنائي", en: "Double Switch" },
+  { value: "triple_switch", ar: "مفتاح كهرباء ثلاثي", en: "Triple Switch" },
+  { value: "quad_switch", ar: "مفتاح كهرباء رباعي", en: "Quad Switch" },
+  { value: "round_switch", ar: "مفتاح كهرباء دائري", en: "Round Switch" },
+  { value: "double_socket", ar: "فيش ثنائي", en: "Double Socket" },
+  { value: "triple_socket", ar: "فيش ثلاثي", en: "Triple Socket" },
+  { value: "heater_ac", ar: "مفتاح سخان ومكيف", en: "Heater/AC Switch" },
+];
+
 const LIFT_MECHANISMS = [
   { value: "none", ar: "لا يوجد", en: "None" },
   { value: "push_pull", ar: "دفع-سحب", en: "Push-Pull" },
@@ -133,6 +144,8 @@ interface SelectedProduct {
   liftMechanismNote: string;
   notes: string;
   spaceId: string;
+  wallId: string;
+  designW: string;
 }
 
 const stepLabels: Record<WizardStep, { ar: string; en: string; icon: typeof Ruler }> = {
@@ -250,6 +263,8 @@ export default function SiteSurveyPage() {
           liftMechanism: p.liftMechanism || p.mechanism || "none",
           liftMechanismNote: p.liftMechanismNote || "",
           spaceId: p.spaceId || p.room || "",
+          wallId: p.wallId || "",
+          designW: p.designW || "",
         })) as SelectedProduct[];
         setSelectedProducts(products);
       }
@@ -421,6 +436,8 @@ export default function SiteSurveyPage() {
       liftMechanismNote: "",
       notes: "",
       spaceId,
+      wallId: "",
+      designW: String(parseFloat(adekoProduct.designW || "0") || ""),
     };
     setSelectedProducts([...selectedProducts, newProduct]);
     setProductSearchDialog(false);
@@ -868,13 +885,42 @@ export default function SiteSurveyPage() {
                             </p>
                           )}
 
-                          {isOutletOrDrain && (
+                          {item.type === "outlet" && (
+                            <div>
+                              <Label className="text-[10px] mb-1 block">{t("نوع مخرج الكهرباء", "Outlet Type")}</Label>
+                              <div className="flex flex-wrap gap-1">
+                                {OUTLET_SPECS.map((spec) => {
+                                  const selected = item.specs.split(",").map(s => s.trim()).filter(Boolean).includes(spec.value);
+                                  return (
+                                    <button
+                                      key={spec.value}
+                                      type="button"
+                                      onClick={() => {
+                                        const current = item.specs.split(",").map(s => s.trim()).filter(Boolean);
+                                        const next = selected
+                                          ? current.filter(v => v !== spec.value)
+                                          : [...current, spec.value];
+                                        updateWallItem(activeWallSpace.id, wall.id, itemIndex, "specs", next.join(","));
+                                      }}
+                                      className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${selected
+                                        ? "bg-primary text-primary-foreground border-primary"
+                                        : "bg-background text-muted-foreground border-border hover:border-primary/50"
+                                      }`}
+                                    >
+                                      {t(spec.ar, spec.en)}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+                          {item.type === "drain" && (
                             <div>
                               <Label className="text-[10px]">{t("مواصفات", "Specs")}</Label>
                               <Input
                                 value={item.specs}
                                 onChange={(e) => updateWallItem(activeWallSpace.id, wall.id, itemIndex, "specs", e.target.value)}
-                                placeholder={t("مثال: مخرج كهرباء 6 ملم", "e.g. 6mm socket")}
+                                placeholder={t("مثال: فتحة تصريف مياه", "e.g. drain opening")}
                                 className="h-7 text-xs"
                               />
                             </div>
@@ -992,7 +1038,7 @@ export default function SiteSurveyPage() {
                         </Button>
                       </div>
 
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                         <div>
                           <Label className="text-[10px]">{t("الكمية", "Qty")}</Label>
                           <Input
@@ -1034,6 +1080,31 @@ export default function SiteSurveyPage() {
                             </SelectContent>
                           </Select>
                         </div>
+                        <div>
+                          <Label className="text-[10px]">{t("الجدار", "Wall")}</Label>
+                          <Select value={product.wallId || "none"} onValueChange={(v) => updateProduct(product.id, "wallId", v === "none" ? "" : v)}>
+                            <SelectTrigger className="h-7 text-xs">
+                              <SelectValue placeholder={t("اختر الجدار", "Select wall")} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">{t("غير محدد", "Unassigned")}</SelectItem>
+                              {(spaces.find(s => s.id === product.spaceId)?.walls || []).map((w) => (
+                                <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label className="text-[10px]">{t("العرض التصميمي (سم)", "Design W (cm)")}</Label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            value={product.designW}
+                            onChange={(e) => updateProduct(product.id, "designW", e.target.value)}
+                            placeholder="0"
+                            className="h-7 text-xs"
+                          />
+                        </div>
                       </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -1073,6 +1144,39 @@ export default function SiteSurveyPage() {
                     </CardContent>
                   </Card>
                 ))}
+
+                {space.walls.length > 0 && spaceProducts.some(p => p.wallId) && (
+                  <div className="mt-3 p-3 rounded-lg border bg-muted/30">
+                    <div className="text-[10px] font-semibold text-muted-foreground mb-2 uppercase tracking-wide">
+                      {t("استهلاك مساحة الجدران", "Wall Space Usage")}
+                    </div>
+                    {space.walls.map((wall) => {
+                      const wallProducts = spaceProducts.filter(p => p.wallId === wall.id);
+                      if (wallProducts.length === 0) return null;
+                      const usedCm = wallProducts.reduce((sum, p) => sum + (parseFloat(p.designW || "0") * p.quantity), 0);
+                      const totalCm = parseFloat(wall.length || "0") * 100;
+                      const pct = totalCm > 0 ? Math.min((usedCm / totalCm) * 100, 100) : 0;
+                      const isOver = usedCm > totalCm && totalCm > 0;
+                      return (
+                        <div key={wall.id} className="mb-2 last:mb-0">
+                          <div className="flex justify-between items-center mb-1">
+                            <span className="text-[10px] font-medium">{wall.name}</span>
+                            <span className={`text-[10px] tabular-nums ${isOver ? "text-destructive font-bold" : "text-muted-foreground"}`}>
+                              {(usedCm / 100).toFixed(2)}م / {wall.length}م
+                              {isOver && ` ⚠ +${((usedCm - totalCm) / 100).toFixed(2)}م`}
+                            </span>
+                          </div>
+                          <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all ${isOver ? "bg-destructive" : pct > 90 ? "bg-amber-500" : "bg-primary"}`}
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             );
           })}
