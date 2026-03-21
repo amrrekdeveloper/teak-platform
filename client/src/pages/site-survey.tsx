@@ -53,6 +53,7 @@ import {
   Layers,
   Columns,
   Settings2,
+  Map,
 } from "lucide-react";
 
 type WizardStep = 1 | 2 | 3 | 4;
@@ -1538,6 +1539,22 @@ export default function SiteSurveyPage() {
               <div className="text-start">
                 <div className="font-semibold text-sm">{t("عرض التصميم ثلاثي الأبعاد", "View 3D Design")}</div>
                 <div className="text-xs opacity-75">{t("شاهد المنتجات في الغرفة", "See products in room")}</div>
+              </div>
+            </Button>
+            <Button
+              variant="outline"
+              className="w-full justify-start gap-3 h-14"
+              onClick={() => {
+                setNextStepsDialog(false);
+                const sid = savedSurveyId || existingSurvey?.id;
+                navigate(`/scene-3d?surveyId=${sid}&tab=2d`);
+              }}
+              data-testid="button-view-2d-plan"
+            >
+              <Map className="w-5 h-5 shrink-0" />
+              <div className="text-start">
+                <div className="font-semibold text-sm">{t("مخطط هندسي 2D", "2D Floor Plan")}</div>
+                <div className="text-xs opacity-75">{t("مسقط أفقي للمساحات والمنتجات", "Top-view plan with products")}</div>
               </div>
             </Button>
             <Button
