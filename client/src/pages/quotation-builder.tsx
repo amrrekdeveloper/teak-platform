@@ -123,6 +123,8 @@ export default function QuotationBuilderPage() {
   const [adekoSearch, setAdekoSearch] = useState("");
   const [adekoDialog, setAdekoDialog] = useState<string | null>(null);
   const [productSearch, setProductSearch] = useState("");
+  const [savedQuotationId, setSavedQuotationId] = useState<number | null>(null);
+  const [savedQuotationStatus, setSavedQuotationStatus] = useState<string | null>(null);
 
   const { data: customers = [] } = useQuery<Customer[]>({ queryKey: ["/api/customers"] });
   const { data: products = [] } = useQuery<Product[]>({ queryKey: ["/api/products"] });
@@ -474,14 +476,36 @@ export default function QuotationBuilderPage() {
         return res.json();
       }
     },
-    onSuccess: () => {
+    onSuccess: (quotation: any, status: "draft" | "sent") => {
       queryClient.invalidateQueries({ queryKey: ["/api/quotations"] });
       queryClient.invalidateQueries({ queryKey: ["/api/quote-requests"] });
-      toast({ title: t("تم إنشاء عرض السعر بنجاح", "Quotation created successfully") });
-      setLocation("/quotations");
+      if (status === "draft") {
+        setSavedQuotationId(quotation?.id || null);
+        setSavedQuotationStatus("draft");
+        toast({ title: t("تم حفظ عرض السعر كمسودة", "Quotation saved as draft") });
+      } else {
+        toast({ title: t("تم إرسال عرض السعر للعميل بنجاح", "Quotation sent to customer successfully") });
+        setLocation("/quotations");
+      }
     },
     onError: () => {
       toast({ title: t("حدث خطأ في إنشاء عرض السعر", "Error creating quotation"), variant: "destructive" });
+    },
+  });
+
+  const sendToCustomerMutation = useMutation({
+    mutationFn: async (quotationId: number) => {
+      const res = await apiRequest("POST", `/api/pricing/send-to-customer/${quotationId}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      setSavedQuotationStatus("sent");
+      queryClient.invalidateQueries({ queryKey: ["/api/quotations"] });
+      toast({ title: t("تم إرسال عرض السعر للعميل بنجاح", "Quotation sent to customer successfully") });
+      setLocation("/quotations");
+    },
+    onError: () => {
+      toast({ title: t("حدث خطأ في إرسال عرض السعر", "Error sending quotation"), variant: "destructive" });
     },
   });
 
@@ -1034,29 +1058,56 @@ export default function QuotationBuilderPage() {
               </CardContent>
             </Card>
 
-            <div className="flex gap-3">
-              <Button
-                variant="outline"
-                className="flex-1"
-                onClick={() => handleSubmit("draft")}
-                disabled={saveMutation.isPending}
-                data-testid="button-save-draft"
-              >
-                {saveMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : (
-                  <><Save className="w-4 h-4 me-1.5" />{t("حفظ كمسودة", "Save as Draft")}</>
-                )}
-              </Button>
-              <Button
-                className="flex-1"
-                onClick={() => handleSubmit("sent")}
-                disabled={saveMutation.isPending}
-                data-testid="button-send-quotation"
-              >
-                {saveMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : (
-                  <><Send className="w-4 h-4 me-1.5" />{t("إرسال للعميل", "Send to Customer")}</>
-                )}
-              </Button>
-            </div>
+            {savedQuotationId && savedQuotationStatus === "draft" ? (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded-md px-3 py-2">
+                  <Save className="w-3.5 h-3.5 text-green-600" />
+                  <span>{t(`تم الحفظ كمسودة — رقم عرض السعر: #${savedQuotationId}`, `Saved as draft — Quotation #${savedQuotationId}`)}</span>
+                </div>
+                <Button
+                  className="w-full"
+                  onClick={() => sendToCustomerMutation.mutate(savedQuotationId)}
+                  disabled={sendToCustomerMutation.isPending || savedQuotationStatus === "sent" || savedQuotationStatus === "approved"}
+                  data-testid="button-send-to-customer"
+                >
+                  {sendToCustomerMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin me-1.5" /> : (
+                    <><Send className="w-4 h-4 me-1.5" />{t("إرسال لاعتماد العميل", "Send for Customer Approval")}</>
+                  )}
+                </Button>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => setLocation("/quotations")}
+                  data-testid="button-back-to-quotations"
+                >
+                  {t("الرجوع لعروض الأسعار", "Back to Quotations")}
+                </Button>
+              </div>
+            ) : (
+              <div className="flex gap-3">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => handleSubmit("draft")}
+                  disabled={saveMutation.isPending}
+                  data-testid="button-save-draft"
+                >
+                  {saveMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : (
+                    <><Save className="w-4 h-4 me-1.5" />{t("حفظ كمسودة", "Save as Draft")}</>
+                  )}
+                </Button>
+                <Button
+                  className="flex-1"
+                  onClick={() => handleSubmit("sent")}
+                  disabled={saveMutation.isPending}
+                  data-testid="button-send-quotation"
+                >
+                  {saveMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : (
+                    <><Send className="w-4 h-4 me-1.5" />{t("إرسال لاعتماد العميل", "Send for Customer Approval")}</>
+                  )}
+                </Button>
+              </div>
+            )}
           </>
         )}
       </div>

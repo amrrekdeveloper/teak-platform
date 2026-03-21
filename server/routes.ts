@@ -2438,21 +2438,35 @@ export async function registerRoutes(
         customerApprovalNotes: null,
       } as any);
 
-      const staffUsers = (await storage.getUsers()).filter(u => ["owner", "assistant", "sales", "designer"].includes(u.role));
-      for (const staff of staffUsers) {
-        if (staff.id === da.assignedTo || staff.role === "owner" || staff.role === "assistant") {
-          await storage.createNotification({
-            userId: staff.id,
-            titleAr: "العميل اعتمد التصميم ✓",
-            titleEn: "Customer Approved Design ✓",
-            messageAr: `العميل ${customer.fullName} اعتمد التصميم للطلب #${da.quotationId || da.id}`,
-            messageEn: `Customer ${customer.fullName} approved design for order #${da.quotationId || da.id}`,
-            type: "success",
-            relatedEntity: "quotation",
-            relatedId: da.quotationId || da.id,
-            isRead: false,
-          });
+      let quotationAssignedTo: number | null = null;
+      if (da.quotationId) {
+        const linkedQuotation = await storage.getQuotation(da.quotationId);
+        if (linkedQuotation && linkedQuotation.status !== "approved") {
+          await storage.updateQuotation(da.quotationId, { status: "approved" });
+          quotationAssignedTo = linkedQuotation.assignedTo || null;
         }
+      }
+
+      const notifyUserIds = new Set<number>();
+      const allUsers = await storage.getUsers();
+      for (const u of allUsers) {
+        if (u.role === "owner" || u.role === "assistant") notifyUserIds.add(u.id);
+      }
+      if (da.assignedTo) notifyUserIds.add(da.assignedTo);
+      if (quotationAssignedTo) notifyUserIds.add(quotationAssignedTo);
+
+      for (const userId of notifyUserIds) {
+        await storage.createNotification({
+          userId,
+          titleAr: "العميل اعتمد التصميم ✓",
+          titleEn: "Customer Approved Design ✓",
+          messageAr: `العميل ${customer.fullName} اعتمد التصميم للطلب #${da.quotationId || da.id}`,
+          messageEn: `Customer ${customer.fullName} approved design for order #${da.quotationId || da.id}`,
+          type: "success",
+          relatedEntity: "quotation",
+          relatedId: da.quotationId || da.id,
+          isRead: false,
+        });
       }
 
       res.json({ message: "تم اعتماد التصميم بنجاح", messageEn: "Design approved successfully", design: updated });
@@ -3219,6 +3233,8 @@ export async function registerRoutes(
         notes: notes || "",
         createdBy: req.session.userId,
       });
+
+      console.log(`[save-quotation] Created quotation #${quotation.id}: items=${items.length}, subtotal=${serverSubtotal}, discount=${discountVal}, vat=${serverVat}, finalPrice=${serverTotal}`);
 
       if (surveyId) {
         await storage.updateSiteSurvey(parseInt(surveyId), { quotationId: quotation.id } as any);

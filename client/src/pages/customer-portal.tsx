@@ -386,7 +386,7 @@ function InspectionAppointmentCard({ inspectionDate, orderId }: { inspectionDate
   );
 }
 
-function DesignViewSection({ design, quotationId, hideApprovalButtons }: { design: any; quotationId: number; hideApprovalButtons?: boolean }) {
+function DesignViewSection({ design, quotationId, hideApprovalButtons, quotation }: { design: any; quotationId: number; hideApprovalButtons?: boolean; quotation?: any }) {
   const { t } = useLanguage();
   const { toast } = useToast();
   const [fullscreenImg, setFullscreenImg] = useState<string | null>(null);
@@ -494,6 +494,68 @@ function DesignViewSection({ design, quotationId, hideApprovalButtons }: { desig
         <div className="bg-amber-50 dark:bg-amber-950/20 rounded-md p-2.5 text-xs">
           <p className="font-semibold text-amber-800 dark:text-amber-300 mb-0.5">{t("ملاحظات التعديل", "Revision Notes")}</p>
           <p className="text-amber-700 dark:text-amber-400">{design.customerApprovalNotes}</p>
+        </div>
+      )}
+
+      {canAct && !hideApprovalButtons && quotation && Array.isArray(quotation.items) && quotation.items.length > 0 && (
+        <div className="border rounded-lg overflow-hidden" data-testid={`design-pricing-breakdown-${quotationId}`}>
+          <div className="px-3 py-2 bg-muted/50 flex items-center gap-1.5">
+            <Package className="w-3.5 h-3.5 text-primary" />
+            <span className="text-xs font-semibold">{t("تفاصيل المنتجات والأسعار", "Products & Pricing Breakdown")}</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b bg-muted/30">
+                  <th className="px-3 py-2 text-start font-medium">{t("المنتج", "Product")}</th>
+                  <th className="px-2 py-2 text-center font-medium">{t("الكمية", "Qty")}</th>
+                  <th className="px-2 py-2 text-end font-medium">{t("السعر", "Price")}</th>
+                  <th className="px-3 py-2 text-end font-medium">{t("الإجمالي", "Total")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {quotation.items.map((item: any, idx: number) => {
+                  const unitPrice = parseFloat(item.unitPrice || item.pricePerMeter || 0);
+                  const optCost = parseFloat(item.optionsCost || 0);
+                  const qty = parseFloat(item.quantity || 1);
+                  const total = parseFloat(item.amount || item.total || item.lineTotal || 0) || (unitPrice + optCost) * qty;
+                  return (
+                    <tr key={idx} className="border-b last:border-0">
+                      <td className="px-3 py-2">
+                        <p className="font-medium">{item.description || item.nameAr || item.productType || `${t("منتج", "Item")} ${idx + 1}`}</p>
+                        {item.code && <p className="text-[10px] text-muted-foreground">{item.code}</p>}
+                      </td>
+                      <td className="px-2 py-2 text-center">{qty}</td>
+                      <td className="px-2 py-2 text-end">{(unitPrice + optCost).toLocaleString()}</td>
+                      <td className="px-3 py-2 text-end font-medium">{total.toLocaleString()}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div className="border-t p-3 space-y-1 text-xs bg-muted/20">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">{t("المجموع قبل الخصم", "Subtotal")}</span>
+              <span>{parseFloat(quotation.subtotal || "0").toLocaleString()} {t("ر.س", "SAR")}</span>
+            </div>
+            {parseFloat(quotation.discount || "0") > 0 && (
+              <div className="flex justify-between text-green-600">
+                <span>{t("الخصم", "Discount")}</span>
+                <span>-{parseFloat(quotation.discount).toLocaleString()} {t("ر.س", "SAR")}</span>
+              </div>
+            )}
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">{t("ضريبة القيمة المضافة 15%", "VAT 15%")}</span>
+              <span>{parseFloat(quotation.vatAmount || "0").toLocaleString(undefined, { maximumFractionDigits: 2 })} {t("ر.س", "SAR")}</span>
+            </div>
+            <div className="flex justify-between font-bold text-sm border-t pt-1">
+              <span>{t("الإجمالي النهائي", "Final Total")}</span>
+              <span className="text-primary" data-testid={`text-design-final-price-${quotationId}`}>
+                {parseFloat(quotation.finalPrice || quotation.totalPrice || "0").toLocaleString(undefined, { maximumFractionDigits: 2 })} {t("ر.س", "SAR")}
+              </span>
+            </div>
+          </div>
         </div>
       )}
 
@@ -760,7 +822,7 @@ function OrdersTab({ quotations, contracts, production, designs, customerName }:
                   )}
 
                   {design && (design.sketchImage || design.screenshot3d) && (
-                    <DesignViewSection design={design} quotationId={q.id} />
+                    <DesignViewSection design={design} quotationId={q.id} quotation={q} />
                   )}
 
                   {q.items && Array.isArray(q.items) && q.items.length > 0 && (
@@ -1356,7 +1418,7 @@ function QuotationsTab({ quotations, designs, invoices, contracts, payments, onA
                             {t("تم تحديث التصميم — يرجى المراجعة والاعتماد", "Design updated — please review and approve")}
                           </div>
                         )}
-                        <DesignViewSection design={design} quotationId={q.id} hideApprovalButtons />
+                        <DesignViewSection design={design} quotationId={q.id} hideApprovalButtons quotation={q} />
                       </div>
                     ) : (
                       <>
@@ -1370,7 +1432,7 @@ function QuotationsTab({ quotations, designs, invoices, contracts, payments, onA
                           {design.customerApproval === "approved" && <CheckCircle2 className="w-3 h-3 text-green-600" />}
                         </button>
                         {viewDesign === q.id && (
-                          <DesignViewSection design={design} quotationId={q.id} />
+                          <DesignViewSection design={design} quotationId={q.id} quotation={q} />
                         )}
                       </>
                     )
