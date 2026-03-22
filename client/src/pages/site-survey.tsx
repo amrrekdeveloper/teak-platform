@@ -347,6 +347,7 @@ export default function SiteSurveyPage() {
   });
 
   function performAutoSave(currentSpaces?: SpaceData[]) {
+    if (autoSaveMutation.isPending) return;
     const data = {
       appointmentId,
       customerId: appointment?.customerId || null,
@@ -1465,13 +1466,27 @@ export default function SiteSurveyPage() {
           )}
         </div>
 
-        <div className="flex items-center gap-1">
-          {([1, 2, 3] as WizardStep[]).map((s) => (
-            <div
-              key={s}
-              className={`w-2 h-2 rounded-full transition-colors ${step === s ? "bg-primary" : step > s ? "bg-primary/40" : "bg-muted-foreground/30"}`}
-            />
-          ))}
+        <div className="flex flex-col items-center gap-0.5">
+          <div className="flex items-center gap-1">
+            {([1, 2, 3] as WizardStep[]).map((s) => (
+              <div
+                key={s}
+                className={`w-2 h-2 rounded-full transition-colors ${step === s ? "bg-primary" : step > s ? "bg-primary/40" : "bg-muted-foreground/30"}`}
+              />
+            ))}
+          </div>
+          {autoSavePending && (
+            <div className="flex items-center gap-1 text-[10px] text-muted-foreground" data-testid="autosave-pending-footer">
+              <Loader2 className="w-2.5 h-2.5 animate-spin" />
+              {t("جاري الحفظ...", "Saving...")}
+            </div>
+          )}
+          {autoSaveError && !autoSavePending && (
+            <div className="flex items-center gap-1 text-[10px] text-amber-600" data-testid="autosave-error-footer">
+              <AlertCircle className="w-2.5 h-2.5" />
+              {t("تعذر الحفظ التلقائي", "Auto-save failed")}
+            </div>
+          )}
         </div>
 
         {step === 3 ? (
