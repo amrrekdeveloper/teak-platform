@@ -724,30 +724,37 @@ export default function SiteSurveyPage() {
 
         return (
           <div className="space-y-3" data-testid="section-spaces-walls">
-            {/* Completed spaces chips */}
-            {otherSpaces.length > 0 && (
-              <div className="flex flex-wrap gap-2" data-testid="chips-completed-spaces">
-                {otherSpaces.map((s) => (
-                  <button
-                    key={s.id}
-                    onClick={() => {
-                      if (subStep === "info") {
-                        const currentEditSpace = spaces.find((sp) => sp.id === activeWallSpaceId) || spaces[0];
-                        if (currentEditSpace) goToWallsSubStep(currentEditSpace.id);
-                        return;
-                      }
-                      performAutoSave();
-                      setActiveWallSpaceId(s.id);
-                      setSubStep("info");
-                    }}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-all"
-                    data-testid={`chip-space-${s.id}`}
-                  >
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    {s.name || t("مكان", "Space")}
-                    <ChevronRight className={`w-3 h-3 opacity-50 ${lang === "ar" ? "" : "rotate-180"}`} />
-                  </button>
-                ))}
+            {/* All spaces tab-bar */}
+            {spaces.length > 0 && (
+              <div className="flex items-center gap-1 bg-muted rounded-lg p-1 overflow-x-auto" data-testid="tabs-spaces">
+                {spaces.map((s) => {
+                  const isActive = s.id === activeWallSpaceId;
+                  return (
+                    <button
+                      key={s.id}
+                      onClick={() => {
+                        if (isActive) return;
+                        if (subStep === "info") {
+                          const currentEditSpace = spaces.find((sp) => sp.id === activeWallSpaceId) || spaces[0];
+                          if (currentEditSpace) goToWallsSubStep(currentEditSpace.id);
+                          return;
+                        }
+                        performAutoSave();
+                        setActiveWallSpaceId(s.id);
+                        setSubStep("info");
+                      }}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium whitespace-nowrap transition-all flex-shrink-0 ${
+                        isActive
+                          ? "bg-background shadow font-semibold text-foreground"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                      data-testid={`tab-space-${s.id}`}
+                    >
+                      {s.walls.length > 0 && <CheckCircle2 className="w-3 h-3 text-primary" />}
+                      {s.name || t("مكان", "Space")}
+                    </button>
+                  );
+                })}
               </div>
             )}
 
@@ -1203,16 +1210,25 @@ export default function SiteSurveyPage() {
               {t("المنتجات المطلوبة", "Required Products")}
             </h3>
             <div className="flex items-center gap-2">
-              <Select value={currentSpaceId} onValueChange={setCurrentSpaceId}>
-                <SelectTrigger className="w-[130px] h-8 text-xs" data-testid="select-space">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
+              {spaces.length > 1 && (
+                <div className="flex items-center gap-1 bg-muted rounded-lg p-0.5" data-testid="tabs-spaces-products">
                   {spaces.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>{s.name || t("مكان", "Space")}</SelectItem>
+                    <button
+                      key={s.id}
+                      onClick={() => setCurrentSpaceId(s.id)}
+                      data-testid={`tab-product-space-${s.id}`}
+                      className={`text-xs px-2.5 py-1 rounded-md transition-all whitespace-nowrap max-w-[110px] truncate ${
+                        currentSpaceId === s.id
+                          ? "bg-background shadow font-semibold text-foreground"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                      title={s.name || t("مكان", "Space")}
+                    >
+                      {s.name || t("مكان", "Space")}
+                    </button>
                   ))}
-                </SelectContent>
-              </Select>
+                </div>
+              )}
               <Button
                 size="sm"
                 onClick={() => { setProductSearch(""); setSelectedGroup("all"); setProductSearchDialog(true); }}
