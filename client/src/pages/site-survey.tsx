@@ -61,6 +61,11 @@ import {
   Columns,
   Settings2,
   Map,
+  Printer,
+  Upload,
+  FileImage,
+  Check,
+  Paperclip,
 } from "lucide-react";
 
 type WizardStep = 1 | 2 | 3;
@@ -295,6 +300,11 @@ export default function SiteSurveyPage() {
   const [photos, setPhotos] = useState<string[]>([]);
   const [savedSurveyId, setSavedSurveyId] = useState<number | null>(null);
   const [nextStepsDialog, setNextStepsDialog] = useState(false);
+  const [uploadDesignDialog, setUploadDesignDialog] = useState(false);
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const [uploadedFiles, setUploadedFiles] = useState<Array<{ id: number; file_name: string; mime_type: string; file_size: number; attach_to_quote: boolean }>>([]);
+  const [printingPdf, setPrintingPdf] = useState(false);
+  const [designFilesLoaded, setDesignFilesLoaded] = useState(false);
 
   useEffect(() => {
     if (existingSurvey && existingSurvey.id && !surveyInitializedRef.current) {
@@ -457,6 +467,174 @@ export default function SiteSurveyPage() {
       photos,
     };
     saveMutation.mutate(data);
+  }
+
+  useEffect(() => {
+    if (uploadDesignDialog && !designFilesLoaded) {
+      const sid = savedSurveyId || existingSurvey?.id;
+      if (!sid) return;
+      setDesignFilesLoaded(true);
+      fetch(`/api/site-surveys/${sid}/design-files`, { credentials: "include" })
+        .then(r => r.ok ? r.json() : [])
+        .then((files: any[]) => setUploadedFiles(files))
+        .catch(() => {});
+    }
+    if (!uploadDesignDialog) setDesignFilesLoaded(false);
+  }, [uploadDesignDialog, savedSurveyId, existingSurvey?.id]);
+
+  async function handlePrintSurveyReport() {
+    setPrintingPdf(true);
+    try {
+      const jsPDFModule = await import("jspdf");
+      const jsPDF = jsPDFModule.default || (jsPDFModule as any).jsPDF;
+      await import("jspdf-autotable");
+      const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" }) as any;
+      const pageW = 210;
+      const margin = 14;
+      let y = margin;
+      doc.setFont("helvetica", "bold");
+      doc.setFillColor(26, 54, 93);
+      doc.rect(margin, y, pageW - margin * 2, 16, "F");
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(13);
+      doc.text("Teak Wood Products Factory", pageW / 2, y + 7, { align: "center" });
+      doc.setFontSize(8);
+      doc.text("Site Survey Report / تقرير الزيارة الميدانية", pageW / 2, y + 13, { align: "center" });
+      y += 22;
+      doc.setTextColor(0, 0, 0);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8);
+      const customer = (customers as any[]).find((c: any) => c.id === appointment?.customerId);
+      doc.text(`Date: ${new Date().toLocaleDateString("en-GB")}`, pageW - margin, y, { align: "right" });
+      doc.text(`Customer: ${customer?.fullName || "—"}`, margin, y);
+      y += 5;
+      doc.text(`Phone: ${customer?.phone || "—"}`, margin, y);
+      doc.text(`Appointment: #${appointmentId}`, pageW - margin, y, { align: "right" });
+      y += 8;
+      doc.setLineWidth(0.3);
+      doc.setDrawColor(180, 180, 180);
+      doc.line(margin, y, pageW - margin, y);
+      y += 5;
+      const wallLetters = ["A", "B", "C", "D"];
+      spaces.forEach((space, si) => {
+        if (y > 250) { doc.addPage(); y = margin; }
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(10);
+        doc.setFillColor(240, 244, 248);
+        doc.rect(margin, y - 1, pageW - margin * 2, 8, "F");
+        const spaceType = SPACE_TYPES.find(st => st.value === space.type);
+        doc.text(`${si + 1}. ${space.name || "Space"} (${spaceType ? spaceType.en : space.type || ""})`, margin + 2, y + 5);
+        y += 10;
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8);
+        const dimParts = [];
+        if (space.length) dimParts.push(`L: ${space.length}m`);
+        if (space.width) dimParts.push(`W: ${space.width}m`);
+        if (space.height) dimParts.push(`H: ${space.height}m`);
+        if (dimParts.length > 0) { doc.text(`Dimensions: ${dimParts.join(" × ")}`, margin + 2, y); y += 5; }
+        if (space.buildingStatus) { doc.text(`Status: ${space.buildingStatus === "ready" ? "Ready" : "Under Construction"}`, margin + 2, y); y += 5; }
+        if (space.walls.length > 0) {
+          const head = [["Wall", "Length (m)", "Height (m)", "Items"]];
+          const body = space.walls.map((w, wi) => {
+            const letter = wallLetters[wi] || String(wi + 1);
+            const itemsSummary = w.items.map(it => {
+              const label = { door: "Door", window: "Window", outlet: "Outlet", drain: "Drain", obstacle: "Obstacle" }[it.type] || it.type;
+              const dims = (it.width && it.height) ? ` (${it.width}×${it.height}m)` : it.width ? ` (${it.width}m)` : "";
+              const dist = it.distanceFromFirst ? ` @${it.distanceFromFirst}m` : "";
+              return `${label}${dims}${dist}`;
+            }).join("; ") || "-";
+            return [letter, w.length || "—", w.wallHeight || space.height || "—", itemsSummary];
+          });
+          doc.autoTable({ startY: y, head, body, theme: "grid", styles: { fontSize: 7, cellPadding: 2 }, headStyles: { fillColor: [26, 54, 93], textColor: 255, fontStyle: "bold" }, alternateRowStyles: { fillColor: [248, 250, 252] }, columnStyles: { 0: { cellWidth: 12 }, 1: { cellWidth: 22 }, 2: { cellWidth: 22 }, 3: { cellWidth: "auto" } }, margin: { left: margin, right: margin } });
+          y = doc.lastAutoTable?.finalY ? doc.lastAutoTable.finalY + 5 : y + 20;
+        }
+      });
+      if (selectedProducts.length > 0) {
+        if (y > 220) { doc.addPage(); y = margin; }
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(10);
+        doc.setFillColor(240, 244, 248);
+        doc.rect(margin, y - 1, pageW - margin * 2, 8, "F");
+        doc.text("Selected Products", margin + 2, y + 5);
+        y += 10;
+        const head = [["#", "Code", "Description", "Qty", "Wall"]];
+        const body = selectedProducts.map((p, pi) => {
+          const space = spaces.find(s => s.id === p.spaceId);
+          return [String(pi + 1), p.code || "—", p.name || p.nameAr || "—", String(p.quantity || 1), space?.name || "—"];
+        });
+        doc.autoTable({ startY: y, head, body, theme: "grid", styles: { fontSize: 7, cellPadding: 2 }, headStyles: { fillColor: [26, 54, 93], textColor: 255, fontStyle: "bold" }, alternateRowStyles: { fillColor: [248, 250, 252] }, margin: { left: margin, right: margin } });
+      }
+      const totalPages = doc.getNumberOfPages();
+      for (let i = 1; i <= totalPages; i++) {
+        doc.setPage(i);
+        doc.setFontSize(7);
+        doc.setTextColor(150, 150, 150);
+        doc.text(`Page ${i} of ${totalPages} — Teak Wood Products Factory`, pageW / 2, 290, { align: "center" });
+      }
+      const customerName = customer?.fullName?.replace(/\s+/g, "_") || "customer";
+      doc.save(`survey_report_${customerName}_${new Date().toISOString().slice(0, 10)}.pdf`);
+    } catch (err) {
+      console.error("PDF generation error:", err);
+      toast({ title: t("تعذر إنشاء التقرير", "Failed to generate report"), variant: "destructive" });
+    } finally {
+      setPrintingPdf(false);
+    }
+  }
+
+  async function handleFileUpload(file: File) {
+    const sid = savedSurveyId || existingSurvey?.id;
+    if (!sid) {
+      toast({ title: t("احفظ النموذج أولاً", "Save the survey first"), variant: "destructive" });
+      return;
+    }
+    setUploadingFile(true);
+    try {
+      const reader = new FileReader();
+      const fileData = await new Promise<string>((resolve, reject) => {
+        reader.onload = (e) => resolve(e.target?.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const res = await apiRequest("POST", `/api/site-surveys/${sid}/design-files`, {
+        fileName: file.name,
+        fileData,
+        mimeType: file.type,
+        fileSize: file.size,
+        quotationId: appointment?.quotationId || null,
+      });
+      const newFile = await res.json();
+      setUploadedFiles(prev => [newFile, ...prev]);
+      toast({ title: t("تم رفع الملف بنجاح", "File uploaded successfully") });
+    } catch {
+      toast({ title: t("حدث خطأ في رفع الملف", "File upload failed"), variant: "destructive" });
+    } finally {
+      setUploadingFile(false);
+    }
+  }
+
+  async function handleToggleAttach(fileId: number, attachToQuote: boolean) {
+    const sid = savedSurveyId || existingSurvey?.id;
+    if (!sid) return;
+    try {
+      const res = await apiRequest("PATCH", `/api/site-surveys/${sid}/design-files/${fileId}`, { attachToQuote });
+      const updated = await res.json();
+      setUploadedFiles(prev => prev.map(f => f.id === fileId ? { ...f, attach_to_quote: updated.attach_to_quote } : f));
+      queryClient.invalidateQueries({ queryKey: ["/api/site-surveys", String(sid), "design-files"] });
+    } catch {
+      toast({ title: t("حدث خطأ", "Error"), variant: "destructive" });
+    }
+  }
+
+  async function handleDeleteFile(fileId: number) {
+    const sid = savedSurveyId || existingSurvey?.id;
+    if (!sid) return;
+    try {
+      await apiRequest("DELETE", `/api/site-surveys/${sid}/design-files/${fileId}`);
+      setUploadedFiles(prev => prev.filter(f => f.id !== fileId));
+      queryClient.invalidateQueries({ queryKey: ["/api/site-surveys", String(sid), "design-files"] });
+    } catch {
+      toast({ title: t("حدث خطأ في الحذف", "Delete failed"), variant: "destructive" });
+    }
   }
 
   function updateSpace(spaceId: string, field: keyof SpaceData, value: any) {
@@ -1790,6 +1968,19 @@ export default function SiteSurveyPage() {
               {t("3D", "3D")}
             </Button>
           )}
+          {step === 1 && subStep === "walls" && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs text-blue-600 border-blue-300 dark:border-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950/30"
+              onClick={handlePrintSurveyReport}
+              disabled={printingPdf}
+              data-testid="button-print-survey"
+            >
+              {printingPdf ? <Loader2 className="w-3.5 h-3.5 me-1 animate-spin" /> : <Printer className="w-3.5 h-3.5 me-1" />}
+              {t("طباعة", "Print")}
+            </Button>
+          )}
         </div>
 
         <div className="flex flex-col items-center gap-0.5">
@@ -1975,6 +2166,21 @@ export default function SiteSurveyPage() {
               </div>
             </Button>
             <Button
+              variant="outline"
+              className="w-full justify-start gap-3 h-14 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30"
+              onClick={() => {
+                setNextStepsDialog(false);
+                setUploadDesignDialog(true);
+              }}
+              data-testid="button-upload-design-file"
+            >
+              <Upload className="w-5 h-5 shrink-0" />
+              <div className="text-start">
+                <div className="font-semibold text-sm">{t("رفع مخطط يدوي", "Upload Manual Plan")}</div>
+                <div className="text-xs opacity-75">{t("رفع ملف PDF أو صورة من برنامج خارجي", "Upload PDF or image from external software")}</div>
+              </div>
+            </Button>
+            <Button
               variant="ghost"
               className="w-full justify-start gap-3 h-14"
               onClick={() => { setNextStepsDialog(false); navigate(returnTo); }}
@@ -1991,6 +2197,76 @@ export default function SiteSurveyPage() {
               </div>
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={uploadDesignDialog} onOpenChange={setUploadDesignDialog}>
+        <DialogContent className="max-w-sm" data-testid="dialog-upload-design">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Paperclip className="w-5 h-5 text-blue-600" />
+              {t("رفع مخطط يدوي", "Upload Manual Plan")}
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            {t("ارفع ملفات المخططات من برنامج AutoCAD أو غيره. يمكنك تفعيل الإرفاق مع عرض السعر لكل ملف.", "Upload plan files from AutoCAD or other software. You can toggle attachment to quotation per file.")}
+          </p>
+
+          <label
+            className={`flex flex-col items-center justify-center gap-2 py-6 px-4 border-2 border-dashed rounded-lg cursor-pointer transition-colors ${uploadingFile ? "opacity-60 pointer-events-none" : "border-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/20"}`}
+            data-testid="label-upload-zone"
+          >
+            {uploadingFile ? (
+              <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+            ) : (
+              <Upload className="w-8 h-8 text-blue-400" />
+            )}
+            <span className="text-sm font-medium text-blue-700 dark:text-blue-400">
+              {uploadingFile ? t("جاري الرفع...", "Uploading...") : t("اختر ملفاً أو اسحبه هنا", "Choose a file or drag here")}
+            </span>
+            <span className="text-xs text-muted-foreground">{t("PDF، صور، DWG", "PDF, Images, DWG")}</span>
+            <input
+              type="file"
+              accept=".pdf,.png,.jpg,.jpeg,.gif,.svg,.dwg,.dxf,.docx,.xlsx"
+              className="hidden"
+              disabled={uploadingFile}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleFileUpload(file);
+                e.target.value = "";
+              }}
+            />
+          </label>
+
+          {uploadedFiles.length > 0 && (
+            <div className="space-y-2 max-h-48 overflow-y-auto">
+              <p className="text-xs font-medium text-muted-foreground">{t("الملفات المرفوعة", "Uploaded Files")} ({uploadedFiles.length})</p>
+              {uploadedFiles.map((f) => (
+                <div key={f.id} className="flex items-center gap-2 p-2 rounded-lg border bg-muted/30" data-testid={`uploaded-file-${f.id}`}>
+                  <FileImage className="w-4 h-4 text-blue-500 shrink-0" />
+                  <span className="flex-1 text-xs truncate min-w-0">{f.file_name}</span>
+                  <button
+                    onClick={() => handleToggleAttach(f.id, !f.attach_to_quote)}
+                    className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border transition-colors shrink-0 ${f.attach_to_quote ? "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 border-green-300 dark:border-green-700" : "bg-muted text-muted-foreground border-border"}`}
+                    data-testid={`button-toggle-attach-${f.id}`}
+                  >
+                    {f.attach_to_quote ? <><Check className="w-2.5 h-2.5 me-0.5" />{t("مرفق", "Attached")}</> : t("إرفاق", "Attach")}
+                  </button>
+                  <button
+                    onClick={() => handleDeleteFile(f.id)}
+                    className="text-destructive hover:opacity-70 shrink-0"
+                    data-testid={`button-delete-file-${f.id}`}
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {uploadedFiles.length === 0 && !uploadingFile && (
+            <p className="text-center text-xs text-muted-foreground">{t("لم يتم رفع أي ملفات بعد", "No files uploaded yet")}</p>
+          )}
         </DialogContent>
       </Dialog>
     </div>

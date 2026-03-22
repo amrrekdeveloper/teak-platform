@@ -14,7 +14,7 @@ import {
   AlertCircle, X, ClipboardList, ChevronDown, ChevronUp,
   User, MapPin, Phone, Package, CalendarPlus,
   Palette, ThumbsUp, MessageSquare, Maximize, Image,
-  Upload, CreditCard, Banknote, RotateCcw, Download, FileDown,
+  Upload, CreditCard, Banknote, RotateCcw, Download, FileDown, Paperclip,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { apiRequest } from "@/lib/queryClient";
@@ -817,6 +817,8 @@ function OrdersTab({ quotations, contracts, production, designs, customerName }:
 
                   <View3DButton quotationId={q.id} />
 
+                  <PortalSurveyDesignFiles quotationId={q.id} />
+
                   {Array.isArray(q.items) && q.items.length > 0 && (
                     <ProductDetailsTable items={q.items} quotation={q} />
                   )}
@@ -1239,6 +1241,60 @@ function View3DButton({ quotationId, surveyId }: { quotationId: number; surveyId
   );
 }
 
+function PortalSurveyDesignFiles({ quotationId }: { quotationId: number }) {
+  const { t } = useLanguage();
+  const [expandedFiles, setExpandedFiles] = useState(false);
+  const { data: surveys } = useQuery<any[]>({
+    queryKey: ["/api/customer-portal/site-surveys"],
+    queryFn: async () => {
+      const res = await fetch("/api/customer-portal/site-surveys", { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    staleTime: 60000,
+  });
+  const survey = surveys?.find((s: any) => s.quotationId === quotationId);
+  const files: any[] = survey?.designFiles || [];
+  if (files.length === 0) return null;
+  return (
+    <div data-testid={`portal-design-files-${quotationId}`}>
+      <button
+        className="w-full flex items-center justify-between text-xs text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/30 rounded-md px-3 py-2 hover:bg-blue-100 dark:hover:bg-blue-950/50 transition-colors"
+        onClick={() => setExpandedFiles(!expandedFiles)}
+        data-testid={`button-toggle-design-files-${quotationId}`}
+      >
+        <div className="flex items-center gap-1.5">
+          <Paperclip className="w-3.5 h-3.5 shrink-0" />
+          <span className="font-medium">{t("مخططات المشروع", "Project Plans")} ({files.length})</span>
+        </div>
+        {expandedFiles ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+      </button>
+      {expandedFiles && (
+        <div className="mt-1 space-y-1.5 border rounded-lg p-2 bg-muted/20" data-testid={`design-files-list-${quotationId}`}>
+          {files.map((f: any) => (
+            <div key={f.id} className="flex items-center gap-2 text-xs" data-testid={`portal-file-row-${f.id}`}>
+              <FileDown className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+              <span className="flex-1 truncate font-medium">{f.file_name}</span>
+              <button
+                className="text-blue-600 dark:text-blue-400 underline shrink-0 hover:opacity-75"
+                onClick={() => {
+                  const a = document.createElement("a");
+                  a.href = f.file_data;
+                  a.download = f.file_name;
+                  a.click();
+                }}
+                data-testid={`button-download-file-${f.id}`}
+              >
+                {t("تنزيل", "Download")}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function QuotationsTab({ quotations, designs, invoices, contracts, payments, onApprove, approving }: {
   quotations: any[]; designs: any[]; invoices: any[]; contracts: any[]; payments: any[]; onApprove: (id: number) => void; approving: boolean;
 }) {
@@ -1383,6 +1439,8 @@ function QuotationsTab({ quotations, designs, invoices, contracts, payments, onA
                   </Button>
 
                   <View3DButton quotationId={q.id} />
+
+                  <PortalSurveyDesignFiles quotationId={q.id} />
 
                   {Array.isArray(q.items) && q.items.length > 0 && (
                     <>

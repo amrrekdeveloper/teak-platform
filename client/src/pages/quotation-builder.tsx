@@ -150,6 +150,16 @@ export default function QuotationBuilderPage() {
     enabled: !!preselectedSurveyId,
   });
 
+  const { data: surveyDesignFiles = [], refetch: refetchDesignFiles } = useQuery<any[]>({
+    queryKey: ["/api/site-surveys", preselectedSurveyId, "design-files"],
+    queryFn: async () => {
+      const res = await fetch(`/api/site-surveys/${preselectedSurveyId}/design-files`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!preselectedSurveyId,
+  });
+
   const [surveyLoaded, setSurveyLoaded] = useState(false);
   useEffect(() => {
     if (surveyData && !surveyLoaded && adekoProducts.length > 0) {
@@ -578,6 +588,51 @@ export default function QuotationBuilderPage() {
             </Select>
           </CardContent>
         </Card>
+
+        {preselectedSurveyId && surveyDesignFiles.length > 0 && (
+          <Card className="border-blue-200 dark:border-blue-800" dir={isRTL ? "rtl" : "ltr"} data-testid="card-survey-design-files">
+            <CardHeader className="flex flex-row items-center justify-between gap-2 pb-3">
+              <CardTitle className={`text-base flex items-center gap-2 ${isRTL ? "text-right" : "text-left"}`}>
+                <Paperclip className="w-4 h-4 text-blue-600 shrink-0" />
+                {t("مخططات الزيارة الميدانية", "Site Survey Plans")}
+                <Badge variant="secondary" className="text-xs shrink-0">
+                  {surveyDesignFiles.length} {t("ملف", "file(s)")}
+                </Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {surveyDesignFiles.map((f: any) => (
+                <div key={f.id} className="flex items-center gap-2 p-2 rounded-lg border bg-muted/20" data-testid={`survey-file-row-${f.id}`}>
+                  <FileText className="w-4 h-4 text-blue-500 shrink-0" />
+                  <span className={`flex-1 text-sm truncate min-w-0 ${isRTL ? "text-right" : "text-left"}`}>{f.file_name}</span>
+                  <span className="text-xs text-muted-foreground shrink-0">
+                    {f.file_size ? `${(f.file_size / 1024).toFixed(0)} KB` : ""}
+                  </span>
+                  <button
+                    className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border transition-colors shrink-0 ${f.attach_to_quote ? "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 border-green-300 dark:border-green-700" : "bg-muted text-muted-foreground border-border hover:border-primary"}`}
+                    onClick={async () => {
+                      try {
+                        await fetch(`/api/site-surveys/${preselectedSurveyId}/design-files/${f.id}`, {
+                          method: "PATCH",
+                          headers: { "Content-Type": "application/json" },
+                          credentials: "include",
+                          body: JSON.stringify({ attachToQuote: !f.attach_to_quote }),
+                        });
+                        refetchDesignFiles();
+                      } catch {}
+                    }}
+                    data-testid={`button-attach-file-${f.id}`}
+                  >
+                    {f.attach_to_quote ? <>{t("✓ مرفق", "✓ Attached")}</> : t("إرفاق مع العرض", "Attach to Quote")}
+                  </button>
+                </div>
+              ))}
+              <p className={`text-xs text-muted-foreground ${isRTL ? "text-right" : "text-left"}`}>
+                {t("الملفات المفعل إرفاقها ستظهر للعميل في بوابته", "Files marked as attached will appear in the customer portal")}
+              </p>
+            </CardContent>
+          </Card>
+        )}
 
         {completedDesign && (
           <Card className="border-green-200 dark:border-green-800" dir={isRTL ? "rtl" : "ltr"} data-testid="card-designer-attachments">

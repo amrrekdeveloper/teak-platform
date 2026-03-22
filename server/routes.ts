@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import { storage } from "./storage";
 import { setupAuth, requireAuth, requireRole } from "./auth";
 import { seedDatabase } from "./seed";
-import { db } from "./db";
+import { db, pool } from "./db";
 import { verifyFirebaseToken } from "./firebase-admin";
 import {
   insertCustomerSchema, insertProductSchema, insertWoodTypeSchema,
@@ -174,6 +174,25 @@ export async function registerRoutes(
     `);
   } catch (orderStageMigrationError) {
     console.warn("Order stage migration warning (non-fatal):", orderStageMigrationError instanceof Error ? orderStageMigrationError.message : String(orderStageMigrationError));
+  }
+
+  try {
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS survey_design_files (
+        id SERIAL PRIMARY KEY,
+        survey_id INTEGER NOT NULL,
+        quotation_id INTEGER,
+        file_name TEXT NOT NULL,
+        file_data TEXT NOT NULL,
+        mime_type TEXT NOT NULL DEFAULT 'application/octet-stream',
+        file_size INTEGER DEFAULT 0,
+        attach_to_quote BOOLEAN NOT NULL DEFAULT FALSE,
+        uploaded_by INTEGER,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    `);
+  } catch (designFilesMigrationError) {
+    console.warn("Survey design files table migration (non-fatal):", designFilesMigrationError instanceof Error ? designFilesMigrationError.message : String(designFilesMigrationError));
   }
 
   app.get("/api/products/public", async (req, res) => {
@@ -3280,6 +3299,79 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/site-surveys/:id/design-files", requireAuth, async (req, res) => {
+    try {
+      const surveyId = parseInt(req.params.id);
+      const result = await pool.query(
+        `SELECT id, survey_id, quotation_id, file_name, mime_type, file_size, attach_to_quote, uploaded_by, created_at
+         FROM survey_design_files WHERE survey_id = $1 ORDER BY created_at DESC`,
+        [surveyId]
+      );
+      res.json(result.rows);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ في جلب الملفات" });
+    }
+  });
+
+  app.post("/api/site-surveys/:id/design-files", requireAuth, async (req, res) => {
+    try {
+      const surveyId = parseInt(req.params.id);
+      const userId = req.session.userId!;
+      const { fileName, fileData, mimeType, fileSize, quotationId } = req.body;
+      if (!fileName || !fileData) return res.status(400).json({ message: "fileName and fileData are required" });
+      const result = await pool.query(
+        `INSERT INTO survey_design_files (survey_id, quotation_id, file_name, file_data, mime_type, file_size, uploaded_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         RETURNING id, survey_id, quotation_id, file_name, mime_type, file_size, attach_to_quote, uploaded_by, created_at`,
+        [surveyId, quotationId || null, fileName, fileData, mimeType || "application/octet-stream", fileSize || 0, userId]
+      );
+      res.status(201).json(result.rows[0]);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ في رفع الملف" });
+    }
+  });
+
+  app.patch("/api/site-surveys/:id/design-files/:fileId", requireAuth, async (req, res) => {
+    try {
+      const fileId = parseInt(req.params.fileId);
+      const { attachToQuote } = req.body;
+      const result = await pool.query(
+        `UPDATE survey_design_files SET attach_to_quote = $1 WHERE id = $2
+         RETURNING id, survey_id, quotation_id, file_name, mime_type, file_size, attach_to_quote, uploaded_by, created_at`,
+        [attachToQuote, fileId]
+      );
+      if (result.rows.length === 0) return res.status(404).json({ message: "الملف غير موجود" });
+      res.json(result.rows[0]);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ في التحديث" });
+    }
+  });
+
+  app.delete("/api/site-surveys/:id/design-files/:fileId", requireAuth, async (req, res) => {
+    try {
+      const fileId = parseInt(req.params.fileId);
+      await pool.query(`DELETE FROM survey_design_files WHERE id = $1`, [fileId]);
+      res.json({ message: "تم الحذف" });
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ في الحذف" });
+    }
+  });
+
+  app.get("/api/site-surveys/:id/design-files/:fileId/download", requireAuth, async (req, res) => {
+    try {
+      const fileId = parseInt(req.params.fileId);
+      const result = await pool.query(
+        `SELECT file_name, file_data, mime_type FROM survey_design_files WHERE id = $1`,
+        [fileId]
+      );
+      if (result.rows.length === 0) return res.status(404).json({ message: "الملف غير موجود" });
+      const { file_name, file_data, mime_type } = result.rows[0];
+      res.json({ fileName: file_name, fileData: file_data, mimeType: mime_type });
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
   // ══════════════════════════════════════════════════════════════════════════
   // TASK #4: Pricing Engine + 3D Visualization + Customer Approval
   // ══════════════════════════════════════════════════════════════════════════
@@ -3856,9 +3948,16 @@ export async function registerRoutes(
       const quotations = await storage.getQuotationsByCustomer(customer.id);
       const quotationIds = quotations.map(q => q.id);
       const allSurveys = await storage.getSiteSurveys({});
-      const customerSurveys = allSurveys
-        .filter(s => s.quotationId && quotationIds.includes(s.quotationId))
-        .map(s => ({ ...s, shareToken: generateShareToken(s.id) }));
+      const filteredSurveys = allSurveys.filter(s => s.quotationId && quotationIds.includes(s.quotationId));
+      const customerSurveys = await Promise.all(
+        filteredSurveys.map(async (s) => {
+          const filesResult = await pool.query(
+            `SELECT id, file_name, mime_type, file_size, file_data, created_at FROM survey_design_files WHERE survey_id = $1 AND attach_to_quote = TRUE ORDER BY created_at DESC`,
+            [s.id]
+          );
+          return { ...s, shareToken: generateShareToken(s.id), designFiles: filesResult.rows };
+        })
+      );
       res.json(customerSurveys);
     } catch (error) {
       res.status(500).json({ message: "حدث خطأ" });
