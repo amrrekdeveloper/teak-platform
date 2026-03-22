@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   RotateCcw, Package, ArrowLeft, Trash2, Share2, Loader2,
-  RefreshCw, Search, Sun, Moon, Download, Map,
+  RefreshCw, Search, Sun, Moon, Download, Map, AlertTriangle, ClipboardList,
 } from "lucide-react";
 import { Link } from "wouter";
 import { queryClient } from "@/lib/queryClient";
@@ -20,6 +20,14 @@ import { getCornerJunctionOffset } from "@/lib/kitchenTemplates";
 import { useToast } from "@/hooks/use-toast";
 
 const SCALE = 0.01;
+
+interface DesignWarning {
+  type: "conflict" | "overflow" | "corner";
+  productIdx: number;
+  productName: string;
+  messageAr: string;
+  messageEn: string;
+}
 
 /* Natural medium-oak color used as tint when wood texture is active */
 const CABINET_WOOD_COLOR = "#C8A86A";
@@ -760,10 +768,10 @@ function CabinetFront({ code, W, H, D, color }: { code: string; W: number; H: nu
 }
 
 function Cabinet({
-  product, index, roomL, roomW, selected, onSelect,
+  product, index, roomL, roomW, selected, onSelect, hasConflict,
 }: {
   product: any; index: number; roomL: number; roomW: number; roomH?: number;
-  selected: boolean; onSelect: (idx: number) => void;
+  selected: boolean; onSelect: (idx: number) => void; hasConflict?: boolean;
 }) {
   const [hovered, setHovered] = useState(false);
   const color = getCabinetColor(product, index);
@@ -816,9 +824,11 @@ function Cabinet({
     return t;
   }, []);
 
-  /* Selection / hover tint overlay */
-  const tintColor = isSelected ? "#E8C547" : hovered ? "#D4B870" : "#FFFFFF";
-  const tintOpacity = (isSelected || hovered) ? 0.28 : 0.0;
+  /* Selection / hover / conflict tint overlay */
+  const tintColor = hasConflict
+    ? (isSelected ? "#FF6B6B" : "#FF4444")
+    : (isSelected ? "#E8C547" : hovered ? "#D4B870" : "#FFFFFF");
+  const tintOpacity = hasConflict ? 0.55 : (isSelected || hovered) ? 0.28 : 0.0;
 
   return (
     <group
@@ -832,16 +842,16 @@ function Cabinet({
       <mesh castShadow receiveShadow>
         <boxGeometry args={[W, H, D]} />
         <meshStandardMaterial
-          map={woodTexture}
+          map={hasConflict ? undefined : woodTexture}
           roughness={0.62}
           metalness={0.04}
-          color={tintColor}
+          color={hasConflict ? "#CC2222" : tintColor}
         />
       </mesh>
-      {/* Selection highlight overlay */}
-      {(isSelected || hovered) && (
+      {/* Selection / conflict highlight overlay */}
+      {(isSelected || hovered || hasConflict) && (
         <mesh>
-          <boxGeometry args={[W + 0.002, H + 0.002, D + 0.002]} />
+          <boxGeometry args={[W + 0.004, H + 0.004, D + 0.004]} />
           <meshBasicMaterial color={tintColor} transparent opacity={tintOpacity} depthWrite={false} />
         </mesh>
       )}
@@ -1011,9 +1021,11 @@ function Scene3D({
     /* Conflict: does this cabinet overlap a door/window opening? */
     const pStart = currentOffset;
     const pEnd   = currentOffset + pW;
-    const _conflict = (wallOpenings[wIdx] || []).some(
+    const hasOverlap = (wallOpenings[wIdx] || []).some(
       (op) => pStart < op.end && pEnd > op.start
     );
+    /* Wall units (upper cabinets) overlapping a door/window is always a conflict */
+    const _conflict = hasOverlap;
 
     acc.push({ ...p, _wallIndex: wIdx, _xOffset: currentOffset + pW / 2, _sourceIndex: sourceIdx, _conflict });
     return acc;
@@ -1056,6 +1068,7 @@ function Scene3D({
           roomH={H}
           selected={selectedIdx === p._sourceIndex}
           onSelect={onSelect}
+          hasConflict={!!p._conflict}
         />
       ))}
     </>
@@ -1217,19 +1230,41 @@ function FloorPlan2D({ survey }: { survey: any }) {
           const isHoriz = wd.side === "top" || wd.side === "bottom";
 
           if (item.type === "door") {
-            /* Door: arc from hinge corner + door leaf line + "ب" label */
-            const arcD = `M ${ix} ${iy} a ${iw} ${iw} 0 0 1 ${iw} ${iw}`;
-            const lbX = ix + (isHoriz ? iw / 2 : -4);
-            const lbY = iy + (isHoriz ? -4 : iw / 2);
+            /* Door symbol: hinge at ix,iy; door leaf along wall; arc shows swing direction */
+            /* Arc goes from the door endpoint into the room at 90 degrees */
+            let arcD = "";
+            let lbX = ix + iw / 2;
+            let lbY = iy - 6;
+            if (wd.side === "top") {
+              /* top wall: door leaf goes right along wall; arc swings downward into room */
+              arcD = `M ${ix + iw} ${iy} A ${iw} ${iw} 0 0 0 ${ix} ${iy + iw}`;
+              lbX = ix + iw / 2; lbY = iy - 5;
+            } else if (wd.side === "bottom") {
+              /* bottom wall: arc swings upward into room */
+              arcD = `M ${ix} ${iy} A ${iw} ${iw} 0 0 0 ${ix + iw} ${iy - iw}`;
+              lbX = ix + iw / 2; lbY = iy + 12;
+            } else if (wd.side === "right") {
+              /* right wall: arc swings leftward into room */
+              arcD = `M ${ix} ${iy} A ${iw} ${iw} 0 0 0 ${ix - iw} ${iy + iw}`;
+              lbX = ix + 8; lbY = iy + iw / 2;
+            } else {
+              /* left wall: arc swings rightward into room */
+              arcD = `M ${ix} ${iy + iw} A ${iw} ${iw} 0 0 0 ${ix + iw} ${iy}`;
+              lbX = ix - 8; lbY = iy + iw / 2;
+            }
+            /* Door gap (clear white area in wall) */
             elements.push(
               <g key={`item-${spaceIdx}-${wi}-${ii}`}>
-                <rect x={ix} y={iy} width={isHoriz ? iw : 4} height={isHoriz ? 4 : iw}
-                  fill="#FEF3C7" stroke="none" />
-                <path d={arcD} fill="none" stroke="#92400E" strokeWidth={1.5} />
+                <rect x={isHoriz ? ix : ix - 2} y={isHoriz ? iy - 2 : iy}
+                  width={isHoriz ? iw : 4} height={isHoriz ? 4 : iw}
+                  fill="white" stroke="none" />
+                {/* Door leaf line along wall */}
                 <line x1={ix} y1={iy}
                   x2={ix + (isHoriz ? iw : 0)}
                   y2={iy + (isHoriz ? 0 : iw)}
                   stroke="#92400E" strokeWidth={2} />
+                {/* Swing arc */}
+                <path d={arcD} fill="none" stroke="#92400E" strokeWidth={1} strokeDasharray="3,2" />
                 <text x={lbX} y={lbY} textAnchor="middle" dominantBaseline="middle"
                   fontSize={7} fontWeight="bold" fill="#92400E">ب</text>
               </g>
@@ -1928,6 +1963,57 @@ export default function Scene3DPage() {
     return result;
   }, [activeSpace, spaceProducts]);
 
+  /** Collect all design warnings for the current space */
+  const designWarnings = useMemo<DesignWarning[]>(() => {
+    const warnings: DesignWarning[] = [];
+    const walls: any[] = activeSpace?.walls || [];
+    const openings = walls.length > 0 ? buildWallOpenings(walls) : ({} as Record<number, Array<{ start: number; end: number }>>);
+    const offsets: Record<number, number> = { 0: 10, 1: 10, 2: 10, 3: 10 };
+    const wallNames: Record<number, string> = { 0: "A", 1: "B", 2: "C", 3: "D" };
+    const wallLensForCheck: Record<number, number> = {};
+    const rawRD = surveyForSpace?.roomDimensions || {};
+    const rl = parseFloat(rawRD.length) || 400;
+    const rw = parseFloat(rawRD.width) || 300;
+    const roomLc = rl <= 30 ? rl * 100 : rl;
+    const roomWc = rw <= 30 ? rw * 100 : rw;
+    wallLensForCheck[0] = roomLc; wallLensForCheck[1] = roomWc;
+    wallLensForCheck[2] = roomLc; wallLensForCheck[3] = roomWc;
+
+    spaceProducts.forEach((p: any, idx: number) => {
+      const letter = (p.wallId || "").slice(-1).toUpperCase();
+      const wIdx = WALL_LETTER_IDX[letter] ?? 0;
+      const pW = parseFloat(p.designW || p.dimensions?.w || "60");
+      const pName = p.nameAr || p.code || `منتج ${idx + 1}`;
+      const pStart = offsets[wIdx];
+      const pEnd = pStart + pW;
+      offsets[wIdx] = pEnd + 5;
+
+      const wallLen = wallLensForCheck[wIdx] || roomLc;
+      if (pEnd > wallLen - 5) {
+        warnings.push({
+          type: "overflow",
+          productIdx: idx,
+          productName: pName,
+          messageAr: `${pName} يتجاوز نهاية جدار ${wallNames[wIdx]}`,
+          messageEn: `${pName} overflows wall ${wallNames[wIdx]}`,
+        });
+      }
+
+      const wallOps = openings[wIdx] || [];
+      if (wallOps.some(op => pStart < op.end && pEnd > op.start)) {
+        const isWall = isWallUnit(p);
+        warnings.push({
+          type: "conflict",
+          productIdx: idx,
+          productName: pName,
+          messageAr: `${pName} ${isWall ? "(علوي)" : ""} يتعارض مع باب/نافذة في جدار ${wallNames[wIdx]}`,
+          messageEn: `${pName} ${isWall ? "(wall unit)" : ""} conflicts with door/window on wall ${wallNames[wIdx]}`,
+        });
+      }
+    });
+    return warnings;
+  }, [activeSpace, spaceProducts, surveyForSpace]);
+
   const subtotal = useMemo(() =>
     selectedProducts.reduce((s: number, p: any) => {
       const price = Number(p.price || p.unitPrice || p.priceBeforeVat || 0);
@@ -2098,6 +2184,11 @@ export default function Scene3DPage() {
           <Badge variant="outline" className="gap-1">
             <Package className="h-3 w-3" /> {spaceProducts.length} {t("منتج", "products")}
           </Badge>
+          {designWarnings.length > 0 && (
+            <Badge variant="destructive" className="gap-1" data-testid="badge-warnings-count">
+              <AlertTriangle className="h-3 w-3" /> {designWarnings.length} {t("تحذير", "warnings")}
+            </Badge>
+          )}
           <Badge variant="secondary" className="font-bold">
             {(() => { const d = parseFloat(survey?.discount || "0"); return ((subtotal - d) * 1.15).toLocaleString(undefined, { maximumFractionDigits: 0 }); })()} {t("ر.س", "SAR")}
           </Badge>
@@ -2126,6 +2217,10 @@ export default function Scene3DPage() {
           <TabsTrigger value="3d" data-testid="tab-3d">{t("عرض 3D", "3D View")}</TabsTrigger>
           <TabsTrigger value="2d" data-testid="tab-2d">{t("مخطط 2D", "2D Plan")}</TabsTrigger>
           <TabsTrigger value="elevation" data-testid="tab-elevation">{t("مخطط الارتفاع", "Elevation")}</TabsTrigger>
+          <TabsTrigger value="bom" data-testid="tab-bom" className="flex items-center gap-1">
+            <ClipboardList className="h-3.5 w-3.5" />
+            {t("التصنيع", "BOM")}
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="3d" className="flex-1 overflow-hidden mt-0 data-[state=active]:flex">
@@ -2304,6 +2399,35 @@ export default function Scene3DPage() {
                     </Button>
                   </Link>
                 )}
+
+                {/* Warnings panel */}
+                {designWarnings.length > 0 && (
+                  <div className="mt-3 p-2 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg" data-testid="warnings-panel">
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <AlertTriangle className="h-3.5 w-3.5 text-red-600" />
+                      <p className="text-xs font-semibold text-red-700 dark:text-red-400">
+                        {t("تحذيرات التصميم", "Design Warnings")} ({designWarnings.length})
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      {designWarnings.map((w, wi) => (
+                        <button
+                          key={wi}
+                          className="w-full text-start text-[10px] p-1.5 rounded bg-white dark:bg-red-900/20 border border-red-200 dark:border-red-700 hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors"
+                          onClick={() => setSelectedProduct(w.productIdx)}
+                          data-testid={`warning-item-${wi}`}
+                        >
+                          <span className="font-medium text-red-700 dark:text-red-400">
+                            {w.type === "conflict" ? "⚠ " : "↔ "}
+                          </span>
+                          <span className="text-red-600 dark:text-red-300">
+                            {t(w.messageAr, w.messageEn)}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -2328,7 +2452,170 @@ export default function Scene3DPage() {
             </div>
           )}
         </TabsContent>
+
+        <TabsContent value="bom" className="flex-1 overflow-hidden mt-0 data-[state=active]:flex flex-col">
+          <ManufacturingBOM products={selectedProducts} survey={survey} />
+        </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+/* ─── Manufacturing BOM (Bill of Materials) ──────────────────── */
+function ManufacturingBOM({ products, survey }: { products: any[]; survey: any }) {
+  const { t } = useLanguage();
+  const [generating, setGenerating] = useState(false);
+
+  function getMaterial(product: any): string {
+    const code = (product.code || "").toUpperCase();
+    if (code.includes("GL") || code.includes("GLASS")) return t("زجاج", "Glass");
+    if (code.includes("ST") || code.includes("STEEL") || code.includes("ALU")) return t("حديد/ألومنيوم", "Metal/Aluminum");
+    return t("خشب", "Wood");
+  }
+
+  function getCategory(product: any): string {
+    if (isWallUnit(product)) return t("خزانة علوية", "Wall Unit");
+    if (isTallUnit(product)) return t("خزانة طولية", "Tall Unit");
+    return t("خزانة قاعدة", "Base Unit");
+  }
+
+  const bomRows = products.map((p: any, idx: number) => ({
+    num: idx + 1,
+    code: p.code || "-",
+    name: p.nameAr || p.name || p.code || `منتج ${idx + 1}`,
+    category: getCategory(p),
+    w: Math.round(parseFloat(p.designW || p.dimensions?.w || p.manufacturingW || 0) || 0),
+    h: Math.round(parseFloat(p.designH || p.dimensions?.h || p.manufacturingH || 0) || 0),
+    d: Math.round(parseFloat(p.designD || p.dimensions?.d || p.manufacturingD || 0) || 0),
+    mw: Math.round(parseFloat(p.manufacturingW || p.designW || p.dimensions?.w || 0) || 0),
+    mh: Math.round(parseFloat(p.manufacturingH || p.designH || p.dimensions?.h || 0) || 0),
+    md: Math.round(parseFloat(p.manufacturingD || p.designD || p.dimensions?.d || 0) || 0),
+    material: getMaterial(p),
+    qty: p.quantity || 1,
+  }));
+
+  const handlePrint = () => {
+    const printContent = document.getElementById("bom-print-area");
+    if (!printContent) return;
+    const win = window.open("", "_blank");
+    if (!win) return;
+    win.document.write(`
+      <!DOCTYPE html>
+      <html dir="rtl">
+      <head>
+        <title>${t("مخطط التصنيع", "Manufacturing Plan")}</title>
+        <style>
+          body { font-family: Arial, sans-serif; margin: 20px; font-size: 12px; }
+          h2 { color: #1a365d; margin-bottom: 4px; }
+          p { color: #6b7280; margin: 0 0 12px; }
+          table { width: 100%; border-collapse: collapse; }
+          th { background: #1a365d; color: white; padding: 6px 8px; text-align: center; font-size: 11px; }
+          td { border: 1px solid #e5e7eb; padding: 5px 8px; text-align: center; font-size: 11px; }
+          tr:nth-child(even) { background: #f9fafb; }
+          .footer { margin-top: 20px; color: #9ca3af; font-size: 10px; }
+        </style>
+      </head>
+      <body>
+        <h2>${t("مخطط التصنيع", "Manufacturing Plan")}</h2>
+        <p>${t("عدد القطع:", "Parts count:")} ${bomRows.length} · ${new Date().toLocaleDateString("ar-SA")}</p>
+        ${printContent.innerHTML}
+        <div class="footer">teak2030.net · ${t("مصنع تيك للأثاث الخشبي", "Teak Wood Products Factory")}</div>
+      </body>
+      </html>
+    `);
+    win.document.close();
+    win.focus();
+    win.print();
+    win.close();
+  };
+
+  const handleExportCSV = () => {
+    const headers = ["#", t("الكود", "Code"), t("الاسم", "Name"), t("الفئة", "Category"),
+      t("عرض التصميم", "Design W"), t("ارتفاع التصميم", "Design H"), t("عمق التصميم", "Design D"),
+      t("عرض التصنيع", "Mfg W"), t("ارتفاع التصنيع", "Mfg H"), t("عمق التصنيع", "Mfg D"),
+      t("المادة", "Material"), t("الكمية", "Qty")];
+    const rows = bomRows.map(r =>
+      [r.num, r.code, `"${r.name}"`, r.category, r.w, r.h, r.d, r.mw, r.mh, r.md, r.material, r.qty].join(",")
+    );
+    const csv = [headers.join(","), ...rows].join("\n");
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `manufacturing-bom-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  if (products.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-4 text-muted-foreground">
+        <ClipboardList className="w-12 h-12 opacity-30" />
+        <p className="text-sm">{t("لا توجد منتجات في القائمة", "No products in list")}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex items-center justify-between p-3 border-b shrink-0">
+        <div>
+          <p className="text-sm font-semibold">{t("مخطط التصنيع", "Manufacturing Plan")}</p>
+          <p className="text-xs text-muted-foreground">{bomRows.length} {t("قطعة", "parts")} · {t("الأبعاد بالسنتيمتر", "Dimensions in cm")}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={handleExportCSV} data-testid="btn-export-bom-csv">
+            <Download className="h-3.5 w-3.5 me-1" />
+            {t("CSV", "CSV")}
+          </Button>
+          <Button size="sm" variant="outline" onClick={handlePrint} disabled={generating} data-testid="btn-print-bom">
+            {generating ? <Loader2 className="h-3.5 w-3.5 me-1 animate-spin" /> : <ClipboardList className="h-3.5 w-3.5 me-1" />}
+            {t("طباعة", "Print")}
+          </Button>
+        </div>
+      </div>
+      <div className="flex-1 overflow-auto p-3">
+        <div id="bom-print-area">
+          <table className="w-full text-xs border-collapse" data-testid="bom-table">
+            <thead>
+              <tr className="bg-slate-800 text-white">
+                <th className="px-2 py-2 text-center border border-slate-600">#</th>
+                <th className="px-2 py-2 text-center border border-slate-600">{t("الكود", "Code")}</th>
+                <th className="px-2 py-2 text-start border border-slate-600">{t("الاسم", "Name")}</th>
+                <th className="px-2 py-2 text-center border border-slate-600">{t("الفئة", "Cat.")}</th>
+                <th className="px-2 py-2 text-center border border-slate-600 bg-blue-900">{t("ع×ار×ع (تصميم)", "Design W×H×D")}</th>
+                <th className="px-2 py-2 text-center border border-slate-600 bg-green-900">{t("ع×ار×ع (تصنيع)", "Mfg W×H×D")}</th>
+                <th className="px-2 py-2 text-center border border-slate-600">{t("المادة", "Material")}</th>
+                <th className="px-2 py-2 text-center border border-slate-600">{t("الكمية", "Qty")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {bomRows.map((row, ri) => (
+                <tr key={ri} className={ri % 2 === 0 ? "bg-white dark:bg-gray-900" : "bg-slate-50 dark:bg-gray-800"}>
+                  <td className="px-2 py-1.5 text-center border border-slate-200 dark:border-slate-700 text-muted-foreground">{row.num}</td>
+                  <td className="px-2 py-1.5 text-center border border-slate-200 dark:border-slate-700 font-mono font-semibold">{row.code}</td>
+                  <td className="px-2 py-1.5 text-start border border-slate-200 dark:border-slate-700 max-w-[180px] truncate">{row.name}</td>
+                  <td className="px-2 py-1.5 text-center border border-slate-200 dark:border-slate-700">
+                    <Badge variant="outline" className="text-[9px] px-1 py-0 h-4">{row.category}</Badge>
+                  </td>
+                  <td className="px-2 py-1.5 text-center border border-slate-200 dark:border-slate-700 font-mono text-blue-700 dark:text-blue-300">
+                    {row.w > 0 ? `${row.w}×${row.h}×${row.d}` : "—"}
+                  </td>
+                  <td className="px-2 py-1.5 text-center border border-slate-200 dark:border-slate-700 font-mono text-green-700 dark:text-green-300">
+                    {row.mw > 0 ? `${row.mw}×${row.mh}×${row.md}` : "—"}
+                  </td>
+                  <td className="px-2 py-1.5 text-center border border-slate-200 dark:border-slate-700">{row.material}</td>
+                  <td className="px-2 py-1.5 text-center border border-slate-200 dark:border-slate-700 font-bold">{row.qty}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="mt-4 p-3 bg-muted rounded-lg text-xs text-muted-foreground">
+          <p className="font-medium mb-1">{t("ملاحظة:", "Note:")}</p>
+          <p>{t("أبعاد التصميم = الأبعاد الظاهرة في التصميم. أبعاد التصنيع = الأبعاد الفعلية للتصنيع. جميع القياسات بالسنتيمتر.", "Design dims = visual dimensions. Manufacturing dims = actual production dimensions. All measurements in cm.")}</p>
+        </div>
+      </div>
     </div>
   );
 }
