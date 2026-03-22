@@ -187,7 +187,7 @@ function makeParquetTexture(L: number, W: number): THREE.DataTexture {
   const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(L / 0.85, W / 0.85);
+  tex.repeat.set(L / 0.9, W / 0.9);
   tex.needsUpdate = true;
   return tex;
 }
@@ -580,14 +580,14 @@ function Scene3D({
   /* Wall lengths (in cm) for overflow clamping */
   const wallLengths: Record<number, number> = { 0: L, 1: W, 2: L, 3: W };
   const wallOffsets: Record<number, number> = { 0: 10, 1: 10, 2: 10, 3: 10 };
-  const productsWithPos = products.reduce((acc: any[], p: any) => {
+  const productsWithPos = products.reduce((acc: any[], p: any, sourceIdx: number) => {
     const wIdx = getWallIndex(p);
     const pW = parseFloat(p.designW || p.dimensions?.w || "60");
     const currentOffset = wallOffsets[wIdx];
     const wallLen = wallLengths[wIdx] || L;
     if (currentOffset + pW > wallLen - 10) return acc; /* skip overflow */
     wallOffsets[wIdx] = currentOffset + pW + 5;
-    acc.push({ ...p, _wallIndex: wIdx, _xOffset: currentOffset + pW / 2 });
+    acc.push({ ...p, _wallIndex: wIdx, _xOffset: currentOffset + pW / 2, _sourceIndex: sourceIdx });
     return acc;
   }, []);
 
@@ -615,13 +615,13 @@ function Scene3D({
 
       {productsWithPos.map((p: any, i: number) => (
         <Cabinet
-          key={`${i}-${p.code || p.productId}`}
+          key={`${p._sourceIndex}-${p.code || p.productId}`}
           product={p}
-          index={i}
+          index={p._sourceIndex}
           roomL={L}
           roomW={W}
           roomH={H}
-          selected={selectedIdx === i}
+          selected={selectedIdx === p._sourceIndex}
           onSelect={onSelect}
         />
       ))}
@@ -1168,11 +1168,12 @@ function ElevationView({ survey }: { survey: any }) {
                     {code.slice(0, 6)}
                   </text>
                 )}
-                {/* Width dimension below */}
-                <text x={pX + pSvgW / 2} y={oy + drawH + 14}
-                  textAnchor="middle" fontSize={7} fill="#6B7280">
-                  {pW}
-                </text>
+                {/* Per-cabinet width dimension arrow below floor line */}
+                <DimArrow
+                  x1={pX + 1} y1={oy + drawH + 22}
+                  x2={pX + pSvgW - 1} y2={oy + drawH + 22}
+                  label={`${pW}cm`}
+                />
               </g>
             );
           })}
@@ -1215,9 +1216,12 @@ function ElevationView({ survey }: { survey: any }) {
           {/* Floor level label */}
           <text x={ox + 4} y={oy + drawH + 10} fontSize={8} fill="#374151">0 cm</text>
 
-          {/* Room height line */}
-          <line x1={ox + drawW} y1={oy} x2={ox + drawW} y2={oy + drawH} stroke="#D1D5DB" strokeWidth={1} strokeDasharray="2,4" />
-          <text x={ox + drawW + 6} y={oy + 10} fontSize={8} fill="#6B7280">{Math.round(roomH)} cm</text>
+          {/* Room total height dimension arrow — right side */}
+          <DimArrow
+            x1={ox + drawW + 15} y1={oy + drawH}
+            x2={ox + drawW + 15} y2={oy}
+            label={`${Math.round(roomH)}cm`}
+          />
 
           {/* Watermark */}
           <text x={EV_W - 6} y={EV_H - 6} textAnchor="end" fontSize={7} fill="#9CA3AF">teak2030.net</text>
