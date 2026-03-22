@@ -362,6 +362,10 @@ function Backsplash({ L, W, wallIndices }: { L: number; W: number; wallIndices: 
 
 // ── Architectural Openings ────────────────────────────────────────────────────
 
+/** 15 cm wall thickness in 3D scene units. */
+const WALL_DEPTH_3D = 0.15;
+const REVEAL_COLOR  = "#D8D4CC";
+
 /** Convert a survey measurement string (m or cm) to 3D scene units (SCALE=0.01). */
 function parseItemMeasure(val: string | number | undefined, fallbackCm: number): number {
   const n = parseFloat(String(val ?? "0")) || 0;
@@ -415,7 +419,54 @@ function WallPanel({
   );
 }
 
-/** Renders door frames, window glass, drain & outlet markers on one wall. */
+/** Renders 15 cm-deep reveal panels (jambs, lintel, sill) around each opening. */
+function WallReveal({ items, wallLen, wallH }: { items: any[]; wallLen: number; wallH: number }) {
+  const hw = wallLen / 2;
+  return (
+    <group>
+      {items.map((item: any, i: number) => {
+        if (item.type !== "door" && item.type !== "window") return null;
+        const dist  = parseItemMeasure(item.distanceFromFirst, 0);
+        const iw    = parseItemMeasure(item.width,  item.type === "door" ? 90  : 120);
+        const ih    = parseItemMeasure(item.height, item.type === "door" ? 210 : 120);
+        const startX = -hw + dist;
+        const cx     = startX + iw / 2;
+        const iy     = item.type === "door" ? 0 : parseItemMeasure(item.heightFromFloor, 90);
+        const D      = WALL_DEPTH_3D;
+        const mat    = <meshStandardMaterial color={REVEAL_COLOR} roughness={0.78} />;
+
+        return (
+          <group key={i} position={[0, 0, -D / 2]}>
+            {/* Left jamb */}
+            <mesh position={[startX, iy + ih / 2, 0]}>
+              <boxGeometry args={[0.015, ih, D]} />
+              {mat}
+            </mesh>
+            {/* Right jamb */}
+            <mesh position={[startX + iw, iy + ih / 2, 0]}>
+              <boxGeometry args={[0.015, ih, D]} />
+              {mat}
+            </mesh>
+            {/* Top lintel */}
+            <mesh position={[cx, iy + ih, 0]}>
+              <boxGeometry args={[iw + 0.015, 0.015, D]} />
+              {mat}
+            </mesh>
+            {/* Window bottom sill */}
+            {item.type === "window" && (
+              <mesh position={[cx, iy, 0]}>
+                <boxGeometry args={[iw + 0.015, 0.025, D]} />
+                {mat}
+              </mesh>
+            )}
+          </group>
+        );
+      })}
+    </group>
+  );
+}
+
+/** Renders door frames, window glass, door swing arc, drain & outlet markers on one wall. */
 function WallElements({ items, wallLen, wallH }: { items: any[]; wallLen: number; wallH: number }) {
   const hw = wallLen / 2;
   return (
@@ -431,31 +482,38 @@ function WallElements({ items, wallLen, wallH }: { items: any[]; wallLen: number
 
         if (item.type === "door") {
           return (
-            <group key={i} position={[cx, ih / 2, 0.006]}>
+            <group key={i}>
               {/* Door panel */}
-              <mesh>
-                <planeGeometry args={[iw - 0.04, ih - 0.01]} />
-                <meshStandardMaterial color="#8B6040" roughness={0.75} metalness={0.04} />
-              </mesh>
-              {/* Top frame */}
-              <mesh position={[0, ih / 2 + FRAME_W / 2, 0.01]}>
-                <boxGeometry args={[iw + FRAME_W * 2, FRAME_W, FRAME_W]} />
-                <meshStandardMaterial color={FRAME_COLOR} roughness={0.6} />
-              </mesh>
-              {/* Left frame */}
-              <mesh position={[-iw / 2 - FRAME_W / 2, 0, 0.01]}>
-                <boxGeometry args={[FRAME_W, ih + FRAME_W, FRAME_W]} />
-                <meshStandardMaterial color={FRAME_COLOR} roughness={0.6} />
-              </mesh>
-              {/* Right frame */}
-              <mesh position={[ iw / 2 + FRAME_W / 2, 0, 0.01]}>
-                <boxGeometry args={[FRAME_W, ih + FRAME_W, FRAME_W]} />
-                <meshStandardMaterial color={FRAME_COLOR} roughness={0.6} />
-              </mesh>
-              {/* Handle */}
-              <mesh position={[iw / 2 - 0.09, 0, 0.055]} rotation={[Math.PI / 2, 0, 0]}>
-                <cylinderGeometry args={[0.013, 0.013, 0.11, 8]} />
-                <meshStandardMaterial color="#B0B0B0" roughness={0.2} metalness={0.85} />
+              <group position={[cx, ih / 2, 0.006]}>
+                <mesh>
+                  <planeGeometry args={[iw - 0.04, ih - 0.01]} />
+                  <meshStandardMaterial color="#8B6040" roughness={0.75} metalness={0.04} />
+                </mesh>
+                {/* Top frame */}
+                <mesh position={[0, ih / 2 + FRAME_W / 2, 0.01]}>
+                  <boxGeometry args={[iw + FRAME_W * 2, FRAME_W, FRAME_W]} />
+                  <meshStandardMaterial color={FRAME_COLOR} roughness={0.6} />
+                </mesh>
+                {/* Left frame */}
+                <mesh position={[-iw / 2 - FRAME_W / 2, 0, 0.01]}>
+                  <boxGeometry args={[FRAME_W, ih + FRAME_W, FRAME_W]} />
+                  <meshStandardMaterial color={FRAME_COLOR} roughness={0.6} />
+                </mesh>
+                {/* Right frame */}
+                <mesh position={[ iw / 2 + FRAME_W / 2, 0, 0.01]}>
+                  <boxGeometry args={[FRAME_W, ih + FRAME_W, FRAME_W]} />
+                  <meshStandardMaterial color={FRAME_COLOR} roughness={0.6} />
+                </mesh>
+                {/* Handle */}
+                <mesh position={[iw / 2 - 0.09, 0, 0.055]} rotation={[Math.PI / 2, 0, 0]}>
+                  <cylinderGeometry args={[0.013, 0.013, 0.11, 8]} />
+                  <meshStandardMaterial color="#B0B0B0" roughness={0.2} metalness={0.85} />
+                </mesh>
+              </group>
+              {/* Door swing arc at floor level (showing 90° swing path) */}
+              <mesh position={[startX, 0.004, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+                <ringGeometry args={[iw * 0.96, iw, 32, 1, 0, Math.PI / 2]} />
+                <meshStandardMaterial color="#8B6040" transparent opacity={0.14} side={THREE.DoubleSide} />
               </mesh>
             </group>
           );
@@ -541,23 +599,28 @@ function Room({
       {/* Wall A — back, wallIndex=0, at z=-W/2 */}
       <group position={[0, 0, -W / 2]}>
         <WallPanel wallLen={L} wallH={H} items={items(0)} wallColor={wallColor} />
+        <WallReveal items={items(0)} wallLen={L} wallH={H} />
         <WallElements items={items(0)} wallLen={L} wallH={H} />
       </group>
 
       {/* Wall B — right, wallIndex=1, at x=L/2, rotated -90°Y */}
       <group position={[L / 2, 0, 0]} rotation={[0, -Math.PI / 2, 0]}>
         <WallPanel wallLen={W} wallH={H} items={items(1)} wallColor={wallColor} />
+        <WallReveal items={items(1)} wallLen={W} wallH={H} />
         <WallElements items={items(1)} wallLen={W} wallH={H} />
       </group>
 
-      {/* Wall C — front, wallIndex=2, transparent for camera */}
+      {/* Wall C — front, wallIndex=2, transparent for camera but openings still visible */}
       <group position={[0, 0, W / 2]} rotation={[0, Math.PI, 0]}>
         <WallPanel wallLen={L} wallH={H} items={items(2)} wallColor={wallColor} transparent />
+        <WallReveal items={items(2)} wallLen={L} wallH={H} />
+        <WallElements items={items(2)} wallLen={L} wallH={H} />
       </group>
 
       {/* Wall D — left, wallIndex=3, at x=-L/2, rotated 90°Y */}
       <group position={[-L / 2, 0, 0]} rotation={[0, Math.PI / 2, 0]}>
         <WallPanel wallLen={W} wallH={H} items={items(3)} wallColor={wallColor} />
+        <WallReveal items={items(3)} wallLen={W} wallH={H} />
         <WallElements items={items(3)} wallLen={W} wallH={H} />
       </group>
 
@@ -1001,26 +1064,50 @@ function FloorPlan2D({ survey }: { survey: any }) {
           const isHoriz = wd.side === "top" || wd.side === "bottom";
 
           if (item.type === "door") {
-            const arcD = isHoriz
-              ? `M ${ix} ${iy} a ${iw} ${iw} 0 0 1 ${iw} ${iw}`
-              : `M ${ix} ${iy} a ${iw} ${iw} 0 0 1 ${iw} ${iw}`;
+            /* Door: arc from hinge corner + door leaf line + "ب" label */
+            const arcDH = `M ${ix} ${iy} a ${iw} ${iw} 0 0 1 ${iw} ${iw}`;
+            const arcDV = `M ${ix} ${iy} a ${iw} ${iw} 0 0 1 ${iw} ${iw}`;
+            const arcD = isHoriz ? arcDH : arcDV;
+            const lbX = ix + (isHoriz ? iw / 2 : -4);
+            const lbY = iy + (isHoriz ? -4 : iw / 2);
             elements.push(
               <g key={`item-${spaceIdx}-${wi}-${ii}`}>
-                <path d={arcD} fill="none" stroke="#2563EB" strokeWidth={1.5} />
+                <rect x={ix} y={iy - (isHoriz ? 0 : 0)} width={isHoriz ? iw : 4} height={isHoriz ? 4 : iw}
+                  fill="#FEF3C7" stroke="none" />
+                <path d={arcD} fill="none" stroke="#92400E" strokeWidth={1.5} />
                 <line x1={ix} y1={iy}
                   x2={ix + (isHoriz ? iw : 0)}
                   y2={iy + (isHoriz ? 0 : iw)}
-                  stroke="#2563EB" strokeWidth={1.5} />
+                  stroke="#92400E" strokeWidth={2} />
+                <text x={lbX} y={lbY} textAnchor="middle" dominantBaseline="middle"
+                  fontSize={7} fontWeight="bold" fill="#92400E">ب</text>
               </g>
             );
           } else if (item.type === "window") {
+            /* Window: three parallel lines (wall thickness symbol) + "ن" label */
+            const x2 = ix + (isHoriz ? iw : 0);
+            const y2 = iy + (isHoriz ? 0 : iw);
+            const lbX = ix + (isHoriz ? iw / 2 : -4);
+            const lbY = iy + (isHoriz ? -4 : iw / 2);
             elements.push(
-              <line key={`item-${spaceIdx}-${wi}-${ii}`}
-                x1={ix} y1={iy}
-                x2={ix + (isHoriz ? iw : 0)}
-                y2={iy + (isHoriz ? 0 : iw)}
-                stroke="#059669" strokeWidth={3} strokeDasharray="4,3"
-              />
+              <g key={`item-${spaceIdx}-${wi}-${ii}`}>
+                {/* Clear gap (white) */}
+                <rect x={isHoriz ? ix : ix - 3} y={isHoriz ? iy - 3 : iy}
+                  width={isHoriz ? iw : 6} height={isHoriz ? 6 : iw}
+                  fill="white" />
+                {/* Outer wall line */}
+                <line x1={ix} y1={iy} x2={x2} y2={y2} stroke="#3B82F6" strokeWidth={2} />
+                {/* Glass pane (middle) */}
+                {isHoriz
+                  ? <line x1={ix} y1={iy + 3} x2={x2} y2={y2 + 3} stroke="#93C5FD" strokeWidth={1.5} />
+                  : <line x1={ix + 3} y1={iy} x2={x2 + 3} y2={y2} stroke="#93C5FD" strokeWidth={1.5} />}
+                {/* Inner wall line */}
+                {isHoriz
+                  ? <line x1={ix} y1={iy + 5} x2={x2} y2={y2 + 5} stroke="#3B82F6" strokeWidth={2} />
+                  : <line x1={ix + 5} y1={iy} x2={x2 + 5} y2={y2} stroke="#3B82F6" strokeWidth={2} />}
+                <text x={lbX} y={lbY} textAnchor="middle" dominantBaseline="middle"
+                  fontSize={7} fontWeight="bold" fill="#1D4ED8">ن</text>
+              </g>
             );
           } else if (item.type === "outlet") {
             const symX = ix + (isHoriz ? iw / 2 : 0);
@@ -1213,6 +1300,16 @@ function ElevationView({ survey }: { survey: any }) {
     }
   });
 
+  /* Wall opening items (doors/windows) for the active wall */
+  const surveyWallsForEV: any[] = firstSpace?.walls || [];
+  const activeWallItems: any[] = useMemo(() => {
+    for (const w of surveyWallsForEV) {
+      const letter = (w.id || "").slice(-1).toUpperCase();
+      if (WALL_LETTER_IDX[letter] === activeWall) return w.items || [];
+    }
+    return [];
+  }, [surveyWallsForEV, activeWall]);
+
   const downloadPNG = useCallback(() => {
     if (!svgRef.current) return;
     const serializer = new XMLSerializer();
@@ -1304,6 +1401,52 @@ function ElevationView({ survey }: { survey: any }) {
 
           {/* Floor line */}
           <line x1={ox} y1={oy + drawH} x2={ox + drawW} y2={oy + drawH} stroke="#374151" strokeWidth={2.5} />
+
+          {/* Architectural openings (doors & windows) on this wall */}
+          {activeWallItems.map((item: any, oi: number) => {
+            if (item.type !== "door" && item.type !== "window") return null;
+            const rawDist = parseFloat(item.distanceFromFirst || "0") || 0;
+            const dist = rawDist <= 30 ? rawDist * 100 : rawDist;
+            const rawW2 = parseFloat(item.width || "0") || 0;
+            const iw = rawW2 > 0 ? (rawW2 <= 30 ? rawW2 * 100 : rawW2) : (item.type === "door" ? 90 : 120);
+            const rawH2 = parseFloat(item.height || "0") || 0;
+            const ih = rawH2 > 0 ? (rawH2 <= 30 ? rawH2 * 100 : rawH2) : (item.type === "door" ? 210 : 120);
+            const rawHf = parseFloat(item.heightFromFloor || "0") || 0;
+            const iy = item.type === "door" ? 0 : (rawHf > 0 ? (rawHf <= 30 ? rawHf * 100 : rawHf) : 90);
+            const isDoor = item.type === "door";
+            const ex = ox + dist * scaleX;
+            const ew = iw * scaleX;
+            const ey = oy + drawH - (iy + ih) * scaleY;
+            const eh = ih * scaleY;
+            const label = isDoor ? t("ب", "D") : t("ن", "W");
+            return (
+              <g key={oi}>
+                {/* Opening fill */}
+                <rect x={ex} y={ey} width={ew} height={eh}
+                  fill={isDoor ? "#FEF9EE" : "#EFF6FF"}
+                  stroke={isDoor ? "#92400E" : "#3B82F6"}
+                  strokeWidth={isDoor ? 1.5 : 1.5}
+                  strokeDasharray={isDoor ? undefined : "5,3"}
+                />
+                {/* Door swing arc */}
+                {isDoor && (
+                  <path
+                    d={`M ${ex} ${ey + eh} a ${ew} ${ew} 0 0 0 ${ew} ${-ew}`}
+                    fill="none" stroke="#92400E" strokeWidth={1} strokeDasharray="3,2"
+                  />
+                )}
+                {/* Opening type label */}
+                <text x={ex + ew / 2} y={ey + eh / 2} textAnchor="middle" dominantBaseline="middle"
+                  fontSize={9} fontWeight="bold" fill={isDoor ? "#92400E" : "#1D4ED8"}>
+                  {label}
+                </text>
+                {/* Width dimension */}
+                <text x={ex + ew / 2} y={ey + eh + 10} textAnchor="middle" fontSize={7} fill="#6B7280">
+                  {iw}
+                </text>
+              </g>
+            );
+          })}
 
           {/* Zone: backsplash 85–150cm (light blue-gray fill) */}
           {(() => {
