@@ -601,13 +601,12 @@ function WallElements({ items, wallLen, wallH }: { items: any[]; wallLen: number
               {/* ── Window glass ─────────────────────────────── */}
               <mesh position={[0, 0, 0.002]}>
                 <planeGeometry args={[iw - 0.05, ih - 0.05]} />
-                <meshPhysicalMaterial
-                  color="#E8F4FF"
+                <meshStandardMaterial
+                  color="#C8E8FF"
                   transparent
-                  opacity={0.15}
-                  roughness={0.02}
-                  metalness={0.0}
-                  transmission={0.88}
+                  opacity={0.22}
+                  roughness={0.04}
+                  metalness={0.12}
                 />
               </mesh>
               {/* ── Window frame (white aluminium) ──────────── */}
@@ -837,8 +836,6 @@ function Cabinet({
           roughness={0.62}
           metalness={0.04}
           color={tintColor}
-          transparent={tintOpacity > 0}
-          opacity={tintOpacity > 0 ? undefined : 1.0}
         />
       </mesh>
       {/* Selection highlight overlay */}
