@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { ORDER_STAGE_VALUES } from "@shared/schema";
+import type { Quotation, Customer, Contract, WorkOrder, Appointment, SiteSurvey, User as SchemaUser } from "@shared/schema";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLanguage } from "@/components/language-provider";
@@ -55,20 +56,29 @@ function formatElapsed(fromDate: string | Date, now: number, t: (ar: string, en:
   return t(`منذ ${mins} د`, `${mins}m ago`);
 }
 
-function getLastActivityDate(order: Record<string, unknown>): string | Date {
-  const candidates: (string | Date | null | undefined)[] = [
-    order.updatedAt as string | null | undefined,
-    order.cancelledAt as string | null | undefined,
-    order.claimedAt as string | null | undefined,
-    (order._appointment as Record<string, unknown> | null)?.createdAt as string | null | undefined,
-    order.createdAt as string | null | undefined,
+type PipelineStage = "all" | "new" | "appointment_scheduled" | "survey_done" | "quote_draft" | "quote_sent" | "quote_approved" | "in_production" | "delivered" | "rejected" | "cancelled";
+
+interface EnrichedOrder extends Quotation {
+  customer: Customer | undefined;
+  assignedUser: SchemaUser | undefined;
+  stage: PipelineStage;
+  _appointment: Appointment | null;
+}
+
+type WorkOrderWithContract = WorkOrder & { _contract: Contract | undefined };
+
+function getLastActivityDate(order: EnrichedOrder): Date {
+  const candidates = [
+    order.updatedAt,
+    order.cancelledAt,
+    order.claimedAt,
+    order._appointment?.createdAt,
+    order.createdAt,
   ];
   const dates = candidates.filter(Boolean).map(d => new Date(d as string).getTime()).filter(n => !isNaN(n));
   const latest = Math.max(...dates);
-  return isFinite(latest) ? new Date(latest) : new Date(order.createdAt as string);
+  return isFinite(latest) ? new Date(latest) : new Date(order.createdAt ?? 0);
 }
-
-type PipelineStage = "all" | "new" | "appointment_scheduled" | "survey_done" | "quote_draft" | "quote_sent" | "quote_approved" | "in_production" | "delivered" | "rejected" | "cancelled";
 
 const CANCEL_REASONS = [
   { value: "لم يرد العميل على التواصل", ar: "لم يرد العميل على التواصل", en: "Customer not responding" },
@@ -95,11 +105,11 @@ const PIPELINE_STAGES: { key: PipelineStage; ar: string; en: string; color: stri
 ];
 
 function getOrderStage(
-  q: any,
-  workOrdersWithContract: any[],
-  contracts: any[],
-  siteSurveys: any[],
-  apptByQuotation: Record<number, any>
+  q: Quotation,
+  workOrdersWithContract: WorkOrderWithContract[],
+  contracts: Contract[],
+  siteSurveys: SiteSurvey[],
+  apptByQuotation: Record<number, Appointment>
 ): PipelineStage {
   if (q.orderStage && (ORDER_STAGE_VALUES as readonly string[]).includes(q.orderStage)) {
     return q.orderStage as PipelineStage;
@@ -108,11 +118,11 @@ function getOrderStage(
   if (q.status === "rejected" || q.status === "expired") return "rejected";
 
   if (q.status === "approved") {
-    const contract = contracts.find((c: any) => c.quotationId === q.id);
+    const contract = contracts.find(c => c.quotationId === q.id);
     if (contract) {
-      const wo = workOrdersWithContract.find((w: any) => w.contractId === contract.id);
+      const wo = workOrdersWithContract.find(w => w.contractId === contract.id);
       if (wo) {
-        if (["completed", "delivered", "installed"].includes(wo.status)) return "delivered";
+        if (["completed", "delivered", "installed"].includes(wo.status ?? "")) return "delivered";
         return "in_production";
       }
     }
@@ -122,14 +132,14 @@ function getOrderStage(
   if (q.status === "sent") return "quote_sent";
   if (q.status === "draft" || q.status === "open") return "quote_draft";
 
-  const hasSurvey = siteSurveys.some((s: any) => s.quotationId === q.id);
+  const hasSurvey = siteSurveys.some(s => s.quotationId === q.id);
   const appt = apptByQuotation[q.id];
   if (hasSurvey || appt?.status === "attended") return "survey_done";
   if (appt) return "appointment_scheduled";
   return "new";
 }
 
-function getNextAction(stage: PipelineStage, order: any, t: (ar: string, en: string) => string): { label: string; urgent: boolean } {
+function getNextAction(stage: PipelineStage, order: EnrichedOrder, t: (ar: string, en: string) => string): { label: string; urgent: boolean } {
   switch (stage) {
     case "new":
       return { label: t("احجز موعد رفع المقاسات", "Book measurement appointment"), urgent: true };
@@ -183,10 +193,10 @@ export default function MyOrdersPage() {
   const [newOrderDialog, setNewOrderDialog] = useState(false);
   const [newOrderForm, setNewOrderForm] = useState({ fullName: "", phone: "", productDescription: "", notes: "", city: "" });
   const [showNewOrderTransition, setShowNewOrderTransition] = useState(false);
-  const [appointmentDialog, setAppointmentDialog] = useState<any | null>(null);
+  const [appointmentDialog, setAppointmentDialog] = useState<EnrichedOrder | null>(null);
   const [editingApptId, setEditingApptId] = useState<number | null>(null);
   const [rescheduleReason, setRescheduleReason] = useState("");
-  const [cancelDialog, setCancelDialog] = useState<any | null>(null);
+  const [cancelDialog, setCancelDialog] = useState<EnrichedOrder | null>(null);
   const [cancelReason, setCancelReason] = useState("");
   const [cancelNotes, setCancelNotes] = useState("");
   const [repFilter, setRepFilter] = useState<string>("all");
@@ -206,36 +216,36 @@ export default function MyOrdersPage() {
 
   const perPage = 15;
 
-  const { data: quotations = [], isLoading } = useQuery<any[]>({
+  const { data: quotations = [], isLoading } = useQuery<Quotation[]>({
     queryKey: ["/api/quotations"],
     refetchInterval: 15000,
   });
-  const { data: customers = [] } = useQuery<any[]>({ queryKey: ["/api/customers"] });
-  const { data: usersData = [] } = useQuery<any[]>({ queryKey: ["/api/users"] });
-  const { data: workOrders = [] } = useQuery<any[]>({ queryKey: ["/api/work-orders"] });
-  const { data: contracts = [] } = useQuery<any[]>({ queryKey: ["/api/contracts"] });
-  const { data: appointments = [] } = useQuery<any[]>({ queryKey: ["/api/appointments"] });
-  const { data: siteSurveys = [] } = useQuery<any[]>({ queryKey: ["/api/site-surveys"] });
+  const { data: customers = [] } = useQuery<Customer[]>({ queryKey: ["/api/customers"] });
+  const { data: usersData = [] } = useQuery<SchemaUser[]>({ queryKey: ["/api/users"] });
+  const { data: workOrders = [] } = useQuery<WorkOrder[]>({ queryKey: ["/api/work-orders"] });
+  const { data: contracts = [] } = useQuery<Contract[]>({ queryKey: ["/api/contracts"] });
+  const { data: appointments = [] } = useQuery<Appointment[]>({ queryKey: ["/api/appointments"] });
+  const { data: siteSurveys = [] } = useQuery<SiteSurvey[]>({ queryKey: ["/api/site-surveys"] });
 
   const isManager = user && ["owner", "assistant"].includes(user.role);
 
   useEffect(() => {
-    const expired = (appointments as any[]).filter((appt: any) => {
+    const expired = appointments.filter(appt => {
       if (appt.status !== "scheduled") return false;
       const endDt = new Date(`${appt.appointmentDate}T${appt.endTime || appt.startTime || "23:59"}`);
       return endDt < new Date();
     });
-    expired.forEach((appt: any) => {
+    expired.forEach(appt => {
       apiRequest("POST", `/api/appointments/${appt.id}/expire`).then(() => {
         queryClient.invalidateQueries({ queryKey: ["/api/appointments"] });
       }).catch(() => {});
     });
   }, [now, appointments]);
 
-  const workOrdersWithContract = useMemo(() => {
-    return workOrders.map((wo: any) => ({
+  const workOrdersWithContract = useMemo((): WorkOrderWithContract[] => {
+    return workOrders.map(wo => ({
       ...wo,
-      _contract: contracts.find((c: any) => c.id === wo.contractId),
+      _contract: contracts.find(c => c.id === wo.contractId),
     }));
   }, [workOrders, contracts]);
 
@@ -244,10 +254,12 @@ export default function MyOrdersPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/quotations"] });
       queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
+      setActiveStage("quote_draft");
       setShowClaimTransition(true);
     },
-    onError: (error: any) => {
-      toast({ title: error?.message || t("فشل التقاط الطلب", "Failed to claim order"), variant: "destructive" });
+    onError: (error: unknown) => {
+      const msg = error instanceof Error ? error.message : "";
+      toast({ title: msg || t("فشل التقاط الطلب", "Failed to claim order"), variant: "destructive" });
     },
   });
 
@@ -261,8 +273,9 @@ export default function MyOrdersPage() {
       setNewOrderForm({ fullName: "", phone: "", productDescription: "", notes: "", city: "" });
       setShowNewOrderTransition(true);
     },
-    onError: (error: any) => {
-      toast({ title: error?.message || t("فشل إنشاء الطلب", "Failed to create order"), variant: "destructive" });
+    onError: (error: unknown) => {
+      const msg = error instanceof Error ? error.message : "";
+      toast({ title: msg || t("فشل إنشاء الطلب", "Failed to create order"), variant: "destructive" });
     },
   });
 
@@ -276,8 +289,9 @@ export default function MyOrdersPage() {
       setCancelNotes("");
       toast({ title: t("تم إلغاء الطلب", "Order cancelled") });
     },
-    onError: (error: any) => {
-      toast({ title: error?.message || t("فشل إلغاء الطلب", "Failed to cancel order"), variant: "destructive" });
+    onError: (error: unknown) => {
+      const msg = error instanceof Error ? error.message : "";
+      toast({ title: msg || t("فشل إلغاء الطلب", "Failed to cancel order"), variant: "destructive" });
     },
   });
 
@@ -291,8 +305,8 @@ export default function MyOrdersPage() {
       resetApptForm();
       toast({ title: t("تم حجز الموعد بنجاح!", "Appointment booked successfully!") });
     },
-    onError: (error: any) => {
-      const msg = error?.message || "";
+    onError: (error: unknown) => {
+      const msg = error instanceof Error ? error.message : "";
       if (msg.includes("تعارض") || msg.includes("conflict")) {
         toast({ title: t("يوجد تعارض مع موعد آخر في نفس الوقت", "Time conflict with another appointment"), variant: "destructive" });
       } else {
@@ -309,8 +323,8 @@ export default function MyOrdersPage() {
       resetApptForm();
       toast({ title: t("تم تعديل الموعد بنجاح!", "Appointment updated successfully!") });
     },
-    onError: (error: any) => {
-      const msg = error?.message || "";
+    onError: (error: unknown) => {
+      const msg = error instanceof Error ? error.message : "";
       if (msg.includes("تعارض") || msg.includes("conflict")) {
         toast({ title: t("يوجد تعارض مع موعد آخر في نفس الوقت", "Time conflict with another appointment"), variant: "destructive" });
       } else {
@@ -319,9 +333,9 @@ export default function MyOrdersPage() {
     },
   });
 
-  const appointmentByQuotation = useMemo(() => {
-    const map: Record<number, any> = {};
-    for (const appt of appointments as any[]) {
+  const appointmentByQuotation = useMemo((): Record<number, Appointment> => {
+    const map: Record<number, Appointment> = {};
+    for (const appt of appointments) {
       if (!appt.quotationId) continue;
       const existing = map[appt.quotationId];
       if (!existing) {
@@ -336,30 +350,30 @@ export default function MyOrdersPage() {
   }, [appointments]);
 
   const salesReps = useMemo(() => {
-    return (usersData as any[]).filter((u: any) => u.role === "sales");
+    return usersData.filter(u => u.role === "sales");
   }, [usersData]);
 
-  const enrichedOrders = useMemo(() => {
+  const enrichedOrders = useMemo((): EnrichedOrder[] => {
     if (!user) return [];
-    return quotations.map((q: any) => {
-      const customer = customers.find((c: any) => c.id === q.customerId);
-      const assignedUser = q.assignedTo ? usersData.find((u: any) => u.id === q.assignedTo) : null;
+    return quotations.map(q => {
+      const customer = customers.find(c => c.id === q.customerId);
+      const assignedUser = q.assignedTo ? usersData.find(u => u.id === q.assignedTo) : undefined;
       const _appointment = appointmentByQuotation[q.id] || null;
-      const stage = getOrderStage(q, workOrdersWithContract, contracts, siteSurveys as any[], appointmentByQuotation);
+      const stage = getOrderStage(q, workOrdersWithContract, contracts, siteSurveys, appointmentByQuotation);
       return { ...q, customer, assignedUser, stage, _appointment };
     });
   }, [quotations, customers, usersData, workOrdersWithContract, contracts, siteSurveys, user, appointmentByQuotation]);
 
-  const visibleOrders = useMemo(() => {
+  const visibleOrders = useMemo((): EnrichedOrder[] => {
     if (!user) return [];
     if (isManager) {
       if (repFilter === "all") return enrichedOrders;
-      if (repFilter === "unassigned") return enrichedOrders.filter((o: any) => !o.assignedTo);
-      return enrichedOrders.filter((o: any) => o.assignedTo === parseInt(repFilter));
+      if (repFilter === "unassigned") return enrichedOrders.filter(o => !o.assignedTo);
+      return enrichedOrders.filter(o => o.assignedTo === parseInt(repFilter));
     }
-    return enrichedOrders.filter((o: any) => {
+    return enrichedOrders.filter(o => {
       const claimableStatuses = ["requested", "open", "draft"];
-      const isUnassignedAndClaimable = !o.assignedTo && claimableStatuses.includes(o.status);
+      const isUnassignedAndClaimable = !o.assignedTo && claimableStatuses.includes(o.status ?? "");
       return o.assignedTo === user.id || isUnassignedAndClaimable;
     });
   }, [enrichedOrders, user, isManager, repFilter]);
@@ -367,41 +381,41 @@ export default function MyOrdersPage() {
   const stageCounts = useMemo(() => {
     const counts: Record<string, number> = { all: visibleOrders.length };
     for (const stage of PIPELINE_STAGES.filter(s => s.key !== "all")) {
-      counts[stage.key] = visibleOrders.filter((o: any) => o.stage === stage.key).length;
+      counts[stage.key] = visibleOrders.filter(o => o.stage === stage.key).length;
     }
     return counts;
   }, [visibleOrders]);
 
-  const openCount = useMemo(() => enrichedOrders.filter((o: any) => o.stage === "new" && !o.assignedTo).length, [enrichedOrders]);
+  const openCount = useMemo(() => enrichedOrders.filter(o => o.stage === "new" && !o.assignedTo).length, [enrichedOrders]);
 
-  const filtered = useMemo(() => {
-    let list = activeStage === "all" ? visibleOrders : visibleOrders.filter((o: any) => o.stage === activeStage);
+  const filtered = useMemo((): EnrichedOrder[] => {
+    let list = activeStage === "all" ? visibleOrders : visibleOrders.filter(o => o.stage === activeStage);
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase();
-      list = list.filter((o: any) =>
+      list = list.filter(o =>
         o.customer?.fullName?.toLowerCase().includes(q) ||
         o.customer?.phone?.includes(q) ||
         String(o.id).includes(q) ||
         String(o.quotationNumber).includes(q)
       );
     }
-    return [...list].sort((a: any, b: any) => {
+    return [...list].sort((a, b) => {
       if (a.stage === "new" && !a.assignedTo && (b.stage !== "new" || b.assignedTo)) return -1;
       if (b.stage === "new" && !b.assignedTo && (a.stage !== "new" || a.assignedTo)) return 1;
-      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      return new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime();
     });
   }, [visibleOrders, activeStage, searchQuery]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
   const paginated = filtered.slice((currentPage - 1) * perPage, currentPage * perPage);
 
-  function isAppointmentPast(appt: any): boolean {
+  function isAppointmentPast(appt: Appointment): boolean {
     if (!appt?.appointmentDate) return false;
     const apptDateTime = new Date(`${appt.appointmentDate}T${appt.endTime || appt.startTime || "23:59"}`);
     return apptDateTime < new Date();
   }
 
-  function formatApptCountdown(appt: any, nowTs: number): { label: string; urgent: boolean; past: boolean } {
+  function formatApptCountdown(appt: Appointment, nowTs: number): { label: string; urgent: boolean; past: boolean } {
     if (!appt?.appointmentDate) return { label: "", urgent: false, past: false };
     const apptDateTime = new Date(`${appt.appointmentDate}T${appt.startTime || "09:00"}`);
     const diffMs = apptDateTime.getTime() - nowTs;
@@ -421,7 +435,7 @@ export default function MyOrdersPage() {
     return { label: t(`بعد ${mins} دقيقة`, `In ${mins}m`), urgent: true, past: false };
   }
 
-  function formatApptFullDate(appt: any): string {
+  function formatApptFullDate(appt: Appointment): string {
     if (!appt?.appointmentDate) return "—";
     return new Date(appt.appointmentDate).toLocaleDateString(lang === "ar" ? "ar-SA" : "en-US", {
       weekday: "long", year: "numeric", month: "long", day: "numeric",
@@ -441,7 +455,7 @@ export default function MyOrdersPage() {
     setApptDuration("60");
   }
 
-  function openAppointmentDialog(order: any) {
+  function openAppointmentDialog(order: EnrichedOrder) {
     const existingAppt = order._appointment;
     setAppointmentDialog(order);
     if (existingAppt) {
@@ -602,7 +616,7 @@ export default function MyOrdersPage() {
             <SelectContent>
               <SelectItem value="all">{t("كل المناديب", "All Reps")}</SelectItem>
               <SelectItem value="unassigned">{t("غير مُسندة", "Unassigned")}</SelectItem>
-              {salesReps.map((rep: any) => (
+              {salesReps.map((rep) => (
                 <SelectItem key={rep.id} value={String(rep.id)}>
                   {lang === "ar" ? rep.fullNameAr : rep.fullNameEn}
                 </SelectItem>
@@ -694,7 +708,7 @@ export default function MyOrdersPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y">
-                      {paginated.map((order: any) => {
+                      {paginated.map((order) => {
                         const amount = Number(order.finalPrice || order.totalPrice || 0);
                         const isOpen = order.stage === "new" && !order.assignedTo;
                         const stageCfg = PIPELINE_STAGES.find(s => s.key === order.stage) || PIPELINE_STAGES[0];
@@ -865,7 +879,7 @@ export default function MyOrdersPage() {
           </div>
 
           <div className="md:hidden space-y-2">
-            {paginated.map((order: any) => {
+            {paginated.map((order) => {
               const amount = Number(order.finalPrice || order.totalPrice || 0);
               const isOpen = order.stage === "new" && !order.assignedTo;
               const stageCfg = PIPELINE_STAGES.find(s => s.key === order.stage) || PIPELINE_STAGES[0];

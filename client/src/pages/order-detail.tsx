@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { ORDER_STAGE_VALUES } from "@shared/schema";
+import type { Quotation, Customer, Contract, Payment, WorkOrder, Appointment, SiteSurvey, User as SchemaUser } from "@shared/schema";
 import { useRoute, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useLanguage } from "@/components/language-provider";
@@ -12,12 +13,19 @@ import {
   Loader2, ArrowRight, ArrowLeft, User, Phone, MapPin, Calendar,
   Clock, FileText, Package, Truck, CheckCircle2, Ban, AlertCircle,
   CalendarCheck, CalendarX, Ruler, Box, ChevronLeft, ChevronRight,
-  ClipboardList, Banknote, Home, Zap, ThumbsDown,
+  ClipboardList, Banknote, Home, Zap, ThumbsDown, type LucideIcon,
 } from "lucide-react";
 
 type PipelineStage = "new" | "appointment_scheduled" | "survey_done" | "quote_draft" | "quote_sent" | "quote_approved" | "in_production" | "delivered" | "rejected" | "cancelled";
 
-const PIPELINE_STAGES: { key: PipelineStage; ar: string; en: string; color: string; icon: any }[] = [
+interface QuotationItem {
+  description?: string;
+  productType?: string;
+  quantity?: number;
+  unitPrice?: number;
+}
+
+const PIPELINE_STAGES: { key: PipelineStage; ar: string; en: string; color: string; icon: LucideIcon }[] = [
   { key: "new", ar: "جديد", en: "New", color: "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300", icon: Zap },
   { key: "appointment_scheduled", ar: "موعد مجدول", en: "Appointment", color: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300", icon: CalendarCheck },
   { key: "survey_done", ar: "مسح مكتمل", en: "Survey Done", color: "bg-violet-100 text-violet-700 dark:bg-violet-900 dark:text-violet-300", icon: Ruler },
@@ -31,21 +39,21 @@ const PIPELINE_STAGES: { key: PipelineStage; ar: string; en: string; color: stri
 ];
 
 function getOrderStage(
-  q: any,
-  workOrdersAll: any[],
-  contractsAll: any[],
-  siteSurveysAll: any[],
-  apptByQuotation: Record<number, any>
+  q: Quotation,
+  workOrdersAll: WorkOrder[],
+  contractsAll: Contract[],
+  siteSurveysAll: SiteSurvey[],
+  apptByQuotation: Record<number, Appointment>
 ): PipelineStage {
   if (q.orderStage && (ORDER_STAGE_VALUES as readonly string[]).includes(q.orderStage)) return q.orderStage as PipelineStage;
   if (q.status === "cancelled") return "cancelled";
   if (q.status === "rejected" || q.status === "expired") return "rejected";
   if (q.status === "approved") {
-    const contract = contractsAll.find((c: any) => c.quotationId === q.id);
+    const contract = contractsAll.find(c => c.quotationId === q.id);
     if (contract) {
-      const wo = workOrdersAll.find((w: any) => w.contractId === contract.id);
+      const wo = workOrdersAll.find(w => w.contractId === contract.id);
       if (wo) {
-        if (["completed", "delivered", "installed"].includes(wo.status)) return "delivered";
+        if (["completed", "delivered", "installed"].includes(wo.status ?? "")) return "delivered";
         return "in_production";
       }
     }
@@ -53,14 +61,14 @@ function getOrderStage(
   }
   if (q.status === "sent") return "quote_sent";
   if (q.status === "draft" || q.status === "open") return "quote_draft";
-  const hasSurvey = siteSurveysAll.some((s: any) => s.quotationId === q.id);
+  const hasSurvey = siteSurveysAll.some(s => s.quotationId === q.id);
   const appt = apptByQuotation[q.id];
   if (hasSurvey || appt?.status === "attended") return "survey_done";
   if (appt) return "appointment_scheduled";
   return "new";
 }
 
-function SectionCard({ title, icon: Icon, children }: { title: string; icon: any; children: ReactNode }) {
+function SectionCard({ title, icon: Icon, children }: { title: string; icon: LucideIcon; children: ReactNode }) {
   return (
     <Card>
       <CardHeader className="pb-2 pt-4 px-4">
@@ -92,7 +100,7 @@ export default function OrderDetailPage() {
   const [, params] = useRoute("/orders/:id");
   const orderId = parseInt(params?.id || "0");
 
-  const { data: quotation, isLoading } = useQuery<any>({
+  const { data: quotation, isLoading } = useQuery<Quotation>({
     queryKey: ["/api/quotations", orderId],
     queryFn: async () => {
       const res = await fetch(`/api/quotations/${orderId}`, { credentials: "include" });
@@ -101,13 +109,13 @@ export default function OrderDetailPage() {
     },
     enabled: !!orderId,
   });
-  const { data: customers = [] } = useQuery<any[]>({ queryKey: ["/api/customers"] });
-  const { data: usersData = [] } = useQuery<any[]>({ queryKey: ["/api/users"] });
-  const { data: workOrders = [] } = useQuery<any[]>({ queryKey: ["/api/work-orders"] });
-  const { data: contracts = [] } = useQuery<any[]>({ queryKey: ["/api/contracts"] });
-  const { data: appointments = [] } = useQuery<any[]>({ queryKey: ["/api/appointments"] });
-  const { data: siteSurveys = [] } = useQuery<any[]>({ queryKey: ["/api/site-surveys"] });
-  const { data: payments = [] } = useQuery<any[]>({ queryKey: ["/api/payments"] });
+  const { data: customers = [] } = useQuery<Customer[]>({ queryKey: ["/api/customers"] });
+  const { data: usersData = [] } = useQuery<SchemaUser[]>({ queryKey: ["/api/users"] });
+  const { data: workOrders = [] } = useQuery<WorkOrder[]>({ queryKey: ["/api/work-orders"] });
+  const { data: contracts = [] } = useQuery<Contract[]>({ queryKey: ["/api/contracts"] });
+  const { data: appointments = [] } = useQuery<Appointment[]>({ queryKey: ["/api/appointments"] });
+  const { data: siteSurveys = [] } = useQuery<SiteSurvey[]>({ queryKey: ["/api/site-surveys"] });
+  const { data: payments = [] } = useQuery<Payment[]>({ queryKey: ["/api/payments"] });
 
   const isManager = user && ["owner", "assistant"].includes(user.role);
 
@@ -131,11 +139,11 @@ export default function OrderDetailPage() {
     );
   }
 
-  const customer = customers.find((c: any) => c.id === quotation.customerId);
-  const assignedUser = quotation.assignedTo ? usersData.find((u: any) => u.id === quotation.assignedTo) : null;
+  const customer = customers.find(c => c.id === quotation.customerId);
+  const assignedUser = quotation.assignedTo ? usersData.find(u => u.id === quotation.assignedTo) : null;
 
-  const apptByQuotation: Record<number, any> = {};
-  for (const appt of appointments as any[]) {
+  const apptByQuotation: Record<number, Appointment> = {};
+  for (const appt of appointments) {
     if (!appt.quotationId) continue;
     const existing = apptByQuotation[appt.quotationId];
     if (!existing) {
@@ -147,20 +155,20 @@ export default function OrderDetailPage() {
     }
   }
 
-  const stage = getOrderStage(quotation, workOrders as any[], contracts as any[], siteSurveys as any[], apptByQuotation);
+  const stage = getOrderStage(quotation, workOrders, contracts, siteSurveys, apptByQuotation);
   const stageCfg = PIPELINE_STAGES.find(s => s.key === stage) || PIPELINE_STAGES[0];
   const StageIcon = stageCfg.icon;
 
   const linkedAppt = apptByQuotation[quotation.id] || null;
-  const linkedSurveys = (siteSurveys as any[]).filter((s: any) => s.quotationId === quotation.id || (linkedAppt && s.appointmentId === linkedAppt.id));
-  const linkedContract = (contracts as any[]).find((c: any) => c.quotationId === quotation.id);
-  const linkedWorkOrder = linkedContract ? (workOrders as any[]).find((w: any) => w.contractId === linkedContract.id) : null;
+  const linkedSurveys = siteSurveys.filter(s => s.quotationId === quotation.id || (linkedAppt && s.appointmentId === linkedAppt.id));
+  const linkedContract = contracts.find(c => c.quotationId === quotation.id);
+  const linkedWorkOrder = linkedContract ? workOrders.find(w => w.contractId === linkedContract.id) : null;
   const orderPayments = linkedContract
-    ? (payments as any[]).filter((p: any) => p.contractId === linkedContract.id)
+    ? payments.filter(p => p.contractId === linkedContract.id)
     : [];
 
-  const allOrderAppts = (appointments as any[]).filter((a: any) => a.quotationId === quotation.id)
-    .sort((a: any, b: any) => new Date(`${a.appointmentDate}T${a.startTime || "00:00"}`).getTime() - new Date(`${b.appointmentDate}T${b.startTime || "00:00"}`).getTime());
+  const allOrderAppts = appointments.filter(a => a.quotationId === quotation.id)
+    .sort((a, b) => new Date(`${a.appointmentDate}T${a.startTime || "00:00"}`).getTime() - new Date(`${b.appointmentDate}T${b.startTime || "00:00"}`).getTime());
 
   function formatDate(d: string | null | undefined) {
     if (!d) return "—";
@@ -170,11 +178,11 @@ export default function OrderDetailPage() {
     if (!d) return "—";
     return new Date(d).toLocaleString(lang === "ar" ? "ar-SA" : "en-US", { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" });
   }
-  function formatMoney(n: any) {
+  function formatMoney(n: number | string | null | undefined) {
     return Number(n || 0).toLocaleString() + " " + t("ر.س", "SAR");
   }
 
-  const currentStepIndex = PIPELINE_STEP_KEYS.indexOf(stage as any);
+  const currentStepIndex = PIPELINE_STEP_KEYS.indexOf(stage);
 
   return (
     <div className="space-y-4 max-w-2xl mx-auto" data-testid="page-order-detail">
@@ -306,7 +314,7 @@ export default function OrderDetailPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {quotation.items.map((item: any, idx: number) => (
+                  {(quotation.items as QuotationItem[]).map((item, idx) => (
                     <tr key={idx} className="border-t">
                       <td className="px-2.5 py-1.5 max-w-[150px] truncate">{item.description || item.productType || "—"}</td>
                       <td className="px-2.5 py-1.5 text-center">{item.quantity || 1}</td>
@@ -324,7 +332,7 @@ export default function OrderDetailPage() {
       {allOrderAppts.length > 0 && (
         <SectionCard title={t("المواعيد", "Appointments")} icon={Calendar}>
           <div className="space-y-3">
-            {allOrderAppts.map((appt: any, idx: number) => {
+            {allOrderAppts.map((appt, idx) => {
               const isPast = new Date(`${appt.appointmentDate}T${appt.endTime || appt.startTime || "23:59"}`) < new Date();
               const isLatest = idx === allOrderAppts.length - 1;
               return (
@@ -384,7 +392,7 @@ export default function OrderDetailPage() {
       {linkedSurveys.length > 0 && (
         <SectionCard title={t("المسوحات الميدانية", "Site Surveys")} icon={Ruler}>
           <div className="space-y-2">
-            {linkedSurveys.map((survey: any) => (
+            {linkedSurveys.map((survey) => (
               <div key={survey.id} className="rounded-lg p-3 border bg-violet-50/50 dark:bg-violet-950/20 border-violet-200 dark:border-violet-900 text-xs space-y-1">
                 <div className="flex items-center justify-between">
                   <span className="font-semibold">{survey.projectType || t("مسح", "Survey")} #{survey.id}</span>
@@ -449,7 +457,7 @@ export default function OrderDetailPage() {
       {orderPayments.length > 0 && (
         <SectionCard title={t("سجل الدفعات", "Payment History")} icon={Banknote}>
           <div className="space-y-2">
-            {orderPayments.map((payment: any) => (
+            {orderPayments.map((payment) => (
               <div key={payment.id} className="flex items-center justify-between py-2 border-b last:border-0">
                 <div>
                   <p className="text-xs font-medium">{payment.paymentType || t("دفعة", "Payment")}</p>
@@ -465,7 +473,7 @@ export default function OrderDetailPage() {
             <div className="pt-2 flex justify-between text-xs font-semibold">
               <span>{t("إجمالي المدفوع", "Total Paid")}</span>
               <span className="text-green-700 dark:text-green-400">
-                {formatMoney(orderPayments.reduce((s: number, p: any) => s + Number(p.amount || 0), 0))}
+                {formatMoney(orderPayments.reduce((s, p) => s + Number(p.amount || 0), 0))}
               </span>
             </div>
           </div>
