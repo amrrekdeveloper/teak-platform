@@ -101,6 +101,20 @@ export async function registerRoutes(
     console.warn("Appointment migration warning (non-fatal):", migrationError instanceof Error ? migrationError.message : String(migrationError));
   }
 
+  try {
+    await db.execute(`
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumlabel = 'cancelled' AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'quotation_status')) THEN
+          ALTER TYPE quotation_status ADD VALUE 'cancelled';
+        END IF;
+      END $$;
+      ALTER TABLE quotations ADD COLUMN IF NOT EXISTS cancellation_reason TEXT;
+      ALTER TABLE quotations ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMP;
+    `);
+  } catch (cancellationMigrationError) {
+    console.warn("Quotation cancellation migration warning (non-fatal):", cancellationMigrationError instanceof Error ? cancellationMigrationError.message : String(cancellationMigrationError));
+  }
+
   app.get("/api/products/public", async (req, res) => {
     try {
       const category = req.query.category as string | undefined;
@@ -896,11 +910,12 @@ export async function registerRoutes(
         return res.status(403).json({ message: "غير مصرح لك بإلغاء هذا الطلب", messageEn: "You are not authorized to cancel this order" });
       }
       const fullReason = notes?.trim() ? `${reason}: ${notes.trim()}` : reason;
+      const now = new Date();
       const updated = await storage.updateQuotation(quotationId, {
         status: "cancelled",
         cancellationReason: fullReason,
-        cancelledAt: new Date(),
-      } as any);
+        cancelledAt: now,
+      });
       const cancellingUser = await storage.getUser(userId);
       const staffUsers = (await storage.getUsers()).filter(u => ["owner", "assistant"].includes(u.role) && u.id !== userId);
       for (const staff of staffUsers) {

@@ -25,11 +25,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  Loader2, Search, ClipboardList, UserCheck, CheckCircle2,
+  Loader2, Search, ClipboardList, CheckCircle2,
   ChevronLeft, ChevronRight, Eye, Phone, MapPin, Calendar,
-  Clock, Pencil, Plus, Hand, Zap, CalendarPlus, CalendarCheck,
+  Clock, Plus, Hand, Zap, CalendarPlus, CalendarCheck,
   CalendarX, Filter, X, Ruler, Box, Ban, AlertCircle, ArrowRight,
-  FileText, Package, Truck, ThumbsDown,
+  FileText, Package, Truck,
 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -155,7 +155,6 @@ export default function MyOrdersPage() {
   const [activeStage, setActiveStage] = useState<PipelineStage>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const [viewOrder, setViewOrder] = useState<any | null>(null);
   const [showClaimTransition, setShowClaimTransition] = useState(false);
   const [newOrderDialog, setNewOrderDialog] = useState(false);
   const [newOrderForm, setNewOrderForm] = useState({ fullName: "", phone: "", productDescription: "", notes: "", city: "" });
@@ -497,11 +496,6 @@ export default function MyOrdersPage() {
     return new Date(dateStr).toLocaleDateString(lang === "ar" ? "ar-SA" : "en-US", { month: "short", day: "numeric" });
   }
 
-  function formatDateFull(dateStr: string) {
-    if (!dateStr) return "—";
-    return new Date(dateStr).toLocaleDateString(lang === "ar" ? "ar-SA" : "en-US", { year: "numeric", month: "long", day: "numeric" });
-  }
-
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -762,7 +756,7 @@ export default function MyOrdersPage() {
                                   </Button>
                                 ) : (
                                   <>
-                                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setViewOrder(order)} title={t("عرض التفاصيل", "View Details")} data-testid={`button-view-my-${order.id}`}>
+                                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => navigate(`/orders/${order.id}`)} title={t("عرض التفاصيل", "View Details")} data-testid={`button-view-my-${order.id}`}>
                                       <Eye className="w-3.5 h-3.5" />
                                     </Button>
                                     {!isCancelled && !isDelivered && (isMine || isManager) && (
@@ -906,7 +900,7 @@ export default function MyOrdersPage() {
                         </Button>
                       ) : (
                         <>
-                          <Button variant="outline" size="sm" className="h-8 text-xs flex-1" onClick={() => setViewOrder(order)} data-testid={`button-view-mobile-${order.id}`}>
+                          <Button variant="outline" size="sm" className="h-8 text-xs flex-1" onClick={() => navigate(`/orders/${order.id}`)} data-testid={`button-view-mobile-${order.id}`}>
                             <Eye className="w-3.5 h-3.5 me-1" />{t("عرض", "View")}
                           </Button>
                           {!isCancelled && !isDelivered && (isMine || isManager) && (
@@ -1036,172 +1030,6 @@ export default function MyOrdersPage() {
         </Dialog>
       )}
 
-      {viewOrder && (
-        <Dialog open onOpenChange={() => setViewOrder(null)}>
-          <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <ClipboardList className="w-4 h-4 text-primary" />
-                {t("تفاصيل الطلب", "Order Details")} #{viewOrder.quotationNumber || viewOrder.id}
-              </DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4 py-1">
-              {(() => {
-                const stageCfg = PIPELINE_STAGES.find(s => s.key === viewOrder.stage) || PIPELINE_STAGES[0];
-                const SIcon = stageCfg.icon;
-                return (
-                  <div className="flex items-center gap-2">
-                    <Badge variant="secondary" className={`text-xs px-3 py-1 gap-1.5 inline-flex items-center ${stageCfg.color}`}>
-                      <SIcon className="w-3.5 h-3.5" />
-                      {t(stageCfg.ar, stageCfg.en)}
-                    </Badge>
-                    {viewOrder.stage !== "cancelled" && viewOrder.stage !== "delivered" && (() => {
-                      const na = getNextAction(viewOrder.stage, viewOrder, t);
-                      return (
-                        <span className={`text-xs flex items-center gap-1 ${na.urgent ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`}>
-                          {na.urgent && <AlertCircle className="w-3 h-3" />}
-                          <ArrowRight className="w-3 h-3" />
-                          {na.label}
-                        </span>
-                      );
-                    })()}
-                  </div>
-                );
-              })()}
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-muted/50 rounded-lg p-3">
-                  <p className="text-[11px] text-muted-foreground mb-1">{t("العميل", "Customer")}</p>
-                  <p className="text-sm font-semibold">{viewOrder.customer?.fullName || "—"}</p>
-                  {viewOrder.customer?.phone && <p className="text-xs text-muted-foreground mt-0.5" dir="ltr">{viewOrder.customer.phone}</p>}
-                  {(viewOrder.city || viewOrder.customer?.city) && (
-                    <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1"><MapPin className="w-3 h-3" />{viewOrder.city || viewOrder.customer?.city}</p>
-                  )}
-                </div>
-                <div className="bg-muted/50 rounded-lg p-3">
-                  <p className="text-[11px] text-muted-foreground mb-1">{t("المبلغ الإجمالي", "Total Amount")}</p>
-                  <p className="text-lg font-bold">
-                    {Number(viewOrder.finalPrice || viewOrder.totalPrice || 0).toLocaleString()}
-                    <span className="text-xs font-normal ms-1">{t("ر.س", "SAR")}</span>
-                  </p>
-                  {Number(viewOrder.discount || 0) > 0 && (
-                    <p className="text-xs text-muted-foreground">{t("خصم:", "Discount:")} {Number(viewOrder.discount).toLocaleString()}</p>
-                  )}
-                </div>
-              </div>
-
-              {viewOrder.assignedUser && (
-                <div className="bg-muted/50 rounded-lg p-3 flex items-center gap-3">
-                  <UserCheck className="w-4 h-4 text-muted-foreground" />
-                  <div>
-                    <p className="text-[11px] text-muted-foreground">{t("المندوب", "Sales Rep")}</p>
-                    <p className="text-sm font-medium">{lang === "ar" ? viewOrder.assignedUser.fullNameAr : viewOrder.assignedUser.fullNameEn}</p>
-                  </div>
-                </div>
-              )}
-
-              {viewOrder.cancellationReason && (
-                <div className="bg-red-50/60 dark:bg-red-950/20 border border-red-200 dark:border-red-900 rounded-lg p-3">
-                  <p className="text-[11px] text-red-600 dark:text-red-400 font-semibold mb-1">{t("سبب الإلغاء", "Cancellation Reason")}</p>
-                  <p className="text-xs">{viewOrder.cancellationReason}</p>
-                  {viewOrder.cancelledAt && (
-                    <p className="text-[10px] text-muted-foreground mt-1">{formatDateFull(viewOrder.cancelledAt)}</p>
-                  )}
-                </div>
-              )}
-
-              {viewOrder.items && viewOrder.items.length > 0 && (
-                <div>
-                  <p className="text-xs font-semibold mb-2">{t("المنتجات", "Products")}</p>
-                  <div className="border rounded-lg overflow-hidden">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="bg-muted/50">
-                          <th className="text-start px-3 py-2 font-medium">{t("الوصف", "Description")}</th>
-                          <th className="text-start px-3 py-2 font-medium">{t("الكمية", "Qty")}</th>
-                          <th className="text-start px-3 py-2 font-medium">{t("السعر", "Price")}</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {viewOrder.items.map((item: any, idx: number) => (
-                          <tr key={idx} className="border-t">
-                            <td className="px-3 py-2">{item.description || item.productType || "—"}</td>
-                            <td className="px-3 py-2">{item.quantity || 1}</td>
-                            <td className="px-3 py-2">{Number(item.unitPrice || 0).toLocaleString()}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-
-              {viewOrder.notes && (
-                <div className="bg-muted/50 rounded-lg p-3">
-                  <p className="text-[11px] text-muted-foreground mb-1">{t("ملاحظات", "Notes")}</p>
-                  <p className="text-xs">{viewOrder.notes}</p>
-                </div>
-              )}
-
-              {(() => {
-                const appt = viewOrder._appointment;
-                if (!appt) return null;
-                const countdown = formatApptCountdown(appt, now);
-                return (
-                  <div className={`rounded-lg p-3 border ${countdown.past ? "bg-amber-50/60 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900" : "bg-blue-50/50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-900"}`}>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <p className={`text-[11px] font-semibold flex items-center gap-1 ${countdown.past ? "text-amber-700 dark:text-amber-400" : "text-blue-700 dark:text-blue-400"}`}>
-                        {countdown.past
-                          ? <><CalendarX className="w-3.5 h-3.5" />{t("موعد منتهٍ", "Expired Appointment")}</>
-                          : <><CalendarCheck className="w-3.5 h-3.5" />{t("موعد محجوز", "Appointment Booked")}</>
-                        }
-                      </p>
-                      <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${countdown.past ? "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300" : countdown.urgent ? "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300" : "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300"}`}>
-                        {countdown.label}
-                      </span>
-                    </div>
-                    <p className="text-xs font-medium">{appt.title}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1"><Calendar className="w-3 h-3" />{formatApptFullDate(appt)}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1"><Clock className="w-3 h-3" />{appt.startTime?.slice(0, 5)} — {appt.endTime?.slice(0, 5)}</p>
-                    {appt.notes && <p className="text-[11px] text-muted-foreground mt-1 border-t pt-1">{appt.notes}</p>}
-                  </div>
-                );
-              })()}
-            </div>
-            <DialogFooter className="flex-col sm:flex-row gap-2">
-              <Button variant="outline" onClick={() => setViewOrder(null)} data-testid="button-close-view-my">
-                {t("إغلاق", "Close")}
-              </Button>
-              {viewOrder.stage !== "cancelled" && viewOrder.stage !== "delivered" && (viewOrder.assignedTo === user?.id || isManager) && (() => {
-                const appt = viewOrder._appointment;
-                if (!appt) {
-                  return (
-                    <Button variant="default" onClick={() => { setViewOrder(null); openAppointmentDialog(viewOrder); }} data-testid="button-book-from-view">
-                      <CalendarPlus className="w-3.5 h-3.5 me-1.5" />
-                      {t("حجز موعد", "Book Appointment")}
-                    </Button>
-                  );
-                }
-                const isPast = isAppointmentPast(appt);
-                if (isPast) {
-                  return (
-                    <Button className="bg-amber-600 hover:bg-amber-700 text-white" onClick={() => { setViewOrder(null); openAppointmentDialog(viewOrder); }} data-testid="button-reschedule-from-view">
-                      <CalendarPlus className="w-3.5 h-3.5 me-1.5" />
-                      {t("إعادة جدولة الموعد", "Reschedule")}
-                    </Button>
-                  );
-                }
-                return (
-                  <Button className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => { setViewOrder(null); openAppointmentDialog(viewOrder); }} data-testid="button-edit-appt-from-view">
-                    <CalendarCheck className="w-3.5 h-3.5 me-1.5" />
-                    {t("تعديل الموعد", "Edit Appointment")}
-                  </Button>
-                );
-              })()}
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      )}
 
       {appointmentDialog && (() => {
         const monthNames = [
@@ -1486,7 +1314,7 @@ export default function MyOrdersPage() {
                 {t("إلغاء", "Cancel")}
               </Button>
               <Button
-                disabled={!newOrderForm.fullName.trim() || !newOrderForm.phone.trim() || createOrderMutation.isPending}
+                disabled={!newOrderForm.fullName.trim() || !newOrderForm.phone.trim() || !newOrderForm.productDescription.trim() || createOrderMutation.isPending}
                 onClick={() => createOrderMutation.mutate(newOrderForm)}
                 data-testid="button-submit-new-order"
               >

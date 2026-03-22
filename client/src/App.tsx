@@ -38,6 +38,7 @@ import TrackOrderPage from "@/pages/track-order";
 import DesignerBoardPage from "@/pages/designer-board";
 import OrderCenterPage from "@/pages/order-center";
 import MyOrdersPage from "@/pages/my-orders";
+import OrderDetailPage from "@/pages/order-detail";
 import DesignStudioPage from "@/pages/design-studio";
 import CustomerPortalLogin from "@/pages/customer-portal-login";
 import CustomerPortal from "@/pages/customer-portal";
@@ -167,6 +168,7 @@ function DashboardRoutes() {
         <Route path="/quality" component={QualityPage} />
         <Route path="/employees" component={EmployeesPage} />
         <Route path="/order-center" component={OrderCenterPage} />
+        <Route path="/orders/:id" component={OrderDetailPage} />
         <Route path="/my-orders" component={MyOrdersPage} />
         <Route path="/my-calendar" component={MyCalendarPage} />
         <Route path="/site-survey/:appointmentId" component={SiteSurveyPage} />
