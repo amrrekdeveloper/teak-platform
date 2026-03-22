@@ -9,6 +9,11 @@ export interface TemplateProductItem {
   notes?: string;
   isApplianceSpace?: boolean;
   cornerAnchor?: boolean;
+  /** Which end of the wall the corner unit anchors to.
+   *  "end"   = far end (high offset, junction with the next wall in 0→1→2→3 order)
+   *  "start" = near end (offset 0, junction with the previous wall)
+   *  Defaults to "end" when omitted. */
+  cornerJunction?: "start" | "end";
   zone?: ZoneType;
 }
 
@@ -108,7 +113,7 @@ export const KITCHEN_TEMPLATES: KitchenTemplate[] = [
 
     variants: {
       none: [
-        { code: "AKK 115",   wall: "A", qty: 1, notes: "زاوية عمياء — نقطة التقاء الجدارين A و B", cornerAnchor: true, zone: "storage" },
+        { code: "AKK 115",   wall: "A", qty: 1, notes: "زاوية عمياء — نقطة التقاء الجدارين A و B", cornerAnchor: true, cornerJunction: "end", zone: "storage" },
         { code: "E2K 80",    wall: "A", qty: 1, notes: "حوض", zone: "sink" },
         { code: "A1C1K 60",  wall: "A", qty: 1, zone: "prep" },
         { code: "A1C1K 60",  wall: "B", qty: 1, zone: "cooking" },
@@ -117,7 +122,7 @@ export const KITCHEN_TEMPLATES: KitchenTemplate[] = [
         { code: "U1K 60 36", wall: "B", qty: 2, zone: "storage" },
       ],
       spaces: [
-        { code: "AKK 115",   wall: "A", qty: 1, notes: "زاوية عمياء — نقطة التقاء الجدارين A و B", cornerAnchor: true, zone: "storage" },
+        { code: "AKK 115",   wall: "A", qty: 1, notes: "زاوية عمياء — نقطة التقاء الجدارين A و B", cornerAnchor: true, cornerJunction: "end", zone: "storage" },
         { code: "E2K 80",    wall: "A", qty: 1, notes: "حوض", zone: "sink" },
         { code: "A1C1K 60",  wall: "A", qty: 1, zone: "prep" },
         { code: "A1C1K 60",  wall: "B", qty: 1, zone: "cooking" },
@@ -126,7 +131,7 @@ export const KITCHEN_TEMPLATES: KitchenTemplate[] = [
         { code: "U1K 60 36", wall: "B", qty: 2, zone: "storage" },
       ],
       full: [
-        { code: "AKK 115",          wall: "A", qty: 1, notes: "زاوية عمياء — نقطة التقاء الجدارين A و B", cornerAnchor: true, zone: "storage" },
+        { code: "AKK 115",          wall: "A", qty: 1, notes: "زاوية عمياء — نقطة التقاء الجدارين A و B", cornerAnchor: true, cornerJunction: "end", zone: "storage" },
         { code: "E2K 80",           wall: "A", qty: 1, notes: "حوض", zone: "sink" },
         { code: "A1C1K 60",         wall: "A", qty: 1, zone: "prep" },
         { code: "A1C1K 60",         wall: "B", qty: 1, zone: "cooking" },
@@ -158,7 +163,7 @@ export const KITCHEN_TEMPLATES: KitchenTemplate[] = [
 
     variants: {
       none: [
-        { code: "AKK 125",   wall: "A", qty: 1, notes: "زاوية عمياء كبيرة — نقطة التقاء الجدارين A و B", cornerAnchor: true, zone: "storage" },
+        { code: "AKK 125",   wall: "A", qty: 1, notes: "زاوية عمياء كبيرة — نقطة التقاء الجدارين A و B", cornerAnchor: true, cornerJunction: "end", zone: "storage" },
         { code: "E2K 90",    wall: "A", qty: 1, notes: "حوض", zone: "sink" },
         { code: "A1C2K 80",  wall: "A", qty: 1, zone: "prep" },
         { code: "A1C1K 60",  wall: "A", qty: 1, zone: "cooking" },
@@ -170,7 +175,7 @@ export const KITCHEN_TEMPLATES: KitchenTemplate[] = [
         { code: "U1K 60 36", wall: "B", qty: 3, zone: "storage" },
       ],
       spaces: [
-        { code: "AKK 125",   wall: "A", qty: 1, notes: "زاوية عمياء كبيرة — نقطة التقاء الجدارين A و B", cornerAnchor: true, zone: "storage" },
+        { code: "AKK 125",   wall: "A", qty: 1, notes: "زاوية عمياء كبيرة — نقطة التقاء الجدارين A و B", cornerAnchor: true, cornerJunction: "end", zone: "storage" },
         { code: "E2K 90",    wall: "A", qty: 1, notes: "حوض", zone: "sink" },
         { code: "A1C2K 80",  wall: "A", qty: 1, zone: "prep" },
         { code: "A1C1K 60",  wall: "A", qty: 1, zone: "cooking" },
@@ -182,7 +187,7 @@ export const KITCHEN_TEMPLATES: KitchenTemplate[] = [
         { code: "U1K 60 36", wall: "B", qty: 3, zone: "storage" },
       ],
       full: [
-        { code: "AKK 125",          wall: "A", qty: 1, notes: "زاوية عمياء كبيرة — نقطة التقاء الجدارين A و B", cornerAnchor: true, zone: "storage" },
+        { code: "AKK 125",          wall: "A", qty: 1, notes: "زاوية عمياء كبيرة — نقطة التقاء الجدارين A و B", cornerAnchor: true, cornerJunction: "end", zone: "storage" },
         { code: "E2K 90",           wall: "A", qty: 1, notes: "حوض", zone: "sink" },
         { code: "A1C2K 80",         wall: "A", qty: 1, zone: "prep" },
         { code: "A1C1K 60",         wall: "A", qty: 1, zone: "cooking" },
@@ -216,8 +221,8 @@ export const KITCHEN_TEMPLATES: KitchenTemplate[] = [
 
     variants: {
       none: [
-        { code: "AKK 115",    wall: "B", qty: 1, notes: "زاوية عمياء — نقطة التقاء الجدارين A و B", cornerAnchor: true, zone: "storage" },
-        { code: "AKK 115",    wall: "C", qty: 1, notes: "زاوية عمياء — نقطة التقاء الجدارين A و C", cornerAnchor: true, zone: "storage" },
+        { code: "AKK 115",    wall: "B", qty: 1, notes: "زاوية عمياء — نقطة التقاء الجدارين A و B", cornerAnchor: true, cornerJunction: "end", zone: "storage" },
+        { code: "AKK 115",    wall: "C", qty: 1, notes: "زاوية عمياء — نقطة التقاء الجدارين A و C", cornerAnchor: true, cornerJunction: "start", zone: "storage" },
         { code: "E2K 90",     wall: "A", qty: 1, notes: "حوض", zone: "sink" },
         { code: "A1C2K 80",   wall: "A", qty: 1, zone: "prep" },
         { code: "A1C1K 60",   wall: "A", qty: 1, zone: "storage" },
@@ -231,8 +236,8 @@ export const KITCHEN_TEMPLATES: KitchenTemplate[] = [
         { code: "U1K 60 36",  wall: "C", qty: 3, zone: "storage" },
       ],
       spaces: [
-        { code: "AKK 115",    wall: "B", qty: 1, notes: "زاوية عمياء — نقطة التقاء الجدارين A و B", cornerAnchor: true, zone: "storage" },
-        { code: "AKK 115",    wall: "C", qty: 1, notes: "زاوية عمياء — نقطة التقاء الجدارين A و C", cornerAnchor: true, zone: "storage" },
+        { code: "AKK 115",    wall: "B", qty: 1, notes: "زاوية عمياء — نقطة التقاء الجدارين A و B", cornerAnchor: true, cornerJunction: "end", zone: "storage" },
+        { code: "AKK 115",    wall: "C", qty: 1, notes: "زاوية عمياء — نقطة التقاء الجدارين A و C", cornerAnchor: true, cornerJunction: "start", zone: "storage" },
         { code: "E2K 90",     wall: "A", qty: 1, notes: "حوض", zone: "sink" },
         { code: "A1C2K 80",   wall: "A", qty: 1, zone: "prep" },
         { code: "A1C1K 60",   wall: "A", qty: 1, zone: "storage" },
@@ -245,8 +250,8 @@ export const KITCHEN_TEMPLATES: KitchenTemplate[] = [
         { code: "U1K 60 36",  wall: "C", qty: 3, zone: "storage" },
       ],
       full: [
-        { code: "AKK 115",          wall: "B", qty: 1, notes: "زاوية عمياء — نقطة التقاء الجدارين A و B", cornerAnchor: true, zone: "storage" },
-        { code: "AKK 115",          wall: "C", qty: 1, notes: "زاوية عمياء — نقطة التقاء الجدارين A و C", cornerAnchor: true, zone: "storage" },
+        { code: "AKK 115",          wall: "B", qty: 1, notes: "زاوية عمياء — نقطة التقاء الجدارين A و B", cornerAnchor: true, cornerJunction: "end", zone: "storage" },
+        { code: "AKK 115",          wall: "C", qty: 1, notes: "زاوية عمياء — نقطة التقاء الجدارين A و C", cornerAnchor: true, cornerJunction: "start", zone: "storage" },
         { code: "E2K 100",          wall: "A", qty: 1, notes: "حوض", zone: "sink" },
         { code: "A1C2K 80",         wall: "A", qty: 1, zone: "prep" },
         { code: "A1C2K 80",         wall: "B", qty: 1, zone: "cooking" },
@@ -282,8 +287,8 @@ export const KITCHEN_TEMPLATES: KitchenTemplate[] = [
 
     variants: {
       none: [
-        { code: "AKK 125",    wall: "B", qty: 1, notes: "زاوية عمياء كبيرة — نقطة التقاء A و B", cornerAnchor: true, zone: "storage" },
-        { code: "AKK 125",    wall: "C", qty: 1, notes: "زاوية عمياء كبيرة — نقطة التقاء A و C", cornerAnchor: true, zone: "storage" },
+        { code: "AKK 125",    wall: "B", qty: 1, notes: "زاوية عمياء كبيرة — نقطة التقاء A و B", cornerAnchor: true, cornerJunction: "end", zone: "storage" },
+        { code: "AKK 125",    wall: "C", qty: 1, notes: "زاوية عمياء كبيرة — نقطة التقاء A و C", cornerAnchor: true, cornerJunction: "start", zone: "storage" },
         { code: "E2K 100",    wall: "A", qty: 1, notes: "حوض", zone: "sink" },
         { code: "A1C2K 100",  wall: "A", qty: 1, zone: "prep" },
         { code: "A1C2K 80",   wall: "A", qty: 1, zone: "storage" },
@@ -295,8 +300,8 @@ export const KITCHEN_TEMPLATES: KitchenTemplate[] = [
         { code: "U2K 100 36", wall: "C", qty: 2, zone: "storage" },
       ],
       spaces: [
-        { code: "AKK 125",    wall: "B", qty: 1, notes: "زاوية عمياء كبيرة — نقطة التقاء A و B", cornerAnchor: true, zone: "storage" },
-        { code: "AKK 125",    wall: "C", qty: 1, notes: "زاوية عمياء كبيرة — نقطة التقاء A و C", cornerAnchor: true, zone: "storage" },
+        { code: "AKK 125",    wall: "B", qty: 1, notes: "زاوية عمياء كبيرة — نقطة التقاء A و B", cornerAnchor: true, cornerJunction: "end", zone: "storage" },
+        { code: "AKK 125",    wall: "C", qty: 1, notes: "زاوية عمياء كبيرة — نقطة التقاء A و C", cornerAnchor: true, cornerJunction: "start", zone: "storage" },
         { code: "E2K 100",    wall: "A", qty: 1, notes: "حوض", zone: "sink" },
         { code: "A1C2K 100",  wall: "A", qty: 2, zone: "prep" },
         { code: "A1C2K 100",  wall: "B", qty: 2, zone: "cooking" },
@@ -309,8 +314,8 @@ export const KITCHEN_TEMPLATES: KitchenTemplate[] = [
         { code: "U2K 100 36", wall: "C", qty: 2, zone: "storage" },
       ],
       full: [
-        { code: "AKK 125",          wall: "B", qty: 1, notes: "زاوية عمياء كبيرة — نقطة التقاء A و B", cornerAnchor: true, zone: "storage" },
-        { code: "AKK 125",          wall: "C", qty: 1, notes: "زاوية عمياء كبيرة — نقطة التقاء A و C", cornerAnchor: true, zone: "storage" },
+        { code: "AKK 125",          wall: "B", qty: 1, notes: "زاوية عمياء كبيرة — نقطة التقاء A و B", cornerAnchor: true, cornerJunction: "end", zone: "storage" },
+        { code: "AKK 125",          wall: "C", qty: 1, notes: "زاوية عمياء كبيرة — نقطة التقاء A و C", cornerAnchor: true, cornerJunction: "start", zone: "storage" },
         { code: "E2K 100",          wall: "A", qty: 1, notes: "حوض", zone: "sink" },
         { code: "A1C2K 100",        wall: "A", qty: 2, zone: "prep" },
         { code: "A1C2K 80",         wall: "A", qty: 1, zone: "storage" },

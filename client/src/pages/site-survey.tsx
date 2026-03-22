@@ -656,6 +656,7 @@ export default function SiteSurveyPage() {
         wallId: wallIdMap[item.wall] || "",
         designW: String(parseFloat(adekoProduct.designW || "0") || ""),
         _isCorner: !!item.cornerAnchor,
+        _cornerJunction: item.cornerAnchor ? (item.cornerJunction ?? "end") : null,
         _zone: item.zone || null,
       }));
     });

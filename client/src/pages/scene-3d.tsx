@@ -847,25 +847,40 @@ function Scene3D({
   /* Wall lengths (in cm) for overflow clamping */
   const wallLengths: Record<number, number> = { 0: L, 1: W, 2: L, 3: W };
 
-  /* Pre-pass: reserve right-side space for corner units so regular products
-     don't overflow into the junction zone */
+  /* Pre-pass: reserve space at the junction end for corner units so regular
+     products don't overflow into the occupied zone.
+     "end" corners → reserved from the far (right) end of local x.
+     "start" corners → reserved from the near (left/start) end. */
   const wallRightReserved: Record<number, number> = { 0: 0, 1: 0, 2: 0, 3: 0 };
+  const wallLeftReserved:  Record<number, number> = { 0: 0, 1: 0, 2: 0, 3: 0 };
   products.forEach((p: any) => {
     if (!p._isCorner) return;
     const wIdx = getWallIndex(p);
     const pW = parseFloat(p.designW || p.dimensions?.w || "60");
-    wallRightReserved[wIdx] = Math.max(wallRightReserved[wIdx], pW + 5);
+    const junction = (p._cornerJunction as "start" | "end") ?? "end";
+    if (junction === "start") {
+      wallLeftReserved[wIdx] = Math.max(wallLeftReserved[wIdx], pW + 5);
+    } else {
+      wallRightReserved[wIdx] = Math.max(wallRightReserved[wIdx], pW + 5);
+    }
   });
 
-  const wallOffsets: Record<number, number> = { 0: 10, 1: 10, 2: 10, 3: 10 };
+  /* Initial offsets respect any start-side corner reservation */
+  const wallOffsets: Record<number, number> = {
+    0: 10 + wallLeftReserved[0],
+    1: 10 + wallLeftReserved[1],
+    2: 10 + wallLeftReserved[2],
+    3: 10 + wallLeftReserved[3],
+  };
   const productsWithPos = products.reduce((acc: any[], p: any, sourceIdx: number) => {
     const wIdx = getWallIndex(p);
     const pW = parseFloat(p.designW || p.dimensions?.w || "60");
     const wallLen = wallLengths[wIdx] || L;
 
-    /* Corner units sit at the junction end of the wall (far right in local x) */
+    /* Corner units anchored to "start" (local x=0) or "end" (local x=wallLen) */
     if (p._isCorner) {
-      const xOffset = wallLen - pW / 2;
+      const junction = (p._cornerJunction as "start" | "end") ?? "end";
+      const xOffset = junction === "start" ? pW / 2 : wallLen - pW / 2;
       acc.push({ ...p, _wallIndex: wIdx, _xOffset: xOffset, _sourceIndex: sourceIdx, _conflict: false });
       return acc;
     }
@@ -1154,9 +1169,30 @@ function FloorPlan2D({ survey }: { survey: any }) {
       }
     });
 
-    const wallOffsets: Record<number, number> = { 0: 0, 1: 0, 2: 0, 3: 0 };
     /* wall lengths in SVG units for corner end-positioning */
     const wallSvgLengths: Record<number, number> = { 0: rW, 1: rH, 2: rW, 3: rH };
+
+    /* Pre-pass: reserve 2D start/end space for corner units */
+    const svgRightReserved: Record<number, number> = { 0: 0, 1: 0, 2: 0, 3: 0 };
+    const svgLeftReserved:  Record<number, number> = { 0: 0, 1: 0, 2: 0, 3: 0 };
+    spaceProducts.forEach((prod: any) => {
+      if (!prod._isCorner) return;
+      const wallIdToIdxPre: Record<string, number> = {};
+      walls.forEach((w: any, wi: number) => { if (w?.id) wallIdToIdxPre[w.id] = wi; });
+      const wIdxPre = prod.wallId && wallIdToIdxPre[prod.wallId] !== undefined
+        ? wallIdToIdxPre[prod.wallId] : 0;
+      const pw2 = Math.max(parseFloat(prod.designW || prod.dimensions?.w || "60") * scale, 6);
+      const junc = (prod._cornerJunction as "start" | "end") ?? "end";
+      if (junc === "start") svgLeftReserved[wIdxPre]  = Math.max(svgLeftReserved[wIdxPre],  pw2 + 2);
+      else                  svgRightReserved[wIdxPre] = Math.max(svgRightReserved[wIdxPre], pw2 + 2);
+    });
+
+    const wallOffsets: Record<number, number> = {
+      0: svgLeftReserved[0],
+      1: svgLeftReserved[1],
+      2: svgLeftReserved[2],
+      3: svgLeftReserved[3],
+    };
 
     const wallIdToIdx: Record<string, number> = {};
     walls.forEach((w: any, wi: number) => { if (w?.id) wallIdToIdx[w.id] = wi; });
@@ -1175,13 +1211,16 @@ function FloorPlan2D({ survey }: { survey: any }) {
       const pw = Math.max(parseFloat(prod.designW || prod.dimensions?.w || "60") * scale, 6);
       const pd = Math.max(rawDepth * scale * 0.4, 4);
       const isCorner2D = !!prod._isCorner;
+      const cornerJunc2D = (prod._cornerJunction as "start" | "end") ?? "end";
 
       let pOffset: number;
       if (isCorner2D) {
-        /* Corner units: placed at the far (junction) end of the wall */
-        pOffset = wallSvgLengths[wIdx] - pw;
+        /* Corner units: anchored to start or end junction of wall */
+        pOffset = cornerJunc2D === "start" ? 0 : wallSvgLengths[wIdx] - pw;
       } else {
-        pOffset = wallOffsets[wIdx] ?? 0;
+        const rightReserve2D = svgRightReserved[wIdx] ?? 0;
+        const maxOffset = wallSvgLengths[wIdx] - rightReserve2D - pw - 2;
+        pOffset = Math.min(wallOffsets[wIdx] ?? 0, maxOffset);
         wallOffsets[wIdx] = pOffset + pw + 2;
       }
 
