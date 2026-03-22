@@ -246,6 +246,7 @@ export default function SiteSurveyPage() {
   const [autoSavePending, setAutoSavePending] = useState(false);
   const [autoSaveError, setAutoSaveError] = useState(false);
   const autoSaveDirtyRef = useRef(false);
+  const savedSurveyIdRef = useRef<number | null>(null);
   const [productSearchDialog, setProductSearchDialog] = useState(false);
   const [productSearch, setProductSearch] = useState("");
   const [selectedGroup, setSelectedGroup] = useState("all");
@@ -323,7 +324,7 @@ export default function SiteSurveyPage() {
 
   const autoSaveMutation = useMutation({
     mutationFn: async (data: any) => {
-      const surveyId = existingSurvey?.id || savedSurveyId;
+      const surveyId = existingSurvey?.id || savedSurveyIdRef.current;
       if (surveyId) {
         const res = await apiRequest("PATCH", `/api/site-surveys/${surveyId}`, data);
         return res.json();
@@ -337,7 +338,10 @@ export default function SiteSurveyPage() {
     },
     onSuccess: (saved: any) => {
       setAutoSavePending(false);
-      setSavedSurveyId((prev) => prev || saved?.id || null);
+      if (!savedSurveyIdRef.current && saved?.id) {
+        savedSurveyIdRef.current = saved.id;
+        setSavedSurveyId(saved.id);
+      }
       queryClient.invalidateQueries({ queryKey: ["/api/site-surveys"] });
       queryClient.invalidateQueries({ queryKey: ["/api/appointments", appointmentId, "site-survey"] });
       if (autoSaveDirtyRef.current) {
@@ -642,6 +646,7 @@ export default function SiteSurveyPage() {
                       if (subStep === "info") {
                         const currentEditSpace = spaces.find((sp) => sp.id === activeWallSpaceId) || spaces[0];
                         if (currentEditSpace) goToWallsSubStep(currentEditSpace.id);
+                        return;
                       }
                       performAutoSave();
                       setActiveWallSpaceId(s.id);
