@@ -1775,6 +1775,213 @@ function InvoicePreviewModal({ invoice, onClose }: { invoice: any; onClose: () =
   );
 }
 
+function PaymentScheduleSection({
+  inv, contract, payments, totalPaid, totalAmount, onReceiptClick
+}: {
+  inv: any; contract: any; payments: any[]; totalPaid: number; totalAmount: number; onReceiptClick: (p: any) => void;
+}) {
+  const { t } = useLanguage();
+  const { toast } = useToast();
+  const [stageReceiptImage, setStageReceiptImage] = useState<{ [stage: string]: string }>({});
+  const [stageUploading, setStageUploading] = useState<{ [stage: string]: boolean }>({});
+
+  const paymentSchedule = contract?.paymentSchedule || [];
+  const allContractPayments = contract ? payments.filter((p: any) => p.contractId === contract.id) : [];
+  const confirmedPayments = allContractPayments.filter((p: any) => p.status === "confirmed");
+
+  const uploadMutation = useMutation({
+    mutationFn: async ({ stage, imageData, amount }: { stage: string; imageData: string; amount: string }) => {
+      const res = await apiRequest("POST", "/api/customer-portal/upload-receipt", {
+        contractId: contract?.id,
+        amount,
+        receiptImage: imageData,
+        paymentMethod: "bank_transfer",
+        paymentStage: stage,
+        notes: `تم رفع الوصل من بوابة العميل - مرحلة: ${stage}`,
+      });
+      return res.json();
+    },
+    onSuccess: (_, vars) => {
+      toast({ title: t("تم رفع إيصال السداد بنجاح", "Receipt uploaded successfully") });
+      setStageReceiptImage((prev) => { const n = { ...prev }; delete n[vars.stage]; return n; });
+      queryClient.invalidateQueries({ queryKey: ["/api/customer-portal/my-data"] });
+    },
+    onError: () => {
+      toast({ title: t("حدث خطأ", "Error"), variant: "destructive" });
+    },
+  });
+
+  const handleFileForStage = (stage: string, file: File) => {
+    if (file.size > 5 * 1024 * 1024) {
+      toast({ title: t("الحد الأقصى 5 ميجابايت", "Max file size is 5MB"), variant: "destructive" });
+      return;
+    }
+    setStageUploading((prev) => ({ ...prev, [stage]: true }));
+    const reader = new FileReader();
+    reader.onload = () => {
+      setStageReceiptImage((prev) => ({ ...prev, [stage]: reader.result as string }));
+      setStageUploading((prev) => ({ ...prev, [stage]: false }));
+    };
+    reader.readAsDataURL(file);
+  };
+
+  if (paymentSchedule.length === 0 && confirmedPayments.length === 0) return null;
+
+  return (
+    <div className="border rounded-lg p-2.5 bg-muted/30 space-y-2 mt-2" data-testid={`payment-schedule-${inv.id}`}>
+      <div className="flex items-center justify-between">
+        <p className="text-[11px] font-semibold text-muted-foreground">{t("جدول الدفعات", "Payment Schedule")}</p>
+        <span className={`text-[11px] font-bold ${totalPaid >= totalAmount ? "text-green-600" : "text-amber-600"}`}>
+          {totalPaid.toLocaleString()} / {totalAmount.toLocaleString()} {t("ريال", "SAR")}
+        </span>
+      </div>
+
+      {paymentSchedule.length > 0 ? (
+        <div className="space-y-2">
+          {paymentSchedule.map((item: any, idx: number) => {
+            const stagePayments = allContractPayments.filter((p: any) => p.paymentStage === (item.stage || "other"));
+            const confirmedForStage = stagePayments.filter((p: any) => p.status === "confirmed");
+            const pendingForStage = stagePayments.filter((p: any) => p.status === "pending");
+            const stagePaid = confirmedForStage.reduce((s: number, p: any) => s + parseFloat(p.amount || 0), 0);
+            const stageAmount = parseFloat(item.amount || 0);
+            const isPaid = stagePaid >= stageAmount && stageAmount > 0;
+            const hasPending = pendingForStage.length > 0;
+            const canUpload = !isPaid && !hasPending;
+            const stageKey = item.stage || `stage_${idx}`;
+            const stageLabelsPortal: Record<string, { ar: string; en: string }> = {
+              deposit: { ar: "عربون", en: "Deposit" },
+              pre_manufacturing: { ar: "قبل التصنيع", en: "Pre-manufacturing" },
+              delivery: { ar: "عند التوصيل", en: "Upon Delivery" },
+              final: { ar: "الدفعة النهائية", en: "Final Payment" },
+              other: { ar: "أخرى", en: "Other" },
+            };
+
+            return (
+              <div
+                key={idx}
+                className={`rounded-lg border p-2.5 ${
+                  isPaid ? "bg-green-50 border-green-200 dark:bg-green-950/20 dark:border-green-800" :
+                  hasPending ? "bg-amber-50 border-amber-200 dark:bg-amber-950/20 dark:border-amber-800" :
+                  "bg-background border-border"
+                }`}
+                data-testid={`schedule-stage-${inv.id}-${idx}`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <div>
+                    <p className="text-xs font-medium">{item.label || t(stageLabelsPortal[stageKey]?.ar || stageKey, stageLabelsPortal[stageKey]?.en || stageKey)}</p>
+                    {item.dueDate && (
+                      <p className="text-[10px] text-muted-foreground">
+                        {t("استحقاق:", "Due:")} {new Date(item.dueDate).toLocaleDateString("ar-SA")}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-bold">{stageAmount.toLocaleString()} {t("ريال", "SAR")}</span>
+                    {isPaid ? (
+                      <CheckCircle2 className="w-3.5 h-3.5 text-green-600" />
+                    ) : hasPending ? (
+                      <Clock className="w-3.5 h-3.5 text-amber-500" />
+                    ) : (
+                      <div className="w-3.5 h-3.5 rounded-full border-2 border-muted-foreground/30" />
+                    )}
+                  </div>
+                </div>
+
+                {hasPending && (
+                  <p className="text-[10px] text-amber-700 dark:text-amber-400 font-medium">
+                    {t("إيصالك قيد المراجعة", "Your receipt is being reviewed")}
+                  </p>
+                )}
+
+                {isPaid && confirmedForStage.map((p: any) => (
+                  <div key={p.id} className="flex items-center justify-between text-[10px] mt-1">
+                    <span className="text-green-600 font-medium">{t("تم الدفع", "Paid")} {Number(p.amount).toLocaleString()} {t("ريال", "SAR")}</span>
+                    <button
+                      onClick={() => onReceiptClick(p)}
+                      className="text-primary hover:underline"
+                      data-testid={`button-receipt-stage-${inv.id}-${p.id}`}
+                    >
+                      {t("سند قبض", "Receipt")}
+                    </button>
+                  </div>
+                ))}
+
+                {canUpload && (
+                  <div className="mt-2">
+                    {stageReceiptImage[stageKey] ? (
+                      <div className="space-y-1.5">
+                        <div className="relative">
+                          <img src={stageReceiptImage[stageKey]} alt="Receipt" className="w-full max-h-28 object-contain rounded border bg-white" />
+                          <button
+                            type="button"
+                            onClick={() => setStageReceiptImage((prev) => { const n = { ...prev }; delete n[stageKey]; return n; })}
+                            className="absolute top-0.5 end-0.5 bg-red-500 text-white rounded-full p-0.5"
+                          >
+                            <X className="w-2.5 h-2.5" />
+                          </button>
+                        </div>
+                        <Button
+                          size="sm"
+                          className="w-full h-7 text-[10px] bg-emerald-600 hover:bg-emerald-700"
+                          onClick={() => uploadMutation.mutate({ stage: stageKey, imageData: stageReceiptImage[stageKey], amount: String(stageAmount) })}
+                          disabled={uploadMutation.isPending}
+                          data-testid={`button-upload-stage-${inv.id}-${idx}`}
+                        >
+                          {uploadMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin me-1" /> : <Upload className="w-3 h-3 me-1" />}
+                          {t("إرسال الإيصال", "Submit Receipt")}
+                        </Button>
+                      </div>
+                    ) : (
+                      <label className="flex items-center gap-1.5 border border-dashed border-emerald-300 dark:border-emerald-700 rounded-md px-2 py-1.5 cursor-pointer hover:bg-emerald-50 dark:hover:bg-emerald-950/20 transition-colors">
+                        {stageUploading[stageKey] ? (
+                          <Loader2 className="w-3 h-3 animate-spin text-emerald-500" />
+                        ) : (
+                          <Upload className="w-3 h-3 text-emerald-500" />
+                        )}
+                        <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-medium">
+                          {t("رفع إيصال الدفع", "Upload Receipt")}
+                        </span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileForStage(stageKey, f); }}
+                          data-testid={`input-stage-receipt-${inv.id}-${idx}`}
+                        />
+                      </label>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ) : confirmedPayments.length > 0 ? (
+        <div className="space-y-1.5">
+          {confirmedPayments.map((p: any) => (
+            <div key={p.id} className="flex items-center justify-between text-xs bg-green-50 dark:bg-green-950/20 rounded-md px-2.5 py-1.5 border border-green-200 dark:border-green-800" data-testid={`confirmed-payment-${p.id}`}>
+              <div className="flex items-center gap-1.5">
+                <CheckCircle2 className="w-3 h-3 text-green-600" />
+                <span className="font-medium">{Number(p.amount).toLocaleString()} {t("ريال", "SAR")}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-muted-foreground">{new Date(p.createdAt).toLocaleDateString("ar-SA")}</span>
+                <button
+                  onClick={() => onReceiptClick(p)}
+                  className="text-primary hover:underline text-[10px]"
+                  data-testid={`button-receipt-portal-${p.id}`}
+                >
+                  {t("سند قبض", "Receipt")}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function InvoicesTab({ invoices, contracts, payments, customerName }: { invoices: any[]; contracts: any[]; payments: any[]; customerName?: string }) {
   const { t } = useLanguage();
   const [previewInvoice, setPreviewInvoice] = useState<any | null>(null);
@@ -1827,50 +2034,14 @@ function InvoicesTab({ invoices, contracts, payments, customerName }: { invoices
                     </div>
                   )}
 
-                  {paymentSchedule.length > 0 && (
-                    <div className="border rounded-lg p-2.5 bg-muted/30 space-y-1.5 mt-2" data-testid={`payment-schedule-${inv.id}`}>
-                      <p className="text-[11px] font-semibold text-muted-foreground">{t("جدول الدفعات", "Payment Schedule")}</p>
-                      {paymentSchedule.map((item: any, idx: number) => (
-                        <div key={idx} className="flex items-center justify-between text-xs" data-testid={`schedule-item-${inv.id}-${idx}`}>
-                          <span>{item.label || `${t("دفعة", "Payment")} ${idx + 1}`}</span>
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium">{Number(item.amount || 0).toLocaleString()} {t("ريال", "SAR")}</span>
-                            {item.dueDate && <span className="text-[10px] text-muted-foreground">{new Date(item.dueDate).toLocaleDateString("ar-SA")}</span>}
-                          </div>
-                        </div>
-                      ))}
-                      <div className="border-t pt-1.5 mt-1 flex items-center justify-between text-xs">
-                        <span className="font-semibold">{t("المدفوع", "Paid")}</span>
-                        <span className={`font-bold ${totalPaid >= totalAmount ? "text-green-600" : "text-amber-600"}`}>
-                          {totalPaid.toLocaleString()} / {totalAmount.toLocaleString()} {t("ريال", "SAR")}
-                        </span>
-                      </div>
-                    </div>
-                  )}
-
-                  {contractPayments.length > 0 && (
-                    <div className="space-y-1.5 mt-2">
-                      <p className="text-[11px] font-semibold text-muted-foreground">{t("المدفوعات المؤكدة", "Confirmed Payments")}</p>
-                      {contractPayments.map((p: any) => (
-                        <div key={p.id} className="flex items-center justify-between text-xs bg-green-50 dark:bg-green-950/20 rounded-md px-2.5 py-1.5 border border-green-200 dark:border-green-800" data-testid={`confirmed-payment-${p.id}`}>
-                          <div className="flex items-center gap-1.5">
-                            <CheckCircle2 className="w-3 h-3 text-green-600" />
-                            <span className="font-medium">{Number(p.amount).toLocaleString()} {t("ريال", "SAR")}</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-[10px] text-muted-foreground">{new Date(p.createdAt).toLocaleDateString("ar-SA")}</span>
-                            <button
-                              onClick={() => { setReceiptPayment(p); setReceiptContract(contract); }}
-                              className="text-primary hover:underline text-[10px]"
-                              data-testid={`button-receipt-portal-${p.id}`}
-                            >
-                              {t("سند قبض", "Receipt")}
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  <PaymentScheduleSection
+                    inv={inv}
+                    contract={contract}
+                    payments={payments}
+                    totalPaid={totalPaid}
+                    totalAmount={totalAmount}
+                    onReceiptClick={(p) => { setReceiptPayment(p); setReceiptContract(contract); }}
+                  />
                 </div>
 
                 <div className="px-4 pb-3 space-y-2">

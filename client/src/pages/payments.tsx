@@ -64,11 +64,14 @@ export default function PaymentsPage() {
       const res = await apiRequest("PATCH", `/api/payments/${id}/confirm`);
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/contracts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/work-orders"] });
-      toast({ title: t("تم تأكيد الدفعة بنجاح", "Payment confirmed successfully") });
+      toast({ title: t("تم اعتماد الدفعة بنجاح", "Payment approved successfully") });
+      if (data?.payment) {
+        setReceiptPayment(data.payment);
+      }
     },
     onError: () => {
       toast({ title: t("حدث خطأ", "Error"), variant: "destructive" });
@@ -260,61 +263,83 @@ export default function PaymentsPage() {
                   </div>
 
                   {payment.status === "pending" && (
-                    <div className="flex items-center gap-2 pt-2 border-t">
-                      {rejectingId === payment.id ? (
-                        <div className="flex-1 flex items-center gap-2">
-                          <Textarea
-                            value={rejectionReason}
-                            onChange={(e) => setRejectionReason(e.target.value)}
-                            placeholder={t("سبب الرفض...", "Rejection reason...")}
-                            className="text-sm h-10 min-h-0 flex-1"
-                            data-testid={`input-rejection-reason-${payment.id}`}
-                          />
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            onClick={() => rejectMutation.mutate({ id: payment.id, reason: rejectionReason })}
-                            disabled={rejectMutation.isPending}
-                            data-testid={`button-confirm-reject-${payment.id}`}
-                          >
-                            {rejectMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : t("رفض", "Reject")}
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => { setRejectingId(null); setRejectionReason(""); }}
-                          >
-                            {t("إلغاء", "Cancel")}
-                          </Button>
+                    <div className="space-y-3 pt-2 border-t">
+                      {payment.attachmentUrl && (
+                        <div
+                          className="cursor-pointer rounded-lg overflow-hidden border border-amber-200 dark:border-amber-800 max-h-48 bg-amber-50 dark:bg-amber-950/20 flex items-center justify-center"
+                          onClick={() => setPreviewImage(payment.attachmentUrl)}
+                          data-testid={`img-receipt-preview-${payment.id}`}
+                        >
+                          {payment.attachmentUrl.startsWith("data:application/pdf") ? (
+                            <div className="text-center p-4">
+                              <FileText className="w-10 h-10 text-amber-500 mx-auto mb-1" />
+                              <p className="text-xs text-muted-foreground">{t("ملف PDF", "PDF File")}</p>
+                            </div>
+                          ) : (
+                            <img
+                              src={payment.attachmentUrl}
+                              alt="Receipt"
+                              className="w-full max-h-48 object-contain"
+                            />
+                          )}
                         </div>
-                      ) : (
-                        <>
-                          <Button
-                            size="sm"
-                            className="bg-green-600 hover:bg-green-700 text-white"
-                            onClick={() => confirmMutation.mutate(payment.id)}
-                            disabled={confirmMutation.isPending}
-                            data-testid={`button-confirm-${payment.id}`}
-                          >
-                            {confirmMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : (
-                              <>
-                                <CheckCircle2 className="w-3 h-3 me-1" />
-                                {t("تأكيد الدفعة", "Confirm Payment")}
-                              </>
-                            )}
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="text-red-600 border-red-200 hover:bg-red-50"
-                            onClick={() => setRejectingId(payment.id)}
-                            data-testid={`button-reject-${payment.id}`}
-                          >
-                            <XCircle className="w-3 h-3 me-1" />
-                            {t("رفض", "Reject")}
-                          </Button>
-                        </>
                       )}
+                      <div className="flex items-center gap-2">
+                        {rejectingId === payment.id ? (
+                          <div className="flex-1 flex items-center gap-2">
+                            <Textarea
+                              value={rejectionReason}
+                              onChange={(e) => setRejectionReason(e.target.value)}
+                              placeholder={t("سبب الرفض...", "Rejection reason...")}
+                              className="text-sm h-10 min-h-0 flex-1"
+                              data-testid={`input-rejection-reason-${payment.id}`}
+                            />
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              onClick={() => rejectMutation.mutate({ id: payment.id, reason: rejectionReason })}
+                              disabled={rejectMutation.isPending}
+                              data-testid={`button-confirm-reject-${payment.id}`}
+                            >
+                              {rejectMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : t("رفض", "Reject")}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => { setRejectingId(null); setRejectionReason(""); }}
+                            >
+                              {t("إلغاء", "Cancel")}
+                            </Button>
+                          </div>
+                        ) : (
+                          <>
+                            <Button
+                              size="sm"
+                              className="bg-green-600 hover:bg-green-700 text-white flex-1"
+                              onClick={() => confirmMutation.mutate(payment.id)}
+                              disabled={confirmMutation.isPending}
+                              data-testid={`button-confirm-${payment.id}`}
+                            >
+                              {confirmMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : (
+                                <>
+                                  <CheckCircle2 className="w-3 h-3 me-1" />
+                                  {t("اعتماد الدفعة", "Approve Payment")}
+                                </>
+                              )}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-red-600 border-red-200 hover:bg-red-50 flex-1"
+                              onClick={() => setRejectingId(payment.id)}
+                              data-testid={`button-reject-${payment.id}`}
+                            >
+                              <XCircle className="w-3 h-3 me-1" />
+                              {t("رفض مع سبب", "Reject with Reason")}
+                            </Button>
+                          </>
+                        )}
+                      </div>
                     </div>
                   )}
                 </CardContent>

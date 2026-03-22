@@ -1291,52 +1291,71 @@ export async function registerRoutes(
 
   app.post("/api/payments", requireRole("owner", "assistant", "sales", "accountant"), async (req, res) => {
     try {
-      const data = { ...req.body, recordedBy: req.session.userId };
+      const currentUser = await storage.getUser(req.session.userId!);
+      const isSalesRep = currentUser?.role === "sales";
+      const needsApproval = isSalesRep;
+      const paymentStatus = needsApproval ? "pending" : (req.body.status || "confirmed");
+
+      const data = { ...req.body, recordedBy: req.session.userId, status: paymentStatus };
       const payment = await storage.createPayment(data);
 
-      const contract = await storage.getContract(payment.contractId);
-      if (contract) {
-        const newPaidAmount = parseFloat(contract.paidAmount) + parseFloat(payment.amount);
-        const newRemaining = parseFloat(contract.totalAmount) - newPaidAmount;
-        await storage.updateContract(contract.id, {
-          paidAmount: String(newPaidAmount),
-          remainingAmount: String(newRemaining),
-          status: newRemaining <= 0 ? "completed" : "active",
-        });
-      }
+      if (!needsApproval) {
+        const contract = await storage.getContract(payment.contractId);
+        if (contract) {
+          const newPaidAmount = parseFloat(contract.paidAmount) + parseFloat(payment.amount);
+          const newRemaining = parseFloat(contract.totalAmount) - newPaidAmount;
+          await storage.updateContract(contract.id, {
+            paidAmount: String(newPaidAmount),
+            remainingAmount: String(newRemaining),
+            status: newRemaining <= 0 ? "completed" : "active",
+          });
+        }
 
-      const settings = await storage.getCompanySettings();
-      const customer = await storage.getCustomer(payment.customerId);
-      if (settings && customer) {
-        const invoiceData: any = {
-          contractId: payment.contractId,
-          customerId: payment.customerId,
-          paymentStage: payment.paymentStage,
-          type: "simplified_tax_invoice",
-          items: [{ description: `دفعة - ${payment.paymentStage}`, amount: payment.amount }],
-          subtotal: String(parseFloat(payment.amount) / 1.15),
-          vatRate: "15",
-          vatAmount: String(parseFloat(payment.amount) - parseFloat(payment.amount) / 1.15),
-          totalWithVat: payment.amount,
-          sellerName: settings.nameAr,
-          sellerVatNumber: settings.vatNumber,
-          sellerAddress: settings.address,
-          buyerName: customer.fullName,
-          buyerPhone: customer.phone,
-          paymentMethod: payment.method === "bank_transfer" ? "تحويل بنكي" : payment.method === "cash" ? "نقدي" : "بطاقة",
-          status: "paid",
-          issuedAt: new Date(),
-          paidAt: new Date(),
-          createdBy: req.session.userId,
-        };
+        const settings = await storage.getCompanySettings();
+        const customer = await storage.getCustomer(payment.customerId);
+        if (settings && customer) {
+          const invoiceData: any = {
+            contractId: payment.contractId,
+            customerId: payment.customerId,
+            paymentStage: payment.paymentStage,
+            type: "simplified_tax_invoice",
+            items: [{ description: `دفعة - ${payment.paymentStage}`, amount: payment.amount }],
+            subtotal: String(parseFloat(payment.amount) / 1.15),
+            vatRate: "15",
+            vatAmount: String(parseFloat(payment.amount) - parseFloat(payment.amount) / 1.15),
+            totalWithVat: payment.amount,
+            sellerName: settings.nameAr,
+            sellerVatNumber: settings.vatNumber,
+            sellerAddress: settings.address,
+            buyerName: customer.fullName,
+            buyerPhone: customer.phone,
+            paymentMethod: payment.method === "bank_transfer" ? "تحويل بنكي" : payment.method === "cash" ? "نقدي" : "بطاقة",
+            status: "paid",
+            issuedAt: new Date(),
+            paidAt: new Date(),
+            createdBy: req.session.userId,
+          };
 
-        invoiceData.qrCodeData = generateQRData(invoiceData);
-        const invoice = await storage.createInvoice(invoiceData);
+          invoiceData.qrCodeData = generateQRData(invoiceData);
+          const invoice = await storage.createInvoice(invoiceData);
 
-        await storage.createPayment({
-          ...data,
-          invoiceId: invoice.id,
-        }).catch(() => {});
+          await storage.updatePayment(payment.id, { invoiceId: invoice.id } as any).catch(() => {});
+        }
+      } else {
+        const customer = await storage.getCustomer(payment.customerId);
+        const allUsers = await storage.getUsers();
+        const managers = allUsers.filter((u: any) => ["owner", "assistant", "accountant"].includes(u.role));
+        for (const mgr of managers) {
+          await storage.createNotification({
+            userId: mgr.id,
+            type: "action",
+            titleAr: "دفعة جديدة بانتظار الاعتماد",
+            titleEn: "New Payment Awaiting Approval",
+            messageAr: `المندوب ${currentUser?.fullNameAr || ""} سجّل دفعة بمبلغ ${payment.amount} ريال من العميل ${customer?.fullName || ""}`,
+            messageEn: `Sales rep ${currentUser?.fullNameEn || ""} recorded a payment of ${payment.amount} SAR from ${customer?.fullName || ""}`,
+            isRead: false,
+          });
+        }
       }
 
       res.status(201).json(payment);
@@ -2566,12 +2585,15 @@ export async function registerRoutes(
         return res.status(403).json({ message: "غير مصرح", messageEn: "Unauthorized - contract not yours" });
       }
 
+      const validStages = ["deposit", "pre_manufacturing", "delivery", "final", "other"];
+      const safeStage = validStages.includes(req.body.paymentStage) ? req.body.paymentStage : "deposit";
+
       const payment = await storage.createPayment({
         contractId,
         customerId: customer.id,
         amount: amount || "0",
         method: paymentMethod || "bank_transfer",
-        paymentStage: "deposit",
+        paymentStage: safeStage,
         notes: notes || "تم رفع الوصل من بوابة العميل",
         attachmentUrl: receiptImage || null,
         recordedBy: null,
