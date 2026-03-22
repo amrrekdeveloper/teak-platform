@@ -220,6 +220,7 @@ export const quotations = pgTable("quotations", {
   deliveryDays: integer("delivery_days"),
   city: text("city"),
   notes: text("notes"),
+  orderStage: text("order_stage").default("new"),
   cancellationReason: text("cancellation_reason"),
   cancelledAt: timestamp("cancelled_at"),
   createdBy: integer("created_by").references(() => users.id),

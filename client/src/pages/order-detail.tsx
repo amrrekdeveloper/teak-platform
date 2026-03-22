@@ -35,6 +35,8 @@ function getOrderStage(
   siteSurveysAll: any[],
   apptByQuotation: Record<number, any>
 ): PipelineStage {
+  const validStages: PipelineStage[] = ["new", "appointment", "survey", "sent", "approved", "production", "delivered", "rejected", "cancelled"];
+  if (q.orderStage && validStages.includes(q.orderStage as PipelineStage)) return q.orderStage as PipelineStage;
   if (q.status === "cancelled") return "cancelled";
   if (q.status === "rejected" || q.status === "expired") return "rejected";
   if (q.status === "approved") {
@@ -105,7 +107,7 @@ export default function OrderDetailPage() {
   const { data: siteSurveys = [] } = useQuery<any[]>({ queryKey: ["/api/site-surveys"] });
   const { data: payments = [] } = useQuery<any[]>({ queryKey: ["/api/payments"] });
 
-  const isManager = user && ["owner", "assistant", "it"].includes(user.role);
+  const isManager = user && ["owner", "assistant"].includes(user.role);
 
   if (isLoading) {
     return (
@@ -159,6 +161,10 @@ export default function OrderDetailPage() {
   function formatDate(d: string | null | undefined) {
     if (!d) return "—";
     return new Date(d).toLocaleDateString(lang === "ar" ? "ar-SA" : "en-US", { year: "numeric", month: "long", day: "numeric" });
+  }
+  function formatDateTime(d: string | null | undefined) {
+    if (!d) return "—";
+    return new Date(d).toLocaleString(lang === "ar" ? "ar-SA" : "en-US", { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" });
   }
   function formatMoney(n: any) {
     return Number(n || 0).toLocaleString() + " " + t("ر.س", "SAR");
@@ -233,7 +239,7 @@ export default function OrderDetailPage() {
               <div>
                 <p className="text-sm font-semibold text-red-700 dark:text-red-400">{t("تم إلغاء الطلب", "Order Cancelled")}</p>
                 {quotation.cancellationReason && <p className="text-sm mt-0.5">{quotation.cancellationReason}</p>}
-                {quotation.cancelledAt && <p className="text-xs text-muted-foreground mt-1">{formatDate(quotation.cancelledAt)}</p>}
+                {quotation.cancelledAt && <p className="text-xs text-muted-foreground mt-1">{formatDateTime(quotation.cancelledAt)}</p>}
               </div>
             </div>
           </CardContent>

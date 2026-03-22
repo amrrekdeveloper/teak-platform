@@ -86,6 +86,10 @@ function getOrderStage(
   siteSurveys: any[],
   apptByQuotation: Record<number, any>
 ): PipelineStage {
+  const validStages: PipelineStage[] = ["new", "appointment", "survey", "sent", "approved", "production", "delivered", "rejected", "cancelled"];
+  if (q.orderStage && validStages.includes(q.orderStage as PipelineStage)) {
+    return q.orderStage as PipelineStage;
+  }
   if (q.status === "cancelled") return "cancelled";
   if (q.status === "rejected" || q.status === "expired") return "rejected";
 
@@ -196,7 +200,7 @@ export default function MyOrdersPage() {
   const { data: appointments = [] } = useQuery<any[]>({ queryKey: ["/api/appointments"] });
   const { data: siteSurveys = [] } = useQuery<any[]>({ queryKey: ["/api/site-surveys"] });
 
-  const isManager = user && ["owner", "assistant", "it"].includes(user.role);
+  const isManager = user && ["owner", "assistant"].includes(user.role);
 
   useEffect(() => {
     const expired = (appointments as any[]).filter((appt: any) => {
@@ -499,6 +503,10 @@ export default function MyOrdersPage() {
     if (!dateStr) return "—";
     return new Date(dateStr).toLocaleDateString(lang === "ar" ? "ar-SA" : "en-US", { month: "short", day: "numeric" });
   }
+  function formatDateTime(dateStr: string) {
+    if (!dateStr) return "—";
+    return new Date(dateStr).toLocaleString(lang === "ar" ? "ar-SA" : "en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  }
 
   if (isLoading) {
     return (
@@ -716,7 +724,7 @@ export default function MyOrdersPage() {
                               </Badge>
                               {isCancelled && order.cancelledAt && (
                                 <div className="mt-0.5">
-                                  <span className="text-[10px] text-red-600 dark:text-red-400">{formatDate(order.cancelledAt)}</span>
+                                  <span className="text-[10px] text-red-600 dark:text-red-400">{formatDateTime(order.cancelledAt)}</span>
                                 </div>
                               )}
                               {isCancelled && order.cancellationReason && (

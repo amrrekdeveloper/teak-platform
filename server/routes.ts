@@ -115,6 +115,22 @@ export async function registerRoutes(
     console.warn("Quotation cancellation migration warning (non-fatal):", cancellationMigrationError instanceof Error ? cancellationMigrationError.message : String(cancellationMigrationError));
   }
 
+  try {
+    await db.execute(`
+      ALTER TABLE quotations ADD COLUMN IF NOT EXISTS order_stage TEXT DEFAULT 'new';
+      UPDATE quotations SET order_stage = CASE
+        WHEN status = 'cancelled' THEN 'cancelled'
+        WHEN status IN ('rejected', 'expired') THEN 'rejected'
+        WHEN status = 'approved' THEN 'approved'
+        WHEN status = 'sent' THEN 'sent'
+        WHEN status IN ('requested', 'open') THEN 'new'
+        ELSE 'new'
+      END WHERE order_stage IS NULL OR order_stage = 'new';
+    `);
+  } catch (orderStageMigrationError) {
+    console.warn("Order stage migration warning (non-fatal):", orderStageMigrationError instanceof Error ? orderStageMigrationError.message : String(orderStageMigrationError));
+  }
+
   app.get("/api/products/public", async (req, res) => {
     try {
       const category = req.query.category as string | undefined;
@@ -871,6 +887,11 @@ export async function registerRoutes(
           data.assignedAt = new Date();
         }
       }
+      if (data.status === "sent" && !data.orderStage) data.orderStage = "sent";
+      if (data.status === "approved" && !data.orderStage) data.orderStage = "approved";
+      if (data.status === "rejected" && !data.orderStage) data.orderStage = "rejected";
+      if (data.status === "expired" && !data.orderStage) data.orderStage = "rejected";
+      if (data.status === "cancelled" && !data.orderStage) data.orderStage = "cancelled";
       delete data.id;
       delete data.createdAt;
       const updated = await storage.updateQuotation(parseInt(req.params.id), data);
@@ -883,7 +904,7 @@ export async function registerRoutes(
 
   app.post("/api/quotations/:id/approve", requireRole("owner", "assistant"), async (req, res) => {
     try {
-      const updated = await storage.updateQuotation(parseInt(req.params.id), { status: "approved" });
+      const updated = await storage.updateQuotation(parseInt(req.params.id), { status: "approved", orderStage: "approved" });
       if (!updated) return res.status(404).json({ message: "عرض السعر غير موجود" });
       res.json(updated);
     } catch (error) {
@@ -893,7 +914,7 @@ export async function registerRoutes(
 
   app.post("/api/quotations/:id/reject", requireRole("owner", "assistant"), async (req, res) => {
     try {
-      const updated = await storage.updateQuotation(parseInt(req.params.id), { status: "rejected" });
+      const updated = await storage.updateQuotation(parseInt(req.params.id), { status: "rejected", orderStage: "rejected" });
       if (!updated) return res.status(404).json({ message: "عرض السعر غير موجود" });
       res.json(updated);
     } catch (error) {
@@ -917,6 +938,7 @@ export async function registerRoutes(
       const now = new Date();
       const updated = await storage.updateQuotation(quotationId, {
         status: "cancelled",
+        orderStage: "cancelled",
         cancellationReason: fullReason,
         cancelledAt: now,
       });
@@ -1666,6 +1688,16 @@ export async function registerRoutes(
         });
       }
 
+      if (wo.contractId) {
+        const contract = await storage.getContract(wo.contractId);
+        if (contract?.quotationId) {
+          const q = await storage.getQuotation(contract.quotationId);
+          if (q && !["cancelled", "rejected", "delivered"].includes(q.orderStage || "")) {
+            await storage.updateQuotation(contract.quotationId, { orderStage: "production" });
+          }
+        }
+      }
+
       res.status(201).json(wo);
     } catch (error: any) {
       if (error.name === "ZodError") {
@@ -1682,6 +1714,14 @@ export async function registerRoutes(
       if (!existing) return res.status(404).json({ message: "أمر العمل غير موجود", messageEn: "Work order not found" });
 
       const updated = await storage.updateWorkOrder(id, req.body);
+      if (req.body.status && ["completed", "delivered", "installed"].includes(req.body.status)) {
+        if (existing.contractId) {
+          const contract = await storage.getContract(existing.contractId);
+          if (contract?.quotationId) {
+            await storage.updateQuotation(contract.quotationId, { orderStage: "delivered" });
+          }
+        }
+      }
       res.json(updated);
     } catch (error) {
       res.status(500).json({ message: "حدث خطأ في تحديث أمر العمل", messageEn: "Error updating work order" });
@@ -2806,6 +2846,12 @@ export async function registerRoutes(
       }
 
       const appointment = await storage.createAppointment(data);
+      if (appointment.quotationId) {
+        const q = await storage.getQuotation(appointment.quotationId);
+        if (q && !["cancelled", "rejected", "approved", "sent"].includes(q.orderStage || "")) {
+          await storage.updateQuotation(appointment.quotationId, { orderStage: "appointment" });
+        }
+      }
       res.status(201).json(appointment);
     } catch (error) {
       console.error("Create appointment error:", error);
@@ -3049,6 +3095,12 @@ export async function registerRoutes(
       };
 
       const survey = await storage.createSiteSurvey(surveyData);
+      if (surveyData.quotationId) {
+        const q = await storage.getQuotation(surveyData.quotationId);
+        if (q && !["cancelled", "rejected", "approved", "sent"].includes(q.orderStage || "")) {
+          await storage.updateQuotation(surveyData.quotationId, { orderStage: "survey" });
+        }
+      }
       res.status(201).json(survey);
     } catch (error) {
       console.error("Create site survey error:", error);
