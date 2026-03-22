@@ -348,7 +348,6 @@ export default function SiteSurveyPage() {
     onError: () => {
       setAutoSavePending(false);
       setAutoSaveError(true);
-      autoSaveDirtyRef.current = false;
     },
   });
 
