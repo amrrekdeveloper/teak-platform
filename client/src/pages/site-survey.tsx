@@ -376,25 +376,25 @@ export default function SiteSurveyPage() {
     },
   });
 
-  function performAutoSaveNow(currentSpaces?: SpaceData[]) {
+  function performAutoSaveNow(currentSpaces?: SpaceData[], currentProducts?: any[]) {
     const data = {
       appointmentId,
       customerId: appointment?.customerId || null,
       quotationId: appointment?.quotationId || null,
       spaces: currentSpaces || spaces,
-      selectedProducts,
+      selectedProducts: currentProducts ?? selectedProducts,
       notes: surveyNotes || null,
       photos,
     };
     autoSaveMutation.mutate(data);
   }
 
-  function performAutoSave(currentSpaces?: SpaceData[]) {
+  function performAutoSave(currentSpaces?: SpaceData[], currentProducts?: any[]) {
     if (autoSaveMutation.isPending) {
       autoSaveDirtyRef.current = true;
       return;
     }
-    performAutoSaveNow(currentSpaces);
+    performAutoSaveNow(currentSpaces, currentProducts);
   }
 
   const saveMutation = useMutation({
@@ -657,9 +657,13 @@ export default function SiteSurveyPage() {
       }));
     });
 
-    const withoutCurrentSpace = selectedProducts.filter((p) => p.spaceId !== currentSpace.id);
-    setSelectedProducts([...withoutCurrentSpace, ...newProducts]);
-    performAutoSave();
+    const validSpaceIds = new Set(spaces.map((s) => s.id));
+    const withoutCurrentSpace = selectedProducts.filter(
+      (p) => p.spaceId !== currentSpace.id && validSpaceIds.has(p.spaceId)
+    );
+    const mergedProducts = [...withoutCurrentSpace, ...newProducts];
+    setSelectedProducts(mergedProducts);
+    performAutoSave(undefined, mergedProducts);
     toast({
       title: t("تم تطبيق القالب", "Template Applied"),
       description: t(

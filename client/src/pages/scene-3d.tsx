@@ -11,6 +11,9 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import {
   RotateCcw, Package, ArrowLeft, Trash2, Share2, Loader2,
   RefreshCw, Search, Sun, Moon, Download, Map,
 } from "lucide-react";
@@ -1325,7 +1328,42 @@ export default function Scene3DPage() {
     staleTime: 30000,
   });
 
+  const surveySpaces: any[] = useMemo(() => survey?.spaces || [], [survey]);
+  const [activeSpaceId, setActiveSpaceId] = useState<string>("");
+
+  // Auto-select first space when survey loads
+  useEffect(() => {
+    if (surveySpaces.length > 0 && !activeSpaceId) {
+      setActiveSpaceId(surveySpaces[0].id);
+    }
+  }, [surveySpaces, activeSpaceId]);
+
+  const activeSpace = useMemo(() =>
+    surveySpaces.find((s: any) => s.id === activeSpaceId) || surveySpaces[0],
+  [surveySpaces, activeSpaceId]);
+
+  // Create a per-space survey view for 3D/2D/Elevation
+  const surveyForSpace = useMemo(() => {
+    if (!survey || !activeSpace) return survey;
+    const allProducts: any[] = survey.selectedProducts || [];
+    const spaceProducts = allProducts.filter((p: any) => p.spaceId === activeSpace.id);
+    const spaceL = parseFloat(activeSpace.length) || 400;
+    const spaceW = parseFloat(activeSpace.width) || 300;
+    const spaceH = parseFloat(activeSpace.height || activeSpace.wallHeight || "240") || 240;
+    return {
+      ...survey,
+      spaces: [activeSpace],
+      selectedProducts: spaceProducts,
+      roomDimensions: {
+        length: spaceL <= 30 ? spaceL * 100 : spaceL,
+        width: spaceW <= 30 ? spaceW * 100 : spaceW,
+        height: spaceH <= 30 ? spaceH * 100 : spaceH,
+      },
+    };
+  }, [survey, activeSpace, surveySpaces]);
+
   const selectedProducts = useMemo(() => (survey?.selectedProducts || []) as any[], [survey]);
+  const spaceProducts = useMemo(() => (surveyForSpace?.selectedProducts || []) as any[], [surveyForSpace]);
 
   const subtotal = useMemo(() =>
     selectedProducts.reduce((s: number, p: any) => {
@@ -1446,7 +1484,7 @@ export default function Scene3DPage() {
     );
   }
 
-  const rawRoomDims = survey?.roomDimensions || {
+  const rawRoomDims = surveyForSpace?.roomDimensions || survey?.roomDimensions || {
     length: parseFloat(survey?.roomLength || "400"),
     width: parseFloat(survey?.roomWidth || "300"),
     height: parseFloat(survey?.roomHeight || "240"),
@@ -1473,10 +1511,24 @@ export default function Scene3DPage() {
               {t("الغرفة:", "Room:")} {dispL}×{dispW}×{dispH} {t("سم", "cm")}
             </p>
           </div>
+          {surveySpaces.length > 1 && (
+            <Select value={activeSpaceId} onValueChange={(v) => { setActiveSpaceId(v); setKey(k => k + 1); setSelectedProduct(-1); }}>
+              <SelectTrigger className="h-8 text-xs w-[160px]" data-testid="select-active-space">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {surveySpaces.map((s: any) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.name || t("مكان", "Space")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <Badge variant="outline" className="gap-1">
-            <Package className="h-3 w-3" /> {selectedProducts.length} {t("منتج", "products")}
+            <Package className="h-3 w-3" /> {spaceProducts.length} {t("منتج", "products")}
           </Badge>
           <Badge variant="secondary" className="font-bold">
             {(() => { const d = parseFloat(survey?.discount || "0"); return ((subtotal - d) * 1.15).toLocaleString(undefined, { maximumFractionDigits: 0 }); })()} {t("ر.س", "SAR")}
@@ -1515,11 +1567,11 @@ export default function Scene3DPage() {
                 <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
               </div>
             )}
-            {survey && (
+            {surveyForSpace && (
               <Canvas key={key} shadows gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: lightMode === "day" ? 1.0 : 0.7 }}>
                 <Suspense fallback={null}>
                   <Scene3D
-                    survey={survey}
+                    survey={surveyForSpace}
                     selectedIdx={selectedProduct}
                     onSelect={setSelectedProduct}
                     lightMode={lightMode}
@@ -1555,27 +1607,28 @@ export default function Scene3DPage() {
             <div className="p-3 border-b">
               <h2 className="font-semibold text-sm">{t("قائمة المنتجات", "Products List")}</h2>
             </div>
-            {selectedProducts.length === 0 ? (
+            {spaceProducts.length === 0 ? (
               <p className="p-4 text-muted-foreground text-sm text-center">{t("لا توجد منتجات", "No products")}</p>
             ) : (
               <div className="p-2 space-y-2">
-                {selectedProducts.map((p: any, i: number) => {
-                  const isSelected = selectedProduct === i;
+                {spaceProducts.map((p: any, spaceIdx: number) => {
+                  const i = selectedProducts.findIndex((sp: any) => sp.id ? sp.id === p.id : sp === p);
+                  const isSelected = selectedProduct === spaceIdx;
                   const price = Number(p.price || p.unitPrice || p.priceBeforeVat || 0);
                   const optCost = Number(p.optionsCost || 0);
                   return (
                     <Card
-                      key={i}
+                      key={p.id || spaceIdx}
                       className={`overflow-hidden cursor-pointer transition-colors ${isSelected ? "ring-2 ring-primary" : ""}`}
-                      onClick={() => setSelectedProduct(isSelected ? -1 : i)}
-                      data-testid={`product-3d-${i}`}
+                      onClick={() => setSelectedProduct(isSelected ? -1 : spaceIdx)}
+                      data-testid={`product-3d-${spaceIdx}`}
                     >
                       <CardContent className="p-2">
                         <div className="flex items-start gap-2">
                           <div className="w-3 h-3 rounded-sm mt-1 flex-shrink-0"
-                            style={{ backgroundColor: getCabinetColor(p, i) }} />
+                            style={{ backgroundColor: getCabinetColor(p, spaceIdx) }} />
                           <div className="flex-1 min-w-0">
-                            <p className="text-xs font-medium line-clamp-1">{p.nameAr || p.code || `Item ${i + 1}`}</p>
+                            <p className="text-xs font-medium line-clamp-1">{p.nameAr || p.code || `Item ${spaceIdx + 1}`}</p>
                             {p.code && <p className="text-[10px] text-muted-foreground">{p.code}</p>}
                             <p className="text-[10px]">
                               {p.dimensions?.w || p.designW || "—"}×{p.dimensions?.h || p.designH || "—"}×{p.dimensions?.d || p.designD || "—"} cm
@@ -1682,8 +1735,8 @@ export default function Scene3DPage() {
         </TabsContent>
 
         <TabsContent value="2d" className="flex-1 overflow-hidden mt-0 data-[state=active]:flex flex-col">
-          {survey ? (
-            <FloorPlan2D survey={survey} />
+          {surveyForSpace ? (
+            <FloorPlan2D survey={surveyForSpace} />
           ) : (
             <div className="flex items-center justify-center h-full">
               <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
@@ -1692,8 +1745,8 @@ export default function Scene3DPage() {
         </TabsContent>
 
         <TabsContent value="elevation" className="flex-1 overflow-hidden mt-0 data-[state=active]:flex flex-col">
-          {survey ? (
-            <ElevationView survey={survey} />
+          {surveyForSpace ? (
+            <ElevationView survey={surveyForSpace} />
           ) : (
             <div className="flex items-center justify-center h-full">
               <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
