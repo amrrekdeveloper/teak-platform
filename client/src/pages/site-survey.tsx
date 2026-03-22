@@ -231,6 +231,14 @@ const wallItemLabels: Record<string, { ar: string; en: string }> = {
   obstacle: { ar: "عائق", en: "Obstacle" },
 };
 
+const wallItemColors: Record<string, { bg: string; border: string; icon: string; label: string; btnBg: string; btnBorder: string; btnText: string }> = {
+  door:     { bg: "bg-amber-50",   border: "border-amber-200",  icon: "text-amber-700",  label: "text-amber-900",  btnBg: "bg-amber-50 hover:bg-amber-100",   btnBorder: "border-amber-300",  btnText: "text-amber-800" },
+  window:   { bg: "bg-sky-50",     border: "border-sky-200",    icon: "text-sky-600",    label: "text-sky-900",    btnBg: "bg-sky-50 hover:bg-sky-100",       btnBorder: "border-sky-300",    btnText: "text-sky-800" },
+  outlet:   { bg: "bg-yellow-50",  border: "border-yellow-300", icon: "text-yellow-600", label: "text-yellow-900", btnBg: "bg-yellow-50 hover:bg-yellow-100", btnBorder: "border-yellow-400", btnText: "text-yellow-800" },
+  drain:    { bg: "bg-teal-50",    border: "border-teal-200",   icon: "text-teal-600",   label: "text-teal-900",   btnBg: "bg-teal-50 hover:bg-teal-100",     btnBorder: "border-teal-300",   btnText: "text-teal-800" },
+  obstacle: { bg: "bg-purple-50",  border: "border-purple-200", icon: "text-purple-600", label: "text-purple-900", btnBg: "bg-purple-50 hover:bg-purple-100", btnBorder: "border-purple-300", btnText: "text-purple-800" },
+};
+
 export default function SiteSurveyPage() {
   const { t, lang } = useLanguage();
   const { user } = useAuth();
@@ -978,12 +986,13 @@ export default function SiteSurveyPage() {
                                   const heightFromCeiling = isOutletOrDrain && spaceHeight > 0
                                     ? (spaceHeight - (parseFloat(item.heightFromFloor) || 0)).toFixed(2)
                                     : null;
+                                  const itemColor = wallItemColors[item.type] || wallItemColors.obstacle;
                                   return (
-                                    <div key={itemIndex} className="p-2.5 bg-muted/40 rounded-lg border border-border/50 space-y-2">
+                                    <div key={itemIndex} className={`p-2.5 rounded-lg border space-y-2 ${itemColor.bg} ${itemColor.border}`}>
                                       <div className="flex items-center justify-between">
                                         <div className="flex items-center gap-1.5">
-                                          <ItemIcon className="w-3.5 h-3.5 text-primary" />
-                                          <span className="text-xs font-semibold">{t(wallItemLabels[item.type]?.ar || "", wallItemLabels[item.type]?.en || "")}</span>
+                                          <ItemIcon className={`w-3.5 h-3.5 ${itemColor.icon}`} />
+                                          <span className={`text-xs font-semibold ${itemColor.label}`}>{t(wallItemLabels[item.type]?.ar || "", wallItemLabels[item.type]?.en || "")}</span>
                                         </div>
                                         <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => removeWallItem(editSpace.id, activeWall.id, itemIndex)}>
                                           <Trash2 className="w-3 h-3 text-destructive" />
@@ -1070,11 +1079,12 @@ export default function SiteSurveyPage() {
                               <span className="text-[10px] text-muted-foreground self-center w-full mb-0.5">{t("إضافة عنصر للجدار", "Add to wall")}:</span>
                               {(["door", "window", "outlet", "drain", "obstacle"] as WallItem["type"][]).map((type) => {
                                 const Icon = wallItemIcons[type];
+                                const c = wallItemColors[type];
                                 return (
-                                  <Button key={type} variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => addWallItem(editSpace.id, activeWall.id, type)} data-testid={`button-add-${type}-${activeWallIndex}`}>
-                                    <Icon className="w-3 h-3 me-1" />
+                                  <button key={type} onClick={() => addWallItem(editSpace.id, activeWall.id, type)} data-testid={`button-add-${type}-${activeWallIndex}`} className={`flex items-center gap-1 px-2.5 py-1 rounded-md border text-[11px] font-medium transition-colors ${c.btnBg} ${c.btnBorder} ${c.btnText}`}>
+                                    <Icon className={`w-3 h-3 ${c.icon}`} />
                                     {t(wallItemLabels[type].ar, wallItemLabels[type].en)}
-                                  </Button>
+                                  </button>
                                 );
                               })}
                             </div>
