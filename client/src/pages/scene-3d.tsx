@@ -360,39 +360,207 @@ function Backsplash({ L, W, wallIndices }: { L: number; W: number; wallIndices: 
   );
 }
 
-function Room({ length = 400, width = 300, height = 240, floorType = "parquet" as FloorType, wallsWithBase = [] }: {
-  length: number; width: number; height: number; floorType?: FloorType; wallsWithBase?: number[];
+// ── Architectural Openings ────────────────────────────────────────────────────
+
+/** Convert a survey measurement string (m or cm) to 3D scene units (SCALE=0.01). */
+function parseItemMeasure(val: string | number | undefined, fallbackCm: number): number {
+  const n = parseFloat(String(val ?? "0")) || 0;
+  const cm = n > 0 ? (n <= 30 ? n * 100 : n) : fallbackCm;
+  return cm * SCALE;
+}
+
+/** A wall panel rendered with THREE.ShapeGeometry so door/window holes are actual geometry gaps. */
+function WallPanel({
+  wallLen, wallH, items, wallColor, transparent = false,
+}: {
+  wallLen: number; wallH: number; items: any[];
+  wallColor: string; transparent?: boolean;
+}) {
+  const geometry = useMemo(() => {
+    const hw = wallLen / 2;
+    const shape = new THREE.Shape();
+    shape.moveTo(-hw, 0);
+    shape.lineTo( hw, 0);
+    shape.lineTo( hw, wallH);
+    shape.lineTo(-hw, wallH);
+    shape.closePath();
+
+    for (const item of items) {
+      if (item.type !== "door" && item.type !== "window") continue;
+      const dist = parseItemMeasure(item.distanceFromFirst, 0);
+      const iw   = parseItemMeasure(item.width,  item.type === "door" ? 90  : 120);
+      const ih   = parseItemMeasure(item.height, item.type === "door" ? 210 : 120);
+      const iy   = item.type === "door" ? 0 : parseItemMeasure(item.heightFromFloor, 90);
+
+      const hx = -hw + dist;
+      const hole = new THREE.Path();
+      hole.moveTo(hx,      iy);
+      hole.lineTo(hx + iw, iy);
+      hole.lineTo(hx + iw, iy + ih);
+      hole.lineTo(hx,      iy + ih);
+      hole.closePath();
+      shape.holes.push(hole);
+    }
+    return new THREE.ShapeGeometry(shape, 2);
+  }, [wallLen, wallH, items]);
+
+  return (
+    <mesh geometry={geometry} receiveShadow>
+      <meshStandardMaterial
+        color={wallColor} roughness={0.88} metalness={0}
+        transparent={transparent} opacity={transparent ? 0.12 : 1}
+        side={THREE.DoubleSide}
+      />
+    </mesh>
+  );
+}
+
+/** Renders door frames, window glass, drain & outlet markers on one wall. */
+function WallElements({ items, wallLen, wallH }: { items: any[]; wallLen: number; wallH: number }) {
+  const hw = wallLen / 2;
+  return (
+    <group>
+      {items.map((item: any, i: number) => {
+        const dist = parseItemMeasure(item.distanceFromFirst, 0);
+        const iw   = parseItemMeasure(item.width,  item.type === "door" ? 90  : 120);
+        const ih   = parseItemMeasure(item.height, item.type === "door" ? 210 : 120);
+        const startX = -hw + dist;
+        const cx     = startX + iw / 2;
+        const FRAME_COLOR = "#2C1A0E";
+        const FRAME_W = 0.055;
+
+        if (item.type === "door") {
+          return (
+            <group key={i} position={[cx, ih / 2, 0.006]}>
+              {/* Door panel */}
+              <mesh>
+                <planeGeometry args={[iw - 0.04, ih - 0.01]} />
+                <meshStandardMaterial color="#8B6040" roughness={0.75} metalness={0.04} />
+              </mesh>
+              {/* Top frame */}
+              <mesh position={[0, ih / 2 + FRAME_W / 2, 0.01]}>
+                <boxGeometry args={[iw + FRAME_W * 2, FRAME_W, FRAME_W]} />
+                <meshStandardMaterial color={FRAME_COLOR} roughness={0.6} />
+              </mesh>
+              {/* Left frame */}
+              <mesh position={[-iw / 2 - FRAME_W / 2, 0, 0.01]}>
+                <boxGeometry args={[FRAME_W, ih + FRAME_W, FRAME_W]} />
+                <meshStandardMaterial color={FRAME_COLOR} roughness={0.6} />
+              </mesh>
+              {/* Right frame */}
+              <mesh position={[ iw / 2 + FRAME_W / 2, 0, 0.01]}>
+                <boxGeometry args={[FRAME_W, ih + FRAME_W, FRAME_W]} />
+                <meshStandardMaterial color={FRAME_COLOR} roughness={0.6} />
+              </mesh>
+              {/* Handle */}
+              <mesh position={[iw / 2 - 0.09, 0, 0.055]} rotation={[Math.PI / 2, 0, 0]}>
+                <cylinderGeometry args={[0.013, 0.013, 0.11, 8]} />
+                <meshStandardMaterial color="#B0B0B0" roughness={0.2} metalness={0.85} />
+              </mesh>
+            </group>
+          );
+        }
+
+        if (item.type === "window") {
+          const iy = parseItemMeasure(item.heightFromFloor, 90);
+          return (
+            <group key={i} position={[cx, iy + ih / 2, 0.006]}>
+              {/* Glass */}
+              <mesh>
+                <planeGeometry args={[iw - 0.05, ih - 0.05]} />
+                <meshStandardMaterial color="#BFDBFE" transparent opacity={0.38} roughness={0.08} metalness={0.15} />
+              </mesh>
+              {/* Horizontal frames */}
+              {([-ih / 2, ih / 2] as number[]).map((y, fi) => (
+                <mesh key={fi} position={[0, y, 0.012]}>
+                  <boxGeometry args={[iw + 0.07, FRAME_W, FRAME_W]} />
+                  <meshStandardMaterial color="#EFEFEF" roughness={0.4} metalness={0.05} />
+                </mesh>
+              ))}
+              {/* Vertical frames */}
+              {([-iw / 2, iw / 2] as number[]).map((x, fi) => (
+                <mesh key={fi + 2} position={[x, 0, 0.012]}>
+                  <boxGeometry args={[FRAME_W, ih + 0.07, FRAME_W]} />
+                  <meshStandardMaterial color="#EFEFEF" roughness={0.4} metalness={0.05} />
+                </mesh>
+              ))}
+            </group>
+          );
+        }
+
+        if (item.type === "drain") {
+          return (
+            <mesh key={i} position={[cx, 0.04, 0.01]} rotation={[0, 0, 0]}>
+              <circleGeometry args={[0.09, 16]} />
+              <meshStandardMaterial color="#1D4ED8" roughness={0.4} />
+            </mesh>
+          );
+        }
+
+        if (item.type === "outlet") {
+          const iy = parseItemMeasure(item.heightFromFloor, 40);
+          return (
+            <mesh key={i} position={[cx, iy, 0.01]}>
+              <planeGeometry args={[0.1, 0.1]} />
+              <meshStandardMaterial color="#F3F4F6" roughness={0.3} />
+            </mesh>
+          );
+        }
+
+        return null;
+      })}
+    </group>
+  );
+}
+
+function Room({
+  length = 400, width = 300, height = 240,
+  floorType = "parquet" as FloorType,
+  wallsWithBase = [],
+  wallItems,
+}: {
+  length: number; width: number; height: number;
+  floorType?: FloorType; wallsWithBase?: number[];
+  wallItems?: Record<number, any[]>;
 }) {
   const L = length * SCALE;
   const W = width * SCALE;
   const H = height * SCALE;
   const wallColor = "#F4F0EA";
-  const wallMat = <meshStandardMaterial color={wallColor} roughness={0.88} metalness={0.0} />;
+  const items = (idx: number) => wallItems?.[idx] || [];
 
   return (
     <group>
       <FloorMesh L={L} W={W} floorType={floorType} />
-      {/* Ceiling — subtle plane, visible with night lighting */}
+      {/* Ceiling */}
       <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, H, 0]} receiveShadow>
         <planeGeometry args={[L, W]} />
         <meshStandardMaterial color="#FAFAF6" roughness={1.0} metalness={0.0} />
       </mesh>
-      {/* Back wall (wall A side) */}
-      <mesh position={[0, H / 2, -W / 2]} receiveShadow>{wallMat}<planeGeometry args={[L, H]} /></mesh>
-      {/* Front wall (transparent-ish for camera) */}
-      <mesh position={[0, H / 2, W / 2]} rotation={[0, Math.PI, 0]} receiveShadow>
-        <planeGeometry args={[L, H]} />
-        <meshStandardMaterial color={wallColor} roughness={0.88} transparent opacity={0.12} />
-      </mesh>
-      {/* Left wall */}
-      <mesh position={[-L / 2, H / 2, 0]} rotation={[0, Math.PI / 2, 0]} receiveShadow>
-        <planeGeometry args={[W, H]} />{wallMat}
-      </mesh>
-      {/* Right wall */}
-      <mesh position={[L / 2, H / 2, 0]} rotation={[0, -Math.PI / 2, 0]} receiveShadow>
-        <planeGeometry args={[W, H]} />{wallMat}
-      </mesh>
-      {/* Backsplash — only on walls that have base cabinets */}
+
+      {/* Wall A — back, wallIndex=0, at z=-W/2 */}
+      <group position={[0, 0, -W / 2]}>
+        <WallPanel wallLen={L} wallH={H} items={items(0)} wallColor={wallColor} />
+        <WallElements items={items(0)} wallLen={L} wallH={H} />
+      </group>
+
+      {/* Wall B — right, wallIndex=1, at x=L/2, rotated -90°Y */}
+      <group position={[L / 2, 0, 0]} rotation={[0, -Math.PI / 2, 0]}>
+        <WallPanel wallLen={W} wallH={H} items={items(1)} wallColor={wallColor} />
+        <WallElements items={items(1)} wallLen={W} wallH={H} />
+      </group>
+
+      {/* Wall C — front, wallIndex=2, transparent for camera */}
+      <group position={[0, 0, W / 2]} rotation={[0, Math.PI, 0]}>
+        <WallPanel wallLen={L} wallH={H} items={items(2)} wallColor={wallColor} transparent />
+      </group>
+
+      {/* Wall D — left, wallIndex=3, at x=-L/2, rotated 90°Y */}
+      <group position={[-L / 2, 0, 0]} rotation={[0, Math.PI / 2, 0]}>
+        <WallPanel wallLen={W} wallH={H} items={items(3)} wallColor={wallColor} />
+        <WallElements items={items(3)} wallLen={W} wallH={H} />
+      </group>
+
       {wallsWithBase.length > 0 && <Backsplash L={L} W={W} wallIndices={wallsWithBase} />}
     </group>
   );
@@ -560,6 +728,27 @@ function getWallIndex(product: any): number {
   return WALL_LETTER_MAP[letter] ?? 0;
 }
 
+const WALL_LETTER_IDX: Record<string, number> = { A: 0, B: 1, C: 2, D: 3 };
+
+/** Build opening ranges (in cm) per wall from survey wall data. */
+function buildWallOpenings(walls: any[]): Record<number, Array<{ start: number; end: number }>> {
+  const openings: Record<number, Array<{ start: number; end: number }>> = { 0: [], 1: [], 2: [], 3: [] };
+  for (const wall of walls) {
+    const letter = (wall.id || "").slice(-1).toUpperCase();
+    const idx = WALL_LETTER_IDX[letter];
+    if (idx === undefined) continue;
+    for (const item of (wall.items || [])) {
+      if (item.type !== "door" && item.type !== "window") continue;
+      const rawDist = parseFloat(item.distanceFromFirst || "0") || 0;
+      const dist = rawDist <= 30 ? rawDist * 100 : rawDist;
+      const rawW = parseFloat(item.width || "0") || 0;
+      const iw = rawW > 0 ? (rawW <= 30 ? rawW * 100 : rawW) : (item.type === "door" ? 90 : 120);
+      openings[idx].push({ start: dist, end: dist + iw });
+    }
+  }
+  return openings;
+}
+
 function Scene3D({
   survey, selectedIdx, onSelect, lightMode, floorType,
 }: {
@@ -577,6 +766,21 @@ function Scene3D({
   const H = rawH <= 30 ? rawH * 100 : rawH;
   const products = (survey.selectedProducts || []) as any[];
 
+  /* Extract wall items for architectural rendering */
+  const surveyWalls: any[] = firstSpace?.walls || [];
+  const wallItemsByIndex = useMemo<Record<number, any[]>>(() => {
+    const result: Record<number, any[]> = { 0: [], 1: [], 2: [], 3: [] };
+    for (const wall of surveyWalls) {
+      const letter = (wall.id || "").slice(-1).toUpperCase();
+      const idx = WALL_LETTER_IDX[letter];
+      if (idx !== undefined) result[idx] = wall.items || [];
+    }
+    return result;
+  }, [surveyWalls]);
+
+  /* Wall opening ranges (cm) for conflict detection */
+  const wallOpenings = useMemo(() => buildWallOpenings(surveyWalls), [surveyWalls]);
+
   /* Wall lengths (in cm) for overflow clamping */
   const wallLengths: Record<number, number> = { 0: L, 1: W, 2: L, 3: W };
   const wallOffsets: Record<number, number> = { 0: 10, 1: 10, 2: 10, 3: 10 };
@@ -587,7 +791,15 @@ function Scene3D({
     const wallLen = wallLengths[wIdx] || L;
     if (currentOffset + pW > wallLen - 10) return acc; /* skip overflow */
     wallOffsets[wIdx] = currentOffset + pW + 5;
-    acc.push({ ...p, _wallIndex: wIdx, _xOffset: currentOffset + pW / 2, _sourceIndex: sourceIdx });
+
+    /* Conflict: does this cabinet overlap a door/window opening? */
+    const pStart = currentOffset;
+    const pEnd   = currentOffset + pW;
+    const _conflict = (wallOpenings[wIdx] || []).some(
+      (op) => pStart < op.end && pEnd > op.start
+    );
+
+    acc.push({ ...p, _wallIndex: wIdx, _xOffset: currentOffset + pW / 2, _sourceIndex: sourceIdx, _conflict });
     return acc;
   }, []);
 
@@ -611,7 +823,12 @@ function Scene3D({
         <NightLighting roomL={L} roomW={W} roomH={H} />
       )}
 
-      <Room length={L} width={W} height={H} floorType={floorType} wallsWithBase={wallsWithBase} />
+      <Room
+        length={L} width={W} height={H}
+        floorType={floorType}
+        wallsWithBase={wallsWithBase}
+        wallItems={wallItemsByIndex}
+      />
 
       {productsWithPos.map((p: any, i: number) => (
         <Cabinet
@@ -1362,6 +1579,26 @@ export default function Scene3DPage() {
   const selectedProducts = useMemo(() => (survey?.selectedProducts || []) as any[], [survey]);
   const spaceProducts = useMemo(() => (surveyForSpace?.selectedProducts || []) as any[], [surveyForSpace]);
 
+  /** Set of spaceProduct indices (0-based in spaceProducts) that overlap a door/window opening */
+  const conflictIndices = useMemo<Set<number>>(() => {
+    const result = new Set<number>();
+    const walls: any[] = activeSpace?.walls || [];
+    if (walls.length === 0) return result;
+    const openings = buildWallOpenings(walls);
+    const offsets: Record<number, number> = { 0: 10, 1: 10, 2: 10, 3: 10 };
+    spaceProducts.forEach((p: any, idx: number) => {
+      const letter = (p.wallId || "").slice(-1).toUpperCase();
+      const wIdx = WALL_LETTER_IDX[letter] ?? 0;
+      const pW = parseFloat(p.designW || p.dimensions?.w || "60");
+      const pStart = offsets[wIdx];
+      const pEnd = pStart + pW;
+      offsets[wIdx] = pEnd + 5;
+      const hasConflict = (openings[wIdx] || []).some(op => pStart < op.end && pEnd > op.start);
+      if (hasConflict) result.add(idx);
+    });
+    return result;
+  }, [activeSpace, spaceProducts]);
+
   const subtotal = useMemo(() =>
     selectedProducts.reduce((s: number, p: any) => {
       const price = Number(p.price || p.unitPrice || p.priceBeforeVat || 0);
@@ -1630,7 +1867,14 @@ export default function Scene3DPage() {
                           <div className="w-3 h-3 rounded-sm mt-1 flex-shrink-0"
                             style={{ backgroundColor: getCabinetColor(p, spaceIdx) }} />
                           <div className="flex-1 min-w-0">
-                            <p className="text-xs font-medium line-clamp-1">{p.nameAr || p.code || `Item ${spaceIdx + 1}`}</p>
+                            <div className="flex items-center gap-1">
+                              <p className="text-xs font-medium line-clamp-1 flex-1">{p.nameAr || p.code || `Item ${spaceIdx + 1}`}</p>
+                              {conflictIndices.has(spaceIdx) && (
+                                <Badge variant="destructive" className="text-[9px] px-1 py-0 h-4 shrink-0" data-testid={`badge-conflict-${spaceIdx}`}>
+                                  {t("تعارض", "Conflict")}
+                                </Badge>
+                              )}
+                            </div>
                             {p.code && <p className="text-[10px] text-muted-foreground">{p.code}</p>}
                             <p className="text-[10px]">
                               {p.dimensions?.w || p.designW || "—"}×{p.dimensions?.h || p.designH || "—"}×{p.dimensions?.d || p.designD || "—"} cm
