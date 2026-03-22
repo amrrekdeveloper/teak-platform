@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLanguage } from "@/components/language-provider";
 import { useAuth } from "@/hooks/use-auth";
@@ -404,18 +404,14 @@ export default function SiteSurveyPage() {
         const editSpace = spaces.find((s) => s.id === activeWallSpaceId) || spaces[0];
         if (subStep === "info" && editSpace) {
           goToWallsSubStep(editSpace.id);
-          if (targetStep > 2) {
-            performAutoSave();
-            setStep(2);
-          }
           return;
         }
         performAutoSave();
-        setStep(targetStep);
+        setStep(2);
         return;
       }
       performAutoSave();
-      setStep(targetStep);
+      setStep((currentStep + 1) as WizardStep);
     } else {
       setStep(targetStep);
       if (targetStep === 1) setSubStep("walls");
