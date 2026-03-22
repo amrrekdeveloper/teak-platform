@@ -54,7 +54,12 @@ function isTallUnit(product: any): boolean {
 
 function isWallUnit(product: any): boolean {
   const code = (product.code || "").toUpperCase();
-  return code.startsWith("TK3") || code.startsWith("W");
+  return code.startsWith("TK3") || code.startsWith("W") || code.startsWith("HK");
+}
+
+function isWallUnitByCode(code: string): boolean {
+  const c = code.toUpperCase();
+  return c.startsWith("TK3") || c.startsWith("W") || c.startsWith("HK");
 }
 
 function getDefaultHeight(product: any): number {
@@ -100,124 +105,269 @@ function NightLighting({ roomL, roomW, roomH }: { roomL: number; roomW: number; 
   const H = roomH * SCALE;
   const warmColor = "#FFB347";
   const spotY = H * 0.92;
-  const spotIntensity = 12;
-  const spotAngle = Math.PI / 5;
-  const spotPenumbra = 0.4;
-  const spotDist = 8;
+  const spotIntensity = 8;
+  const spotAngle = Math.PI / 4.5;
+  const spotPenumbra = 0.6;
+  const spotDist = 12;
+
+  const lampPositions: [number, number, number][] = [
+    [0, spotY, 0],
+    [-L * 0.3, spotY, -W * 0.25],
+    [L * 0.3, spotY, W * 0.25],
+  ];
 
   return (
     <>
-      <ambientLight intensity={0.07} color="#1a1a2e" />
-      <hemisphereLight args={["#2a1f0a", "#0a0a1a", 0.08]} />
-      <spotLight
-        position={[0, spotY, 0]}
-        angle={spotAngle}
-        penumbra={spotPenumbra}
-        intensity={spotIntensity}
-        color={warmColor}
-        castShadow
-        distance={spotDist}
-        shadow-mapSize-width={1024}
-        shadow-mapSize-height={1024}
-        shadow-radius={6}
-      />
-      <spotLight
-        position={[-L * 0.3, spotY, -W * 0.2]}
-        angle={spotAngle}
-        penumbra={spotPenumbra}
-        intensity={spotIntensity * 0.8}
-        color={warmColor}
-        castShadow={false}
-        distance={spotDist}
-      />
-      <spotLight
-        position={[L * 0.3, spotY, W * 0.2]}
-        angle={spotAngle}
-        penumbra={spotPenumbra}
-        intensity={spotIntensity * 0.8}
-        color={warmColor}
-        castShadow={false}
-        distance={spotDist}
-      />
-      <pointLight position={[0, H * 0.9, 0]} intensity={0.3} color={warmColor} distance={3} />
-      {/* visible lamp fixtures — small glowing spheres at ceiling spotlights */}
-      {[
-        [0, spotY + 0.05, 0],
-        [-L * 0.3, spotY + 0.05, -W * 0.2],
-        [L * 0.3, spotY + 0.05, W * 0.2],
-      ].map(([lx, ly, lz], i) => (
-        <mesh key={`lamp-${i}`} position={[lx, ly, lz]}>
-          <sphereGeometry args={[0.04, 10, 10]} />
-          <meshBasicMaterial color="#FFF0C0" />
+      {/* Raised ambient so walls and ceiling are NOT pitch black */}
+      <ambientLight intensity={0.22} color="#3d2a0f" />
+      {/* Warm sky/ground hemisphere — sky amber, ground dark */}
+      <hemisphereLight args={["#FFD580", "#1a0f00", 0.18] as any} />
+      {/* Three warm spotlights covering the room evenly */}
+      {lampPositions.map(([lx, ly, lz], i) => (
+        <spotLight
+          key={`spot-${i}`}
+          position={[lx, ly, lz]}
+          angle={spotAngle}
+          penumbra={spotPenumbra}
+          intensity={i === 0 ? spotIntensity : spotIntensity * 0.75}
+          color={warmColor}
+          castShadow={i === 0}
+          distance={spotDist}
+          shadow-mapSize-width={1024}
+          shadow-mapSize-height={1024}
+          shadow-radius={8}
+        />
+      ))}
+      {/* Soft fill from under-cabinet area — simulates LED strip */}
+      <pointLight position={[0, 1.45, -W / 2 + 0.15]} intensity={1.2} color="#FFE4A0" distance={L * 1.2} />
+      {/* Visible lamp fixtures — glowing spheres */}
+      {lampPositions.map(([lx, ly, lz], i) => (
+        <mesh key={`lamp-${i}`} position={[lx, ly + 0.05, lz]}>
+          <sphereGeometry args={[0.045, 10, 10]} />
+          <meshBasicMaterial color="#FFF5C0" />
         </mesh>
       ))}
     </>
   );
 }
 
-function FloorMesh({ L, W }: { L: number; W: number }) {
-  const texture = useMemo(() => {
-    const size = 512;
-    const data = new Uint8Array(size * size * 4);
-    const plankW = 64;
-    const plankH = 256;
-    for (let y = 0; y < size; y++) {
-      for (let x = 0; x < size; x++) {
-        const idx = (y * size + x) * 4;
-        const row = Math.floor(y / plankH);
-        const col = Math.floor(x / plankW);
-        const offset = (row % 2) * (plankW / 2);
-        const px = ((x + offset) % plankW) / plankW;
-        const py = (y % plankH) / plankH;
-        const grain = Math.sin(py * 40 + col * 1.7) * 8 + Math.sin(px * 15) * 4;
-        const border = (px < 0.02 || px > 0.98 || py < 0.005 || py > 0.995) ? -20 : 0;
-        const base = 155 + grain + border;
-        data[idx] = Math.min(255, Math.max(0, base + 18));
-        data[idx + 1] = Math.min(255, Math.max(0, base - 15));
-        data[idx + 2] = Math.min(255, Math.max(0, base - 50));
-        data[idx + 3] = 255;
-      }
+type FloorType = "parquet" | "tile" | "marble";
+
+function makeParquetTexture(L: number, W: number): THREE.DataTexture {
+  const size = 512;
+  const data = new Uint8Array(size * size * 4);
+  const plankW = 85;
+  const plankH = 512;
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const idx = (y * size + x) * 4;
+      const col = Math.floor(x / plankW);
+      const stagger = (col % 2) * Math.floor(plankH / 2);
+      const py = ((y + stagger) % plankH) / plankH;
+      const px = (x % plankW) / plankW;
+      const grain = Math.sin(py * 38 + col * 2.3) * 9 + Math.sin(py * 12 + col * 0.7) * 4 + Math.cos(px * 22) * 2;
+      const knot = Math.sin(py * 6 + col * 3.1) > 0.85 ? -12 : 0;
+      const border = (px < 0.015 || px > 0.985 || py < 0.003 || py > 0.997) ? -22 : 0;
+      const base = 148 + grain + knot + border;
+      data[idx] = Math.min(255, Math.max(0, base + 22));
+      data[idx + 1] = Math.min(255, Math.max(0, base - 10));
+      data[idx + 2] = Math.min(255, Math.max(0, base - 52));
+      data[idx + 3] = 255;
     }
-    const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
-    tex.wrapS = THREE.RepeatWrapping;
-    tex.wrapT = THREE.RepeatWrapping;
-    tex.repeat.set(Math.ceil(L * 3), Math.ceil(W * 3));
-    tex.needsUpdate = true;
-    return tex;
-  }, [L, W]);
+  }
+  const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(L / 0.85, W / 0.85);
+  tex.needsUpdate = true;
+  return tex;
+}
+
+function makeTileTexture(L: number, W: number): THREE.DataTexture {
+  const size = 512;
+  const data = new Uint8Array(size * size * 4);
+  const grout = 14;
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const idx = (y * size + x) * 4;
+      const gx = x % size < grout || x % size > size - grout;
+      const gy = y % size < grout || y % size > size - grout;
+      const isGrout = gx || gy;
+      const noise = (Math.sin(x * 0.3 + y * 0.7) * 3 + Math.cos(x * 0.9 - y * 0.4) * 2);
+      if (isGrout) {
+        data[idx] = 180; data[idx + 1] = 180; data[idx + 2] = 178;
+      } else {
+        const base = 228 + noise;
+        data[idx] = Math.min(255, Math.max(0, base));
+        data[idx + 1] = Math.min(255, Math.max(0, base - 2));
+        data[idx + 2] = Math.min(255, Math.max(0, base - 4));
+      }
+      data[idx + 3] = 255;
+    }
+  }
+  const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(L / 0.6, W / 0.6);
+  tex.needsUpdate = true;
+  return tex;
+}
+
+function makeMarbleTexture(L: number, W: number): THREE.DataTexture {
+  const size = 512;
+  const data = new Uint8Array(size * size * 4);
+  const grout = 10;
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const idx = (y * size + x) * 4;
+      const tileX = x % size;
+      const tileY = y % size;
+      const gx = tileX < grout || tileX > size - grout;
+      const gy = tileY < grout || tileY > size - grout;
+      const isGrout = gx || gy;
+      if (isGrout) {
+        data[idx] = 160; data[idx + 1] = 158; data[idx + 2] = 155;
+      } else {
+        const vein = Math.sin((tileX + tileY * 0.5) * 0.04 + Math.sin(tileX * 0.008 + tileY * 0.012) * 8) * 28;
+        const spot = Math.sin(tileX * 0.019) * Math.sin(tileY * 0.017) * 15;
+        const base = 220 + vein + spot;
+        data[idx] = Math.min(255, Math.max(180, base));
+        data[idx + 1] = Math.min(255, Math.max(178, base - 5));
+        data[idx + 2] = Math.min(255, Math.max(175, base - 8));
+      }
+      data[idx + 3] = 255;
+    }
+  }
+  const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(L / 0.8, W / 0.8);
+  tex.needsUpdate = true;
+  return tex;
+}
+
+function FloorMesh({ L, W, floorType }: { L: number; W: number; floorType: FloorType }) {
+  const texture = useMemo(() => {
+    if (floorType === "tile") return makeTileTexture(L, W);
+    if (floorType === "marble") return makeMarbleTexture(L, W);
+    return makeParquetTexture(L, W);
+  }, [L, W, floorType]);
+
+  const roughness = floorType === "marble" ? 0.3 : floorType === "tile" ? 0.5 : 0.72;
+  const metalness = floorType === "marble" ? 0.08 : 0.0;
 
   return (
-    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
+    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.001, 0]} receiveShadow>
       <planeGeometry args={[L, W]} />
-      <meshStandardMaterial map={texture} roughness={0.75} metalness={0.0} />
+      <meshStandardMaterial map={texture} roughness={roughness} metalness={metalness} />
     </mesh>
   );
 }
 
-function Room({ length = 400, width = 300, height = 240 }: { length: number; width: number; height: number }) {
-  const L = length * SCALE;
-  const W = width * SCALE;
-  const H = height * SCALE;
-  const wallMat = <meshStandardMaterial color="#F2ECE4" roughness={0.9} metalness={0.0} />;
+function makeGraniteTexture(): THREE.DataTexture {
+  const size = 256;
+  const data = new Uint8Array(size * size * 4);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const idx = (y * size + x) * 4;
+      const vein = Math.sin(x * 0.08 + y * 0.12 + Math.sin(x * 0.04) * 4) * 25;
+      const speck = Math.sin(x * 1.7 + y * 2.3) > 0.8 ? -30 : (Math.sin(x * 2.1 + y * 1.4) > 0.85 ? 25 : 0);
+      const base = 155 + vein + speck;
+      data[idx] = Math.min(255, Math.max(80, base - 5));
+      data[idx + 1] = Math.min(255, Math.max(75, base - 8));
+      data[idx + 2] = Math.min(255, Math.max(70, base - 12));
+      data[idx + 3] = 255;
+    }
+  }
+  const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
+  tex.wrapS = THREE.ClampToEdgeWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+function makeBacksplashTexture(): THREE.DataTexture {
+  const w = 512, h = 512;
+  const data = new Uint8Array(w * h * 4);
+  const tW = 128, tH = 64, grout = 8;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const idx = (y * w + x) * 4;
+      const row = Math.floor(y / tH);
+      const stagger = (row % 2) * (tW / 2);
+      const tx = (x + stagger) % tW;
+      const ty = y % tH;
+      const isGrout = tx < grout || ty < grout;
+      if (isGrout) {
+        data[idx] = 195; data[idx + 1] = 193; data[idx + 2] = 190;
+      } else {
+        const shine = Math.sin(tx * 0.12 + ty * 0.08) * 6;
+        const base = 240 + shine;
+        data[idx] = Math.min(255, base);
+        data[idx + 1] = Math.min(255, base - 1);
+        data[idx + 2] = Math.min(255, base - 2);
+      }
+      data[idx + 3] = 255;
+    }
+  }
+  const tex = new THREE.DataTexture(data, w, h, THREE.RGBAFormat);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+function Backsplash({ L, W }: { L: number; W: number }) {
+  const bsTexture = useMemo(() => makeBacksplashTexture(), []);
+  const bsH = 0.65;
+  const bsY = 0.85 + bsH / 2;
+  const depth = 0.005;
+  bsTexture.repeat.set(L / 0.3, bsH / 0.1);
 
   return (
     <group>
-      <FloorMesh L={L} W={W} />
-      <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, H, 0]}>
-        <planeGeometry args={[L, W]} />
-        <meshStandardMaterial color="#FAFAF8" roughness={1} transparent opacity={0.0} />
+      <mesh position={[0, bsY, -W / 2 + depth]} receiveShadow>
+        <planeGeometry args={[L, bsH]} />
+        <meshStandardMaterial map={bsTexture} roughness={0.3} metalness={0.1} />
       </mesh>
+    </group>
+  );
+}
+
+function Room({ length = 400, width = 300, height = 240, floorType = "parquet" as FloorType }: {
+  length: number; width: number; height: number; floorType?: FloorType;
+}) {
+  const L = length * SCALE;
+  const W = width * SCALE;
+  const H = height * SCALE;
+  const wallColor = "#F4F0EA";
+  const wallMat = <meshStandardMaterial color={wallColor} roughness={0.88} metalness={0.0} />;
+
+  return (
+    <group>
+      <FloorMesh L={L} W={W} floorType={floorType} />
+      {/* Ceiling — subtle plane, visible with night lighting */}
+      <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, H, 0]} receiveShadow>
+        <planeGeometry args={[L, W]} />
+        <meshStandardMaterial color="#FAFAF6" roughness={1.0} metalness={0.0} />
+      </mesh>
+      {/* Back wall (wall A side) */}
       <mesh position={[0, H / 2, -W / 2]} receiveShadow>{wallMat}<planeGeometry args={[L, H]} /></mesh>
+      {/* Front wall (transparent-ish for camera) */}
       <mesh position={[0, H / 2, W / 2]} rotation={[0, Math.PI, 0]} receiveShadow>
         <planeGeometry args={[L, H]} />
-        <meshStandardMaterial color="#F2ECE4" roughness={0.9} transparent opacity={0.18} />
+        <meshStandardMaterial color={wallColor} roughness={0.88} transparent opacity={0.12} />
       </mesh>
+      {/* Left wall */}
       <mesh position={[-L / 2, H / 2, 0]} rotation={[0, Math.PI / 2, 0]} receiveShadow>
         <planeGeometry args={[W, H]} />{wallMat}
       </mesh>
+      {/* Right wall */}
       <mesh position={[L / 2, H / 2, 0]} rotation={[0, -Math.PI / 2, 0]} receiveShadow>
         <planeGeometry args={[W, H]} />{wallMat}
       </mesh>
+      {/* Backsplash on wall A */}
+      <Backsplash L={L} W={W} />
     </group>
   );
 }
@@ -260,9 +410,9 @@ function CabinetFront({ code, W, H, D, color }: { code: string; W: number; H: nu
 }
 
 function Cabinet({
-  product, index, roomL, roomW, roomH, selected, onSelect,
+  product, index, roomL, roomW, selected, onSelect,
 }: {
-  product: any; index: number; roomL: number; roomW: number; roomH: number;
+  product: any; index: number; roomL: number; roomW: number; roomH?: number;
   selected: boolean; onSelect: (idx: number) => void;
 }) {
   const [hovered, setHovered] = useState(false);
@@ -274,13 +424,13 @@ function Cabinet({
 
   const L = roomL * SCALE;
   const rW = roomW * SCALE;
-  const rH = roomH * SCALE;
 
   const wallIndex = product._wallIndex ?? 0;
   const xOffset = (product._xOffset ?? 30) * SCALE;
 
   let x = 0, z = 0, rotY = 0;
-  const wallOff = isWallUnit(product) ? rH * 0.45 : 0;
+  /* Wall units (HK/TK3/W) mount at 150 cm from floor — bottom at 1.5m */
+  const wallOff = isWallUnit(product) ? 1.5 : 0;
 
   if (wallIndex === 0) {
     x = -L / 2 + xOffset;
@@ -307,6 +457,8 @@ function Cabinet({
   const frameThick = 0.018;
   const handleR = 0.008;
   const handleLen = Math.min(W * 0.35, 0.18);
+
+  const graniteTexture = useMemo(() => isBaseUnit(product) ? makeGraniteTexture() : null, []);
 
   return (
     <group
@@ -344,10 +496,18 @@ function Cabinet({
       </mesh>
 
       {isBaseUnit(product) && (
-        <mesh position={[0, H / 2 + 0.015, -0.005]} castShadow receiveShadow>
-          <boxGeometry args={[W + 0.02, 0.03, D + 0.02]} />
-          <meshStandardMaterial color="#D0D0C8" roughness={0.4} metalness={0.15} />
-        </mesh>
+        <>
+          {/* Granite countertop */}
+          <mesh position={[0, H / 2 + 0.018, -0.005]} castShadow receiveShadow>
+            <boxGeometry args={[W + 0.02, 0.035, D + 0.025]} />
+            <meshStandardMaterial map={graniteTexture} roughness={0.2} metalness={0.06} color="#C8C4BE" />
+          </mesh>
+          {/* Kickplate 10cm strip at bottom front */}
+          <mesh position={[0, -H / 2 + 0.05, D / 2 - 0.01]} castShadow>
+            <boxGeometry args={[W, 0.1, 0.025]} />
+            <meshStandardMaterial color="#1C1C1C" roughness={0.8} metalness={0.1} />
+          </mesh>
+        </>
       )}
 
       {(hovered || selected) && (
@@ -375,9 +535,9 @@ function getWallIndex(product: any): number {
 }
 
 function Scene3D({
-  survey, selectedIdx, onSelect, lightMode,
+  survey, selectedIdx, onSelect, lightMode, floorType,
 }: {
-  survey: any; selectedIdx: number; onSelect: (i: number) => void; lightMode: "day" | "night";
+  survey: any; selectedIdx: number; onSelect: (i: number) => void; lightMode: "day" | "night"; floorType: FloorType;
 }) {
   const firstSpace = (survey.spaces || [])[0];
   const roomDims = survey.roomDimensions
@@ -391,14 +551,19 @@ function Scene3D({
   const H = rawH <= 30 ? rawH * 100 : rawH;
   const products = (survey.selectedProducts || []) as any[];
 
+  /* Wall lengths (in cm) for overflow clamping */
+  const wallLengths: Record<number, number> = { 0: L, 1: W, 2: L, 3: W };
   const wallOffsets: Record<number, number> = { 0: 10, 1: 10, 2: 10, 3: 10 };
-  const productsWithPos = products.map((p: any) => {
+  const productsWithPos = products.reduce((acc: any[], p: any) => {
     const wIdx = getWallIndex(p);
     const pW = parseFloat(p.designW || p.dimensions?.w || "60");
     const currentOffset = wallOffsets[wIdx];
+    const wallLen = wallLengths[wIdx] || L;
+    if (currentOffset + pW > wallLen - 10) return acc; /* skip overflow */
     wallOffsets[wIdx] = currentOffset + pW + 5;
-    return { ...p, _wallIndex: wIdx, _xOffset: currentOffset + pW / 2 };
-  });
+    acc.push({ ...p, _wallIndex: wIdx, _xOffset: currentOffset + pW / 2 });
+    return acc;
+  }, []);
 
   return (
     <>
@@ -411,7 +576,7 @@ function Scene3D({
         <NightLighting roomL={L} roomW={W} roomH={H} />
       )}
 
-      <Room length={L} width={W} height={H} />
+      <Room length={L} width={W} height={H} floorType={floorType} />
 
       {productsWithPos.map((p: any, i: number) => (
         <Cabinet
@@ -643,8 +808,12 @@ function FloorPlan2D({ survey }: { survey: any }) {
         wIdx = pi % 4;
       }
       const wDef = wallDefs[wIdx % 4];
+      const prodCode = prod.code || "";
+      const isWall2D = isWallUnitByCode(prodCode);
+      /* Wall units are shallower (35cm depth vs 60cm for base) */
+      const rawDepth = isWall2D ? 35 : parseFloat(prod.dimensions?.d || "60");
       const pw = Math.max(parseFloat(prod.designW || prod.dimensions?.w || "60") * scale, 6);
-      const pd = Math.max(parseFloat(prod.dimensions?.d || "60") * scale * 0.4, 4);
+      const pd = Math.max(rawDepth * scale * 0.4, 4);
 
       const pOffset = wallOffsets[wIdx] ?? 0;
       wallOffsets[wIdx] = pOffset + pw + 2;
@@ -659,11 +828,15 @@ function FloorPlan2D({ survey }: { survey: any }) {
         elements.push(
           <g key={`prod-${spaceIdx}-${pi}`}>
             <rect x={px} y={py} width={rectW} height={rectH}
-              fill={wDef.color + "40"} stroke={wDef.color} strokeWidth={1} rx={1} />
+              fill={isWall2D ? "none" : wDef.color + "40"}
+              stroke={wDef.color}
+              strokeWidth={isWall2D ? 1.2 : 1}
+              strokeDasharray={isWall2D ? "4,3" : undefined}
+              rx={1} />
             {rectW > 18 && (
               <text x={px + rectW / 2} y={py + rectH / 2} textAnchor="middle"
                 dominantBaseline="middle" fontSize={6} fill={wDef.color} fontWeight="bold">
-                {(prod.code || "").slice(0, 7)}
+                {(prodCode).slice(0, 7)}
               </text>
             )}
           </g>
@@ -733,6 +906,318 @@ function FloorPlan2D({ survey }: { survey: any }) {
   );
 }
 
+/* ─── Elevation View ─────────────────────────────────── */
+const EV_W = 900;
+const EV_H = 500;
+const EV_MARGIN = { top: 40, right: 40, bottom: 60, left: 60 };
+const EV_ROOM_H = 280; /* room height in cm — fallback */
+
+const WALL_NAMES_AR = ["جدار A (خلفي)", "جدار B (يمين)", "جدار C (أمامي)", "جدار D (يسار)"];
+const WALL_NAMES_EN = ["Wall A (Back)", "Wall B (Right)", "Wall C (Front)", "Wall D (Left)"];
+
+function ElevationView({ survey }: { survey: any }) {
+  const { t } = useLanguage();
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [activeWall, setActiveWall] = useState(0);
+
+  const firstSpace = (survey?.spaces || [])[0];
+  const roomDims = survey?.roomDimensions || (firstSpace ? {
+    length: firstSpace.length, width: firstSpace.width,
+    height: firstSpace.height || firstSpace.wallHeight || EV_ROOM_H,
+  } : { length: 400, width: 300, height: 240 });
+
+  const rawL = parseFloat(roomDims.length) || 400;
+  const rawW = parseFloat(roomDims.width) || 300;
+  const rawH = parseFloat(roomDims.height) || 240;
+  const roomL = rawL <= 30 ? rawL * 100 : rawL;
+  const roomW = rawW <= 30 ? rawW * 100 : rawW;
+  const roomH = rawH <= 30 ? rawH * 100 : rawH;
+
+  const products = (survey?.selectedProducts || []) as any[];
+  const wallLengths = [roomL, roomW, roomL, roomW];
+
+  const drawW = EV_W - EV_MARGIN.left - EV_MARGIN.right;
+  const drawH = EV_H - EV_MARGIN.top - EV_MARGIN.bottom;
+
+  const wallLen = wallLengths[activeWall] || roomL;
+  const scaleX = drawW / wallLen;
+  const scaleY = drawH / roomH;
+
+  const ox = EV_MARGIN.left;
+  const oy = EV_MARGIN.top;
+
+  /* Products on the active wall */
+  const wallProducts: any[] = [];
+  const wallOffsets: Record<number, number> = { 0: 10, 1: 10, 2: 10, 3: 10 };
+  const wallLengthsClamp = [roomL, roomW, roomL, roomW];
+  products.forEach((p) => {
+    const wIdx = getWallIndex(p);
+    const pW = parseFloat(p.designW || p.dimensions?.w || "60");
+    const curOff = wallOffsets[wIdx];
+    if (curOff + pW > wallLengthsClamp[wIdx] - 10) return;
+    wallOffsets[wIdx] = curOff + pW + 5;
+    if (wIdx === activeWall) {
+      wallProducts.push({ ...p, _evX: curOff, _evW: pW });
+    }
+  });
+
+  const downloadPNG = useCallback(() => {
+    if (!svgRef.current) return;
+    const serializer = new XMLSerializer();
+    const svgStr = serializer.serializeToString(svgRef.current);
+    const canvas = document.createElement("canvas");
+    canvas.width = EV_W * 2;
+    canvas.height = EV_H * 2;
+    const ctx = canvas.getContext("2d")!;
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const img = new Image();
+    img.onload = () => {
+      ctx.scale(2, 2);
+      ctx.drawImage(img, 0, 0);
+      const a = document.createElement("a");
+      a.download = `elevation-wall-${["A","B","C","D"][activeWall]}.png`;
+      a.href = canvas.toDataURL("image/png");
+      a.click();
+    };
+    img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgStr);
+  }, [activeWall]);
+
+  /* Dimension arrow helper */
+  const DimArrow = ({ x1, y1, x2, y2, label }: { x1: number; y1: number; x2: number; y2: number; label: string }) => {
+    const isH = Math.abs(y2 - y1) < 1;
+    const mx = (x1 + x2) / 2;
+    const my = (y1 + y2) / 2;
+    return (
+      <g>
+        <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#6B7280" strokeWidth={1} markerEnd="url(#arrowhead)" markerStart="url(#arrowhead-rev)" />
+        <text x={isH ? mx : mx - 14} y={isH ? my - 5 : my} textAnchor="middle" fontSize={8} fill="#374151">{label}</text>
+      </g>
+    );
+  };
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex items-center justify-between p-3 border-b shrink-0">
+        <div className="flex items-center gap-2">
+          <p className="text-sm font-semibold text-muted-foreground">{t("مخطط الارتفاع", "Elevation View")}</p>
+          <div className="flex gap-1">
+            {[0, 1, 2, 3].map((wi) => (
+              <Button
+                key={wi}
+                size="sm"
+                variant={activeWall === wi ? "default" : "outline"}
+                className="h-7 px-2 text-xs"
+                onClick={() => setActiveWall(wi)}
+                data-testid={`btn-elevation-wall-${["A","B","C","D"][wi]}`}
+              >
+                {["A","B","C","D"][wi]}
+              </Button>
+            ))}
+          </div>
+        </div>
+        <Button size="sm" variant="outline" onClick={downloadPNG} data-testid="btn-download-elevation">
+          <Download className="h-3.5 w-3.5 me-1" />
+          {t("تحميل PNG", "Download PNG")}
+        </Button>
+      </div>
+
+      <div className="flex-1 overflow-auto bg-white dark:bg-gray-900 p-2">
+        <svg
+          ref={svgRef}
+          width={EV_W}
+          height={EV_H}
+          viewBox={`0 0 ${EV_W} ${EV_H}`}
+          className="w-full h-auto"
+          style={{ maxWidth: EV_W }}
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <defs>
+            <marker id="arrowhead" markerWidth="6" markerHeight="5" refX="6" refY="2.5" orient="auto">
+              <polygon points="0 0, 6 2.5, 0 5" fill="#6B7280" />
+            </marker>
+            <marker id="arrowhead-rev" markerWidth="6" markerHeight="5" refX="0" refY="2.5" orient="auto-start-reverse">
+              <polygon points="0 0, 6 2.5, 0 5" fill="#6B7280" />
+            </marker>
+          </defs>
+
+          <rect width={EV_W} height={EV_H} fill="white" />
+          {/* Title */}
+          <text x={EV_W / 2} y={20} textAnchor="middle" fontSize={12} fontWeight="bold" fill="#374151">
+            {t("تيك للتصنيع — مخطط الارتفاع", "Teak — Elevation View")} · {t(WALL_NAMES_AR[activeWall], WALL_NAMES_EN[activeWall])}
+          </text>
+
+          {/* Drawing area border */}
+          <rect x={ox} y={oy} width={drawW} height={drawH} fill="#FAFAF8" stroke="#E5E7EB" strokeWidth={1} />
+
+          {/* Floor line */}
+          <line x1={ox} y1={oy + drawH} x2={ox + drawW} y2={oy + drawH} stroke="#374151" strokeWidth={2.5} />
+
+          {/* Zone: backsplash 85–150cm (light blue-gray fill) */}
+          {(() => {
+            const bsY1 = oy + drawH - 150 * scaleY;
+            const bsY2 = oy + drawH - 85 * scaleY;
+            return (
+              <rect x={ox} y={bsY1} width={drawW} height={bsY2 - bsY1}
+                fill="#EFF6FF" stroke="none" opacity={0.6} />
+            );
+          })()}
+
+          {/* Countertop line at 85cm */}
+          {(() => {
+            const ctY = oy + drawH - 85 * scaleY;
+            return (
+              <line x1={ox} y1={ctY} x2={ox + drawW} y2={ctY} stroke="#9CA3AF" strokeWidth={1} strokeDasharray="6,4" />
+            );
+          })()}
+
+          {/* Wall-unit zone upper boundary at 220cm */}
+          {(() => {
+            const wuY = oy + drawH - 220 * scaleY;
+            return (
+              <line x1={ox} y1={wuY} x2={ox + drawW} y2={wuY} stroke="#CBD5E1" strokeWidth={0.8} strokeDasharray="3,5" />
+            );
+          })()}
+
+          {/* Products on this wall */}
+          {wallProducts.map((prod, pi) => {
+            const pW = prod._evW;
+            const pX = ox + prod._evX * scaleX;
+            const pSvgW = pW * scaleX;
+            const code = prod.code || "";
+            const isWall = isWallUnitByCode(code);
+            const isTall = isTallUnit(prod);
+
+            let pYFrom: number, pYTo: number;
+            if (isWall) {
+              pYFrom = 150; pYTo = 150 + parseFloat(prod.dimensions?.h || prod.designH || "70");
+            } else if (isTall) {
+              pYFrom = 0; pYTo = parseFloat(prod.dimensions?.h || prod.designH || "200");
+            } else {
+              pYFrom = 0; pYTo = parseFloat(prod.dimensions?.h || prod.designH || "85");
+            }
+            const svgYTop = oy + drawH - pYTo * scaleY;
+            const svgYBot = oy + drawH - pYFrom * scaleY;
+            const svgCabH = svgYBot - svgYTop;
+
+            const fillColor = isWall ? "#DBEAFE" : isTall ? "#F3E8FF" : "#FEF3C7";
+            const strokeColor = isWall ? "#3B82F6" : isTall ? "#8B5CF6" : "#D97706";
+            const dashArr = isWall ? "4,3" : undefined;
+
+            return (
+              <g key={pi}>
+                <rect
+                  x={pX} y={svgYTop}
+                  width={pSvgW} height={svgCabH}
+                  fill={fillColor} stroke={strokeColor} strokeWidth={1}
+                  strokeDasharray={dashArr}
+                  rx={1}
+                />
+                {/* Countertop strip for base units */}
+                {!isWall && !isTall && (
+                  <rect x={pX} y={svgYTop - 3 * scaleY} width={pSvgW} height={3 * scaleY}
+                    fill="#9CA3AF" stroke="none" />
+                )}
+                {/* Door handle line */}
+                {pSvgW > 14 && (
+                  <line
+                    x1={pX + pSvgW * 0.75} y1={svgYTop + svgCabH * 0.35}
+                    x2={pX + pSvgW * 0.75} y2={svgYTop + svgCabH * 0.65}
+                    stroke={strokeColor} strokeWidth={2} />
+                )}
+                {/* Product code label */}
+                {pSvgW > 20 && (
+                  <text x={pX + pSvgW / 2} y={svgYTop + svgCabH / 2 + 3}
+                    textAnchor="middle" dominantBaseline="middle"
+                    fontSize={Math.min(7, pSvgW / 8)} fill={strokeColor} fontWeight="bold">
+                    {code.slice(0, 6)}
+                  </text>
+                )}
+                {/* Width dimension below */}
+                <text x={pX + pSvgW / 2} y={oy + drawH + 14}
+                  textAnchor="middle" fontSize={7} fill="#6B7280">
+                  {pW}
+                </text>
+              </g>
+            );
+          })}
+
+          {/* Dimension arrows — left side for height */}
+          <DimArrow
+            x1={ox - 20} y1={oy + drawH}
+            x2={ox - 20} y2={oy + drawH - 85 * scaleY}
+            label="85"
+          />
+          <DimArrow
+            x1={ox - 36} y1={oy + drawH - 85 * scaleY}
+            x2={ox - 36} y2={oy + drawH - 150 * scaleY}
+            label="65"
+          />
+          <DimArrow
+            x1={ox - 20} y1={oy + drawH - 150 * scaleY}
+            x2={ox - 20} y2={oy + drawH - 220 * scaleY}
+            label="70"
+          />
+
+          {/* Wall length dimension bottom */}
+          <DimArrow
+            x1={ox} y1={oy + drawH + 30}
+            x2={ox + drawW} y2={oy + drawH + 30}
+            label={`${wallLen} cm`}
+          />
+
+          {/* Zone labels on right */}
+          {[
+            { y: oy + drawH - 42 * scaleY, label: t("خزانة قاعدة", "Base"), color: "#D97706" },
+            { y: oy + drawH - 117 * scaleY, label: t("رخامة / بلاطة", "Counter/Splash"), color: "#6B7280" },
+            { y: oy + drawH - 185 * scaleY, label: t("خزانة علوية", "Wall Unit"), color: "#3B82F6" },
+          ].map((z, zi) => (
+            <text key={zi} x={ox + drawW + 6} y={z.y} fontSize={8} fill={z.color} dominantBaseline="middle">
+              {z.label}
+            </text>
+          ))}
+
+          {/* Floor level label */}
+          <text x={ox + 4} y={oy + drawH + 10} fontSize={8} fill="#374151">0 cm</text>
+
+          {/* Room height line */}
+          <line x1={ox + drawW} y1={oy} x2={ox + drawW} y2={oy + drawH} stroke="#D1D5DB" strokeWidth={1} strokeDasharray="2,4" />
+          <text x={ox + drawW + 6} y={oy + 10} fontSize={8} fill="#6B7280">{Math.round(roomH)} cm</text>
+
+          {/* Watermark */}
+          <text x={EV_W - 6} y={EV_H - 6} textAnchor="end" fontSize={7} fill="#9CA3AF">teak2030.net</text>
+        </svg>
+      </div>
+
+      {/* Legend */}
+      <div className="p-2 border-t shrink-0">
+        <div className="flex flex-wrap gap-4 text-[10px] text-muted-foreground">
+          <span className="flex items-center gap-1">
+            <span className="w-4 h-3 bg-yellow-100 border border-yellow-600 rounded-sm block" />
+            {t("خزانة قاعدة", "Base Cabinet")}
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="w-4 h-3 bg-blue-100 border border-blue-500 border-dashed rounded-sm block" />
+            {t("خزانة علوية", "Wall Cabinet")}
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="w-4 h-3 bg-purple-100 border border-purple-500 rounded-sm block" />
+            {t("خزانة طولية", "Tall Cabinet")}
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="w-4 h-2 bg-gray-300 rounded-sm block" />
+            {t("رخامة الكونتر", "Countertop")}
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="w-4 h-3 bg-blue-50 border border-blue-200 rounded-sm block" />
+            {t("منطقة البلاطة الجدارية", "Backsplash Zone")}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Scene3DPage() {
   const { t } = useLanguage();
   const { toast } = useToast();
@@ -747,7 +1232,13 @@ export default function Scene3DPage() {
   const [replacingIndex, setReplacingIndex] = useState<number | null>(null);
   const [replaceSearch, setReplaceSearch] = useState("");
   const [lightMode, setLightMode] = useState<"day" | "night">("day");
-  const [activeTab, setActiveTab] = useState(params.get("tab") === "2d" ? "2d" : "3d");
+  const [floorType, setFloorType] = useState<FloorType>("parquet");
+  const [activeTab, setActiveTab] = useState(() => {
+    const t = params.get("tab");
+    if (t === "2d") return "2d";
+    if (t === "elevation") return "elevation";
+    return "3d";
+  });
 
   const tokenParam = params.get("token");
   const [isPortalAuth, setIsPortalAuth] = useState(false);
@@ -916,11 +1407,15 @@ export default function Scene3DPage() {
     );
   }
 
-  const roomDims = survey?.roomDimensions || {
+  const rawRoomDims = survey?.roomDimensions || {
     length: parseFloat(survey?.roomLength || "400"),
     width: parseFloat(survey?.roomWidth || "300"),
     height: parseFloat(survey?.roomHeight || "240"),
   };
+  /* Convert meters to cm for display if stored as small numbers */
+  const dispL = parseFloat(rawRoomDims.length) <= 30 ? Math.round(parseFloat(rawRoomDims.length) * 100) : Math.round(parseFloat(rawRoomDims.length));
+  const dispW = parseFloat(rawRoomDims.width) <= 30 ? Math.round(parseFloat(rawRoomDims.width) * 100) : Math.round(parseFloat(rawRoomDims.width));
+  const dispH = parseFloat(rawRoomDims.height) <= 30 ? Math.round(parseFloat(rawRoomDims.height) * 100) : Math.round(parseFloat(rawRoomDims.height));
 
   return (
     <div className="h-screen flex flex-col">
@@ -936,7 +1431,7 @@ export default function Scene3DPage() {
           <div>
             <h1 className="font-bold text-sm">{t("التصور ثلاثي الأبعاد", "3D Visualization")}</h1>
             <p className="text-xs text-muted-foreground">
-              {t("الغرفة:", "Room:")} {roomDims.length}×{roomDims.width}×{roomDims.height} cm
+              {t("الغرفة:", "Room:")} {dispL}×{dispW}×{dispH} {t("سم", "cm")}
             </p>
           </div>
         </div>
@@ -971,9 +1466,10 @@ export default function Scene3DPage() {
         <TabsList className="mx-3 mt-2 mb-0 shrink-0 w-fit" data-testid="tabs-view-mode">
           <TabsTrigger value="3d" data-testid="tab-3d">{t("عرض 3D", "3D View")}</TabsTrigger>
           <TabsTrigger value="2d" data-testid="tab-2d">{t("مخطط 2D", "2D Plan")}</TabsTrigger>
+          <TabsTrigger value="elevation" data-testid="tab-elevation">{t("مخطط الارتفاع", "Elevation")}</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="3d" className="flex-1 flex overflow-hidden mt-0 data-[state=active]:flex">
+        <TabsContent value="3d" className="flex-1 overflow-hidden mt-0 data-[state=active]:flex">
           <div className="flex-1 relative" style={{ background: lightMode === "day" ? "linear-gradient(to bottom, #e0f2fe, #bae6fd)" : "linear-gradient(to bottom, #0f0c29, #1a1a2e)" }}>
             {isLoading && (
               <div className="absolute inset-0 flex items-center justify-center">
@@ -988,10 +1484,24 @@ export default function Scene3DPage() {
                     selectedIdx={selectedProduct}
                     onSelect={setSelectedProduct}
                     lightMode={lightMode}
+                    floorType={floorType}
                   />
                 </Suspense>
               </Canvas>
             )}
+            {/* Floor type selector overlay */}
+            <div className="absolute top-3 end-3 flex gap-1 bg-black/30 rounded-lg p-1">
+              {(["parquet", "tile", "marble"] as FloorType[]).map((ft) => (
+                <button
+                  key={ft}
+                  onClick={() => setFloorType(ft)}
+                  data-testid={`btn-floor-${ft}`}
+                  className={`text-[10px] px-2 py-1 rounded-md transition-colors ${floorType === ft ? "bg-white text-gray-900 font-bold" : "text-white/80 hover:text-white"}`}
+                >
+                  {ft === "parquet" ? t("باركيه", "Parquet") : ft === "tile" ? t("سيراميك", "Tile") : t("رخام", "Marble")}
+                </button>
+              ))}
+            </div>
             <div className="absolute bottom-3 start-1/2 -translate-x-1/2 bg-black/40 text-white text-xs px-3 py-1 rounded-full whitespace-nowrap">
               {t("اسحب للتدوير • اضغط على منتج لتحديده • Scroll للتقريب", "Drag to rotate • Click product to select • Scroll to zoom")}
             </div>
@@ -1135,6 +1645,16 @@ export default function Scene3DPage() {
         <TabsContent value="2d" className="flex-1 overflow-hidden mt-0 data-[state=active]:flex flex-col">
           {survey ? (
             <FloorPlan2D survey={survey} />
+          ) : (
+            <div className="flex items-center justify-center h-full">
+              <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="elevation" className="flex-1 overflow-hidden mt-0 data-[state=active]:flex flex-col">
+          {survey ? (
+            <ElevationView survey={survey} />
           ) : (
             <div className="flex items-center justify-center h-full">
               <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
