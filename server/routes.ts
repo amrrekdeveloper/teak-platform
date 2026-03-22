@@ -3284,7 +3284,7 @@ export async function registerRoutes(
   app.post("/api/site-surveys", requireAuth, async (req, res) => {
     try {
       const userId = req.session.userId!;
-      const survey = await storage.createSiteSurvey({ ...req.body, salesPersonId: userId });
+      const survey = await storage.createSiteSurvey({ ...req.body, createdBy: userId });
       res.status(201).json(survey);
     } catch (error) {
       res.status(500).json({ message: "حدث خطأ في إنشاء الزيارة" });
@@ -3337,12 +3337,23 @@ export async function registerRoutes(
       const userId = req.session.userId!;
       const { fileName, fileLabel, fileData, mimeType, fileSize, quotationId } = req.body;
       if (!fileName || !fileData) return res.status(400).json({ message: "fileName and fileData are required" });
+      const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+      const actualSize = fileSize || (typeof fileData === "string" ? Math.ceil(fileData.length * 0.75) : 0);
+      if (actualSize > MAX_FILE_SIZE_BYTES) {
+        return res.status(400).json({ message: "حجم الملف يتجاوز الحد المسموح به (10 ميغابايت)" });
+      }
+      const ALLOWED_MIME_TYPES = ["application/pdf", "image/png", "image/jpeg", "image/gif", "image/svg+xml", "image/webp", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/octet-stream"];
+      const effectiveMime = mimeType || "application/octet-stream";
+      const isAllowed = ALLOWED_MIME_TYPES.some(m => effectiveMime.startsWith(m.split("/")[0] + "/") || effectiveMime === m);
+      if (!isAllowed) {
+        return res.status(400).json({ message: "نوع الملف غير مسموح به" });
+      }
       const label = (fileLabel && String(fileLabel).trim()) ? String(fileLabel).trim() : fileName;
       const result = await pool.query(
         `INSERT INTO survey_design_files (survey_id, quotation_id, file_name, file_label, file_data, mime_type, file_size, uploaded_by)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
          RETURNING id, survey_id, quotation_id, file_name, file_label, mime_type, file_size, attach_to_quote, uploaded_by, created_at`,
-        [surveyId, quotationId || null, fileName, label, fileData, mimeType || "application/octet-stream", fileSize || 0, userId]
+        [surveyId, quotationId || null, fileName, label, fileData, effectiveMime, actualSize, userId]
       );
       res.status(201).json(result.rows[0]);
     } catch (error) {
