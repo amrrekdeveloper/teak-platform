@@ -302,9 +302,10 @@ export default function SiteSurveyPage() {
   const [nextStepsDialog, setNextStepsDialog] = useState(false);
   const [uploadDesignDialog, setUploadDesignDialog] = useState(false);
   const [uploadingFile, setUploadingFile] = useState(false);
-  const [uploadedFiles, setUploadedFiles] = useState<Array<{ id: number; file_name: string; mime_type: string; file_size: number; attach_to_quote: boolean }>>([]);
+  const [uploadedFiles, setUploadedFiles] = useState<Array<{ id: number; file_name: string; file_label?: string; mime_type: string; file_size: number; attach_to_quote: boolean }>>([]);
   const [printingPdf, setPrintingPdf] = useState(false);
   const [designFilesLoaded, setDesignFilesLoaded] = useState(false);
+  const [pendingFileLabel, setPendingFileLabel] = useState("");
 
   useEffect(() => {
     if (existingSurvey && existingSurvey.id && !surveyInitializedRef.current) {
@@ -581,7 +582,7 @@ export default function SiteSurveyPage() {
     }
   }
 
-  async function handleFileUpload(file: File) {
+  async function handleFileUpload(file: File, fileLabel?: string) {
     const sid = savedSurveyId || existingSurvey?.id;
     if (!sid) {
       toast({ title: t("احفظ النموذج أولاً", "Save the survey first"), variant: "destructive" });
@@ -597,6 +598,7 @@ export default function SiteSurveyPage() {
       });
       const res = await apiRequest("POST", `/api/site-surveys/${sid}/design-files`, {
         fileName: file.name,
+        fileLabel: fileLabel && fileLabel.trim() ? fileLabel.trim() : file.name,
         fileData,
         mimeType: file.type,
         fileSize: file.size,
@@ -604,6 +606,7 @@ export default function SiteSurveyPage() {
       });
       const newFile = await res.json();
       setUploadedFiles(prev => [newFile, ...prev]);
+      setPendingFileLabel("");
       toast({ title: t("تم رفع الملف بنجاح", "File uploaded successfully") });
     } catch {
       toast({ title: t("حدث خطأ في رفع الملف", "File upload failed"), variant: "destructive" });
@@ -2212,31 +2215,45 @@ export default function SiteSurveyPage() {
             {t("ارفع ملفات المخططات من برنامج AutoCAD أو غيره. يمكنك تفعيل الإرفاق مع عرض السعر لكل ملف.", "Upload plan files from AutoCAD or other software. You can toggle attachment to quotation per file.")}
           </p>
 
-          <label
-            className={`flex flex-col items-center justify-center gap-2 py-6 px-4 border-2 border-dashed rounded-lg cursor-pointer transition-colors ${uploadingFile ? "opacity-60 pointer-events-none" : "border-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/20"}`}
-            data-testid="label-upload-zone"
-          >
-            {uploadingFile ? (
-              <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
-            ) : (
-              <Upload className="w-8 h-8 text-blue-400" />
-            )}
-            <span className="text-sm font-medium text-blue-700 dark:text-blue-400">
-              {uploadingFile ? t("جاري الرفع...", "Uploading...") : t("اختر ملفاً أو اسحبه هنا", "Choose a file or drag here")}
-            </span>
-            <span className="text-xs text-muted-foreground">{t("PDF، صور، DWG", "PDF, Images, DWG")}</span>
-            <input
-              type="file"
-              accept=".pdf,.png,.jpg,.jpeg,.gif,.svg,.dwg,.dxf,.docx,.xlsx"
-              className="hidden"
-              disabled={uploadingFile}
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) handleFileUpload(file);
-                e.target.value = "";
-              }}
-            />
-          </label>
+          <div className="space-y-2">
+            <div>
+              <label className="text-xs font-medium text-foreground mb-1 block">{t("تسمية الملف (اختياري)", "File Label (optional)")}</label>
+              <input
+                type="text"
+                className="w-full h-8 rounded-md border border-input bg-background px-3 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                placeholder={t("مثال: مخطط المطبخ — AutoCAD", "e.g. Kitchen Plan — AutoCAD")}
+                value={pendingFileLabel}
+                onChange={(e) => setPendingFileLabel(e.target.value)}
+                disabled={uploadingFile}
+                data-testid="input-file-label"
+              />
+            </div>
+            <label
+              className={`flex flex-col items-center justify-center gap-2 py-6 px-4 border-2 border-dashed rounded-lg cursor-pointer transition-colors ${uploadingFile ? "opacity-60 pointer-events-none" : "border-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/20"}`}
+              data-testid="label-upload-zone"
+            >
+              {uploadingFile ? (
+                <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+              ) : (
+                <Upload className="w-8 h-8 text-blue-400" />
+              )}
+              <span className="text-sm font-medium text-blue-700 dark:text-blue-400">
+                {uploadingFile ? t("جاري الرفع...", "Uploading...") : t("اختر ملفاً أو اسحبه هنا", "Choose a file or drag here")}
+              </span>
+              <span className="text-xs text-muted-foreground">{t("PDF، صور، DWG", "PDF, Images, DWG")}</span>
+              <input
+                type="file"
+                accept=".pdf,.png,.jpg,.jpeg,.gif,.svg,.dwg,.dxf,.docx,.xlsx"
+                className="hidden"
+                disabled={uploadingFile}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleFileUpload(file, pendingFileLabel);
+                  e.target.value = "";
+                }}
+              />
+            </label>
+          </div>
 
           {uploadedFiles.length > 0 && (
             <div className="space-y-2 max-h-48 overflow-y-auto">
@@ -2244,7 +2261,7 @@ export default function SiteSurveyPage() {
               {uploadedFiles.map((f) => (
                 <div key={f.id} className="flex items-center gap-2 p-2 rounded-lg border bg-muted/30" data-testid={`uploaded-file-${f.id}`}>
                   <FileImage className="w-4 h-4 text-blue-500 shrink-0" />
-                  <span className="flex-1 text-xs truncate min-w-0">{f.file_name}</span>
+                  <span className="flex-1 text-xs truncate min-w-0">{(f as any).file_label || f.file_name}</span>
                   <button
                     onClick={() => handleToggleAttach(f.id, !f.attach_to_quote)}
                     className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border transition-colors shrink-0 ${f.attach_to_quote ? "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 border-green-300 dark:border-green-700" : "bg-muted text-muted-foreground border-border"}`}

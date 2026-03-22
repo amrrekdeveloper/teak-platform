@@ -183,6 +183,7 @@ export async function registerRoutes(
         survey_id INTEGER NOT NULL,
         quotation_id INTEGER,
         file_name TEXT NOT NULL,
+        file_label TEXT,
         file_data TEXT NOT NULL,
         mime_type TEXT NOT NULL DEFAULT 'application/octet-stream',
         file_size INTEGER DEFAULT 0,
@@ -191,6 +192,7 @@ export async function registerRoutes(
         created_at TIMESTAMP NOT NULL DEFAULT NOW()
       )
     `);
+    await db.execute(`ALTER TABLE survey_design_files ADD COLUMN IF NOT EXISTS file_label TEXT`);
   } catch (designFilesMigrationError) {
     console.warn("Survey design files table migration (non-fatal):", designFilesMigrationError instanceof Error ? designFilesMigrationError.message : String(designFilesMigrationError));
   }
@@ -3299,11 +3301,25 @@ export async function registerRoutes(
     }
   });
 
+  async function verifySurveyAccess(surveyId: number, req: Request): Promise<{ allowed: boolean; survey?: any }> {
+    const surveyRow = await storage.getSiteSurvey(surveyId);
+    if (!surveyRow) return { allowed: false };
+    const userId = req.session.userId;
+    if (!userId) return { allowed: false };
+    const user = await storage.getUser(userId);
+    if (!user) return { allowed: false };
+    if (user.role === "owner" || user.role === "assistant" || user.role === "it") return { allowed: true, survey: surveyRow };
+    if (user.role === "sales" && surveyRow.createdBy === user.id) return { allowed: true, survey: surveyRow };
+    return { allowed: false };
+  }
+
   app.get("/api/site-surveys/:id/design-files", requireAuth, async (req, res) => {
     try {
       const surveyId = parseInt(req.params.id);
+      const { allowed } = await verifySurveyAccess(surveyId, req);
+      if (!allowed) return res.status(403).json({ message: "غير مصرح" });
       const result = await pool.query(
-        `SELECT id, survey_id, quotation_id, file_name, mime_type, file_size, attach_to_quote, uploaded_by, created_at
+        `SELECT id, survey_id, quotation_id, file_name, file_label, mime_type, file_size, attach_to_quote, uploaded_by, created_at
          FROM survey_design_files WHERE survey_id = $1 ORDER BY created_at DESC`,
         [surveyId]
       );
@@ -3316,14 +3332,17 @@ export async function registerRoutes(
   app.post("/api/site-surveys/:id/design-files", requireAuth, async (req, res) => {
     try {
       const surveyId = parseInt(req.params.id);
+      const { allowed } = await verifySurveyAccess(surveyId, req);
+      if (!allowed) return res.status(403).json({ message: "غير مصرح" });
       const userId = req.session.userId!;
-      const { fileName, fileData, mimeType, fileSize, quotationId } = req.body;
+      const { fileName, fileLabel, fileData, mimeType, fileSize, quotationId } = req.body;
       if (!fileName || !fileData) return res.status(400).json({ message: "fileName and fileData are required" });
+      const label = (fileLabel && String(fileLabel).trim()) ? String(fileLabel).trim() : fileName;
       const result = await pool.query(
-        `INSERT INTO survey_design_files (survey_id, quotation_id, file_name, file_data, mime_type, file_size, uploaded_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
-         RETURNING id, survey_id, quotation_id, file_name, mime_type, file_size, attach_to_quote, uploaded_by, created_at`,
-        [surveyId, quotationId || null, fileName, fileData, mimeType || "application/octet-stream", fileSize || 0, userId]
+        `INSERT INTO survey_design_files (survey_id, quotation_id, file_name, file_label, file_data, mime_type, file_size, uploaded_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         RETURNING id, survey_id, quotation_id, file_name, file_label, mime_type, file_size, attach_to_quote, uploaded_by, created_at`,
+        [surveyId, quotationId || null, fileName, label, fileData, mimeType || "application/octet-stream", fileSize || 0, userId]
       );
       res.status(201).json(result.rows[0]);
     } catch (error) {
@@ -3333,12 +3352,15 @@ export async function registerRoutes(
 
   app.patch("/api/site-surveys/:id/design-files/:fileId", requireAuth, async (req, res) => {
     try {
+      const surveyId = parseInt(req.params.id);
       const fileId = parseInt(req.params.fileId);
+      const { allowed } = await verifySurveyAccess(surveyId, req);
+      if (!allowed) return res.status(403).json({ message: "غير مصرح" });
       const { attachToQuote } = req.body;
       const result = await pool.query(
-        `UPDATE survey_design_files SET attach_to_quote = $1 WHERE id = $2
-         RETURNING id, survey_id, quotation_id, file_name, mime_type, file_size, attach_to_quote, uploaded_by, created_at`,
-        [attachToQuote, fileId]
+        `UPDATE survey_design_files SET attach_to_quote = $1 WHERE id = $2 AND survey_id = $3
+         RETURNING id, survey_id, quotation_id, file_name, file_label, mime_type, file_size, attach_to_quote, uploaded_by, created_at`,
+        [attachToQuote, fileId, surveyId]
       );
       if (result.rows.length === 0) return res.status(404).json({ message: "الملف غير موجود" });
       res.json(result.rows[0]);
@@ -3349,8 +3371,15 @@ export async function registerRoutes(
 
   app.delete("/api/site-surveys/:id/design-files/:fileId", requireAuth, async (req, res) => {
     try {
+      const surveyId = parseInt(req.params.id);
       const fileId = parseInt(req.params.fileId);
-      await pool.query(`DELETE FROM survey_design_files WHERE id = $1`, [fileId]);
+      const { allowed } = await verifySurveyAccess(surveyId, req);
+      if (!allowed) return res.status(403).json({ message: "غير مصرح" });
+      const del = await pool.query(
+        `DELETE FROM survey_design_files WHERE id = $1 AND survey_id = $2 RETURNING id`,
+        [fileId, surveyId]
+      );
+      if (del.rows.length === 0) return res.status(404).json({ message: "الملف غير موجود" });
       res.json({ message: "تم الحذف" });
     } catch (error) {
       res.status(500).json({ message: "حدث خطأ في الحذف" });
@@ -3359,10 +3388,13 @@ export async function registerRoutes(
 
   app.get("/api/site-surveys/:id/design-files/:fileId/download", requireAuth, async (req, res) => {
     try {
+      const surveyId = parseInt(req.params.id);
       const fileId = parseInt(req.params.fileId);
+      const { allowed } = await verifySurveyAccess(surveyId, req);
+      if (!allowed) return res.status(403).json({ message: "غير مصرح" });
       const result = await pool.query(
-        `SELECT file_name, file_data, mime_type FROM survey_design_files WHERE id = $1`,
-        [fileId]
+        `SELECT file_name, file_data, mime_type FROM survey_design_files WHERE id = $1 AND survey_id = $2`,
+        [fileId, surveyId]
       );
       if (result.rows.length === 0) return res.status(404).json({ message: "الملف غير موجود" });
       const { file_name, file_data, mime_type } = result.rows[0];
