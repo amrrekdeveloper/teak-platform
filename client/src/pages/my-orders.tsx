@@ -25,31 +25,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  Loader2,
-  Search,
-  ClipboardList,
-  UserCheck,
-  CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
-  ChevronUp,
-  ChevronDown,
-  Eye,
-  Phone,
-  MapPin,
-  Calendar,
-  Clock,
-  Pencil,
-  Plus,
-  Hand,
-  Zap,
-  CalendarPlus,
-  CalendarCheck,
-  CalendarX,
-  Filter,
-  X,
-  Ruler,
-  Box,
+  Loader2, Search, ClipboardList, UserCheck, CheckCircle2,
+  ChevronLeft, ChevronRight, Eye, Phone, MapPin, Calendar,
+  Clock, Pencil, Plus, Hand, Zap, CalendarPlus, CalendarCheck,
+  CalendarX, Filter, X, Ruler, Box, Ban, AlertCircle, ArrowRight,
+  FileText, Package, Truck, ThumbsDown,
 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -69,42 +49,94 @@ function formatElapsed(fromDate: string | Date, now: number, t: (ar: string, en:
   const mins = Math.floor(ms / 60000);
   const hours = Math.floor(mins / 60);
   const days = Math.floor(hours / 24);
-  if (days > 0) return t(`${days} يوم ${hours % 24} ساعة`, `${days}d ${hours % 24}h`);
-  if (hours > 0) return t(`${hours} ساعة ${mins % 60} دقيقة`, `${hours}h ${mins % 60}m`);
-  return t(`${mins} دقيقة`, `${mins}m`);
+  if (days > 0) return t(`${days} يوم`, `${days}d`);
+  if (hours > 0) return t(`${hours} ساعة`, `${hours}h`);
+  return t(`${mins} د`, `${mins}m`);
 }
 
-type StageFilter = "all" | "open" | "mine" | "sent" | "approved" | "production" | "completed";
+type PipelineStage = "all" | "new" | "appointment" | "survey" | "sent" | "approved" | "production" | "delivered" | "cancelled";
 
-function getOrderStage(q: any, workOrders: any[], contracts: any[], userId: number): StageFilter {
-  if (q.status === "rejected" || q.status === "expired") return "completed";
-  if ((q.status === "requested" || q.status === "open" || q.status === "draft") && !q.assignedTo) return "open";
+const CANCEL_REASONS = [
+  { value: "لم يرد العميل على التواصل", ar: "لم يرد العميل على التواصل", en: "Customer not responding" },
+  { value: "العميل غيّر رأيه", ar: "العميل غيّر رأيه", en: "Customer changed mind" },
+  { value: "مضى وقت طويل بدون استجابة", ar: "مضى وقت طويل بدون استجابة", en: "Too long without response" },
+  { value: "عرض السعر لا يتناسب مع ميزانية العميل", ar: "عرض السعر لا يتناسب مع ميزانية العميل", en: "Price doesn't fit budget" },
+  { value: "العميل اختار جهة أخرى", ar: "العميل اختار جهة أخرى", en: "Customer chose another provider" },
+  { value: "طلب خارج نطاق عملنا", ar: "طلب خارج نطاق عملنا", en: "Out of scope" },
+  { value: "أخرى", ar: "أخرى", en: "Other" },
+];
+
+const PIPELINE_STAGES: { key: PipelineStage; ar: string; en: string; color: string; icon: any }[] = [
+  { key: "all", ar: "الكل", en: "All", color: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300", icon: ClipboardList },
+  { key: "new", ar: "جديد", en: "New", color: "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300", icon: Zap },
+  { key: "appointment", ar: "موعد محجوز", en: "Appointment", color: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300", icon: CalendarCheck },
+  { key: "survey", ar: "مسح مكتمل", en: "Survey Done", color: "bg-violet-100 text-violet-700 dark:bg-violet-900 dark:text-violet-300", icon: Ruler },
+  { key: "sent", ar: "عرض مُرسل", en: "Quote Sent", color: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300", icon: FileText },
+  { key: "approved", ar: "معتمد", en: "Approved", color: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300", icon: CheckCircle2 },
+  { key: "production", ar: "في التصنيع", en: "Production", color: "bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300", icon: Package },
+  { key: "delivered", ar: "تم التسليم", en: "Delivered", color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300", icon: Truck },
+  { key: "cancelled", ar: "ملغى", en: "Cancelled", color: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300", icon: Ban },
+];
+
+function getOrderStage(
+  q: any,
+  workOrdersWithContract: any[],
+  contracts: any[],
+  siteSurveys: any[],
+  apptByQuotation: Record<number, any>
+): PipelineStage {
+  if (q.status === "cancelled") return "cancelled";
+  if (q.status === "rejected" || q.status === "expired") return "delivered";
+
   if (q.status === "approved") {
-    const wo = workOrders.find((w: any) => {
-      const contract = w._contract;
-      return contract?.quotationId === q.id;
-    });
-    if (wo) {
-      if (["completed", "delivered", "installed"].includes(wo.status)) return "completed";
-      return "production";
+    const contract = contracts.find((c: any) => c.quotationId === q.id);
+    if (contract) {
+      const wo = workOrdersWithContract.find((w: any) => w.contractId === contract.id);
+      if (wo) {
+        if (["completed", "delivered", "installed"].includes(wo.status)) return "delivered";
+        return "production";
+      }
     }
     return "approved";
   }
+
   if (q.status === "sent") return "sent";
-  if (q.status === "draft" && q.assignedTo === userId) return "mine";
-  return "mine";
+
+  const hasSurvey = siteSurveys.some((s: any) => s.quotationId === q.id);
+  const appt = apptByQuotation[q.id];
+  if (hasSurvey || appt?.status === "attended") return "survey";
+  if (appt) return "appointment";
+  return "new";
 }
 
-const stageBadgeConfig: Record<string, { ar: string; en: string; className: string }> = {
-  open: { ar: "مفتوح", en: "Open", className: "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300" },
-  mine: { ar: "مسودة", en: "Draft", className: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300" },
-  sent: { ar: "مُرسل", en: "Sent", className: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300" },
-  approved: { ar: "معتمد", en: "Approved", className: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300" },
-  production: { ar: "قيد التصنيع", en: "In Production", className: "bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300" },
-  completed: { ar: "مكتمل", en: "Completed", className: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300" },
-};
-
-const fallbackBadge = { ar: "غير محدد", en: "Unknown", className: "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400" };
+function getNextAction(stage: PipelineStage, order: any, t: (ar: string, en: string) => string): { label: string; urgent: boolean } {
+  switch (stage) {
+    case "new":
+      return { label: t("احجز موعد رفع المقاسات", "Book measurement appointment"), urgent: true };
+    case "appointment": {
+      const appt = order._appointment;
+      if (appt) {
+        const isPast = new Date(`${appt.appointmentDate}T${appt.endTime || "23:59"}`) < new Date();
+        if (isPast) return { label: t("سجّل نتيجة الموعد أو أعد جدولته", "Record appointment result or reschedule"), urgent: true };
+      }
+      return { label: t("انتظار تاريخ الموعد", "Waiting for appointment"), urgent: false };
+    }
+    case "survey":
+      return { label: t("أعد عرض السعر وأرسله للعميل", "Prepare and send quote to customer"), urgent: true };
+    case "sent":
+      return { label: t("انتظار موافقة العميل", "Awaiting customer approval"), urgent: false };
+    case "approved":
+      return { label: t("أنشئ أمر العمل لبدء الإنتاج", "Create work order to start production"), urgent: true };
+    case "production":
+      return { label: t("متابعة مراحل التصنيع", "Follow up on production stages"), urgent: false };
+    case "delivered":
+      return { label: t("تم التسليم — الطلب مكتمل", "Delivered — Order complete"), urgent: false };
+    case "cancelled":
+      return { label: t("الطلب ملغى", "Order cancelled"), urgent: false };
+    default:
+      return { label: t("تحديث حالة الطلب", "Update order status"), urgent: false };
+  }
+}
 
 const appointmentTypes = [
   { value: "زيارة رفع المقاسات", ar: "زيارة رفع المقاسات", en: "Site Measurement" },
@@ -120,7 +152,7 @@ export default function MyOrdersPage() {
   const now = useElapsedTime();
 
   const [, navigate] = useLocation();
-  const [activeTab, setActiveTab] = useState<"open" | "mine">("mine");
+  const [activeStage, setActiveStage] = useState<PipelineStage>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [viewOrder, setViewOrder] = useState<any | null>(null);
@@ -131,6 +163,10 @@ export default function MyOrdersPage() {
   const [appointmentDialog, setAppointmentDialog] = useState<any | null>(null);
   const [editingApptId, setEditingApptId] = useState<number | null>(null);
   const [rescheduleReason, setRescheduleReason] = useState("");
+  const [cancelDialog, setCancelDialog] = useState<any | null>(null);
+  const [cancelReason, setCancelReason] = useState("");
+  const [cancelNotes, setCancelNotes] = useState("");
+  const [repFilter, setRepFilter] = useState<string>("all");
 
   const _today = new Date();
   const _currentYear = _today.getFullYear();
@@ -145,23 +181,20 @@ export default function MyOrdersPage() {
   const [apptMinute, setApptMinute] = useState("00");
   const [apptDuration, setApptDuration] = useState("60");
 
-  const [sortCol, setSortCol] = useState<string>("date");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
-  const [stageFilter, setStageFilter] = useState<string>("all");
-  const [apptFilter, setApptFilter] = useState<string>("all");
-
-  const perPage = 10;
+  const perPage = 15;
 
   const { data: quotations = [], isLoading } = useQuery<any[]>({
     queryKey: ["/api/quotations"],
-    refetchInterval: 10000,
+    refetchInterval: 15000,
   });
   const { data: customers = [] } = useQuery<any[]>({ queryKey: ["/api/customers"] });
   const { data: usersData = [] } = useQuery<any[]>({ queryKey: ["/api/users"] });
   const { data: workOrders = [] } = useQuery<any[]>({ queryKey: ["/api/work-orders"] });
   const { data: contracts = [] } = useQuery<any[]>({ queryKey: ["/api/contracts"] });
-  const { data: designAssignments = [] } = useQuery<any[]>({ queryKey: ["/api/design-assignments"] });
   const { data: appointments = [] } = useQuery<any[]>({ queryKey: ["/api/appointments"] });
+  const { data: siteSurveys = [] } = useQuery<any[]>({ queryKey: ["/api/site-surveys"] });
+
+  const isManager = user && ["owner", "assistant", "it"].includes(user.role);
 
   useEffect(() => {
     const expired = (appointments as any[]).filter((appt: any) => {
@@ -172,7 +205,6 @@ export default function MyOrdersPage() {
     expired.forEach((appt: any) => {
       apiRequest("POST", `/api/appointments/${appt.id}/expire`).then(() => {
         queryClient.invalidateQueries({ queryKey: ["/api/appointments"] });
-        queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
       }).catch(() => {});
     });
   }, [now, appointments]);
@@ -185,9 +217,7 @@ export default function MyOrdersPage() {
   }, [workOrders, contracts]);
 
   const claimMutation = useMutation({
-    mutationFn: async (id: number) => {
-      return apiRequest("POST", `/api/quotations/${id}/claim`);
-    },
+    mutationFn: async (id: number) => apiRequest("POST", `/api/quotations/${id}/claim`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/quotations"] });
       queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
@@ -199,9 +229,7 @@ export default function MyOrdersPage() {
   });
 
   const createOrderMutation = useMutation({
-    mutationFn: async (data: { fullName: string; phone: string; productDescription: string; notes: string; city: string }) => {
-      return apiRequest("POST", "/api/orders/create-direct", data);
-    },
+    mutationFn: async (data: any) => apiRequest("POST", "/api/orders/create-direct", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/quotations"] });
       queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
@@ -214,56 +242,23 @@ export default function MyOrdersPage() {
     },
   });
 
-  function isAppointmentPast(appt: any): boolean {
-    if (!appt?.appointmentDate) return false;
-    const apptDateTime = new Date(`${appt.appointmentDate}T${appt.endTime || appt.startTime || "23:59"}`);
-    return apptDateTime < new Date();
-  }
-
-  function formatApptCountdown(appt: any, nowTs: number): { label: string; urgent: boolean; past: boolean } {
-    if (!appt?.appointmentDate) return { label: "", urgent: false, past: false };
-    const apptDateTime = new Date(`${appt.appointmentDate}T${appt.startTime || "09:00"}`);
-    const diffMs = apptDateTime.getTime() - nowTs;
-    if (diffMs <= 0) {
-      const pastMs = Math.abs(diffMs);
-      const pastDays = Math.floor(pastMs / 86400000);
-      if (pastDays > 0) return { label: t(`منذ ${pastDays} يوم`, `${pastDays}d ago`), urgent: false, past: true };
-      const pastHrs = Math.floor(pastMs / 3600000);
-      if (pastHrs > 0) return { label: t(`منذ ${pastHrs} ساعة`, `${pastHrs}h ago`), urgent: false, past: true };
-      return { label: t("منذ قليل", "Just passed"), urgent: false, past: true };
-    }
-    const days = Math.floor(diffMs / 86400000);
-    const hrs = Math.floor((diffMs % 86400000) / 3600000);
-    const mins = Math.floor((diffMs % 3600000) / 60000);
-    if (days > 0) return { label: t(`بعد ${days} يوم و${hrs} ساعة`, `In ${days}d ${hrs}h`), urgent: days <= 1, past: false };
-    if (hrs > 0) return { label: t(`بعد ${hrs} ساعة و${mins} دقيقة`, `In ${hrs}h ${mins}m`), urgent: true, past: false };
-    return { label: t(`بعد ${mins} دقيقة`, `In ${mins}m`), urgent: true, past: false };
-  }
-
-  function formatApptFullDate(appt: any): string {
-    if (!appt?.appointmentDate) return "—";
-    return new Date(appt.appointmentDate).toLocaleDateString(lang === "ar" ? "ar-SA" : "en-US", {
-      weekday: "long", year: "numeric", month: "long", day: "numeric",
-    });
-  }
-
-  function resetApptForm() {
-    const d = new Date();
-    setEditingApptId(null);
-    setRescheduleReason("");
-    setApptTitle("زيارة رفع المقاسات");
-    setApptNotes("");
-    setApptDay(String(d.getDate()));
-    setApptMonth(String(d.getMonth() + 1));
-    setApptHour("9");
-    setApptMinute("00");
-    setApptDuration("60");
-  }
+  const cancelMutation = useMutation({
+    mutationFn: async ({ id, reason, notes }: { id: number; reason: string; notes: string }) =>
+      apiRequest("POST", `/api/quotations/${id}/cancel`, { reason, notes }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/quotations"] });
+      setCancelDialog(null);
+      setCancelReason("");
+      setCancelNotes("");
+      toast({ title: t("تم إلغاء الطلب", "Order cancelled") });
+    },
+    onError: (error: any) => {
+      toast({ title: error?.message || t("فشل إلغاء الطلب", "Failed to cancel order"), variant: "destructive" });
+    },
+  });
 
   const appointmentMutation = useMutation({
-    mutationFn: async (data: any) => {
-      return apiRequest("POST", "/api/appointments", data);
-    },
+    mutationFn: async (data: any) => apiRequest("POST", "/api/appointments", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/appointments"] });
       setAppointmentDialog(null);
@@ -281,9 +276,7 @@ export default function MyOrdersPage() {
   });
 
   const updateAppointmentMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: any }) => {
-      return apiRequest("PATCH", `/api/appointments/${id}`, data);
-    },
+    mutationFn: async ({ id, data }: { id: number; data: any }) => apiRequest("PATCH", `/api/appointments/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/appointments"] });
       setAppointmentDialog(null);
@@ -316,41 +309,46 @@ export default function MyOrdersPage() {
     return map;
   }, [appointments]);
 
+  const salesReps = useMemo(() => {
+    return (usersData as any[]).filter((u: any) => u.role === "sales");
+  }, [usersData]);
+
   const enrichedOrders = useMemo(() => {
     if (!user) return [];
     return quotations.map((q: any) => {
       const customer = customers.find((c: any) => c.id === q.customerId);
       const assignedUser = q.assignedTo ? usersData.find((u: any) => u.id === q.assignedTo) : null;
-      const stage = getOrderStage(q, workOrdersWithContract, contracts, user.id);
       const _appointment = appointmentByQuotation[q.id] || null;
+      const stage = getOrderStage(q, workOrdersWithContract, contracts, siteSurveys as any[], appointmentByQuotation);
       return { ...q, customer, assignedUser, stage, _appointment };
     });
-  }, [quotations, customers, usersData, workOrdersWithContract, contracts, user, appointmentByQuotation]);
+  }, [quotations, customers, usersData, workOrdersWithContract, contracts, siteSurveys, user, appointmentByQuotation]);
 
-  const openOrders = useMemo(() => {
-    return enrichedOrders.filter((o: any) => o.stage === "open");
-  }, [enrichedOrders]);
-
-  const myOrders = useMemo(() => {
+  const visibleOrders = useMemo(() => {
     if (!user) return [];
-    return enrichedOrders.filter((o: any) => o.assignedTo === user.id && o.stage !== "open");
-  }, [enrichedOrders, user]);
-
-  const currentList = activeTab === "open" ? openOrders : myOrders;
-
-  function handleSortClick(col: string) {
-    if (sortCol === col) {
-      setSortDir(sortDir === "asc" ? "desc" : "asc");
-    } else {
-      setSortCol(col);
-      setSortDir("asc");
+    if (isManager) {
+      if (repFilter === "all") return enrichedOrders;
+      if (repFilter === "unassigned") return enrichedOrders.filter((o: any) => !o.assignedTo);
+      return enrichedOrders.filter((o: any) => o.assignedTo === parseInt(repFilter));
     }
-    setCurrentPage(1);
-  }
+    return enrichedOrders.filter((o: any) => {
+      const openStages = ["requested", "open"];
+      return o.assignedTo === user.id || (openStages.includes(o.status) && !o.assignedTo);
+    });
+  }, [enrichedOrders, user, isManager, repFilter]);
+
+  const stageCounts = useMemo(() => {
+    const counts: Record<string, number> = { all: visibleOrders.length };
+    for (const stage of PIPELINE_STAGES.filter(s => s.key !== "all")) {
+      counts[stage.key] = visibleOrders.filter((o: any) => o.stage === stage.key).length;
+    }
+    return counts;
+  }, [visibleOrders]);
+
+  const openCount = useMemo(() => enrichedOrders.filter((o: any) => o.stage === "new" && !o.assignedTo).length, [enrichedOrders]);
 
   const filtered = useMemo(() => {
-    let list = currentList;
-
+    let list = activeStage === "all" ? visibleOrders : visibleOrders.filter((o: any) => o.stage === activeStage);
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase();
       list = list.filter((o: any) =>
@@ -360,51 +358,60 @@ export default function MyOrdersPage() {
         String(o.quotationNumber).includes(q)
       );
     }
-
-    if (stageFilter !== "all") {
-      list = list.filter((o: any) => o.stage === stageFilter);
-    }
-
-    if (apptFilter === "booked") {
-      list = list.filter((o: any) => !!o._appointment);
-    } else if (apptFilter === "not-booked") {
-      list = list.filter((o: any) => !o._appointment);
-    }
-
     return [...list].sort((a: any, b: any) => {
-      let valA: any, valB: any;
-      if (sortCol === "id") {
-        valA = a.quotationNumber || a.id;
-        valB = b.quotationNumber || b.id;
-      } else if (sortCol === "customer") {
-        valA = a.customer?.fullName || "";
-        valB = b.customer?.fullName || "";
-      } else if (sortCol === "stage") {
-        valA = a.stage || "";
-        valB = b.stage || "";
-      } else if (sortCol === "amount") {
-        valA = Number(a.finalPrice || a.totalPrice || 0);
-        valB = Number(b.finalPrice || b.totalPrice || 0);
-      } else if (sortCol === "appt") {
-        valA = a._appointment ? new Date(a._appointment.appointmentDate).getTime() : 0;
-        valB = b._appointment ? new Date(b._appointment.appointmentDate).getTime() : 0;
-      } else {
-        valA = new Date(a.createdAt).getTime();
-        valB = new Date(b.createdAt).getTime();
-      }
-      if (typeof valA === "string") {
-        return sortDir === "asc" ? valA.localeCompare(valB) : valB.localeCompare(valA);
-      }
-      return sortDir === "asc" ? valA - valB : valB - valA;
+      if (a.stage === "new" && !a.assignedTo && (b.stage !== "new" || b.assignedTo)) return -1;
+      if (b.stage === "new" && !b.assignedTo && (a.stage !== "new" || a.assignedTo)) return 1;
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
-  }, [currentList, searchQuery, stageFilter, apptFilter, sortCol, sortDir]);
+  }, [visibleOrders, activeStage, searchQuery]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
   const paginated = filtered.slice((currentPage - 1) * perPage, currentPage * perPage);
 
-  function addMinutesToTime(h: number, m: number, mins: number): string {
-    const total = h * 60 + m + mins;
-    return `${String(Math.floor(total / 60) % 24).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+  function isAppointmentPast(appt: any): boolean {
+    if (!appt?.appointmentDate) return false;
+    const apptDateTime = new Date(`${appt.appointmentDate}T${appt.endTime || appt.startTime || "23:59"}`);
+    return apptDateTime < new Date();
+  }
+
+  function formatApptCountdown(appt: any, nowTs: number): { label: string; urgent: boolean; past: boolean } {
+    if (!appt?.appointmentDate) return { label: "", urgent: false, past: false };
+    const apptDateTime = new Date(`${appt.appointmentDate}T${appt.startTime || "09:00"}`);
+    const diffMs = apptDateTime.getTime() - nowTs;
+    if (diffMs <= 0) {
+      const pastMs = Math.abs(diffMs);
+      const pastDays = Math.floor(pastMs / 86400000);
+      if (pastDays > 0) return { label: t(`منذ ${pastDays} يوم`, `${pastDays}d ago`), urgent: false, past: true };
+      const pastHrs = Math.floor(pastMs / 3600000);
+      if (pastHrs > 0) return { label: t(`منذ ${pastHrs} ساعة`, `${pastHrs}h ago`), urgent: false, past: true };
+      return { label: t("منذ قليل", "Just passed"), urgent: false, past: true };
+    }
+    const days = Math.floor(diffMs / 86400000);
+    const hrs = Math.floor((diffMs % 86400000) / 3600000);
+    const mins = Math.floor((diffMs % 3600000) / 60000);
+    if (days > 0) return { label: t(`بعد ${days} يوم`, `In ${days}d`), urgent: days <= 1, past: false };
+    if (hrs > 0) return { label: t(`بعد ${hrs} ساعة`, `In ${hrs}h`), urgent: true, past: false };
+    return { label: t(`بعد ${mins} دقيقة`, `In ${mins}m`), urgent: true, past: false };
+  }
+
+  function formatApptFullDate(appt: any): string {
+    if (!appt?.appointmentDate) return "—";
+    return new Date(appt.appointmentDate).toLocaleDateString(lang === "ar" ? "ar-SA" : "en-US", {
+      weekday: "long", year: "numeric", month: "long", day: "numeric",
+    });
+  }
+
+  function resetApptForm() {
+    const d = new Date();
+    setEditingApptId(null);
+    setRescheduleReason("");
+    setApptTitle("زيارة رفع المقاسات");
+    setApptNotes("");
+    setApptDay(String(d.getDate()));
+    setApptMonth(String(d.getMonth() + 1));
+    setApptHour("9");
+    setApptMinute("00");
+    setApptDuration("60");
   }
 
   function openAppointmentDialog(order: any) {
@@ -445,6 +452,11 @@ export default function MyOrdersPage() {
     }
   }
 
+  function addMinutesToTime(h: number, m: number, mins: number): string {
+    const total = h * 60 + m + mins;
+    return `${String(Math.floor(total / 60) % 24).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+  }
+
   async function submitAppointment() {
     if (!appointmentDialog || !user) return;
     const y = _currentYear;
@@ -466,19 +478,13 @@ export default function MyOrdersPage() {
       assignedTo: user.id,
       notes: apptNotes,
     };
-
     const existingAppt = appointmentDialog._appointment;
     const isPast = existingAppt && isAppointmentPast(existingAppt);
-
     if (editingApptId && isPast) {
-      updateAppointmentMutation.mutate({
-        id: editingApptId,
-        data: { status: "rescheduled", failNotes: rescheduleReason || t("إعادة تعيين بدون سبب", "Rescheduled without reason") },
-      }, {
-        onSuccess: () => {
-          appointmentMutation.mutate(payload);
-        },
-      });
+      updateAppointmentMutation.mutate(
+        { id: editingApptId, data: { status: "rescheduled", failNotes: rescheduleReason || t("إعادة تعيين بدون سبب", "Rescheduled without reason") } },
+        { onSuccess: () => { appointmentMutation.mutate(payload); } }
+      );
     } else if (editingApptId) {
       updateAppointmentMutation.mutate({ id: editingApptId, data: payload });
     } else {
@@ -488,10 +494,12 @@ export default function MyOrdersPage() {
 
   function formatDate(dateStr: string) {
     if (!dateStr) return "—";
-    return new Date(dateStr).toLocaleDateString(lang === "ar" ? "ar-SA" : "en-US", {
-      month: "short",
-      day: "numeric",
-    });
+    return new Date(dateStr).toLocaleDateString(lang === "ar" ? "ar-SA" : "en-US", { month: "short", day: "numeric" });
+  }
+
+  function formatDateFull(dateStr: string) {
+    if (!dateStr) return "—";
+    return new Date(dateStr).toLocaleDateString(lang === "ar" ? "ar-SA" : "en-US", { year: "numeric", month: "long", day: "numeric" });
   }
 
   if (isLoading) {
@@ -503,7 +511,7 @@ export default function MyOrdersPage() {
   }
 
   return (
-    <div className="space-y-5" data-testid="page-my-orders">
+    <div className="space-y-4" data-testid="page-my-orders">
       <LoadingTransition
         show={showClaimTransition}
         message={t("جاري التقاط الطلب...", "Claiming order...")}
@@ -511,7 +519,7 @@ export default function MyOrdersPage() {
         duration={1200}
         onComplete={() => {
           setShowClaimTransition(false);
-          setActiveTab("mine");
+          setActiveStage("new");
           toast({ title: t("تم التقاط الطلب بنجاح!", "Order claimed successfully!") });
         }}
       />
@@ -529,477 +537,578 @@ export default function MyOrdersPage() {
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div>
           <h1 className="text-xl font-bold" data-testid="text-my-orders-title">
-            {t("طلباتي", "My Orders")}
+            {isManager ? t("لوحة الطلبات", "Orders Board") : t("طلباتي", "My Orders")}
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            {t("إدارة ومتابعة طلباتك", "Manage and track your orders")}
+            {t("تتبع طلباتك عبر مراحل العمل", "Track your orders across pipeline stages")}
           </p>
         </div>
-        <Button onClick={() => setNewOrderDialog(true)} data-testid="button-new-order-my">
-          <Plus className="w-4 h-4 me-1.5" />
-          {t("طلب جديد", "New Order")}
-        </Button>
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        <Card
-          className={`cursor-pointer transition-all ${activeTab === "open" ? "border-primary ring-1 ring-primary/20" : "hover:border-primary/30"}`}
-          onClick={() => { setActiveTab("open"); setCurrentPage(1); }}
-          data-testid="card-open-pool"
-        >
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-amber-100 dark:bg-amber-950 flex items-center justify-center">
-              <Zap className="w-5 h-5 text-amber-600" />
-            </div>
-            <div className="flex-1">
-              <p className="text-2xl font-bold text-amber-600">{openOrders.length}</p>
-              <p className="text-xs text-muted-foreground">{t("طلبات مفتوحة", "Open Orders")}</p>
-            </div>
-            {openOrders.length > 0 && (
-              <span className="w-3 h-3 rounded-full bg-red-500 animate-pulse" />
-            )}
-          </CardContent>
-        </Card>
-        <Card
-          className={`cursor-pointer transition-all ${activeTab === "mine" ? "border-primary ring-1 ring-primary/20" : "hover:border-primary/30"}`}
-          onClick={() => { setActiveTab("mine"); setCurrentPage(1); }}
-          data-testid="card-my-orders-count"
-        >
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-950 flex items-center justify-center">
-              <UserCheck className="w-5 h-5 text-blue-600" />
-            </div>
-            <div className="flex-1">
-              <p className="text-2xl font-bold text-blue-600">{myOrders.length}</p>
-              <p className="text-xs text-muted-foreground">{t("طلباتي", "My Orders")}</p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="space-y-2">
-        <div className="relative">
-          <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            placeholder={t("بحث بالاسم أو الهاتف أو رقم الطلب...", "Search by name, phone or order #...")}
-            value={searchQuery}
-            onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
-            className="ps-9 h-9 text-sm"
-            data-testid="input-search-my-orders"
-          />
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-            <Filter className="w-3.5 h-3.5" />
-            {t("تصفية:", "Filter:")}
-          </div>
-          <Select value={stageFilter} onValueChange={(v) => { setStageFilter(v); setCurrentPage(1); }}>
-            <SelectTrigger className="h-7 text-xs w-[130px]" data-testid="select-stage-filter">
-              <SelectValue placeholder={t("المرحلة", "Stage")} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("كل المراحل", "All Stages")}</SelectItem>
-              <SelectItem value="mine">{t("مسودة", "Draft")}</SelectItem>
-              <SelectItem value="sent">{t("مُرسل", "Sent")}</SelectItem>
-              <SelectItem value="approved">{t("معتمد", "Approved")}</SelectItem>
-              <SelectItem value="production">{t("قيد التصنيع", "In Production")}</SelectItem>
-              <SelectItem value="completed">{t("مكتمل", "Completed")}</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={apptFilter} onValueChange={(v) => { setApptFilter(v); setCurrentPage(1); }}>
-            <SelectTrigger className="h-7 text-xs w-[140px]" data-testid="select-appt-filter">
-              <SelectValue placeholder={t("المواعيد", "Appointments")} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("كل الطلبات", "All Orders")}</SelectItem>
-              <SelectItem value="booked">{t("تم حجز موعد", "Appointment Booked")}</SelectItem>
-              <SelectItem value="not-booked">{t("بدون موعد", "No Appointment")}</SelectItem>
-            </SelectContent>
-          </Select>
-          {(stageFilter !== "all" || apptFilter !== "all" || searchQuery) && (
+        <div className="flex items-center gap-2">
+          {openCount > 0 && (
             <Button
-              variant="ghost"
+              variant="outline"
               size="sm"
-              className="h-7 px-2 text-xs text-muted-foreground"
-              onClick={() => { setStageFilter("all"); setApptFilter("all"); setSearchQuery(""); setCurrentPage(1); }}
-              data-testid="button-clear-filters"
+              className="h-8 text-xs border-amber-300 text-amber-700 dark:border-amber-700 dark:text-amber-400 bg-amber-50/60 dark:bg-amber-950/30"
+              onClick={() => { setActiveStage("new"); setCurrentPage(1); }}
+              data-testid="button-view-open-orders"
             >
-              <X className="w-3 h-3 me-1" />
-              {t("مسح الفلاتر", "Clear")}
+              <Zap className="w-3.5 h-3.5 me-1 animate-pulse" />
+              {t(`${openCount} طلب مفتوح`, `${openCount} open`)}
             </Button>
           )}
-          {filtered.length > 0 && (
-            <span className="text-xs text-muted-foreground ms-auto">
-              {t(`${filtered.length} طلب`, `${filtered.length} orders`)}
-            </span>
-          )}
+          <Button onClick={() => setNewOrderDialog(true)} size="sm" className="h-8 text-xs" data-testid="button-new-order-my">
+            <Plus className="w-3.5 h-3.5 me-1" />
+            {t("طلب جديد", "New Order")}
+          </Button>
         </div>
       </div>
 
-      <Card>
-        <CardContent className="p-0">
-          {activeTab === "open" && openOrders.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground text-sm">
-              <CheckCircle2 className="w-8 h-8 mx-auto mb-2 text-muted-foreground/30" />
-              {t("لا توجد طلبات مفتوحة حالياً", "No open orders available")}
-            </div>
-          ) : filtered.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground text-sm">
-              <ClipboardList className="w-8 h-8 mx-auto mb-2 text-muted-foreground/30" />
-              {t("لا توجد طلبات", "No orders found")}
-            </div>
-          ) : (
-            <>
-              <div className="hidden md:block overflow-x-auto">
-                <table className="w-full text-sm" data-testid="table-orders">
-                  <thead>
-                    <tr className="border-b bg-muted/40">
-                      {[
-                        { col: "id", labelAr: "#", labelEn: "#", cls: "w-16" },
-                        { col: "customer", labelAr: "العميل", labelEn: "Customer", cls: "" },
-                        { col: "none", labelAr: "الهاتف", labelEn: "Phone", cls: "" },
-                        { col: "none2", labelAr: "المنتج", labelEn: "Product", cls: "" },
-                        { col: "amount", labelAr: "المبلغ", labelEn: "Amount", cls: "" },
-                        { col: "stage", labelAr: "المرحلة", labelEn: "Stage", cls: "" },
-                        { col: "date", labelAr: "التاريخ", labelEn: "Date", cls: "" },
-                        { col: "appt", labelAr: "الموعد", labelEn: "Appointment", cls: "" },
-                        { col: "actions", labelAr: "إجراءات", labelEn: "Actions", cls: "w-24" },
-                      ].map(({ col, labelAr, labelEn, cls }) => (
-                        <th
-                          key={col}
-                          className={`text-start px-4 py-3 font-semibold text-xs text-muted-foreground select-none ${cls} ${!["none", "none2", "actions"].includes(col) ? "cursor-pointer hover:text-foreground transition-colors" : ""}`}
-                          onClick={() => !["none", "none2", "actions"].includes(col) && handleSortClick(col)}
-                          data-testid={`th-${col}`}
-                        >
-                          <span className="inline-flex items-center gap-1">
-                            {t(labelAr, labelEn)}
-                            {sortCol === col && (
-                              sortDir === "asc"
-                                ? <ChevronUp className="w-3 h-3" />
-                                : <ChevronDown className="w-3 h-3" />
-                            )}
-                          </span>
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {paginated.map((order: any) => {
-                      const itemDesc = order.items?.[0]?.description || order.items?.[0]?.productType || "—";
-                      const amount = Number(order.finalPrice || order.totalPrice || 0);
-                      const isOpen = order.stage === "open";
-                      const badgeCfg = stageBadgeConfig[order.stage] || fallbackBadge;
-                      const appt = order._appointment;
-                      return (
-                        <tr
-                          key={order.id}
-                          className={`hover:bg-muted/30 transition-colors ${isOpen ? "bg-amber-50/30 dark:bg-amber-950/10" : ""}`}
-                          data-testid={`row-order-${order.id}`}
-                        >
-                          <td className="px-4 py-3">
-                            <span className="font-mono text-xs font-bold text-muted-foreground">
-                              {order.quotationNumber || order.id}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3">
-                            <p className="font-medium text-sm truncate max-w-[160px]" data-testid={`text-customer-${order.id}`}>
-                              {order.customer?.fullName || "—"}
-                            </p>
-                            {(order.city || order.customer?.city) && (
-                              <p className="text-[11px] text-muted-foreground flex items-center gap-1 mt-0.5">
-                                <MapPin className="w-3 h-3" />{order.city || order.customer?.city}
-                              </p>
-                            )}
-                          </td>
-                          <td className="px-4 py-3">
-                            {order.customer?.phone ? (
-                              <span className="text-xs text-muted-foreground" dir="ltr">{order.customer.phone}</span>
-                            ) : (
-                              <span className="text-xs text-muted-foreground">—</span>
-                            )}
-                          </td>
-                          <td className="px-4 py-3">
-                            <p className="text-xs truncate max-w-[140px]" title={itemDesc}>{itemDesc}</p>
-                          </td>
-                          <td className="px-4 py-3">
-                            {amount > 0 ? (
-                              <span className="text-xs font-semibold">{amount.toLocaleString()} {t("ر.س", "SAR")}</span>
-                            ) : (
-                              <span className="text-xs text-muted-foreground">—</span>
-                            )}
-                          </td>
-                          <td className="px-4 py-3">
-                            <Badge variant="secondary" className={`text-[10px] px-2 py-0.5 ${badgeCfg.className}`} data-testid={`badge-status-${order.id}`}>
-                              {t(badgeCfg.ar, badgeCfg.en)}
-                            </Badge>
-                          </td>
-                          <td className="px-4 py-3">
-                            <span className="text-xs text-muted-foreground">{formatDate(order.createdAt)}</span>
-                          </td>
-                          <td className="px-4 py-3" data-testid={`td-appt-${order.id}`}>
-                            {appt ? (
-                              <div className="flex flex-col gap-0.5">
-                                <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full w-fit">
-                                  <CalendarCheck className="w-3 h-3" />
-                                  {t("تم الحجز", "Booked")}
-                                </span>
-                                <span className="text-[10px] text-muted-foreground">
-                                  {formatDate(appt.appointmentDate)} {appt.startTime ? appt.startTime.slice(0, 5) : ""}
-                                </span>
-                              </div>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
-                                <CalendarX className="w-3 h-3" />
-                                {t("لا يوجد", "None")}
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-1">
-                              {isOpen ? (
-                                <Button
-                                  size="sm"
-                                  className="bg-green-600 hover:bg-green-700 text-white h-7 px-2.5 text-xs"
-                                  onClick={() => claimMutation.mutate(order.id)}
-                                  disabled={claimMutation.isPending}
-                                  data-testid={`button-claim-${order.id}`}
-                                >
-                                  {claimMutation.isPending ? (
-                                    <Loader2 className="w-3 h-3 animate-spin me-1" />
-                                  ) : (
-                                    <Hand className="w-3 h-3 me-1" />
-                                  )}
-                                  {t("التقاط", "Claim")}
-                                </Button>
-                              ) : (
-                                <>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-7 w-7 p-0"
-                                    onClick={() => setViewOrder(order)}
-                                    title={t("عرض التفاصيل", "View Details")}
-                                    data-testid={`button-view-my-${order.id}`}
-                                  >
-                                    <Eye className="w-3.5 h-3.5" />
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className={`h-7 w-7 p-0 ${appt ? "text-emerald-600 hover:text-emerald-700" : "text-primary hover:text-primary"}`}
-                                    onClick={() => openAppointmentDialog(order)}
-                                    title={appt ? t("تعديل الموعد", "Edit Appointment") : t("حجز موعد", "Book Appointment")}
-                                    data-testid={`button-book-appt-${order.id}`}
-                                  >
-                                    {appt ? <CalendarCheck className="w-3.5 h-3.5" /> : <CalendarPlus className="w-3.5 h-3.5" />}
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className={`h-7 w-7 p-0 ${appt ? (appt.status === "attended" ? "text-violet-700 bg-violet-50 dark:bg-violet-950/30 hover:text-violet-800" : "text-violet-600 hover:text-violet-700 hover:bg-violet-50 dark:hover:bg-violet-950/30") : "text-muted-foreground/30 cursor-not-allowed"}`}
-                                    onClick={() => appt && navigate(`/site-survey/${appt.id}?returnTo=/my-orders`)}
-                                    disabled={!appt}
-                                    title={appt ? (appt.status === "attended" ? t("تعديل المقاسات (تم الرفع)", "Edit Measurements (Uploaded)") : t("رفع المقاسات", "Upload Measurements")) : t("يجب حجز موعد أولاً", "Book appointment first")}
-                                    data-testid={`button-survey-${order.id}`}
-                                  >
-                                    <Ruler className="w-3.5 h-3.5" />
-                                  </Button>
-                                  {appt?.status === "attended" && (
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="h-7 w-7 p-0 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 dark:hover:bg-indigo-950/30"
-                                      onClick={() => navigate(`/scene-3d?appointmentId=${appt.id}`)}
-                                      title={t("عرض التصور ثلاثي الأبعاد", "View 3D Preview")}
-                                      data-testid={`button-3d-${order.id}`}
-                                    >
-                                      <Box className="w-3.5 h-3.5" />
-                                    </Button>
-                                  )}
-                                </>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+      {isManager && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs text-muted-foreground flex items-center gap-1">
+            <Filter className="w-3.5 h-3.5" />
+            {t("المندوب:", "Rep:")}
+          </span>
+          <Select value={repFilter} onValueChange={(v) => { setRepFilter(v); setCurrentPage(1); }}>
+            <SelectTrigger className="h-7 text-xs w-[180px]" data-testid="select-rep-filter">
+              <SelectValue placeholder={t("كل المناديب", "All Reps")} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{t("كل المناديب", "All Reps")}</SelectItem>
+              <SelectItem value="unassigned">{t("غير مُسندة", "Unassigned")}</SelectItem>
+              {salesReps.map((rep: any) => (
+                <SelectItem key={rep.id} value={String(rep.id)}>
+                  {lang === "ar" ? rep.fullNameAr : rep.fullNameEn}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
 
-              <div className="md:hidden divide-y">
-                {paginated.map((order: any) => {
-                  const itemDesc = order.items?.[0]?.description || order.items?.[0]?.productType || "—";
-                  const amount = Number(order.finalPrice || order.totalPrice || 0);
-                  const isOpen = order.stage === "open";
-                  const badgeCfg = stageBadgeConfig[order.stage] || fallbackBadge;
-                  const appt = order._appointment;
-                  return (
-                    <div
-                      key={order.id}
-                      className={`p-4 hover:bg-muted/30 transition-colors ${isOpen ? "bg-amber-50/30 dark:bg-amber-950/10" : ""}`}
-                      data-testid={`card-order-${order.id}`}
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono text-xs font-bold text-muted-foreground">
-                            #{order.quotationNumber || order.id}
-                          </span>
-                          <Badge variant="secondary" className={`text-[10px] px-1.5 py-0 ${badgeCfg.className}`}>
-                            {t(badgeCfg.ar, badgeCfg.en)}
-                          </Badge>
-                          {appt && (
-                            <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0 rounded-full">
-                              <CalendarCheck className="w-2.5 h-2.5" />
-                              {formatDate(appt.appointmentDate)}
-                            </span>
-                          )}
-                        </div>
-                        <span className="text-[10px] text-muted-foreground">{formatDate(order.createdAt)}</span>
-                      </div>
-                      <p className="font-medium text-sm truncate" data-testid={`text-customer-mobile-${order.id}`}>
-                        {order.customer?.fullName || "—"}
-                      </p>
-                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
-                        {order.customer?.phone && (
-                          <span className="text-[11px] text-muted-foreground flex items-center gap-1" dir="ltr">
-                            <Phone className="w-3 h-3" />{order.customer.phone}
-                          </span>
-                        )}
-                        {(order.city || order.customer?.city) && (
-                          <span className="text-[11px] text-muted-foreground flex items-center gap-1">
-                            <MapPin className="w-3 h-3" />{order.city || order.customer?.city}
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-1 truncate" title={itemDesc}>{itemDesc}</p>
-                      {amount > 0 && (
-                        <p className="text-xs font-semibold mt-1">{amount.toLocaleString()} {t("ر.س", "SAR")}</p>
-                      )}
-                      <div className="flex items-center gap-2 mt-3 pt-2 border-t">
-                        {isOpen ? (
-                          <Button
-                            size="sm"
-                            className="bg-green-600 hover:bg-green-700 text-white h-8 flex-1"
-                            onClick={() => claimMutation.mutate(order.id)}
-                            disabled={claimMutation.isPending}
-                            data-testid={`button-claim-mobile-${order.id}`}
+      <div className="overflow-x-auto pb-1 -mx-1 px-1">
+        <div className="flex gap-1.5 min-w-max">
+          {PIPELINE_STAGES.map((stage) => {
+            const Icon = stage.icon;
+            const count = stageCounts[stage.key] || 0;
+            const isActive = activeStage === stage.key;
+            return (
+              <button
+                key={stage.key}
+                onClick={() => { setActiveStage(stage.key); setCurrentPage(1); }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all whitespace-nowrap ${
+                  isActive
+                    ? `${stage.color} ring-2 ring-offset-1 ring-current/30 shadow-sm`
+                    : "bg-muted/50 text-muted-foreground hover:bg-muted"
+                }`}
+                data-testid={`tab-stage-${stage.key}`}
+              >
+                <Icon className="w-3.5 h-3.5" />
+                {t(stage.ar, stage.en)}
+                {count > 0 && (
+                  <span className={`text-[10px] font-bold px-1.5 py-0 rounded-full ${isActive ? "bg-white/50 dark:bg-black/20" : "bg-muted"}`}>
+                    {count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="relative">
+        <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+        <Input
+          placeholder={t("بحث بالاسم أو الهاتف أو رقم الطلب...", "Search by name, phone or order #...")}
+          value={searchQuery}
+          onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
+          className="ps-9 h-9 text-sm"
+          data-testid="input-search-my-orders"
+        />
+        {searchQuery && (
+          <button
+            onClick={() => setSearchQuery("")}
+            className="absolute end-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            data-testid="button-clear-search"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </div>
+
+      {filtered.length === 0 ? (
+        <Card>
+          <CardContent className="py-16 text-center">
+            <ClipboardList className="w-10 h-10 mx-auto mb-3 text-muted-foreground/30" />
+            <p className="text-muted-foreground text-sm">
+              {activeStage === "all"
+                ? t("لا توجد طلبات", "No orders found")
+                : t(`لا توجد طلبات في مرحلة "${PIPELINE_STAGES.find(s => s.key === activeStage)?.ar}"`, `No orders in "${PIPELINE_STAGES.find(s => s.key === activeStage)?.en}" stage`)
+              }
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <>
+          <div className="hidden md:block">
+            <Card>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm" data-testid="table-orders">
+                    <thead>
+                      <tr className="border-b bg-muted/40">
+                        <th className="text-start px-4 py-3 font-semibold text-xs text-muted-foreground w-16">#</th>
+                        <th className="text-start px-4 py-3 font-semibold text-xs text-muted-foreground">{t("العميل", "Customer")}</th>
+                        <th className="text-start px-4 py-3 font-semibold text-xs text-muted-foreground">{t("المبلغ", "Amount")}</th>
+                        <th className="text-start px-4 py-3 font-semibold text-xs text-muted-foreground">{t("المرحلة", "Stage")}</th>
+                        <th className="text-start px-4 py-3 font-semibold text-xs text-muted-foreground">{t("الإجراء التالي", "Next Action")}</th>
+                        {isManager && <th className="text-start px-4 py-3 font-semibold text-xs text-muted-foreground">{t("المندوب", "Rep")}</th>}
+                        <th className="text-start px-4 py-3 font-semibold text-xs text-muted-foreground">{t("تاريخ", "Date")}</th>
+                        <th className="text-start px-4 py-3 font-semibold text-xs text-muted-foreground w-36">{t("إجراءات", "Actions")}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {paginated.map((order: any) => {
+                        const amount = Number(order.finalPrice || order.totalPrice || 0);
+                        const isOpen = order.stage === "new" && !order.assignedTo;
+                        const stageCfg = PIPELINE_STAGES.find(s => s.key === order.stage) || PIPELINE_STAGES[0];
+                        const StageIcon = stageCfg.icon;
+                        const nextAction = getNextAction(order.stage, order, t);
+                        const isCancelled = order.stage === "cancelled";
+                        const isDelivered = order.stage === "delivered";
+                        const isMine = order.assignedTo === user?.id;
+                        const canCancel = !isCancelled && !isDelivered && (isManager || isMine);
+                        const appt = order._appointment;
+                        const apptPast = appt && isAppointmentPast(appt);
+                        return (
+                          <tr
+                            key={order.id}
+                            className={`hover:bg-muted/30 transition-colors ${isOpen ? "bg-amber-50/40 dark:bg-amber-950/10" : ""} ${isCancelled ? "opacity-60" : ""}`}
+                            data-testid={`row-order-${order.id}`}
                           >
-                            {claimMutation.isPending ? (
-                              <Loader2 className="w-3.5 h-3.5 animate-spin me-1" />
-                            ) : (
-                              <Hand className="w-3.5 h-3.5 me-1" />
+                            <td className="px-4 py-3">
+                              <span className="font-mono text-xs font-bold text-muted-foreground">
+                                {order.quotationNumber || order.id}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <p className="font-medium text-sm truncate max-w-[160px]" data-testid={`text-customer-${order.id}`}>
+                                {order.customer?.fullName || "—"}
+                              </p>
+                              <div className="flex items-center gap-2 mt-0.5 text-[11px] text-muted-foreground">
+                                {order.customer?.phone && <span dir="ltr">{order.customer.phone}</span>}
+                                {(order.city || order.customer?.city) && (
+                                  <span className="flex items-center gap-0.5">
+                                    <MapPin className="w-2.5 h-2.5" />{order.city || order.customer?.city}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              {amount > 0 ? (
+                                <span className="text-xs font-semibold">{amount.toLocaleString()} {t("ر.س", "SAR")}</span>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">—</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3">
+                              <Badge variant="secondary" className={`text-[10px] px-2 py-0.5 gap-1 inline-flex items-center ${stageCfg.color}`} data-testid={`badge-status-${order.id}`}>
+                                <StageIcon className="w-2.5 h-2.5" />
+                                {t(stageCfg.ar, stageCfg.en)}
+                              </Badge>
+                              {appt && !isCancelled && (
+                                <div className="mt-0.5">
+                                  <span className={`text-[10px] ${apptPast ? "text-amber-600 dark:text-amber-400" : "text-blue-600 dark:text-blue-400"}`}>
+                                    {apptPast ? "⚠ " : "📅 "}
+                                    {formatDate(appt.appointmentDate)} {appt.startTime?.slice(0, 5)}
+                                  </span>
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className={`text-[11px] flex items-center gap-1 ${nextAction.urgent ? "text-amber-600 dark:text-amber-400 font-medium" : "text-muted-foreground"}`}>
+                                {nextAction.urgent && <AlertCircle className="w-3 h-3 flex-shrink-0" />}
+                                {nextAction.label}
+                              </span>
+                            </td>
+                            {isManager && (
+                              <td className="px-4 py-3">
+                                <span className="text-xs text-muted-foreground">
+                                  {order.assignedUser
+                                    ? (lang === "ar" ? order.assignedUser.fullNameAr : order.assignedUser.fullNameEn)
+                                    : <span className="text-amber-600 dark:text-amber-400 font-medium">{t("غير مُسند", "Unassigned")}</span>
+                                  }
+                                </span>
+                              </td>
                             )}
-                            {t("التقاط", "Claim")}
+                            <td className="px-4 py-3">
+                              <span className="text-xs text-muted-foreground">{formatDate(order.createdAt)}</span>
+                              {order.claimedAt && (
+                                <p className="text-[10px] text-muted-foreground/60">{t("التقاط:", "Claimed:")} {formatDate(order.claimedAt)}</p>
+                              )}
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-1">
+                                {isOpen ? (
+                                  <Button
+                                    size="sm"
+                                    className="bg-green-600 hover:bg-green-700 text-white h-7 px-2.5 text-xs"
+                                    onClick={() => claimMutation.mutate(order.id)}
+                                    disabled={claimMutation.isPending}
+                                    data-testid={`button-claim-${order.id}`}
+                                  >
+                                    {claimMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin me-1" /> : <Hand className="w-3 h-3 me-1" />}
+                                    {t("التقاط", "Claim")}
+                                  </Button>
+                                ) : (
+                                  <>
+                                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setViewOrder(order)} title={t("عرض التفاصيل", "View Details")} data-testid={`button-view-my-${order.id}`}>
+                                      <Eye className="w-3.5 h-3.5" />
+                                    </Button>
+                                    {!isCancelled && !isDelivered && (isMine || isManager) && (
+                                      <>
+                                        <Button
+                                          variant="ghost" size="sm"
+                                          className={`h-7 w-7 p-0 ${appt ? "text-emerald-600" : "text-primary"}`}
+                                          onClick={() => openAppointmentDialog(order)}
+                                          title={appt ? t("تعديل الموعد", "Edit Appt") : t("حجز موعد", "Book Appt")}
+                                          data-testid={`button-book-appt-${order.id}`}
+                                        >
+                                          {appt ? <CalendarCheck className="w-3.5 h-3.5" /> : <CalendarPlus className="w-3.5 h-3.5" />}
+                                        </Button>
+                                        <Button
+                                          variant="ghost" size="sm"
+                                          className={`h-7 w-7 p-0 ${appt ? "text-violet-600" : "text-muted-foreground/30 cursor-not-allowed"}`}
+                                          onClick={() => appt && navigate(`/site-survey/${appt.id}?returnTo=/my-orders`)}
+                                          disabled={!appt}
+                                          title={appt ? t("المسح الميداني", "Site Survey") : t("يجب حجز موعد أولاً", "Book appointment first")}
+                                          data-testid={`button-survey-${order.id}`}
+                                        >
+                                          <Ruler className="w-3.5 h-3.5" />
+                                        </Button>
+                                        {appt?.status === "attended" && (
+                                          <Button
+                                            variant="ghost" size="sm"
+                                            className="h-7 w-7 p-0 text-indigo-600"
+                                            onClick={() => navigate(`/scene-3d?appointmentId=${appt.id}`)}
+                                            title={t("التصور ثلاثي الأبعاد", "3D Preview")}
+                                            data-testid={`button-3d-${order.id}`}
+                                          >
+                                            <Box className="w-3.5 h-3.5" />
+                                          </Button>
+                                        )}
+                                      </>
+                                    )}
+                                    {canCancel && (
+                                      <Button
+                                        variant="ghost" size="sm"
+                                        className="h-7 w-7 p-0 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
+                                        onClick={() => { setCancelDialog(order); setCancelReason(""); setCancelNotes(""); }}
+                                        title={t("إلغاء الطلب", "Cancel Order")}
+                                        data-testid={`button-cancel-${order.id}`}
+                                      >
+                                        <Ban className="w-3.5 h-3.5" />
+                                      </Button>
+                                    )}
+                                  </>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="md:hidden space-y-2">
+            {paginated.map((order: any) => {
+              const amount = Number(order.finalPrice || order.totalPrice || 0);
+              const isOpen = order.stage === "new" && !order.assignedTo;
+              const stageCfg = PIPELINE_STAGES.find(s => s.key === order.stage) || PIPELINE_STAGES[0];
+              const StageIcon = stageCfg.icon;
+              const nextAction = getNextAction(order.stage, order, t);
+              const isCancelled = order.stage === "cancelled";
+              const isDelivered = order.stage === "delivered";
+              const isMine = order.assignedTo === user?.id;
+              const canCancel = !isCancelled && !isDelivered && (isManager || isMine);
+              const appt = order._appointment;
+              const apptPast = appt && isAppointmentPast(appt);
+              return (
+                <Card
+                  key={order.id}
+                  className={`${isOpen ? "border-amber-200 dark:border-amber-800 bg-amber-50/30 dark:bg-amber-950/10" : ""} ${isCancelled ? "opacity-60" : ""}`}
+                  data-testid={`card-order-${order.id}`}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-mono text-xs font-bold text-muted-foreground">#{order.quotationNumber || order.id}</span>
+                        <Badge variant="secondary" className={`text-[10px] px-1.5 py-0 gap-1 inline-flex items-center ${stageCfg.color}`}>
+                          <StageIcon className="w-2.5 h-2.5" />
+                          {t(stageCfg.ar, stageCfg.en)}
+                        </Badge>
+                      </div>
+                      <span className="text-[10px] text-muted-foreground">{formatDate(order.createdAt)}</span>
+                    </div>
+
+                    <p className="font-medium text-sm" data-testid={`text-customer-mobile-${order.id}`}>
+                      {order.customer?.fullName || "—"}
+                    </p>
+                    <div className="flex items-center gap-3 mt-0.5 text-[11px] text-muted-foreground flex-wrap">
+                      {order.customer?.phone && <span dir="ltr" className="flex items-center gap-0.5"><Phone className="w-2.5 h-2.5" />{order.customer.phone}</span>}
+                      {(order.city || order.customer?.city) && <span className="flex items-center gap-0.5"><MapPin className="w-2.5 h-2.5" />{order.city || order.customer?.city}</span>}
+                      {amount > 0 && <span className="font-semibold text-foreground">{amount.toLocaleString()} {t("ر.س", "SAR")}</span>}
+                    </div>
+
+                    {isManager && order.assignedUser && (
+                      <p className="text-[11px] text-muted-foreground mt-1">
+                        {t("المندوب:", "Rep:")} {lang === "ar" ? order.assignedUser.fullNameAr : order.assignedUser.fullNameEn}
+                      </p>
+                    )}
+
+                    {appt && !isCancelled && (
+                      <div className={`mt-1.5 flex items-center gap-1 text-[11px] ${apptPast ? "text-amber-600 dark:text-amber-400" : "text-blue-600 dark:text-blue-400"}`}>
+                        {apptPast ? <CalendarX className="w-3 h-3" /> : <CalendarCheck className="w-3 h-3" />}
+                        {formatDate(appt.appointmentDate)} {appt.startTime?.slice(0, 5)}
+                        {apptPast && <span className="text-[10px]">{t("— منتهٍ", "— expired")}</span>}
+                      </div>
+                    )}
+
+                    {isCancelled && order.cancellationReason && (
+                      <div className="mt-1.5 bg-red-50/60 dark:bg-red-950/20 border border-red-200 dark:border-red-900 rounded px-2 py-1">
+                        <p className="text-[10px] text-red-600 dark:text-red-400">{t("سبب الإلغاء:", "Reason:")} {order.cancellationReason}</p>
+                      </div>
+                    )}
+
+                    {!isCancelled && !isDelivered && (
+                      <div className={`mt-1.5 flex items-center gap-1 text-[11px] ${nextAction.urgent ? "text-amber-600 dark:text-amber-400 font-medium" : "text-muted-foreground"}`}>
+                        {nextAction.urgent && <AlertCircle className="w-3 h-3 flex-shrink-0" />}
+                        <ArrowRight className="w-3 h-3 flex-shrink-0" />
+                        {nextAction.label}
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-2 mt-3 pt-2 border-t flex-wrap">
+                      {isOpen ? (
+                        <Button
+                          size="sm"
+                          className="bg-green-600 hover:bg-green-700 text-white h-8 flex-1"
+                          onClick={() => claimMutation.mutate(order.id)}
+                          disabled={claimMutation.isPending}
+                          data-testid={`button-claim-mobile-${order.id}`}
+                        >
+                          {claimMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin me-1" /> : <Hand className="w-3.5 h-3.5 me-1" />}
+                          {t("التقاط", "Claim")}
+                        </Button>
+                      ) : (
+                        <>
+                          <Button variant="outline" size="sm" className="h-8 text-xs flex-1" onClick={() => setViewOrder(order)} data-testid={`button-view-mobile-${order.id}`}>
+                            <Eye className="w-3.5 h-3.5 me-1" />{t("عرض", "View")}
                           </Button>
-                        ) : (
-                          <>
+                          {!isCancelled && !isDelivered && (isMine || isManager) && (
                             <Button
-                              variant="outline"
-                              size="sm"
-                              className="h-8 flex-1 text-xs"
-                              onClick={() => setViewOrder(order)}
-                              data-testid={`button-view-mobile-${order.id}`}
-                            >
-                              <Eye className="w-3.5 h-3.5 me-1" />
-                              {t("عرض", "View")}
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className={`h-8 flex-1 text-xs ${appt ? "text-emerald-700 border-emerald-300 dark:border-emerald-800" : "text-primary border-primary/30"}`}
+                              variant="outline" size="sm"
+                              className={`h-8 text-xs flex-1 ${appt ? "text-emerald-700 border-emerald-300 dark:border-emerald-800" : ""}`}
                               onClick={() => openAppointmentDialog(order)}
                               data-testid={`button-book-appt-mobile-${order.id}`}
                             >
                               {appt ? <CalendarCheck className="w-3.5 h-3.5 me-1" /> : <CalendarPlus className="w-3.5 h-3.5 me-1" />}
-                              {appt ? t("تعديل الموعد", "Edit Appt") : t("حجز موعد", "Book Appt")}
+                              {appt ? t("الموعد", "Appt") : t("حجز موعد", "Book Appt")}
                             </Button>
+                          )}
+                          {!isCancelled && !isDelivered && appt && (isMine || isManager) && (
                             <Button
-                              variant="outline"
-                              size="sm"
-                              className={`h-8 w-9 p-0 ${appt ? (appt.status === "attended" ? "text-violet-700 bg-violet-50 dark:bg-violet-950/30 border-violet-400 dark:border-violet-700" : "text-violet-600 border-violet-300 dark:border-violet-800 hover:bg-violet-50 dark:hover:bg-violet-950/30") : "text-muted-foreground/30 border-muted cursor-not-allowed"}`}
-                              onClick={() => appt && navigate(`/site-survey/${appt.id}?returnTo=/my-orders`)}
-                              disabled={!appt}
-                              title={appt ? (appt.status === "attended" ? t("تعديل المقاسات", "Edit Survey") : t("رفع المقاسات", "Upload Measurements")) : t("يجب حجز موعد أولاً", "Book appointment first")}
+                              variant="outline" size="sm"
+                              className="h-8 text-xs flex-1 text-violet-700 border-violet-300 dark:border-violet-800"
+                              onClick={() => navigate(`/site-survey/${appt.id}?returnTo=/my-orders`)}
                               data-testid={`button-survey-mobile-${order.id}`}
                             >
-                              <Ruler className="w-3.5 h-3.5" />
+                              <Ruler className="w-3.5 h-3.5 me-1" />{t("المسح", "Survey")}
                             </Button>
-                            {appt?.status === "attended" && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-8 w-9 p-0 text-indigo-600 border-indigo-300 dark:border-indigo-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/30"
-                                onClick={() => navigate(`/scene-3d?appointmentId=${appt.id}`)}
-                                title={t("عرض 3D", "View 3D")}
-                                data-testid={`button-3d-mobile-${order.id}`}
-                              >
-                                <Box className="w-3.5 h-3.5" />
-                              </Button>
-                            )}
-                          </>
-                        )}
-                      </div>
+                          )}
+                          {canCancel && (
+                            <Button
+                              variant="outline" size="sm"
+                              className="h-8 text-xs text-red-600 border-red-300 dark:border-red-800"
+                              onClick={() => { setCancelDialog(order); setCancelReason(""); setCancelNotes(""); }}
+                              data-testid={`button-cancel-mobile-${order.id}`}
+                            >
+                              <Ban className="w-3.5 h-3.5 me-1" />{t("إلغاء", "Cancel")}
+                            </Button>
+                          )}
+                        </>
+                      )}
                     </div>
-                  );
-                })}
-              </div>
-            </>
-          )}
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
 
-          {filtered.length > perPage && (
-            <div className="flex items-center justify-between px-4 py-3 border-t bg-muted/20">
-              <p className="text-xs text-muted-foreground">
-                {t(
-                  `عرض ${(currentPage - 1) * perPage + 1} - ${Math.min(currentPage * perPage, filtered.length)} من ${filtered.length}`,
-                  `Showing ${(currentPage - 1) * perPage + 1} - ${Math.min(currentPage * perPage, filtered.length)} of ${filtered.length}`
-                )}
-              </p>
-              <div className="flex items-center gap-1">
-                <Button variant="outline" size="sm" className="h-7 w-7 p-0" disabled={currentPage <= 1} onClick={() => setCurrentPage(currentPage - 1)} data-testid="button-prev-page-my">
-                  {lang === "ar" ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronLeft className="w-3.5 h-3.5" />}
-                </Button>
-                <span className="text-xs text-muted-foreground px-2">{currentPage}/{totalPages}</span>
-                <Button variant="outline" size="sm" className="h-7 w-7 p-0" disabled={currentPage >= totalPages} onClick={() => setCurrentPage(currentPage + 1)} data-testid="button-next-page-my">
-                  {lang === "ar" ? <ChevronLeft className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-                </Button>
-              </div>
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-2">
+              <Button variant="outline" size="sm" className="h-8 w-8 p-0" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} data-testid="button-prev-page">
+                <ChevronRight className="w-4 h-4" />
+              </Button>
+              <span className="text-sm text-muted-foreground">
+                {t(`${currentPage} / ${totalPages}`, `${currentPage} / ${totalPages}`)}
+              </span>
+              <Button variant="outline" size="sm" className="h-8 w-8 p-0" onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} data-testid="button-next-page">
+                <ChevronLeft className="w-4 h-4" />
+              </Button>
             </div>
           )}
-        </CardContent>
-      </Card>
+        </>
+      )}
+
+      {cancelDialog && (
+        <Dialog open onOpenChange={() => { setCancelDialog(null); setCancelReason(""); setCancelNotes(""); }}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-red-600 dark:text-red-400">
+                <Ban className="w-4 h-4" />
+                {t("إلغاء الطلب", "Cancel Order")}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <div className="bg-muted/50 rounded-lg p-3 flex items-center gap-3">
+                <div className="w-9 h-9 rounded-full bg-red-100 dark:bg-red-950 flex items-center justify-center flex-shrink-0">
+                  <ClipboardList className="w-4 h-4 text-red-600" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs text-muted-foreground">{t("الطلب", "Order")} #{cancelDialog.quotationNumber || cancelDialog.id}</p>
+                  <p className="text-sm font-semibold truncate">{cancelDialog.customer?.fullName || "—"}</p>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-sm">
+                  {t("سبب الإلغاء", "Cancellation Reason")}
+                  <span className="text-red-500 ms-1">*</span>
+                </Label>
+                <Select value={cancelReason} onValueChange={setCancelReason}>
+                  <SelectTrigger data-testid="select-cancel-reason">
+                    <SelectValue placeholder={t("اختر سبب الإلغاء...", "Select reason...")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CANCEL_REASONS.map((r) => (
+                      <SelectItem key={r.value} value={r.value}>{t(r.ar, r.en)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-sm">{t("تفاصيل إضافية (اختياري)", "Additional Details (optional)")}</Label>
+                <Textarea
+                  value={cancelNotes}
+                  onChange={(e) => setCancelNotes(e.target.value)}
+                  placeholder={t("أي تفاصيل إضافية تود ذكرها...", "Any additional details...")}
+                  className="resize-none"
+                  rows={2}
+                  data-testid="input-cancel-notes"
+                />
+              </div>
+              <div className="bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900 rounded-lg p-3">
+                <p className="text-xs text-amber-700 dark:text-amber-400 flex items-start gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                  {t("سيُسجَّل الإلغاء مع السبب والتاريخ وسيبقى الطلب مرئياً في تبويب \"ملغى\".", "Cancellation will be recorded with reason and date. The order will remain visible in the \"Cancelled\" tab.")}
+                </p>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => { setCancelDialog(null); setCancelReason(""); setCancelNotes(""); }} data-testid="button-cancel-dialog-close">
+                {t("تراجع", "Go Back")}
+              </Button>
+              <Button
+                variant="destructive"
+                disabled={!cancelReason || cancelMutation.isPending}
+                onClick={() => cancelMutation.mutate({ id: cancelDialog.id, reason: cancelReason, notes: cancelNotes })}
+                data-testid="button-confirm-cancel"
+              >
+                {cancelMutation.isPending && <Loader2 className="w-4 h-4 animate-spin me-2" />}
+                {t("تأكيد الإلغاء", "Confirm Cancellation")}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {viewOrder && (
         <Dialog open onOpenChange={() => setViewOrder(null)}>
-          <DialogContent className="sm:max-w-lg max-h-[85vh] flex flex-col">
+          <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>{t("تفاصيل الطلب", "Order Details")} #{viewOrder.quotationNumber || viewOrder.id}</DialogTitle>
+              <DialogTitle className="flex items-center gap-2">
+                <ClipboardList className="w-4 h-4 text-primary" />
+                {t("تفاصيل الطلب", "Order Details")} #{viewOrder.quotationNumber || viewOrder.id}
+              </DialogTitle>
             </DialogHeader>
-            <div className="space-y-4 py-2 overflow-y-auto flex-1 pe-1">
+            <div className="space-y-4 py-1">
+              {(() => {
+                const stageCfg = PIPELINE_STAGES.find(s => s.key === viewOrder.stage) || PIPELINE_STAGES[0];
+                const SIcon = stageCfg.icon;
+                return (
+                  <div className="flex items-center gap-2">
+                    <Badge variant="secondary" className={`text-xs px-3 py-1 gap-1.5 inline-flex items-center ${stageCfg.color}`}>
+                      <SIcon className="w-3.5 h-3.5" />
+                      {t(stageCfg.ar, stageCfg.en)}
+                    </Badge>
+                    {viewOrder.stage !== "cancelled" && viewOrder.stage !== "delivered" && (() => {
+                      const na = getNextAction(viewOrder.stage, viewOrder, t);
+                      return (
+                        <span className={`text-xs flex items-center gap-1 ${na.urgent ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`}>
+                          {na.urgent && <AlertCircle className="w-3 h-3" />}
+                          <ArrowRight className="w-3 h-3" />
+                          {na.label}
+                        </span>
+                      );
+                    })()}
+                  </div>
+                );
+              })()}
+
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-muted/50 rounded-lg p-3">
                   <p className="text-[11px] text-muted-foreground mb-1">{t("العميل", "Customer")}</p>
                   <p className="text-sm font-semibold">{viewOrder.customer?.fullName || "—"}</p>
-                  {viewOrder.customer?.phone && (
-                    <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1" dir="ltr">
-                      <Phone className="w-3 h-3" /> {viewOrder.customer.phone}
-                    </p>
-                  )}
+                  {viewOrder.customer?.phone && <p className="text-xs text-muted-foreground mt-0.5" dir="ltr">{viewOrder.customer.phone}</p>}
                   {(viewOrder.city || viewOrder.customer?.city) && (
-                    <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
-                      <MapPin className="w-3 h-3" /> {viewOrder.city || viewOrder.customer?.city}
-                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1"><MapPin className="w-3 h-3" />{viewOrder.city || viewOrder.customer?.city}</p>
                   )}
                 </div>
                 <div className="bg-muted/50 rounded-lg p-3">
-                  <p className="text-[11px] text-muted-foreground mb-1">{t("الحالة", "Status")}</p>
-                  <p className="text-sm font-semibold">{viewOrder.status}</p>
-                  <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
-                    <Calendar className="w-3 h-3" />
-                    {viewOrder.createdAt ? new Date(viewOrder.createdAt).toLocaleDateString(lang === "ar" ? "ar-SA" : "en-US", { year: "numeric", month: "long", day: "numeric" }) : "—"}
+                  <p className="text-[11px] text-muted-foreground mb-1">{t("المبلغ الإجمالي", "Total Amount")}</p>
+                  <p className="text-lg font-bold">
+                    {Number(viewOrder.finalPrice || viewOrder.totalPrice || 0).toLocaleString()}
+                    <span className="text-xs font-normal ms-1">{t("ر.س", "SAR")}</span>
                   </p>
+                  {Number(viewOrder.discount || 0) > 0 && (
+                    <p className="text-xs text-muted-foreground">{t("خصم:", "Discount:")} {Number(viewOrder.discount).toLocaleString()}</p>
+                  )}
                 </div>
               </div>
+
+              {viewOrder.assignedUser && (
+                <div className="bg-muted/50 rounded-lg p-3 flex items-center gap-3">
+                  <UserCheck className="w-4 h-4 text-muted-foreground" />
+                  <div>
+                    <p className="text-[11px] text-muted-foreground">{t("المندوب", "Sales Rep")}</p>
+                    <p className="text-sm font-medium">{lang === "ar" ? viewOrder.assignedUser.fullNameAr : viewOrder.assignedUser.fullNameEn}</p>
+                  </div>
+                </div>
+              )}
+
+              {viewOrder.cancellationReason && (
+                <div className="bg-red-50/60 dark:bg-red-950/20 border border-red-200 dark:border-red-900 rounded-lg p-3">
+                  <p className="text-[11px] text-red-600 dark:text-red-400 font-semibold mb-1">{t("سبب الإلغاء", "Cancellation Reason")}</p>
+                  <p className="text-xs">{viewOrder.cancellationReason}</p>
+                  {viewOrder.cancelledAt && (
+                    <p className="text-[10px] text-muted-foreground mt-1">{formatDateFull(viewOrder.cancelledAt)}</p>
+                  )}
+                </div>
+              )}
 
               {viewOrder.items && viewOrder.items.length > 0 && (
                 <div>
@@ -1034,16 +1143,6 @@ export default function MyOrdersPage() {
                 </div>
               )}
 
-              {viewOrder.claimedAt && (
-                <div className="bg-green-50/50 dark:bg-green-950/20 border border-green-200 dark:border-green-900 rounded-lg p-3">
-                  <p className="text-[11px] text-green-600 dark:text-green-400 font-medium mb-1">{t("تم الالتقاط", "Claimed")}</p>
-                  <p className="text-xs text-muted-foreground flex items-center gap-1">
-                    <Calendar className="w-3 h-3" />
-                    {new Date(viewOrder.claimedAt).toLocaleDateString(lang === "ar" ? "ar-SA" : "en-US", { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
-                  </p>
-                </div>
-              )}
-
               {(() => {
                 const appt = viewOrder._appointment;
                 if (!appt) return null;
@@ -1053,7 +1152,7 @@ export default function MyOrdersPage() {
                     <div className="flex items-center justify-between mb-1.5">
                       <p className={`text-[11px] font-semibold flex items-center gap-1 ${countdown.past ? "text-amber-700 dark:text-amber-400" : "text-blue-700 dark:text-blue-400"}`}>
                         {countdown.past
-                          ? <><CalendarX className="w-3.5 h-3.5" />{t("موعد منتهٍ — يحتاج إعادة تعيين", "Expired Appointment — Needs Reschedule")}</>
+                          ? <><CalendarX className="w-3.5 h-3.5" />{t("موعد منتهٍ", "Expired Appointment")}</>
                           : <><CalendarCheck className="w-3.5 h-3.5" />{t("موعد محجوز", "Appointment Booked")}</>
                         }
                       </p>
@@ -1062,17 +1161,9 @@ export default function MyOrdersPage() {
                       </span>
                     </div>
                     <p className="text-xs font-medium">{appt.title}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
-                      <Calendar className="w-3 h-3" />
-                      {formatApptFullDate(appt)}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
-                      <Clock className="w-3 h-3" />
-                      {appt.startTime?.slice(0, 5)} — {appt.endTime?.slice(0, 5)}
-                    </p>
-                    {appt.notes && (
-                      <p className="text-[11px] text-muted-foreground mt-1 border-t pt-1">{appt.notes}</p>
-                    )}
+                    <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1"><Calendar className="w-3 h-3" />{formatApptFullDate(appt)}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1"><Clock className="w-3 h-3" />{appt.startTime?.slice(0, 5)} — {appt.endTime?.slice(0, 5)}</p>
+                    {appt.notes && <p className="text-[11px] text-muted-foreground mt-1 border-t pt-1">{appt.notes}</p>}
                   </div>
                 );
               })()}
@@ -1081,45 +1172,29 @@ export default function MyOrdersPage() {
               <Button variant="outline" onClick={() => setViewOrder(null)} data-testid="button-close-view-my">
                 {t("إغلاق", "Close")}
               </Button>
-              {viewOrder.assignedTo === user?.id && (() => {
+              {viewOrder.stage !== "cancelled" && viewOrder.stage !== "delivered" && (viewOrder.assignedTo === user?.id || isManager) && (() => {
                 const appt = viewOrder._appointment;
-                if (viewOrder.inspectionDate) {
-                  return (
-                    <Button variant="secondary" onClick={() => { window.location.href = `/dashboard/design-studio/${viewOrder.id}`; }} data-testid="button-design-studio-my">
-                      <Pencil className="w-3.5 h-3.5 me-1.5" />
-                      {t("استوديو التصميم", "Design Studio")}
-                    </Button>
-                  );
-                }
                 if (!appt) {
                   return (
                     <Button variant="default" onClick={() => { setViewOrder(null); openAppointmentDialog(viewOrder); }} data-testid="button-book-from-view">
                       <CalendarPlus className="w-3.5 h-3.5 me-1.5" />
-                      {t("حجز موعد رفع مقاسات", "Book Measurement")}
+                      {t("حجز موعد", "Book Appointment")}
                     </Button>
                   );
                 }
                 const isPast = isAppointmentPast(appt);
                 if (isPast) {
                   return (
-                    <Button
-                      className="bg-amber-600 hover:bg-amber-700 text-white"
-                      onClick={() => { setViewOrder(null); openAppointmentDialog(viewOrder); }}
-                      data-testid="button-reschedule-from-view"
-                    >
+                    <Button className="bg-amber-600 hover:bg-amber-700 text-white" onClick={() => { setViewOrder(null); openAppointmentDialog(viewOrder); }} data-testid="button-reschedule-from-view">
                       <CalendarPlus className="w-3.5 h-3.5 me-1.5" />
-                      {t("إعادة تعيين موعد جديد", "Reschedule Appointment")}
+                      {t("إعادة جدولة الموعد", "Reschedule")}
                     </Button>
                   );
                 }
                 return (
-                  <Button
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white"
-                    onClick={() => { setViewOrder(null); openAppointmentDialog(viewOrder); }}
-                    data-testid="button-edit-appt-from-view"
-                  >
+                  <Button className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => { setViewOrder(null); openAppointmentDialog(viewOrder); }} data-testid="button-edit-appt-from-view">
                     <CalendarCheck className="w-3.5 h-3.5 me-1.5" />
-                    {t("تعديل الموعد المحجوز", "Edit Appointment")}
+                    {t("تعديل الموعد", "Edit Appointment")}
                   </Button>
                 );
               })()}
@@ -1160,7 +1235,7 @@ export default function MyOrdersPage() {
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
                   {isRescheduleMode
-                    ? <><CalendarPlus className="w-4 h-4 text-amber-600" />{t("إعادة تعيين موعد جديد", "Reschedule Appointment")}</>
+                    ? <><CalendarPlus className="w-4 h-4 text-amber-600" />{t("إعادة جدولة الموعد", "Reschedule Appointment")}</>
                     : editingApptId
                       ? <><CalendarCheck className="w-4 h-4 text-emerald-600" />{t("تعديل الموعد", "Edit Appointment")}</>
                       : <><CalendarPlus className="w-4 h-4 text-primary" />{t("حجز موعد جديد", "Book New Appointment")}</>
@@ -1175,9 +1250,7 @@ export default function MyOrdersPage() {
                   <div className="min-w-0">
                     <p className="text-xs text-muted-foreground">{t("للطلب", "For Order")} #{appointmentDialog.quotationNumber || appointmentDialog.id}</p>
                     <p className="text-sm font-semibold truncate">{appointmentDialog.customer?.fullName || "—"}</p>
-                    {appointmentDialog.customer?.phone && (
-                      <p className="text-[11px] text-muted-foreground" dir="ltr">{appointmentDialog.customer.phone}</p>
-                    )}
+                    {appointmentDialog.customer?.phone && <p className="text-[11px] text-muted-foreground" dir="ltr">{appointmentDialog.customer.phone}</p>}
                   </div>
                 </div>
 
@@ -1185,36 +1258,29 @@ export default function MyOrdersPage() {
                   <div className={`rounded-lg p-3 border text-xs space-y-1 ${isPastAppt ? "bg-amber-50/60 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800" : "bg-blue-50/50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800"}`}>
                     <div className="flex items-center justify-between">
                       <span className={`font-semibold flex items-center gap-1 ${isPastAppt ? "text-amber-700 dark:text-amber-400" : "text-blue-700 dark:text-blue-400"}`}>
-                        {isPastAppt
-                          ? <><CalendarX className="w-3.5 h-3.5" />{t("الموعد السابق — منتهٍ", "Previous Appt — Expired")}</>
-                          : <><CalendarCheck className="w-3.5 h-3.5" />{t("الموعد الحالي", "Current Appointment")}</>
-                        }
+                        {isPastAppt ? <><CalendarX className="w-3.5 h-3.5" />{t("الموعد السابق — منتهٍ", "Previous Appt — Expired")}</> : <><CalendarCheck className="w-3.5 h-3.5" />{t("الموعد الحالي", "Current Appointment")}</>}
                       </span>
                       <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${isPastAppt ? "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300" : "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300"}`}>
                         {existingCountdown.label}
                       </span>
                     </div>
                     <p className="font-medium">{existingAppt.title}</p>
-                    <p className="text-muted-foreground flex items-center gap-1">
-                      <Calendar className="w-3 h-3" />{formatApptFullDate(existingAppt)}
-                    </p>
-                    <p className="text-muted-foreground flex items-center gap-1">
-                      <Clock className="w-3 h-3" />{existingAppt.startTime?.slice(0, 5)} — {existingAppt.endTime?.slice(0, 5)}
-                    </p>
+                    <p className="text-muted-foreground flex items-center gap-1"><Calendar className="w-3 h-3" />{formatApptFullDate(existingAppt)}</p>
+                    <p className="text-muted-foreground flex items-center gap-1"><Clock className="w-3 h-3" />{existingAppt.startTime?.slice(0, 5)} — {existingAppt.endTime?.slice(0, 5)}</p>
                   </div>
                 )}
 
                 {isRescheduleMode && (
                   <div className="space-y-1.5">
                     <Label className="flex items-center gap-1 text-amber-700 dark:text-amber-400">
-                      <span>{t("سبب إعادة التعيين", "Reason for Reschedule")}</span>
+                      {t("سبب إعادة الجدولة", "Reschedule Reason")}
                       <span className="text-red-500 text-xs">*</span>
                     </Label>
                     <Textarea
                       value={rescheduleReason}
                       onChange={(e) => setRescheduleReason(e.target.value)}
-                      placeholder={t("اذكر السبب: لم تتم الزيارة / تغيير مفاجئ / طلب العميل...", "Reason: visit not done / sudden change / client request...")}
-                      className="resize-none border-amber-300 dark:border-amber-700 focus:ring-amber-400"
+                      placeholder={t("اذكر السبب...", "State the reason...")}
+                      className="resize-none border-amber-300 dark:border-amber-700"
                       rows={2}
                       data-testid="input-reschedule-reason"
                     />
@@ -1224,9 +1290,7 @@ export default function MyOrdersPage() {
                 <div className="space-y-1.5">
                   <Label>{t("نوع الموعد", "Appointment Type")}</Label>
                   <Select value={apptTitle} onValueChange={setApptTitle}>
-                    <SelectTrigger data-testid="select-appt-type">
-                      <SelectValue />
-                    </SelectTrigger>
+                    <SelectTrigger data-testid="select-appt-type"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {appointmentTypes.map((at) => (
                         <SelectItem key={at.value} value={at.value}>{t(at.ar, at.en)}</SelectItem>
@@ -1241,9 +1305,7 @@ export default function MyOrdersPage() {
                     <div>
                       <p className="text-[11px] text-muted-foreground mb-1">{t("اليوم", "Day")}</p>
                       <Select value={String(safeDay)} onValueChange={(v) => setApptDay(v)}>
-                        <SelectTrigger className="h-9" data-testid="select-appt-day">
-                          <SelectValue />
-                        </SelectTrigger>
+                        <SelectTrigger className="h-9" data-testid="select-appt-day"><SelectValue /></SelectTrigger>
                         <SelectContent>
                           {availableDays.map((d) => (
                             <SelectItem key={d} value={String(d)}>{d}</SelectItem>
@@ -1260,9 +1322,7 @@ export default function MyOrdersPage() {
                         const newMinDay = newIsCurrentMonth ? _currentDay : 1;
                         if (parseInt(apptDay) < newMinDay) setApptDay(String(newMinDay));
                       }}>
-                        <SelectTrigger className="h-9" data-testid="select-appt-month">
-                          <SelectValue />
-                        </SelectTrigger>
+                        <SelectTrigger className="h-9" data-testid="select-appt-month"><SelectValue /></SelectTrigger>
                         <SelectContent>
                           {availableMonths.map((mo) => (
                             <SelectItem key={mo.num} value={String(mo.num)}>{t(mo.ar, mo.en)}</SelectItem>
@@ -1285,12 +1345,10 @@ export default function MyOrdersPage() {
                     <div>
                       <p className="text-[11px] text-muted-foreground mb-1">{t("الساعة", "Hour")}</p>
                       <Select value={apptHour} onValueChange={setApptHour}>
-                        <SelectTrigger className="h-9" data-testid="select-appt-hour">
-                          <SelectValue />
-                        </SelectTrigger>
+                        <SelectTrigger className="h-9" data-testid="select-appt-hour"><SelectValue /></SelectTrigger>
                         <SelectContent>
-                          {Array.from({ length: 24 }, (_, i) => i).map((h) => (
-                            <SelectItem key={h} value={String(h)}>{String(h).padStart(2, "0")}:00</SelectItem>
+                          {Array.from({ length: 24 }, (_, i) => i).map((hh) => (
+                            <SelectItem key={hh} value={String(hh)}>{String(hh).padStart(2, "0")}:00</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
@@ -1298,9 +1356,7 @@ export default function MyOrdersPage() {
                     <div>
                       <p className="text-[11px] text-muted-foreground mb-1">{t("الدقيقة", "Minute")}</p>
                       <Select value={apptMinute} onValueChange={setApptMinute}>
-                        <SelectTrigger className="h-9" data-testid="select-appt-minute">
-                          <SelectValue />
-                        </SelectTrigger>
+                        <SelectTrigger className="h-9" data-testid="select-appt-minute"><SelectValue /></SelectTrigger>
                         <SelectContent>
                           {["00", "15", "30", "45"].map((min) => (
                             <SelectItem key={min} value={min}>{min}</SelectItem>
@@ -1314,9 +1370,7 @@ export default function MyOrdersPage() {
                 <div className="space-y-1.5">
                   <Label>{t("المدة", "Duration")}</Label>
                   <Select value={apptDuration} onValueChange={setApptDuration}>
-                    <SelectTrigger data-testid="select-appt-duration">
-                      <SelectValue />
-                    </SelectTrigger>
+                    <SelectTrigger data-testid="select-appt-duration"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="30">{t("30 دقيقة", "30 min")}</SelectItem>
                       <SelectItem value="60">{t("ساعة واحدة", "1 hour")}</SelectItem>
@@ -1348,27 +1402,13 @@ export default function MyOrdersPage() {
                   {t("إلغاء", "Cancel")}
                 </Button>
                 <Button
-                  disabled={
-                    appointmentMutation.isPending || updateAppointmentMutation.isPending ||
-                    (isRescheduleMode && !rescheduleReason.trim())
-                  }
+                  disabled={appointmentMutation.isPending || updateAppointmentMutation.isPending || (isRescheduleMode && !rescheduleReason.trim())}
                   onClick={submitAppointment}
-                  className={
-                    isRescheduleMode
-                      ? "bg-amber-600 hover:bg-amber-700 text-white"
-                      : editingApptId
-                        ? "bg-emerald-600 hover:bg-emerald-700 text-white"
-                        : ""
-                  }
+                  className={isRescheduleMode ? "bg-amber-600 hover:bg-amber-700 text-white" : editingApptId ? "bg-emerald-600 hover:bg-emerald-700 text-white" : ""}
                   data-testid="button-submit-appt"
                 >
                   {(appointmentMutation.isPending || updateAppointmentMutation.isPending) && <Loader2 className="w-4 h-4 animate-spin me-2" />}
-                  {isRescheduleMode
-                    ? t("تأكيد إعادة التعيين", "Confirm Reschedule")
-                    : editingApptId
-                      ? t("تعديل الموعد", "Update Appointment")
-                      : t("حجز الموعد", "Book Appointment")
-                  }
+                  {isRescheduleMode ? t("تأكيد إعادة الجدولة", "Confirm Reschedule") : editingApptId ? t("تعديل الموعد", "Update Appointment") : t("حجز الموعد", "Book Appointment")}
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -1419,12 +1459,12 @@ export default function MyOrdersPage() {
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="my-order-product">{t("وصف المنتج", "Product Description")} *</Label>
+                <Label htmlFor="my-order-product">{t("وصف المنتج / الخدمة", "Product / Service Description")}</Label>
                 <Input
                   id="my-order-product"
                   value={newOrderForm.productDescription}
                   onChange={(e) => setNewOrderForm({ ...newOrderForm, productDescription: e.target.value })}
-                  placeholder={t("مطبخ، دولاب، باب...", "Kitchen, wardrobe, door...")}
+                  placeholder={t("مثال: مطبخ، دولاب، غرفة نوم...", "E.g. kitchen, wardrobe, bedroom...")}
                   data-testid="input-my-order-product"
                 />
               </div>
@@ -1434,21 +1474,21 @@ export default function MyOrdersPage() {
                   id="my-order-notes"
                   value={newOrderForm.notes}
                   onChange={(e) => setNewOrderForm({ ...newOrderForm, notes: e.target.value })}
-                  placeholder={t("ملاحظات إضافية (اختياري)", "Additional notes (optional)")}
+                  placeholder={t("أي ملاحظات إضافية...", "Any additional notes...")}
                   className="resize-none"
-                  rows={3}
+                  rows={2}
                   data-testid="input-my-order-notes"
                 />
               </div>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => { setNewOrderDialog(false); setNewOrderForm({ fullName: "", phone: "", productDescription: "", notes: "", city: "" }); }} data-testid="button-cancel-my-new-order">
+              <Button variant="outline" onClick={() => setNewOrderDialog(false)} data-testid="button-cancel-new-order">
                 {t("إلغاء", "Cancel")}
               </Button>
               <Button
-                disabled={!newOrderForm.fullName.trim() || !newOrderForm.phone.trim() || !newOrderForm.productDescription.trim() || createOrderMutation.isPending}
+                disabled={!newOrderForm.fullName.trim() || !newOrderForm.phone.trim() || createOrderMutation.isPending}
                 onClick={() => createOrderMutation.mutate(newOrderForm)}
-                data-testid="button-submit-my-new-order"
+                data-testid="button-submit-new-order"
               >
                 {createOrderMutation.isPending && <Loader2 className="w-4 h-4 animate-spin me-2" />}
                 {t("إنشاء الطلب", "Create Order")}

@@ -194,6 +194,7 @@ export const quotationStatusEnum = pgEnum("quotation_status", [
   "approved",
   "rejected",
   "expired",
+  "cancelled",
 ]);
 
 export const quotations = pgTable("quotations", {
@@ -219,6 +220,8 @@ export const quotations = pgTable("quotations", {
   deliveryDays: integer("delivery_days"),
   city: text("city"),
   notes: text("notes"),
+  cancellationReason: text("cancellation_reason"),
+  cancelledAt: timestamp("cancelled_at"),
   createdBy: integer("created_by").references(() => users.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),

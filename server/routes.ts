@@ -883,6 +883,46 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/quotations/:id/cancel", requireRole("owner", "assistant", "sales"), async (req, res) => {
+    try {
+      const quotationId = parseInt(req.params.id);
+      const { reason, notes } = req.body;
+      if (!reason) return res.status(400).json({ message: "سبب الإلغاء مطلوب", messageEn: "Cancellation reason is required" });
+      const quotation = await storage.getQuotation(quotationId);
+      if (!quotation) return res.status(404).json({ message: "الطلب غير موجود", messageEn: "Order not found" });
+      const userId = req.session.userId!;
+      const user = await storage.getUser(userId);
+      if (user?.role === "sales" && quotation.assignedTo !== userId) {
+        return res.status(403).json({ message: "غير مصرح لك بإلغاء هذا الطلب", messageEn: "You are not authorized to cancel this order" });
+      }
+      const fullReason = notes?.trim() ? `${reason}: ${notes.trim()}` : reason;
+      const updated = await storage.updateQuotation(quotationId, {
+        status: "cancelled",
+        cancellationReason: fullReason,
+        cancelledAt: new Date(),
+      } as any);
+      const cancellingUser = await storage.getUser(userId);
+      const staffUsers = (await storage.getUsers()).filter(u => ["owner", "assistant"].includes(u.role) && u.id !== userId);
+      for (const staff of staffUsers) {
+        await storage.createNotification({
+          userId: staff.id,
+          titleAr: "تم إلغاء طلب",
+          titleEn: "Order Cancelled",
+          messageAr: `قام ${cancellingUser?.fullNameAr || ""} بإلغاء الطلب #${quotation.quotationNumber || quotationId} — السبب: ${fullReason}`,
+          messageEn: `${cancellingUser?.fullNameEn || ""} cancelled order #${quotation.quotationNumber || quotationId} — Reason: ${fullReason}`,
+          type: "warning",
+          relatedEntity: "quotation",
+          relatedId: quotationId,
+          isRead: false,
+        });
+      }
+      res.json(updated);
+    } catch (error) {
+      console.error("Cancel order error:", error);
+      res.status(500).json({ message: "حدث خطأ في إلغاء الطلب", messageEn: "Error cancelling order" });
+    }
+  });
+
   app.post("/api/quotations/:id/claim", requireRole("sales"), async (req, res) => {
     try {
       const userId = req.session.userId!;
