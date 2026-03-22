@@ -279,6 +279,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [notifOpen, setNotifOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [, setLocation] = useLocation();
 
   const { data: notifications = [] } = useQuery<Notification[]>({
@@ -319,14 +320,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-background flex">
-      <AppSidebar collapsed={false} />
+      <AppSidebar collapsed={sidebarCollapsed} onToggleCollapsed={() => setSidebarCollapsed(v => !v)} />
 
-      <div className="flex-1 flex flex-col min-h-screen">
+      <div className="flex-1 flex flex-col min-h-screen min-w-0">
         <header
-          className="h-14 border-b border-border bg-card/50 flex items-center justify-between px-4 shrink-0"
+          className="h-14 border-b border-border bg-card/50 flex items-center justify-between px-3 md:px-4 shrink-0"
           data-testid="header"
         >
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <MobileMenuButton />
             <img
               src={teakLogo}
@@ -334,12 +335,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               className="w-7 h-7 object-contain md:hidden logo-auto transition-all duration-300"
               data-testid="img-header-logo"
             />
-            <div className="hidden sm:flex items-center gap-2">
-              <span className="text-sm font-medium" data-testid="text-user-name">
+            <div className="hidden sm:flex items-center gap-2 min-w-0">
+              <span className="text-sm font-medium truncate max-w-[120px] md:max-w-none" data-testid="text-user-name">
                 {t(user.fullNameAr, user.fullNameEn)}
               </span>
               <span
-                className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium"
+                className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium shrink-0"
                 data-testid="badge-user-role"
               >
                 {t(roleLabel.ar, roleLabel.en)}
@@ -347,13 +348,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1">
             <div className="relative">
               <UserAvatar user={user} onClick={() => setProfileOpen(!profileOpen)} />
               {profileOpen && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setProfileOpen(false)} />
-                  <div className="absolute top-full end-0 mt-2 w-[min(18rem,calc(100vw-1rem))] bg-card border border-border rounded-xl shadow-xl z-50 overflow-hidden" data-testid="profile-popover">
+                  <div className="fixed md:absolute top-14 md:top-full end-0 md:end-0 md:mt-2 w-[min(18rem,calc(100vw-0.5rem))] md:w-72 bg-card border border-border rounded-xl shadow-xl z-50 overflow-hidden" data-testid="profile-popover">
                     <div className="bg-primary/5 px-4 pt-5 pb-4 flex flex-col items-center gap-2 border-b border-border">
                       <UserAvatar user={user} size="lg" onClick={() => { setProfileOpen(false); setEditOpen(true); }} />
                       <div className="text-center">
@@ -422,7 +423,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               {notifOpen && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setNotifOpen(false)} />
-                  <div className="absolute top-full end-0 mt-1 w-[min(20rem,calc(100vw-1rem))] max-h-96 bg-card border border-border rounded-lg shadow-lg z-50 overflow-hidden" data-testid="notifications-panel">
+                  <div className="fixed md:absolute top-14 md:top-full end-0 md:end-0 md:mt-1 w-[min(22rem,calc(100vw-0.5rem))] md:w-80 max-h-[70vh] md:max-h-96 bg-card border border-border rounded-lg shadow-lg z-50 overflow-hidden" data-testid="notifications-panel">
                     <div className="flex items-center justify-between p-3 border-b border-border">
                       <span className="font-semibold text-sm">{t("الإشعارات", "Notifications")}</span>
                       {unreadCount > 0 && (

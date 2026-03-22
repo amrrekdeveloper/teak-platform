@@ -8,13 +8,26 @@ import { Button } from "@/components/ui/button";
 import {
   Users, FileText, FolderOpen, CreditCard, Loader2,
   Factory, Package, AlertTriangle, Truck, Wrench,
-  Shield, UserCheck, TrendingUp, DollarSign, Clock,
+  Shield, UserCheck, TrendingUp, Clock,
   CheckCircle2, ArrowLeft, ArrowRight, ClipboardList, Sparkles,
   CalendarCheck, CalendarDays, Palette, MessageSquare,
   ClipboardCheck, Calendar, BarChart3, Receipt, ShoppingCart,
   UserCircle, MapPin, Star,
 } from "lucide-react";
+
 import teakLogo from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
+
+function SarIcon({ className }: { className?: string }) {
+  return (
+    <span
+      className={`font-bold leading-none flex items-center justify-center ${className || ""}`}
+      aria-label="SAR"
+      style={{ fontSize: "0.85em", letterSpacing: "-0.02em" }}
+    >
+      ر.س
+    </span>
+  );
+}
 
 const stageLabels: Record<string, { ar: string; en: string }> = {
   deposit: { ar: "عربون", en: "Deposit" },
@@ -177,7 +190,7 @@ export default function DashboardPage() {
             <StatCard icon={Users} color="text-blue-500" bg="bg-blue-500/10" value={stats?.totalCustomers || 0} label={t("العملاء", "Customers")} testId="stat-customers" />
             <StatCard icon={FileText} color="text-amber-500" bg="bg-amber-500/10" value={stats?.totalQuotations || 0} label={t("عروض الأسعار", "Quotations")} testId="stat-quotations" />
             <StatCard icon={FolderOpen} color="text-green-500" bg="bg-green-500/10" value={stats?.activeContracts || 0} label={t("العقود النشطة", "Active Contracts")} testId="stat-contracts" />
-            <StatCard icon={DollarSign} color="text-primary" bg="bg-primary/10" value={`${(stats?.totalRevenue || 0).toLocaleString()}`} subValue={t("ر.س", "SAR")} label={t("إجمالي الإيرادات", "Total Revenue")} testId="stat-revenue" />
+            <StatCard icon={SarIcon} color="text-primary" bg="bg-primary/10" value={`${(stats?.totalRevenue || 0).toLocaleString()}`} subValue={t("ر.س", "SAR")} label={t("إجمالي الإيرادات", "Total Revenue")} testId="stat-revenue" />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -462,7 +475,7 @@ function SalesDashboard({ quotations, customers, inspections, stats, t, lang, Ar
       <Card data-testid="card-my-revenue">
         <CardContent className="p-4 flex items-center gap-4">
           <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-            <DollarSign className="w-6 h-6 text-primary" />
+            <SarIcon className="w-6 h-6 text-primary text-base" />
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-2xl font-bold">{myRevenue.toLocaleString()} <span className="text-sm font-normal text-muted-foreground">{t("ر.س", "SAR")}</span></p>
@@ -701,7 +714,7 @@ function AccountantDashboard({ stats, t, lang, ArrowIcon, stageLabels, methodLab
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        <StatCard icon={DollarSign} color="text-primary" bg="bg-primary/10" value={`${(stats?.totalRevenue || 0).toLocaleString()}`} subValue={t("ر.س", "SAR")} label={t("إجمالي الإيرادات", "Total Revenue")} testId="stat-acc-revenue" />
+        <StatCard icon={SarIcon} color="text-primary" bg="bg-primary/10" value={`${(stats?.totalRevenue || 0).toLocaleString()}`} subValue={t("ر.س", "SAR")} label={t("إجمالي الإيرادات", "Total Revenue")} testId="stat-acc-revenue" />
         <StatCard icon={CreditCard} color="text-green-500" bg="bg-green-500/10" value={stats?.totalPayments || 0} label={t("المدفوعات", "Payments")} testId="stat-acc-payments" />
         <StatCard icon={FolderOpen} color="text-amber-500" bg="bg-amber-500/10" value={stats?.activeContracts || 0} label={t("العقود النشطة", "Active Contracts")} testId="stat-acc-contracts" />
       </div>
@@ -837,7 +850,7 @@ function HRDashboard({ stats, employees, t, lang, ArrowIcon }: any) {
         <StatCard icon={UserCheck} color="text-blue-500" bg="bg-blue-500/10" value={active} label={t("موظف نشط", "Active Employees")} testId="stat-hr-active" />
         <StatCard icon={Star} color="text-green-500" bg="bg-green-500/10" value={saudi} label={t("سعودي", "Saudi")} testId="stat-hr-saudi" />
         <StatCard icon={UserCircle} color="text-purple-500" bg="bg-purple-500/10" value={resident} label={t("مقيم", "Resident")} testId="stat-hr-resident" />
-        <StatCard icon={DollarSign} color="text-primary" bg="bg-primary/10" value={`${totalSalaries.toLocaleString()}`} subValue={t("ر.س", "SAR")} label={t("إجمالي الرواتب", "Total Salaries")} testId="stat-hr-salaries" />
+        <StatCard icon={SarIcon} color="text-primary" bg="bg-primary/10" value={`${totalSalaries.toLocaleString()}`} subValue={t("ر.س", "SAR")} label={t("إجمالي الرواتب", "Total Salaries")} testId="stat-hr-salaries" />
       </div>
 
       <Card data-testid="card-hr-summary">

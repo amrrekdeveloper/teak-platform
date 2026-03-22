@@ -19,20 +19,21 @@ import {
   ShoppingCart,
   ClipboardCheck,
   Building2,
-  Pencil,
   Menu,
   X,
   ClipboardList,
   Calendar,
-  CalendarDays,
   MapPin,
   Box,
-  DollarSign,
+  BarChart3,
   UserCircle,
+  ChevronLeft,
+  ChevronRight,
   type LucideIcon,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
+import teakLogo from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
 
 interface MenuItem {
   titleAr: string;
@@ -53,7 +54,7 @@ const menuItems: MenuItem[] = [
   { titleAr: "العقود", titleEn: "Contracts", icon: FolderOpen, path: "/contracts", roles: ["owner", "assistant", "sales", "accountant"], group: "crm" },
   { titleAr: "المدفوعات", titleEn: "Payments", icon: CreditCard, path: "/payments", roles: ["owner", "assistant", "sales", "accountant"], group: "finance" },
   { titleAr: "الفواتير", titleEn: "Invoices", icon: Receipt, path: "/invoices", roles: ["owner", "assistant", "accountant"], group: "finance" },
-  { titleAr: "لوحة المالي", titleEn: "Finance Dashboard", icon: DollarSign, path: "/finance", roles: ["owner", "assistant", "accountant"], group: "finance" },
+  { titleAr: "لوحة المالي", titleEn: "Finance Dashboard", icon: BarChart3, path: "/finance", roles: ["owner", "assistant", "accountant"], group: "finance" },
   { titleAr: "أوامر العمل", titleEn: "Work Orders", icon: ClipboardCheck, path: "/work-orders", roles: ["owner", "assistant", "production", "designer"], group: "manufacturing" },
   { titleAr: "الإنتاج", titleEn: "Production", icon: Factory, path: "/production", roles: ["owner", "assistant", "production"], group: "manufacturing" },
   { titleAr: "المخزون", titleEn: "Inventory", icon: Package, path: "/inventory", roles: ["owner", "assistant", "warehouse", "purchasing"], group: "warehouse" },
@@ -67,46 +68,69 @@ const menuItems: MenuItem[] = [
   { titleAr: "ملفي الشخصي", titleEn: "My Profile", icon: UserCircle, path: "/my-profile", roles: ["owner", "assistant", "sales", "designer", "production", "purchasing", "warehouse", "accountant", "customer_service", "delivery", "installation", "quality", "hr", "it"], group: "admin" },
 ];
 
-function SidebarContent({ items, location, t, onItemClick, newOrderCount }: {
-  items: MenuItem[]; location: string; t: (ar: string, en: string) => string; onItemClick?: () => void; newOrderCount?: number;
+function SidebarContent({
+  items, location, t, onItemClick, newOrderCount, collapsed,
+}: {
+  items: MenuItem[];
+  location: string;
+  t: (ar: string, en: string) => string;
+  onItemClick?: () => void;
+  newOrderCount?: number;
+  collapsed?: boolean;
 }) {
   return (
-    <nav className="flex-1 py-3 space-y-0.5 px-2 overflow-y-auto">
-      {items.map((item) => {
-        const isActive = location === item.path || (item.path !== "/" && location.startsWith(item.path));
-        const Icon = item.icon;
-        const showBadge = (item.path === "/order-center" || item.path === "/my-orders") && (newOrderCount || 0) > 0;
+    <nav className="flex-1 py-3 space-y-0.5 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
+      <div className={collapsed ? "px-1" : "px-2"}>
+        {items.map((item) => {
+          const isActive = location === item.path || (item.path !== "/" && location.startsWith(item.path));
+          const Icon = item.icon;
+          const showBadge = (item.path === "/order-center" || item.path === "/my-orders") && (newOrderCount || 0) > 0;
 
-        return (
-          <Link key={item.path} href={item.path}>
-            <div
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-colors ${
-                isActive
-                  ? "bg-primary/10 text-primary font-medium"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
-              }`}
-              onClick={onItemClick}
-              data-testid={`link-sidebar-${item.path === "/" ? "" : item.path.split("/").pop()}`}
-            >
-              <Icon className="w-5 h-5 shrink-0" />
-              <span className="text-sm truncate flex-1">
-                {t(item.titleAr, item.titleEn)}
-              </span>
-              {showBadge && (
-                <span className="min-w-[20px] h-5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center px-1" data-testid="badge-new-orders">
-                  {newOrderCount}
-                </span>
-              )}
-            </div>
-          </Link>
-        );
-      })}
+          return (
+            <Link key={item.path} href={item.path}>
+              <div
+                className={`flex items-center gap-3 rounded-lg cursor-pointer transition-colors mb-0.5 ${
+                  collapsed ? "px-2 py-2.5 justify-center" : "px-3 py-2.5"
+                } ${
+                  isActive
+                    ? "bg-primary/10 text-primary font-medium"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                }`}
+                onClick={onItemClick}
+                title={collapsed ? t(item.titleAr, item.titleEn) : undefined}
+                data-testid={`link-sidebar-${item.path === "/" ? "" : item.path.split("/").pop()}`}
+              >
+                <Icon className="w-5 h-5 shrink-0" />
+                {!collapsed && (
+                  <span className="text-sm truncate flex-1">
+                    {t(item.titleAr, item.titleEn)}
+                  </span>
+                )}
+                {showBadge && (
+                  <span
+                    className={`min-w-[18px] h-[18px] rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center px-1 ${collapsed ? "absolute -top-1 -end-1" : ""}`}
+                    data-testid="badge-new-orders"
+                  >
+                    {newOrderCount}
+                  </span>
+                )}
+              </div>
+            </Link>
+          );
+        })}
+      </div>
     </nav>
   );
 }
 
-export function AppSidebar({ collapsed }: { collapsed: boolean }) {
-  const { t } = useLanguage();
+export function AppSidebar({
+  collapsed,
+  onToggleCollapsed,
+}: {
+  collapsed: boolean;
+  onToggleCollapsed: () => void;
+}) {
+  const { t, isRTL } = useLanguage();
   const { user } = useAuth();
   const [location] = useLocation();
 
@@ -114,7 +138,9 @@ export function AppSidebar({ collapsed }: { collapsed: boolean }) {
     queryKey: ["/api/quotations"],
     refetchInterval: 30000,
   });
-  const newOrderCount = quotations.filter((q: any) => q.status === "requested" || q.status === "open" || (q.status === "draft" && !q.assignedTo)).length;
+  const newOrderCount = quotations.filter((q: any) =>
+    q.status === "requested" || q.status === "open" || (q.status === "draft" && !q.assignedTo)
+  ).length;
 
   if (!user) return null;
 
@@ -122,14 +148,52 @@ export function AppSidebar({ collapsed }: { collapsed: boolean }) {
     (item) => item.roles.includes(user.role) || user.role === "owner"
   );
 
+  const CollapseIcon = collapsed
+    ? (isRTL ? ChevronLeft : ChevronRight)
+    : (isRTL ? ChevronRight : ChevronLeft);
+
   return (
     <aside
       className={`hidden md:flex flex-col border-e border-border bg-card/50 transition-all duration-300 ${
-        collapsed ? "w-16" : "w-64"
+        collapsed ? "w-16" : "w-60"
       }`}
       data-testid="sidebar"
     >
-      <SidebarContent items={filteredItems} location={location} t={t} newOrderCount={newOrderCount} />
+      {/* Sidebar Header with Logo */}
+      <div className={`flex items-center border-b border-border shrink-0 ${collapsed ? "justify-center px-2 py-3" : "gap-2.5 px-4 py-3"}`}>
+        <img
+          src={teakLogo}
+          alt="Teak"
+          className={`object-contain logo-auto transition-all duration-300 ${collapsed ? "w-8 h-8" : "w-9 h-9"}`}
+        />
+        {!collapsed && (
+          <div className="min-w-0">
+            <p className="font-bold text-sm text-foreground tracking-tight leading-none">تيك</p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">للتصنيع والتجهيز</p>
+          </div>
+        )}
+      </div>
+
+      <SidebarContent
+        items={filteredItems}
+        location={location}
+        t={t}
+        newOrderCount={newOrderCount}
+        collapsed={collapsed}
+      />
+
+      {/* Collapse Toggle Button */}
+      <div className={`border-t border-border py-2 ${collapsed ? "px-1" : "px-2"}`}>
+        <button
+          onClick={onToggleCollapsed}
+          className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors text-xs"
+          title={collapsed ? t("توسيع القائمة", "Expand sidebar") : t("طي القائمة", "Collapse sidebar")}
+          data-testid="button-toggle-sidebar"
+        >
+          <CollapseIcon className="w-4 h-4 shrink-0" />
+          {!collapsed && <span>{t("طي القائمة", "Collapse")}</span>}
+        </button>
+      </div>
     </aside>
   );
 }
@@ -144,7 +208,9 @@ export function MobileMenuButton() {
     queryKey: ["/api/quotations"],
     refetchInterval: 30000,
   });
-  const newOrderCount = quotations.filter((q: any) => q.status === "requested" || q.status === "open" || (q.status === "draft" && !q.assignedTo)).length;
+  const newOrderCount = quotations.filter((q: any) =>
+    q.status === "requested" || q.status === "open" || (q.status === "draft" && !q.assignedTo)
+  ).length;
 
   if (!user) return null;
 
@@ -180,13 +246,26 @@ export function MobileMenuButton() {
             className="fixed top-0 start-0 bottom-0 w-72 bg-card z-50 md:hidden shadow-2xl flex flex-col animate-in slide-in-from-left rtl:slide-in-from-right duration-200"
             data-testid="mobile-menu-drawer"
           >
-            <div className="flex items-center justify-between p-4 border-b border-border">
-              <span className="font-semibold text-sm">{t("القائمة", "Menu")}</span>
+            {/* Mobile drawer header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+              <div className="flex items-center gap-2.5">
+                <img src={teakLogo} alt="Teak" className="w-8 h-8 object-contain logo-auto" />
+                <div>
+                  <p className="font-bold text-sm leading-none">تيك</p>
+                  <p className="text-[10px] text-muted-foreground">للتصنيع والتجهيز</p>
+                </div>
+              </div>
               <Button size="icon" variant="ghost" onClick={() => setOpen(false)} data-testid="button-close-mobile-menu">
                 <X className="w-5 h-5" />
               </Button>
             </div>
-            <SidebarContent items={filteredItems} location={location} t={t} onItemClick={() => setOpen(false)} newOrderCount={newOrderCount} />
+            <SidebarContent
+              items={filteredItems}
+              location={location}
+              t={t}
+              onItemClick={() => setOpen(false)}
+              newOrderCount={newOrderCount}
+            />
           </div>
         </>
       )}

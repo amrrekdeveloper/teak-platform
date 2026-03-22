@@ -626,7 +626,7 @@ export default function MyOrdersPage() {
         </div>
       )}
 
-      <div className="overflow-x-auto pb-1 -mx-1 px-1">
+      <div className="overflow-x-auto -mx-1 px-1" style={{ paddingTop: "4px", paddingBottom: "6px" }}>
         <div className="flex gap-1.5 min-w-max">
           {PIPELINE_STAGES.map((stage) => {
             const Icon = stage.icon;

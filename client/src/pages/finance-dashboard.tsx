@@ -9,9 +9,18 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { FileText, CreditCard, CheckCircle, DollarSign, Plus, Trash2 } from "lucide-react";
+import { FileText, CreditCard, CheckCircle, Plus, Trash2 } from "lucide-react";
+
 import { Link } from "wouter";
 import { format } from "date-fns";
+
+function SarIcon({ className }: { className?: string }) {
+  return (
+    <span className={`font-bold leading-none inline-flex items-center justify-center ${className || ""}`} aria-label="SAR" style={{ fontSize: "0.85em" }}>
+      ر.س
+    </span>
+  );
+}
 
 interface PaymentScheduleItem { label: string; amount: string; dueDate: string; }
 
@@ -126,7 +135,7 @@ export default function FinanceDashboardPage() {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2">
-              <DollarSign className="h-5 w-5 text-primary" />
+              <SarIcon className="h-5 w-5 text-primary" />
               <div>
                 <p className="text-2xl font-bold">
                   {readyForContract
