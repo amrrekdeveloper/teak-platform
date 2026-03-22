@@ -344,6 +344,8 @@ export interface WallObstruction {
   type: "door" | "window" | "drain" | "outlet" | "obstacle";
   wall: "A" | "B" | "C" | "D";
   width?: number;
+  /** Distance (cm) from the start of the wall to the near edge of this obstruction */
+  distanceFromFirst?: number;
 }
 
 export interface MatchResult {
@@ -357,6 +359,80 @@ export interface MatchResult {
 const NKBA_LEG_MIN = 1.2;
 const NKBA_LEG_MAX = 2.7;
 const NKBA_TRIANGLE_MAX = 7.9;
+
+/**
+ * Compute the local x-offset (cm from wall start) where a corner unit's
+ * CENTER should be placed, given the wall index (0=A,1=B,2=C,3=D),
+ * junction direction ("start"|"end"), wall lengths, and corner unit depth.
+ *
+ * Wall layout (clockwise from top/back):
+ *   0 = A  back wall  (length = maxWall)
+ *   1 = B  right wall (length = minWall)
+ *   2 = C  front wall (length = maxWall)
+ *   3 = D  left wall  (length = minWall)
+ *
+ * Junction pairs (wall, "end" direction → adjacent wall):
+ *   0→1  A-end  = B-start  (back-right corner)
+ *   1→2  B-end  = C-start  (right-front corner) — not used in standard templates
+ *   2→3  C-start = B-end   (front-right corner, Wall C "start" = B-C junction)
+ *   3→0  D-end  = A-start  (left-back corner)
+ *
+ * @param wallIndex   0=A, 1=B, 2=C, 3=D
+ * @param junction    "end" = far end of wall; "start" = near end of wall
+ * @param wallLenCm   length of this wall in cm
+ * @param cornerW     corner unit width (along this wall) in cm, e.g. 115
+ * @returns           x-offset in cm for the corner cabinet center
+ */
+export function getCornerJunctionOffset(
+  wallIndex: number,
+  junction: "start" | "end",
+  wallLenCm: number,
+  cornerW: number
+): number {
+  return junction === "end"
+    ? wallLenCm - cornerW / 2   /* far junction: center backs up from wall end */
+    : cornerW / 2;              /* near junction: center from wall start       */
+}
+
+/**
+ * Returns the 3D world coordinates (in scene units) of the junction corner
+ * between wallIndex and its neighbor in the given direction.
+ *
+ * @param wallIndex   0=A,1=B,2=C,3=D
+ * @param junction    "end" = next wall; "start" = previous wall
+ * @param lengthCm    kitchen length (cm)
+ * @param widthCm     kitchen width (cm)
+ * @param SCALE       scene scale factor (default 0.01 → cm to scene units)
+ */
+export function getJunctionWorldCoords(
+  wallIndex: number,
+  junction: "start" | "end",
+  lengthCm: number,
+  widthCm: number,
+  SCALE = 0.01
+): { x: number; z: number } {
+  const L = lengthCm * SCALE;
+  const W = widthCm * SCALE;
+  /* Four corners of the room (world coords, wall centers at these vertices):
+     Wall A: back  z=-W/2   x spans [-L/2, +L/2]  → A-B junction: x=+L/2,z=-W/2
+     Wall B: right x=+L/2   z spans [-W/2, +W/2]  → B-C junction: x=+L/2,z=+W/2
+     Wall C: front z=+W/2   x spans [+L/2, -L/2]  → C-D junction: x=-L/2,z=+W/2
+     Wall D: left  x=-L/2   z spans [+W/2, -W/2]  → D-A junction: x=-L/2,z=-W/2
+  */
+  const corners = [
+    { x: -L / 2, z: -W / 2 }, // Wall A start (A←D junction)
+    { x: +L / 2, z: -W / 2 }, // Wall A end   (A→B junction)
+    { x: +L / 2, z: +W / 2 }, // Wall B end   (B→C junction)
+    { x: -L / 2, z: +W / 2 }, // Wall C end   (C→D junction)
+    { x: -L / 2, z: -W / 2 }, // Wall D end   (D→A junction) same as [0]
+  ];
+  // wallIndex 0=A start at corners[0], end at corners[1]
+  // wallIndex 1=B start at corners[1], end at corners[2]
+  // wallIndex 2=C start at corners[2], end at corners[3]
+  // wallIndex 3=D start at corners[3], end at corners[4]
+  const base = wallIndex % 4;
+  return junction === "end" ? corners[base + 1] : corners[base];
+}
 
 function wallDistanceM(
   wall1: "A" | "B" | "C" | "D",
@@ -458,18 +534,61 @@ export function matchKitchenTemplates(
       score *= 0.8;
     }
 
-    /* ── Door on corner wall ───────────────────────── */
-    for (const wallInfo of walls) {
-      if (!tmpl.cornerUnits) break;
-      if (wallInfo.label === "B" || wallInfo.label === "C") {
-        const hasDoor = wallInfo.items.some((obs) => obs.type === "door");
-        if (hasDoor) {
-          warnings.push({
-            severity: "error",
-            message: `الجدار ${wallInfo.label} يحتوي باباً — قد يتعارض مع وحدة الزاوية`,
-            messageEn: `Wall ${wallInfo.label} has a door — may conflict with corner unit`,
-          });
-          score *= 0.75;
+    /* ── Door-swing clearance on corner walls ───────── */
+    if (tmpl.cornerUnits) {
+      /* Collect corner unit width from template variants (use "spaces" or first available) */
+      const variantItems = tmpl.variants["spaces"] || tmpl.variants["none"] || tmpl.variants["full"] || [];
+      const cornerItem = variantItems.find((it) => it.cornerAnchor);
+      /* AKK 115 → 115cm, AKK 125 → 125cm; parse from code or default 115 */
+      const cornerWidthCm = cornerItem
+        ? (parseFloat(cornerItem.code.replace(/[^0-9]/g, "")) || 115)
+        : 115;
+
+      for (const wallInfo of walls) {
+        if (wallInfo.label !== "B" && wallInfo.label !== "C") continue;
+        const wallLenCm = wallInfo.label === "B" || wallInfo.label === "D"
+          ? Math.min(lengthM, widthM) * 100
+          : Math.max(lengthM, widthM) * 100;
+        const doors = wallInfo.items.filter((obs) => obs.type === "door");
+
+        for (const door of doors) {
+          const doorW = (door.width ?? 0);           /* cm */
+          const doorPos = (door.distanceFromFirst ?? 0); /* cm from wall start */
+          const swingEnd = doorPos + doorW;           /* swing zone: [doorPos, swingEnd] */
+
+          /* Corner unit occupies junction zone.
+             Wall B "end" junction (near Wall A): [wallLen - cornerWidth, wallLen]
+             Wall C "start" junction (near Wall B): [0, cornerWidth] */
+          const junc = wallInfo.label === "C" ? "start" : "end";
+          const cornerStart = junc === "start" ? 0 : wallLenCm - cornerWidthCm;
+          const cornerEnd   = junc === "start" ? cornerWidthCm : wallLenCm;
+
+          /* Check overlap: swing zone [doorPos, swingEnd] vs corner zone [cornerStart, cornerEnd] */
+          const overlaps = doorPos < cornerEnd && swingEnd > cornerStart;
+
+          if (overlaps) {
+            warnings.push({
+              severity: "error",
+              message: `باب الجدار ${wallInfo.label} (عرضه ${doorW.toFixed(0)} سم) يتعارض مع وحدة الزاوية — مسافة تداخل ${Math.min(swingEnd, cornerEnd) - Math.max(doorPos, cornerStart)}سم`,
+              messageEn: `Wall ${wallInfo.label} door (${doorW.toFixed(0)} cm) swing overlaps corner unit — ${(Math.min(swingEnd, cornerEnd) - Math.max(doorPos, cornerStart)).toFixed(0)} cm conflict`,
+            });
+            score *= 0.75;
+          } else if (doorW > 0 && Math.abs(swingEnd - cornerStart) < 30) {
+            /* Door is within 30cm of corner unit — tight clearance warning */
+            warnings.push({
+              severity: "warning",
+              message: `باب الجدار ${wallInfo.label} قريب من وحدة الزاوية — مسافة فاصلة ${Math.abs(swingEnd - cornerStart).toFixed(0)} سم فقط`,
+              messageEn: `Wall ${wallInfo.label} door near corner unit — only ${Math.abs(swingEnd - cornerStart).toFixed(0)} cm clearance`,
+            });
+            score *= 0.9;
+          } else {
+            /* Door exists but doesn't conflict */
+            warnings.push({
+              severity: "info",
+              message: `باب الجدار ${wallInfo.label} — لا تعارض مع وحدة الزاوية`,
+              messageEn: `Wall ${wallInfo.label} door — no conflict with corner unit`,
+            });
+          }
         }
       }
     }

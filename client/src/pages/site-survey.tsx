@@ -270,6 +270,7 @@ export default function SiteSurveyPage() {
   const [currentSpaceId, setCurrentSpaceId] = useState<string>("");
   const [templateVariant, setTemplateVariant] = useState<ApplianceVariant>("none");
   const [templatePreviewId, setTemplatePreviewId] = useState<string | null>(null);
+  const [templateWarningsId, setTemplateWarningsId] = useState<string | null>(null);
   const [activeWallSpaceId, setActiveWallSpaceId] = useState<string>("");
   const [selectedWallId, setSelectedWallId] = useState<string>("");
 
@@ -617,7 +618,12 @@ export default function SiteSurveyPage() {
     if (!L || !W) return [];
     const wallObstructions = (currentSpace.walls || []).map((wall: any, idx: number) => ({
       label: (["A","B","C","D"][idx] || "A") as "A" | "B" | "C" | "D",
-      items: (wall.items || []).map((item: any) => ({ type: item.type, wall: (["A","B","C","D"][idx] || "A") as "A" | "B" | "C" | "D", width: parseFloat(item.width) || 0 })),
+      items: (wall.items || []).map((item: any) => ({
+        type: item.type,
+        wall: (["A","B","C","D"][idx] || "A") as "A" | "B" | "C" | "D",
+        width: parseFloat(item.width) || 0,
+        distanceFromFirst: parseFloat(item.distanceFromFirst) || 0,
+      })),
     }));
     return matchKitchenTemplates(L, W, wallObstructions).slice(0, 4);
   }, [currentSpace]);
@@ -1305,17 +1311,29 @@ export default function SiteSurveyPage() {
                               {(() => {
                                 const errors = match.warnings.filter((w: TemplateWarning) => w.severity === "error");
                                 const warns  = match.warnings.filter((w: TemplateWarning) => w.severity === "warning");
-                                if (errors.length > 0) return (
-                                  <Badge variant="destructive" className="text-[9px] h-4">
-                                    🚫 {errors.length} {t("تعارض", "conflict")}
-                                  </Badge>
+                                const totalIssues = errors.length + warns.length;
+                                const isWarningsOpen = templateWarningsId === tmpl.id;
+                                if (totalIssues === 0) return null;
+                                return (
+                                  <button
+                                    type="button"
+                                    data-testid={`button-warnings-badge-${tmpl.id}`}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setTemplateWarningsId(isWarningsOpen ? null : tmpl.id);
+                                    }}
+                                    className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-medium border cursor-pointer transition-colors select-none"
+                                    style={{
+                                      borderColor: errors.length > 0 ? "rgb(239,68,68)" : "rgb(251,191,36)",
+                                      color: errors.length > 0 ? "rgb(185,28,28)" : "rgb(146,64,14)",
+                                      background: isWarningsOpen
+                                        ? (errors.length > 0 ? "rgb(254,226,226)" : "rgb(254,243,199)")
+                                        : "transparent",
+                                    }}
+                                  >
+                                    {errors.length > 0 ? "🚫" : "⚠"} {totalIssues} {t(errors.length > 0 ? "تعارض" : "تنبيه", errors.length > 0 ? "conflict" : "warning")}
+                                  </button>
                                 );
-                                if (warns.length > 0) return (
-                                  <Badge variant="outline" className="text-[9px] h-4 border-amber-400 text-amber-700 dark:text-amber-400">
-                                    ⚠ {warns.length} {t("تنبيه", "warning")}
-                                  </Badge>
-                                );
-                                return null;
                               })()}
                             </div>
                           </div>
@@ -1340,28 +1358,32 @@ export default function SiteSurveyPage() {
                           </div>
                         </div>
 
+                        {/* Collapsible warnings panel — toggled by badge click, independent of preview */}
+                        {templateWarningsId === tmpl.id && match.warnings.length > 0 && (
+                          <div
+                            className="pt-1.5 border-t border-red-100 dark:border-red-800 space-y-1"
+                            data-testid={`panel-warnings-${tmpl.id}`}
+                          >
+                            {match.warnings.map((w: TemplateWarning, wi: number) => {
+                              const icon = w.severity === "error" ? "🚫" : w.severity === "warning" ? "⚠" : "✅";
+                              const bg =
+                                w.severity === "error"
+                                  ? "bg-red-50 dark:bg-red-950 border-red-200 dark:border-red-800 text-red-700 dark:text-red-400"
+                                  : w.severity === "warning"
+                                  ? "bg-amber-50 dark:bg-amber-950 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-400"
+                                  : "bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800 text-green-700 dark:text-green-400";
+                              return (
+                                <div key={wi} className={`flex items-start gap-1.5 rounded px-2 py-1 border text-[10px] leading-snug ${bg}`}>
+                                  <span className="shrink-0 mt-px">{icon}</span>
+                                  <span>{isRTL ? w.message : w.messageEn}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+
                         {isPreview && (
                           <div className="pt-1.5 border-t border-orange-100 dark:border-orange-800 space-y-2">
-                            {/* Structured warnings panel */}
-                            {match.warnings.length > 0 && (
-                              <div className="space-y-1">
-                                {match.warnings.map((w: TemplateWarning, wi: number) => {
-                                  const icon  = w.severity === "error" ? "🚫" : w.severity === "warning" ? "⚠" : "✅";
-                                  const bg    = w.severity === "error"
-                                    ? "bg-red-50 dark:bg-red-950 border-red-200 dark:border-red-800 text-red-700 dark:text-red-400"
-                                    : w.severity === "warning"
-                                    ? "bg-amber-50 dark:bg-amber-950 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-400"
-                                    : "bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800 text-green-700 dark:text-green-400";
-                                  return (
-                                    <div key={wi} className={`flex items-start gap-1.5 rounded px-2 py-1 border text-[10px] leading-snug ${bg}`}>
-                                      <span className="shrink-0 mt-px">{icon}</span>
-                                      <span>{isRTL ? w.message : w.messageEn}</span>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            )}
-
                             {/* Product list */}
                             <div className="grid grid-cols-1 gap-0.5 max-h-40 overflow-y-auto">
                               {items.map((item, idx) => {

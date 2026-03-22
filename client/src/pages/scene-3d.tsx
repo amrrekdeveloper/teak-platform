@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { Link } from "wouter";
 import { queryClient } from "@/lib/queryClient";
+import { getCornerJunctionOffset } from "@/lib/kitchenTemplates";
 import { useToast } from "@/hooks/use-toast";
 
 const SCALE = 0.01;
@@ -877,10 +878,12 @@ function Scene3D({
     const pW = parseFloat(p.designW || p.dimensions?.w || "60");
     const wallLen = wallLengths[wIdx] || L;
 
-    /* Corner units anchored to "start" (local x=0) or "end" (local x=wallLen) */
+    /* Corner units anchored via explicit junction coordinate helper.
+       getCornerJunctionOffset(wallIndex, junction, wallLenCm, cornerW)
+       → returns center x-offset in cm from wall start. */
     if (p._isCorner) {
       const junction = (p._cornerJunction as "start" | "end") ?? "end";
-      const xOffset = junction === "start" ? pW / 2 : wallLen - pW / 2;
+      const xOffset = getCornerJunctionOffset(wIdx, junction, wallLen, pW);
       acc.push({ ...p, _wallIndex: wIdx, _xOffset: xOffset, _sourceIndex: sourceIdx, _conflict: false });
       return acc;
     }
@@ -1215,8 +1218,8 @@ function FloorPlan2D({ survey }: { survey: any }) {
 
       let pOffset: number;
       if (isCorner2D) {
-        /* Corner units: anchored to start or end junction of wall */
-        pOffset = cornerJunc2D === "start" ? 0 : wallSvgLengths[wIdx] - pw;
+        /* Corner units: use explicit junction offset helper (returns center), convert to left edge */
+        pOffset = getCornerJunctionOffset(wIdx, cornerJunc2D, wallSvgLengths[wIdx], pw) - pw / 2;
       } else {
         const rightReserve2D = svgRightReserved[wIdx] ?? 0;
         const maxOffset = wallSvgLengths[wIdx] - rightReserve2D - pw - 2;
