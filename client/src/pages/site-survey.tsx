@@ -638,7 +638,15 @@ export default function SiteSurveyPage() {
                 {otherSpaces.map((s) => (
                   <button
                     key={s.id}
-                    onClick={() => { performAutoSave(); setActiveWallSpaceId(s.id); setSubStep("info"); }}
+                    onClick={() => {
+                      if (subStep === "info") {
+                        const currentEditSpace = spaces.find((sp) => sp.id === activeWallSpaceId) || spaces[0];
+                        if (currentEditSpace) goToWallsSubStep(currentEditSpace.id);
+                      }
+                      performAutoSave();
+                      setActiveWallSpaceId(s.id);
+                      setSubStep("info");
+                    }}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-all"
                     data-testid={`chip-space-${s.id}`}
                   >
