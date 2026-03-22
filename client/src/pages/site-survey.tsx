@@ -361,8 +361,9 @@ export default function SiteSurveyPage() {
 
   const saveMutation = useMutation({
     mutationFn: async (data: any) => {
-      if (existingSurvey?.id) {
-        const res = await apiRequest("PATCH", `/api/site-surveys/${existingSurvey.id}`, data);
+      const surveyId = existingSurvey?.id || savedSurveyId;
+      if (surveyId) {
+        const res = await apiRequest("PATCH", `/api/site-surveys/${surveyId}`, data);
         return res.json();
       }
       const res = await apiRequest("POST", "/api/site-surveys", data);
@@ -380,6 +381,32 @@ export default function SiteSurveyPage() {
       toast({ title: t("حدث خطأ في الحفظ", "Save failed"), variant: "destructive" });
     },
   });
+
+  function navigateToStep(targetStep: WizardStep) {
+    const currentStep = step;
+    if (targetStep === currentStep) return;
+    if (targetStep > currentStep) {
+      if (currentStep === 1) {
+        const editSpace = spaces.find((s) => s.id === activeWallSpaceId) || spaces[0];
+        if (subStep === "info" && editSpace) {
+          goToWallsSubStep(editSpace.id);
+          if (targetStep > 2) {
+            performAutoSave();
+            setStep(2);
+          }
+          return;
+        }
+        performAutoSave();
+        setStep(targetStep);
+        return;
+      }
+      performAutoSave();
+      setStep(targetStep);
+    } else {
+      setStep(targetStep);
+      if (targetStep === 1) setSubStep("walls");
+    }
+  }
 
   function handleSave() {
     const data: any = {
@@ -572,7 +599,7 @@ export default function SiteSurveyPage() {
           return (
             <button
               key={s}
-              onClick={() => setStep(s as WizardStep)}
+              onClick={() => navigateToStep(s as WizardStep)}
               className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition-all flex-shrink-0 ${
                 isActive
                   ? "bg-primary text-primary-foreground"
@@ -1458,20 +1485,7 @@ export default function SiteSurveyPage() {
           </Button>
         ) : (
           <Button
-            onClick={() => {
-              if (step === 1) {
-                if (subStep === "info") {
-                  const editSpace = spaces.find((s) => s.id === activeWallSpaceId) || spaces[0];
-                  if (editSpace) goToWallsSubStep(editSpace.id);
-                } else {
-                  performAutoSave();
-                  setStep(2);
-                }
-              } else {
-                performAutoSave();
-                setStep((step + 1) as WizardStep);
-              }
-            }}
+            onClick={() => navigateToStep((step + 1) as WizardStep)}
             data-testid="button-next-step"
           >
             {step === 1 && subStep === "info"
