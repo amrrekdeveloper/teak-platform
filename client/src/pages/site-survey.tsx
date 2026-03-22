@@ -247,6 +247,7 @@ export default function SiteSurveyPage() {
   const [autoSaveError, setAutoSaveError] = useState(false);
   const autoSaveDirtyRef = useRef(false);
   const savedSurveyIdRef = useRef<number | null>(null);
+  const surveyInitializedRef = useRef(false);
   const [productSearchDialog, setProductSearchDialog] = useState(false);
   const [productSearch, setProductSearch] = useState("");
   const [selectedGroup, setSelectedGroup] = useState("all");
@@ -277,7 +278,8 @@ export default function SiteSurveyPage() {
   const [nextStepsDialog, setNextStepsDialog] = useState(false);
 
   useEffect(() => {
-    if (existingSurvey && existingSurvey.id) {
+    if (existingSurvey && existingSurvey.id && !surveyInitializedRef.current) {
+      surveyInitializedRef.current = true;
       if (existingSurvey.spaces && Array.isArray(existingSurvey.spaces) && existingSurvey.spaces.length > 0) {
         setSpaces(existingSurvey.spaces as SpaceData[]);
       }
@@ -314,10 +316,7 @@ export default function SiteSurveyPage() {
     const updatedSpaces = src.map((space) => {
       if (space.id !== spaceId) return space;
       if (space.walls.length === 0) return { ...space, walls: autoGenerateWalls(space) };
-      const existingIds = new Set(space.walls.map((w) => w.id));
-      const generated = autoGenerateWalls(space);
-      const missing = generated.filter((g) => !existingIds.has(g.id));
-      return { ...space, walls: [...space.walls, ...missing] };
+      return space;
     });
     setSpaces(updatedSpaces);
     const spaceAfter = updatedSpaces.find((s) => s.id === spaceId);
