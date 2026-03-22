@@ -1050,19 +1050,6 @@ export default function SiteSurveyPage() {
               </Card>
             )}
 
-            {/* Auto-save status */}
-            {autoSavePending && (
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground justify-center" data-testid="autosave-pending">
-                <Loader2 className="w-3 h-3 animate-spin" />
-                {t("جاري الحفظ التلقائي...", "Auto-saving...")}
-              </div>
-            )}
-            {autoSaveError && !autoSavePending && (
-              <div className="flex items-center gap-1.5 text-xs text-amber-600 justify-center" data-testid="autosave-error">
-                <AlertCircle className="w-3 h-3" />
-                {t("تعذر الحفظ التلقائي — سيُحفظ عند الإنهاء", "Auto-save failed — will save on finish")}
-              </div>
-            )}
           </div>
         );
       })()}
