@@ -54,12 +54,12 @@ function isTallUnit(product: any): boolean {
 
 function isWallUnit(product: any): boolean {
   const code = (product.code || "").toUpperCase();
-  return code.startsWith("TK3") || code.startsWith("W") || code.startsWith("HK");
+  return code.startsWith("TK3") || code.startsWith("W") || code.startsWith("HK") || code.startsWith("AKK");
 }
 
 function isWallUnitByCode(code: string): boolean {
   const c = code.toUpperCase();
-  return c.startsWith("TK3") || c.startsWith("W") || c.startsWith("HK");
+  return c.startsWith("TK3") || c.startsWith("W") || c.startsWith("HK") || c.startsWith("AKK");
 }
 
 function getDefaultHeight(product: any): number {
@@ -121,7 +121,16 @@ function NightLighting({ roomL, roomW, roomH }: { roomL: number; roomW: number; 
       {/* Raised ambient so walls and ceiling are NOT pitch black */}
       <ambientLight intensity={0.22} color="#3d2a0f" />
       {/* Warm sky/ground hemisphere — sky amber, ground dark */}
-      <hemisphereLight args={["#FFD580", "#1a0f00", 0.18] as any} />
+      <hemisphereLight color="#FFD580" groundColor="#1a0f00" intensity={0.18} />
+      {/* Ceiling panel — simulates LED ceiling surface (RectAreaLight equivalent) */}
+      <rectAreaLight
+        position={[0, H * 0.96, 0]}
+        rotation={[-Math.PI / 2, 0, 0]}
+        width={L * 0.7}
+        height={W * 0.7}
+        intensity={4}
+        color="#FFE8A0"
+      />
       {/* Three warm spotlights covering the room evenly */}
       {lampPositions.map(([lx, ly, lz], i) => (
         <spotLight
@@ -317,25 +326,42 @@ function makeBacksplashTexture(): THREE.DataTexture {
   return tex;
 }
 
-function Backsplash({ L, W }: { L: number; W: number }) {
+function Backsplash({ L, W, wallIndices }: { L: number; W: number; wallIndices: number[] }) {
   const bsTexture = useMemo(() => makeBacksplashTexture(), []);
   const bsH = 0.65;
   const bsY = 0.85 + bsH / 2;
   const depth = 0.005;
-  bsTexture.repeat.set(L / 0.3, bsH / 0.1);
 
   return (
     <group>
-      <mesh position={[0, bsY, -W / 2 + depth]} receiveShadow>
-        <planeGeometry args={[L, bsH]} />
-        <meshStandardMaterial map={bsTexture} roughness={0.3} metalness={0.1} />
-      </mesh>
+      {wallIndices.map((wi) => {
+        const isHoriz = wi === 0 || wi === 2;
+        const len = isHoriz ? L : W;
+        bsTexture.repeat.set(len / 0.3, bsH / 0.1);
+        bsTexture.needsUpdate = true;
+        const pos: [number, number, number] =
+          wi === 0 ? [0, bsY, -W / 2 + depth] :
+          wi === 1 ? [L / 2 - depth, bsY, 0] :
+          wi === 2 ? [0, bsY, W / 2 - depth] :
+                     [-L / 2 + depth, bsY, 0];
+        const rot: [number, number, number] =
+          wi === 0 ? [0, 0, 0] :
+          wi === 1 ? [0, -Math.PI / 2, 0] :
+          wi === 2 ? [0, Math.PI, 0] :
+                     [0, Math.PI / 2, 0];
+        return (
+          <mesh key={wi} position={pos} rotation={rot} receiveShadow>
+            <planeGeometry args={[len, bsH]} />
+            <meshStandardMaterial map={bsTexture} roughness={0.3} metalness={0.1} />
+          </mesh>
+        );
+      })}
     </group>
   );
 }
 
-function Room({ length = 400, width = 300, height = 240, floorType = "parquet" as FloorType }: {
-  length: number; width: number; height: number; floorType?: FloorType;
+function Room({ length = 400, width = 300, height = 240, floorType = "parquet" as FloorType, wallsWithBase = [] }: {
+  length: number; width: number; height: number; floorType?: FloorType; wallsWithBase?: number[];
 }) {
   const L = length * SCALE;
   const W = width * SCALE;
@@ -366,8 +392,8 @@ function Room({ length = 400, width = 300, height = 240, floorType = "parquet" a
       <mesh position={[L / 2, H / 2, 0]} rotation={[0, -Math.PI / 2, 0]} receiveShadow>
         <planeGeometry args={[W, H]} />{wallMat}
       </mesh>
-      {/* Backsplash on wall A */}
-      <Backsplash L={L} W={W} />
+      {/* Backsplash — only on walls that have base cabinets */}
+      {wallsWithBase.length > 0 && <Backsplash L={L} W={W} wallIndices={wallsWithBase} />}
     </group>
   );
 }
@@ -565,6 +591,15 @@ function Scene3D({
     return acc;
   }, []);
 
+  /* Determine which walls have base cabinets → render backsplash only there */
+  const wallsWithBase = Array.from(
+    new Set(
+      productsWithPos
+        .filter((p: any) => !isWallUnit(p) && !isTallUnit(p))
+        .map((p: any) => p._wallIndex as number)
+    )
+  );
+
   return (
     <>
       <PerspectiveCamera makeDefault position={[0, H * SCALE * 1.6, W * SCALE * 2.2]} fov={55} />
@@ -576,7 +611,7 @@ function Scene3D({
         <NightLighting roomL={L} roomW={W} roomH={H} />
       )}
 
-      <Room length={L} width={W} height={H} floorType={floorType} />
+      <Room length={L} width={W} height={H} floorType={floorType} wallsWithBase={wallsWithBase} />
 
       {productsWithPos.map((p: any, i: number) => (
         <Cabinet
