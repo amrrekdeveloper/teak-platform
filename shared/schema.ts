@@ -199,11 +199,12 @@ export const quotationStatusEnum = pgEnum("quotation_status", [
 
 export const ORDER_STAGE_VALUES = [
   "new",
-  "appointment",
-  "survey",
-  "sent",
-  "approved",
-  "production",
+  "appointment_scheduled",
+  "survey_done",
+  "quote_draft",
+  "quote_sent",
+  "quote_approved",
+  "in_production",
   "delivered",
   "rejected",
   "cancelled",

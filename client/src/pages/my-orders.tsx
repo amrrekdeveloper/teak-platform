@@ -55,7 +55,7 @@ function formatElapsed(fromDate: string | Date, now: number, t: (ar: string, en:
   return t(`${mins} د`, `${mins}m`);
 }
 
-type PipelineStage = "all" | "new" | "appointment" | "survey" | "sent" | "approved" | "production" | "delivered" | "rejected" | "cancelled";
+type PipelineStage = "all" | "new" | "appointment_scheduled" | "survey_done" | "quote_draft" | "quote_sent" | "quote_approved" | "in_production" | "delivered" | "rejected" | "cancelled";
 
 const CANCEL_REASONS = [
   { value: "لم يرد العميل على التواصل", ar: "لم يرد العميل على التواصل", en: "Customer not responding" },
@@ -70,11 +70,12 @@ const CANCEL_REASONS = [
 const PIPELINE_STAGES: { key: PipelineStage; ar: string; en: string; color: string; icon: any }[] = [
   { key: "all", ar: "الكل", en: "All", color: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300", icon: ClipboardList },
   { key: "new", ar: "جديد", en: "New", color: "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300", icon: Zap },
-  { key: "appointment", ar: "موعد محجوز", en: "Appointment", color: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300", icon: CalendarCheck },
-  { key: "survey", ar: "مسح مكتمل", en: "Survey Done", color: "bg-violet-100 text-violet-700 dark:bg-violet-900 dark:text-violet-300", icon: Ruler },
-  { key: "sent", ar: "عرض مُرسل", en: "Quote Sent", color: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300", icon: FileText },
-  { key: "approved", ar: "معتمد", en: "Approved", color: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300", icon: CheckCircle2 },
-  { key: "production", ar: "في التصنيع", en: "Production", color: "bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300", icon: Package },
+  { key: "appointment_scheduled", ar: "موعد مجدول", en: "Appointment", color: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300", icon: CalendarCheck },
+  { key: "survey_done", ar: "مسح مكتمل", en: "Survey Done", color: "bg-violet-100 text-violet-700 dark:bg-violet-900 dark:text-violet-300", icon: Ruler },
+  { key: "quote_draft", ar: "مسودة عرض", en: "Draft Quote", color: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300", icon: FileText },
+  { key: "quote_sent", ar: "عرض مُرسل", en: "Quote Sent", color: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300", icon: FileText },
+  { key: "quote_approved", ar: "عرض معتمد", en: "Approved", color: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300", icon: CheckCircle2 },
+  { key: "in_production", ar: "في التصنيع", en: "In Production", color: "bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300", icon: Package },
   { key: "delivered", ar: "تم التسليم", en: "Delivered", color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300", icon: Truck },
   { key: "rejected", ar: "مرفوض/منتهٍ", en: "Rejected/Expired", color: "bg-rose-100 text-rose-700 dark:bg-rose-900 dark:text-rose-300", icon: ThumbsDown },
   { key: "cancelled", ar: "ملغى", en: "Cancelled", color: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300", icon: Ban },
@@ -99,18 +100,19 @@ function getOrderStage(
       const wo = workOrdersWithContract.find((w: any) => w.contractId === contract.id);
       if (wo) {
         if (["completed", "delivered", "installed"].includes(wo.status)) return "delivered";
-        return "production";
+        return "in_production";
       }
     }
-    return "approved";
+    return "quote_approved";
   }
 
-  if (q.status === "sent") return "sent";
+  if (q.status === "sent") return "quote_sent";
+  if (q.status === "draft" || q.status === "open") return "quote_draft";
 
   const hasSurvey = siteSurveys.some((s: any) => s.quotationId === q.id);
   const appt = apptByQuotation[q.id];
-  if (hasSurvey || appt?.status === "attended") return "survey";
-  if (appt) return "appointment";
+  if (hasSurvey || appt?.status === "attended") return "survey_done";
+  if (appt) return "appointment_scheduled";
   return "new";
 }
 
@@ -118,7 +120,7 @@ function getNextAction(stage: PipelineStage, order: any, t: (ar: string, en: str
   switch (stage) {
     case "new":
       return { label: t("احجز موعد رفع المقاسات", "Book measurement appointment"), urgent: true };
-    case "appointment": {
+    case "appointment_scheduled": {
       const appt = order._appointment;
       if (appt) {
         const isPast = new Date(`${appt.appointmentDate}T${appt.endTime || "23:59"}`) < new Date();
@@ -126,13 +128,15 @@ function getNextAction(stage: PipelineStage, order: any, t: (ar: string, en: str
       }
       return { label: t("انتظار تاريخ الموعد", "Waiting for appointment"), urgent: false };
     }
-    case "survey":
+    case "survey_done":
       return { label: t("أعد عرض السعر وأرسله للعميل", "Prepare and send quote to customer"), urgent: true };
-    case "sent":
+    case "quote_draft":
+      return { label: t("راجع المسودة وأرسل العرض للعميل", "Review draft and send quote"), urgent: true };
+    case "quote_sent":
       return { label: t("انتظار موافقة العميل", "Awaiting customer approval"), urgent: false };
-    case "approved":
+    case "quote_approved":
       return { label: t("أنشئ أمر العمل لبدء الإنتاج", "Create work order to start production"), urgent: true };
-    case "production":
+    case "in_production":
       return { label: t("متابعة مراحل التصنيع", "Follow up on production stages"), urgent: false };
     case "delivered":
       return { label: t("تم التسليم — الطلب مكتمل", "Delivered — Order complete"), urgent: false };

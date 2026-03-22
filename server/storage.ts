@@ -315,6 +315,7 @@ export class DatabaseStorage implements IStorage {
         assignedAt: now,
         claimedAt: now,
         status: "draft",
+        orderStage: "quote_draft",
         updatedAt: now,
       })
       .where(

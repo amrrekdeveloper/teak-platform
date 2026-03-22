@@ -15,15 +15,16 @@ import {
   ClipboardList, Banknote, Home, Zap, ThumbsDown,
 } from "lucide-react";
 
-type PipelineStage = "new" | "appointment" | "survey" | "sent" | "approved" | "production" | "delivered" | "rejected" | "cancelled";
+type PipelineStage = "new" | "appointment_scheduled" | "survey_done" | "quote_draft" | "quote_sent" | "quote_approved" | "in_production" | "delivered" | "rejected" | "cancelled";
 
 const PIPELINE_STAGES: { key: PipelineStage; ar: string; en: string; color: string; icon: any }[] = [
   { key: "new", ar: "جديد", en: "New", color: "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300", icon: Zap },
-  { key: "appointment", ar: "موعد محجوز", en: "Appointment", color: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300", icon: CalendarCheck },
-  { key: "survey", ar: "مسح مكتمل", en: "Survey Done", color: "bg-violet-100 text-violet-700 dark:bg-violet-900 dark:text-violet-300", icon: Ruler },
-  { key: "sent", ar: "عرض مُرسل", en: "Quote Sent", color: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300", icon: FileText },
-  { key: "approved", ar: "معتمد", en: "Approved", color: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300", icon: CheckCircle2 },
-  { key: "production", ar: "في التصنيع", en: "Production", color: "bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300", icon: Package },
+  { key: "appointment_scheduled", ar: "موعد مجدول", en: "Appointment", color: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300", icon: CalendarCheck },
+  { key: "survey_done", ar: "مسح مكتمل", en: "Survey Done", color: "bg-violet-100 text-violet-700 dark:bg-violet-900 dark:text-violet-300", icon: Ruler },
+  { key: "quote_draft", ar: "مسودة عرض", en: "Draft Quote", color: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300", icon: FileText },
+  { key: "quote_sent", ar: "عرض مُرسل", en: "Quote Sent", color: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300", icon: FileText },
+  { key: "quote_approved", ar: "عرض معتمد", en: "Approved", color: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300", icon: CheckCircle2 },
+  { key: "in_production", ar: "في التصنيع", en: "In Production", color: "bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300", icon: Package },
   { key: "delivered", ar: "تم التسليم", en: "Delivered", color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300", icon: Truck },
   { key: "rejected", ar: "مرفوض/منتهٍ", en: "Rejected/Expired", color: "bg-rose-100 text-rose-700 dark:bg-rose-900 dark:text-rose-300", icon: ThumbsDown },
   { key: "cancelled", ar: "ملغى", en: "Cancelled", color: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300", icon: Ban },
@@ -45,16 +46,17 @@ function getOrderStage(
       const wo = workOrdersAll.find((w: any) => w.contractId === contract.id);
       if (wo) {
         if (["completed", "delivered", "installed"].includes(wo.status)) return "delivered";
-        return "production";
+        return "in_production";
       }
     }
-    return "approved";
+    return "quote_approved";
   }
-  if (q.status === "sent") return "sent";
+  if (q.status === "sent") return "quote_sent";
+  if (q.status === "draft" || q.status === "open") return "quote_draft";
   const hasSurvey = siteSurveysAll.some((s: any) => s.quotationId === q.id);
   const appt = apptByQuotation[q.id];
-  if (hasSurvey || appt?.status === "attended") return "survey";
-  if (appt) return "appointment";
+  if (hasSurvey || appt?.status === "attended") return "survey_done";
+  if (appt) return "appointment_scheduled";
   return "new";
 }
 
@@ -81,7 +83,7 @@ function InfoRow({ label, value, dir }: { label: string; value: ReactNode; dir?:
   );
 }
 
-const PIPELINE_STEP_KEYS: PipelineStage[] = ["new", "appointment", "survey", "sent", "approved", "production", "delivered"];
+const PIPELINE_STEP_KEYS: PipelineStage[] = ["new", "appointment_scheduled", "survey_done", "quote_draft", "quote_sent", "quote_approved", "in_production", "delivered"];
 
 export default function OrderDetailPage() {
   const { t, lang } = useLanguage();

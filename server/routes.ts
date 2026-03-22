@@ -13,7 +13,16 @@ import {
   insertCompanySettingsSchema, insertWorkOrderSchema, insertProductionStageSchema,
   insertDesignAssignmentSchema, insertWarrantySchema,
   productionStages,
+  type OrderStageValue,
 } from "@shared/schema";
+
+async function setOrderStage(quotationId: number, stage: OrderStageValue) {
+  try {
+    await storage.updateQuotation(quotationId, { orderStage: stage });
+  } catch (e) {
+    console.warn(`setOrderStage(${quotationId}, ${stage}) failed:`, e);
+  }
+}
 
 async function requirePortalAuth(req: Request, res: Response, next: NextFunction) {
   const session = req.session as any;
@@ -121,11 +130,12 @@ export async function registerRoutes(
       UPDATE quotations SET order_stage = CASE
         WHEN status = 'cancelled' THEN 'cancelled'
         WHEN status IN ('rejected', 'expired') THEN 'rejected'
-        WHEN status = 'approved' THEN 'approved'
-        WHEN status = 'sent' THEN 'sent'
-        WHEN status IN ('requested', 'open') THEN 'new'
+        WHEN status = 'approved' THEN 'quote_approved'
+        WHEN status = 'sent' THEN 'quote_sent'
+        WHEN status IN ('draft', 'open') THEN 'quote_draft'
+        WHEN status = 'requested' THEN 'new'
         ELSE 'new'
-      END WHERE order_stage IS NULL OR order_stage = 'new';
+      END WHERE order_stage IS NULL OR order_stage IN ('new', 'appointment', 'survey', 'sent', 'approved', 'production', 'delivered');
     `);
   } catch (orderStageMigrationError) {
     console.warn("Order stage migration warning (non-fatal):", orderStageMigrationError instanceof Error ? orderStageMigrationError.message : String(orderStageMigrationError));
@@ -887,11 +897,12 @@ export async function registerRoutes(
           data.assignedAt = new Date();
         }
       }
-      if (data.status === "sent" && !data.orderStage) data.orderStage = "sent";
-      if (data.status === "approved" && !data.orderStage) data.orderStage = "approved";
+      if (data.status === "sent" && !data.orderStage) data.orderStage = "quote_sent";
+      if (data.status === "approved" && !data.orderStage) data.orderStage = "quote_approved";
       if (data.status === "rejected" && !data.orderStage) data.orderStage = "rejected";
       if (data.status === "expired" && !data.orderStage) data.orderStage = "rejected";
       if (data.status === "cancelled" && !data.orderStage) data.orderStage = "cancelled";
+      if ((data.status === "draft" || data.status === "open") && !data.orderStage) data.orderStage = "quote_draft";
       delete data.id;
       delete data.createdAt;
       const updated = await storage.updateQuotation(parseInt(req.params.id), data);
@@ -904,7 +915,7 @@ export async function registerRoutes(
 
   app.post("/api/quotations/:id/approve", requireRole("owner", "assistant"), async (req, res) => {
     try {
-      const updated = await storage.updateQuotation(parseInt(req.params.id), { status: "approved", orderStage: "approved" });
+      const updated = await storage.updateQuotation(parseInt(req.params.id), { status: "approved", orderStage: "quote_approved" });
       if (!updated) return res.status(404).json({ message: "عرض السعر غير موجود" });
       res.json(updated);
     } catch (error) {
@@ -1022,11 +1033,13 @@ export async function registerRoutes(
         });
       }
       const now = new Date();
+      const willTransitionToDraft = quotation.status === "requested" || quotation.status === "open";
       const updated = await storage.updateQuotation(quotationId, {
         assignedTo: Number(newAssigneeId),
         assignedAt: now,
         previousAssignees,
-        status: (quotation.status === "requested" || quotation.status === "open") ? "draft" : quotation.status,
+        status: willTransitionToDraft ? "draft" : quotation.status,
+        orderStage: willTransitionToDraft ? "quote_draft" : (quotation.orderStage || "new"),
       });
       const transferringUser = await storage.getUser(userId);
       if (quotation.assignedTo && quotation.assignedTo !== Number(newAssigneeId)) {
@@ -1693,7 +1706,7 @@ export async function registerRoutes(
         if (contract?.quotationId) {
           const q = await storage.getQuotation(contract.quotationId);
           if (q && !["cancelled", "rejected", "delivered"].includes(q.orderStage || "")) {
-            await storage.updateQuotation(contract.quotationId, { orderStage: "production" });
+            await setOrderStage(contract.quotationId, "in_production");
           }
         }
       }
@@ -1718,7 +1731,7 @@ export async function registerRoutes(
         if (existing.contractId) {
           const contract = await storage.getContract(existing.contractId);
           if (contract?.quotationId) {
-            await storage.updateQuotation(contract.quotationId, { orderStage: "delivered" });
+            await setOrderStage(contract.quotationId, "delivered");
           }
         }
       }
@@ -2390,7 +2403,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "لا يمكن اعتماد عرض سعر لم يتم إرساله بعد", messageEn: "Cannot approve a quotation that hasn't been sent yet" });
       }
 
-      const updatedQuotation = await storage.updateQuotation(quotation.id, { status: "approved" });
+      const updatedQuotation = await storage.updateQuotation(quotation.id, { status: "approved", orderStage: "quote_approved" });
 
       const allDA = await storage.getDesignAssignments();
       const quotationDA = allDA.find((da: any) => da.quotationId === quotation.id);
@@ -2587,7 +2600,7 @@ export async function registerRoutes(
       if (da.quotationId) {
         const linkedQuotation = await storage.getQuotation(da.quotationId);
         if (linkedQuotation && linkedQuotation.status !== "approved") {
-          await storage.updateQuotation(da.quotationId, { status: "approved" });
+          await storage.updateQuotation(da.quotationId, { status: "approved", orderStage: "quote_approved" });
           quotationAssignedTo = linkedQuotation.assignedTo || null;
         }
       }
@@ -2634,7 +2647,7 @@ export async function registerRoutes(
       } as any);
 
       if (da.quotationId) {
-        await storage.updateQuotation(da.quotationId, { status: "draft" });
+        await storage.updateQuotation(da.quotationId, { status: "draft", orderStage: "quote_draft" });
       }
 
       const staffUsers = (await storage.getUsers()).filter(u => u.id === da.assignedTo || u.role === "owner" || u.role === "assistant");
@@ -2848,8 +2861,8 @@ export async function registerRoutes(
       const appointment = await storage.createAppointment(data);
       if (appointment.quotationId) {
         const q = await storage.getQuotation(appointment.quotationId);
-        if (q && !["cancelled", "rejected", "approved", "sent"].includes(q.orderStage || "")) {
-          await storage.updateQuotation(appointment.quotationId, { orderStage: "appointment" });
+        if (q && !["cancelled", "rejected", "quote_approved", "quote_sent", "in_production", "delivered"].includes(q.orderStage || "")) {
+          await setOrderStage(appointment.quotationId, "appointment_scheduled");
         }
       }
       res.status(201).json(appointment);
@@ -3097,8 +3110,8 @@ export async function registerRoutes(
       const survey = await storage.createSiteSurvey(surveyData);
       if (surveyData.quotationId) {
         const q = await storage.getQuotation(surveyData.quotationId);
-        if (q && !["cancelled", "rejected", "approved", "sent"].includes(q.orderStage || "")) {
-          await storage.updateQuotation(surveyData.quotationId, { orderStage: "survey" });
+        if (q && !["cancelled", "rejected", "quote_approved", "quote_sent", "in_production", "delivered"].includes(q.orderStage || "")) {
+          await setOrderStage(surveyData.quotationId, "survey_done");
         }
       }
       res.status(201).json(survey);
@@ -3425,7 +3438,7 @@ export async function registerRoutes(
         return res.status(403).json({ message: "غير مصرح - عرض السعر ليس مخصصاً لك" });
       }
 
-      const updated = await storage.updateQuotation(quotation.id, { status: "sent", orderStage: "sent" });
+      const updated = await storage.updateQuotation(quotation.id, { status: "sent", orderStage: "quote_sent" });
 
       const customer = await storage.getCustomer(quotation.customerId);
       const staffUsers = (await storage.getUsers()).filter(u => ["owner", "assistant", "sales"].includes(u.role));
