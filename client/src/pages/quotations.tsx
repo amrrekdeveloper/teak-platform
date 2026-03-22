@@ -23,7 +23,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { useState } from "react";
-import { Plus, Search, Loader2, FileText, Check, X, UserPlus, Palette, Phone, MapPin } from "lucide-react";
+import { Plus, Search, Loader2, FileText, Check, X, UserPlus, Palette, Phone, MapPin, Eye } from "lucide-react";
 import { Link } from "wouter";
 
 const statusConfig: Record<string, { ar: string; en: string; color: string }> = {
@@ -242,7 +242,7 @@ export default function QuotationsPage() {
           />
         </div>
         <div className="flex gap-2 overflow-x-auto flex-nowrap pb-1">
-          {["all", "requested", "draft", "sent", "approved", "rejected"].map((status) => (
+          {["all", "requested", "draft", "sent", "approved", "rejected", "expired"].map((status) => (
             <Button
               key={status}
               variant={statusFilter === status ? "default" : "outline"}
@@ -297,6 +297,16 @@ export default function QuotationsPage() {
                       <span className="text-lg font-bold">
                         {parseFloat(q.finalPrice).toLocaleString()} SAR
                       </span>
+                      <Link href={`/quotations/${q.id}/view`}>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="text-blue-600"
+                          data-testid={`button-view-${q.id}`}
+                        >
+                          <Eye className="w-4 h-4" />
+                        </Button>
+                      </Link>
                       {canApprove && (q.status === "draft" || q.status === "sent") && (
                         <div className="flex gap-1">
                           <Button

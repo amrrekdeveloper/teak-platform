@@ -17,6 +17,7 @@ import CustomersPage from "@/pages/customers";
 import CustomerDetailPage from "@/pages/customer-detail";
 import QuotationsPage from "@/pages/quotations";
 import QuotationBuilderPage from "@/pages/quotation-builder";
+import QuotationViewPage from "@/pages/quotation-view";
 import ContractsPage from "@/pages/contracts";
 import ContractDetailPage from "@/pages/contract-detail";
 import PaymentsPage from "@/pages/payments";
@@ -151,6 +152,7 @@ function DashboardRoutes() {
         <Route path="/customers/:id" component={CustomerDetailPage} />
         <Route path="/customers" component={CustomersPage} />
         <Route path="/quotations/new" component={QuotationBuilderPage} />
+        <Route path="/quotations/:id/view" component={QuotationViewPage} />
         <Route path="/quotations" component={QuotationsPage} />
         <Route path="/contracts/:id" component={ContractDetailPage} />
         <Route path="/contracts" component={ContractsPage} />

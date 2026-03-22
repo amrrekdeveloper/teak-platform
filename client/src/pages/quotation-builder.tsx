@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLanguage } from "@/components/language-provider";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -24,7 +24,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Plus, Trash2, Loader2, Calculator, ArrowLeft, ArrowRight, Paperclip, Image, FileText, Search, Package, Ruler, Send, Save, ChevronDown, ChevronUp, Settings2 } from "lucide-react";
+import { Plus, Trash2, Loader2, Calculator, ArrowLeft, ArrowRight, Paperclip, Image, FileText, Search, Package, Ruler, Send, Save, ChevronDown, ChevronUp, Settings2, Eye, Download, Globe, List, LayoutList } from "lucide-react";
+import { Checkbox as CheckboxUI } from "@/components/ui/checkbox";
+import { DialogFooter } from "@/components/ui/dialog";
 
 type ItemMode = "area" | "product";
 
@@ -125,6 +127,18 @@ export default function QuotationBuilderPage() {
   const [productSearch, setProductSearch] = useState("");
   const [savedQuotationId, setSavedQuotationId] = useState<number | null>(null);
   const [savedQuotationStatus, setSavedQuotationStatus] = useState<string | null>(null);
+  const [quotationMode, setQuotationMode] = useState<"detailed" | "summary">("detailed");
+  const [summaryDescription, setSummaryDescription] = useState("");
+  const [summaryPriceBeforeVat, setSummaryPriceBeforeVat] = useState<number>(0);
+  const [sendDialogOpen, setSendDialogOpen] = useState(false);
+  const [selectedAttachments, setSelectedAttachments] = useState<Set<number>>(new Set());
+  const pendingSendAfterSave = useRef(false);
+  const defaultValidUntil = () => {
+    const d = new Date();
+    d.setDate(d.getDate() + 30);
+    return d.toISOString().split("T")[0];
+  };
+  const [validUntilDate, setValidUntilDate] = useState<string>(defaultValidUntil());
 
   const { data: customers = [] } = useQuery<Customer[]>({ queryKey: ["/api/customers"] });
   const { data: products = [] } = useQuery<Product[]>({ queryKey: ["/api/products"] });
@@ -392,6 +406,15 @@ export default function QuotationBuilderPage() {
   };
 
   const totals = useMemo(() => {
+    if (quotationMode === "summary") {
+      const subtotal = summaryPriceBeforeVat;
+      const clampedDiscount = discountType === "percent" ? Math.max(0, Math.min(discount, 100)) : Math.max(0, Math.min(discount, subtotal));
+      const discountAmount = discountType === "percent" ? (subtotal * clampedDiscount) / 100 : clampedDiscount;
+      const afterDiscount = Math.max(0, subtotal - discountAmount);
+      const vatAmount = afterDiscount * 0.15;
+      const finalPrice = afterDiscount + vatAmount;
+      return { totalArea: 0, subtotal, discountAmount, afterDiscount, vatAmount, finalPrice };
+    }
     const subtotal = items.reduce((sum, i) => sum + (i.total || 0), 0);
     const totalArea = items.filter(i => i.mode === "area").reduce((sum, i) => sum + (i.area || 0), 0);
     const clampedDiscount = discountType === "percent" ? Math.max(0, Math.min(discount, 100)) : Math.max(0, Math.min(discount, subtotal));
@@ -400,10 +423,43 @@ export default function QuotationBuilderPage() {
     const vatAmount = afterDiscount * 0.15;
     const finalPrice = afterDiscount + vatAmount;
     return { totalArea, subtotal, discountAmount, afterDiscount, vatAmount, finalPrice };
-  }, [items, discount, discountType]);
+  }, [items, discount, discountType, quotationMode, summaryPriceBeforeVat]);
 
   const saveMutation = useMutation({
     mutationFn: async (status: "draft" | "sent") => {
+      if (quotationMode === "summary") {
+        const res = await apiRequest("POST", "/api/quotations", {
+          customerId: parseInt(customerId),
+          items: [{
+            description: summaryDescription,
+            nameAr: summaryDescription,
+            nameEn: summaryDescription,
+            quantity: 1,
+            unitPrice: summaryPriceBeforeVat,
+            optionsCost: 0,
+            optionDetails: {},
+            total: summaryPriceBeforeVat,
+          }],
+          totalArea: "0",
+          subtotal: String(totals.subtotal),
+          vatRate: "15",
+          vatAmount: String(totals.vatAmount),
+          totalPrice: String(totals.finalPrice),
+          discount: String(totals.discountAmount),
+          finalPrice: String(totals.finalPrice),
+          status: "draft",
+          deliveryDays: deliveryDays || null,
+          notes,
+          validUntil: validUntilDate,
+          designFile: completedDesign?.sketchImage || null,
+        });
+        const quotation = await res.json();
+        if (status === "sent") {
+          await apiRequest("POST", `/api/pricing/send-to-customer/${quotation.id}`);
+        }
+        return quotation;
+      }
+
       const hasAdekoItems = items.some(i => i.useAdeko && i.productId);
       const hasManuItems = items.some(i => !i.useAdeko);
 
@@ -429,6 +485,7 @@ export default function QuotationBuilderPage() {
           notes,
           deliveryDays,
           surveyId: preselectedSurveyId ? parseInt(preselectedSurveyId) : undefined,
+          validUntil: validUntilDate,
         };
 
         if (hasManuItems) {
@@ -481,6 +538,7 @@ export default function QuotationBuilderPage() {
           status,
           deliveryDays: deliveryDays || null,
           notes,
+          validUntil: validUntilDate,
           designFile: completedDesign?.sketchImage || null,
         });
         return res.json();
@@ -493,6 +551,14 @@ export default function QuotationBuilderPage() {
         setSavedQuotationId(quotation?.id || null);
         setSavedQuotationStatus("draft");
         toast({ title: t("تم حفظ عرض السعر كمسودة", "Quotation saved as draft") });
+        if (pendingSendAfterSave.current) {
+          pendingSendAfterSave.current = false;
+          const initialAttachments = new Set<number>(
+            surveyDesignFiles.filter((f: any) => f.attach_to_quote).map((f: any) => f.id)
+          );
+          setSelectedAttachments(initialAttachments);
+          setSendDialogOpen(true);
+        }
       } else {
         toast({ title: t("تم إرسال عرض السعر للعميل بنجاح", "Quotation sent to customer successfully") });
         setLocation("/quotations");
@@ -524,20 +590,64 @@ export default function QuotationBuilderPage() {
       toast({ title: t("يجب اختيار العميل", "Customer is required"), variant: "destructive" });
       return;
     }
-    if (items.length === 0) {
-      toast({ title: t("يجب إضافة عنصر واحد على الأقل", "Add at least one item"), variant: "destructive" });
-      return;
-    }
-    const zeroPricedItems = items.filter(i => (i.unitPrice === 0 || !i.unitPrice) && (i.useAdeko || i.productId));
-    if (zeroPricedItems.length > 0) {
-      toast({
-        title: t(`${zeroPricedItems.length} بند بدون سعر`, `${zeroPricedItems.length} item(s) with no price`),
-        description: t("أدخل سعر الوحدة لجميع المنتجات قبل الحفظ", "Enter unit price for all products before saving"),
-        variant: "destructive",
-      });
-      return;
+    if (quotationMode === "summary") {
+      if (!summaryDescription.trim()) {
+        toast({ title: t("يجب إدخال وصف المنتج", "Product description is required"), variant: "destructive" });
+        return;
+      }
+      if (summaryPriceBeforeVat <= 0) {
+        toast({ title: t("يجب إدخال السعر الإجمالي", "Total price is required"), variant: "destructive" });
+        return;
+      }
+    } else {
+      if (items.length === 0) {
+        toast({ title: t("يجب إضافة عنصر واحد على الأقل", "Add at least one item"), variant: "destructive" });
+        return;
+      }
+      const zeroPricedItems = items.filter(i => (i.unitPrice === 0 || !i.unitPrice) && (i.useAdeko || i.productId));
+      if (zeroPricedItems.length > 0) {
+        toast({
+          title: t(`${zeroPricedItems.length} بند بدون سعر`, `${zeroPricedItems.length} item(s) with no price`),
+          description: t("أدخل سعر الوحدة لجميع المنتجات قبل الحفظ", "Enter unit price for all products before saving"),
+          variant: "destructive",
+        });
+        return;
+      }
     }
     saveMutation.mutate(status);
+  };
+
+  const handleOpenSendDialog = () => {
+    if (!savedQuotationId) return;
+    const initialAttachments = new Set<number>(
+      surveyDesignFiles.filter((f: any) => f.attach_to_quote).map((f: any) => f.id)
+    );
+    setSelectedAttachments(initialAttachments);
+    setSendDialogOpen(true);
+  };
+
+  const handleSendOption = async (option: "portal" | "pdf" | "both") => {
+    if (!savedQuotationId) return;
+    if (surveyDesignFiles.length > 0 && preselectedSurveyId) {
+      for (const f of surveyDesignFiles) {
+        const shouldAttach = selectedAttachments.has(f.id);
+        if (f.attach_to_quote !== shouldAttach) {
+          try {
+            await apiRequest("PATCH", `/api/site-surveys/${preselectedSurveyId}/design-files/${f.id}`, { attachToQuote: shouldAttach });
+          } catch (err) {
+            console.error("[send] Failed to update attachment:", f.id, err);
+          }
+        }
+      }
+    }
+    if (option === "portal" || option === "both") {
+      await sendToCustomerMutation.mutateAsync(savedQuotationId);
+    }
+    if (option === "pdf" || option === "both") {
+      const pdfUrl = `/quotations/${savedQuotationId}/view?print=1`;
+      window.open(pdfUrl, "_blank");
+    }
+    setSendDialogOpen(false);
   };
 
   const filteredAdeko = useMemo(() => {
@@ -588,6 +698,93 @@ export default function QuotationBuilderPage() {
             </Select>
           </CardContent>
         </Card>
+
+        <Card data-testid="card-quotation-mode">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-medium">{t("وضع عرض السعر:", "Quotation Mode:")}</span>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant={quotationMode === "detailed" ? "default" : "outline"}
+                  onClick={() => setQuotationMode("detailed")}
+                  className="gap-1.5"
+                  data-testid="button-mode-detailed"
+                >
+                  <LayoutList className="w-3.5 h-3.5" />
+                  {t("تفصيلي", "Detailed")}
+                </Button>
+                <Button
+                  size="sm"
+                  variant={quotationMode === "summary" ? "default" : "outline"}
+                  onClick={() => setQuotationMode("summary")}
+                  className="gap-1.5"
+                  data-testid="button-mode-summary"
+                >
+                  <List className="w-3.5 h-3.5" />
+                  {t("إجمالي", "Summary")}
+                </Button>
+              </div>
+              <span className="text-xs text-muted-foreground">
+                {quotationMode === "summary"
+                  ? t("بند واحد فقط — مثال: مطبخ عصري + السعر الإجمالي", "Single item — e.g. Modern Kitchen + total price")
+                  : t("بنود متعددة بالتفاصيل الكاملة", "Multiple items with full details")}
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+
+        {quotationMode === "summary" && (
+          <Card data-testid="card-summary-mode">
+            <CardHeader>
+              <CardTitle>{t("بيانات العرض الإجمالي", "Summary Quotation Details")}</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-1">
+                <Label className="text-sm font-medium">
+                  {t("وصف المنتج / الخدمة", "Product / Service Description")}
+                  <span className="text-red-500 ms-1">*</span>
+                </Label>
+                <Textarea
+                  value={summaryDescription}
+                  onChange={(e) => setSummaryDescription(e.target.value)}
+                  placeholder={t("مثال: مطبخ عصري كامل بالتركيب والتوصيل", "e.g. Complete modern kitchen with installation and delivery")}
+                  rows={3}
+                  data-testid="input-summary-description"
+                />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <Label className="text-sm font-medium">
+                    {t("السعر قبل الضريبة (ريال)", "Price Before VAT (SAR)")}
+                    <span className="text-red-500 ms-1">*</span>
+                  </Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={summaryPriceBeforeVat || ""}
+                    onChange={(e) => setSummaryPriceBeforeVat(parseFloat(e.target.value) || 0)}
+                    placeholder="0.00"
+                    data-testid="input-summary-price"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-sm font-medium">{t("ضريبة القيمة المضافة (15%)", "VAT (15%)")}</Label>
+                  <div className="h-9 flex items-center px-3 border rounded-md bg-muted/30 text-sm font-semibold text-primary">
+                    {(summaryPriceBeforeVat * 0.15).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} SAR
+                  </div>
+                </div>
+              </div>
+              <div className="flex justify-between items-center p-3 bg-primary/5 rounded-lg border border-primary/20">
+                <span className="font-bold text-sm">{t("الإجمالي شامل الضريبة:", "Total incl. VAT:")}</span>
+                <span className="font-bold text-lg text-primary" data-testid="text-summary-total">
+                  {(summaryPriceBeforeVat * 1.15).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} SAR
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {preselectedSurveyId && surveyDesignFiles.length > 0 && (
           <Card className="border-blue-200 dark:border-blue-800" dir={isRTL ? "rtl" : "ltr"} data-testid="card-survey-design-files">
@@ -697,7 +894,7 @@ export default function QuotationBuilderPage() {
           </Card>
         )}
 
-        <Card>
+        {quotationMode === "detailed" && <Card>
           <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2">
             <CardTitle>{t("البنود", "Line Items")}</CardTitle>
             <div className="flex gap-2">
@@ -1017,9 +1214,9 @@ export default function QuotationBuilderPage() {
               ))
             )}
           </CardContent>
-        </Card>
+        </Card>}
 
-        {items.length > 0 && (
+        {(items.length > 0 || quotationMode === "summary") && (
           <>
             <Card>
               <CardContent className="p-4 space-y-3">
@@ -1064,6 +1261,19 @@ export default function QuotationBuilderPage() {
                 <div className="space-y-1">
                   <Label className="text-xs">{t("ملاحظات", "Notes")}</Label>
                   <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} data-testid="input-notes" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs flex items-center gap-1">
+                    {t("صالح حتى (تاريخ الانتهاء)", "Valid Until (Expiry Date)")}
+                    <span className="text-muted-foreground font-normal">— {t("30 يوماً افتراضياً", "default 30 days")}</span>
+                  </Label>
+                  <Input
+                    type="date"
+                    value={validUntilDate}
+                    onChange={(e) => setValidUntilDate(e.target.value)}
+                    min={new Date().toISOString().split("T")[0]}
+                    data-testid="input-valid-until"
+                  />
                 </div>
               </CardContent>
             </Card>
@@ -1119,16 +1329,25 @@ export default function QuotationBuilderPage() {
                   <Save className="w-3.5 h-3.5 text-green-600" />
                   <span>{t(`تم الحفظ كمسودة — رقم عرض السعر: #${savedQuotationId}`, `Saved as draft — Quotation #${savedQuotationId}`)}</span>
                 </div>
-                <Button
-                  className="w-full"
-                  onClick={() => sendToCustomerMutation.mutate(savedQuotationId)}
-                  disabled={sendToCustomerMutation.isPending || savedQuotationStatus === "sent" || savedQuotationStatus === "approved"}
-                  data-testid="button-send-to-customer"
-                >
-                  {sendToCustomerMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin me-1.5" /> : (
-                    <><Send className="w-4 h-4 me-1.5" />{t("إرسال لاعتماد العميل", "Send for Customer Approval")}</>
-                  )}
-                </Button>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => setLocation(`/quotations/${savedQuotationId}/view`)}
+                    data-testid="button-preview-quotation"
+                  >
+                    <Eye className="w-4 h-4 me-1.5" />
+                    {t("معاينة / طباعة", "Preview / Print")}
+                  </Button>
+                  <Button
+                    onClick={handleOpenSendDialog}
+                    disabled={sendToCustomerMutation.isPending}
+                    data-testid="button-send-to-customer"
+                  >
+                    {sendToCustomerMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin me-1.5" /> : (
+                      <><Send className="w-4 h-4 me-1.5" />{t("إرسال للعميل", "Send to Customer")}</>
+                    )}
+                  </Button>
+                </div>
                 <Button
                   variant="outline"
                   className="w-full"
@@ -1153,12 +1372,15 @@ export default function QuotationBuilderPage() {
                 </Button>
                 <Button
                   className="flex-1"
-                  onClick={() => handleSubmit("sent")}
+                  onClick={() => {
+                    pendingSendAfterSave.current = true;
+                    handleSubmit("draft");
+                  }}
                   disabled={saveMutation.isPending}
                   data-testid="button-send-quotation"
                 >
                   {saveMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : (
-                    <><Send className="w-4 h-4 me-1.5" />{t("إرسال لاعتماد العميل", "Send for Customer Approval")}</>
+                    <><Send className="w-4 h-4 me-1.5" />{t("حفظ وإرسال", "Save & Send")}</>
                   )}
                 </Button>
               </div>
@@ -1211,6 +1433,95 @@ export default function QuotationBuilderPage() {
               ))
             )}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={sendDialogOpen} onOpenChange={setSendDialogOpen}>
+        <DialogContent className="max-w-md" data-testid="dialog-send-options">
+          <DialogHeader>
+            <DialogTitle>{t("إرسال عرض السعر للعميل", "Send Quotation to Customer")}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              {t("اختر طريقة الإرسال:", "Choose how to send:")}
+            </p>
+
+            {surveyDesignFiles.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium flex items-center gap-1.5">
+                  <Paperclip className="w-3.5 h-3.5" />
+                  {t("المخططات المرفقة", "Attached Plans")}
+                </p>
+                <div className="space-y-1">
+                  {surveyDesignFiles.map((f: any) => (
+                    <label
+                      key={f.id}
+                      className="flex items-center gap-2 p-2 rounded-md border cursor-pointer hover:bg-muted/30"
+                      data-testid={`label-attach-${f.id}`}
+                    >
+                      <CheckboxUI
+                        checked={selectedAttachments.has(f.id)}
+                        onCheckedChange={(checked) => {
+                          const next = new Set(selectedAttachments);
+                          if (checked) next.add(f.id);
+                          else next.delete(f.id);
+                          setSelectedAttachments(next);
+                        }}
+                        data-testid={`checkbox-attach-${f.id}`}
+                      />
+                      <FileText className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                      <span className="text-sm truncate">{f.file_name}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Button
+                className="w-full justify-start gap-3"
+                variant="outline"
+                onClick={() => handleSendOption("portal")}
+                disabled={sendToCustomerMutation.isPending}
+                data-testid="button-send-portal"
+              >
+                <Globe className="w-4 h-4 text-blue-600" />
+                <div className="text-start">
+                  <div className="font-medium text-sm">{t("إرسال للبوابة الإلكترونية", "Send to Customer Portal")}</div>
+                  <div className="text-xs text-muted-foreground">{t("يُحدّث الحالة إلى 'مرسل' ويُرسل إشعاراً", "Updates status to 'sent' and notifies customer")}</div>
+                </div>
+              </Button>
+              <Button
+                className="w-full justify-start gap-3"
+                variant="outline"
+                onClick={() => handleSendOption("pdf")}
+                data-testid="button-send-pdf"
+              >
+                <Download className="w-4 h-4 text-green-600" />
+                <div className="text-start">
+                  <div className="font-medium text-sm">{t("تحميل / طباعة PDF", "Download / Print PDF")}</div>
+                  <div className="text-xs text-muted-foreground">{t("فتح صفحة المعاينة للطباعة أو التحميل", "Open preview page for printing or downloading")}</div>
+                </div>
+              </Button>
+              <Button
+                className="w-full justify-start gap-3"
+                onClick={() => handleSendOption("both")}
+                disabled={sendToCustomerMutation.isPending}
+                data-testid="button-send-both"
+              >
+                <Send className="w-4 h-4" />
+                <div className="text-start">
+                  <div className="font-medium text-sm">{t("كلاهما", "Both")}</div>
+                  <div className="text-xs opacity-80">{t("إرسال للبوابة وتحميل PDF", "Send to portal and download PDF")}</div>
+                </div>
+              </Button>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setSendDialogOpen(false)} data-testid="button-close-send-dialog">
+              {t("إلغاء", "Cancel")}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

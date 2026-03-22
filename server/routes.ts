@@ -844,19 +844,41 @@ export async function registerRoutes(
     try {
       const userId = req.session.userId!;
       const user = await storage.getUser(userId);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const checkAndExpire = async (quotations: any[]) => {
+        for (const q of quotations) {
+          if (q.validUntil && ["draft", "sent"].includes(q.status)) {
+            const validDate = new Date(q.validUntil);
+            validDate.setHours(0, 0, 0, 0);
+            if (validDate < today) {
+              try {
+                await storage.updateQuotation(q.id, { status: "expired" });
+                q.status = "expired";
+              } catch (err) {
+                console.error(`[expire-check] Failed to expire quotation ${q.id}:`, err);
+              }
+            }
+          }
+        }
+        return quotations;
+      };
+
       if (user?.role === "owner" || user?.role === "assistant") {
-        res.json(await storage.getQuotations());
+        const all = await storage.getQuotations();
+        res.json(await checkAndExpire(all));
       } else if (user?.role === "sales") {
         const all = await storage.getQuotations();
         const filtered = all.filter((q: any) =>
           q.assignedTo === userId ||
           ((q.status === "open" || q.status === "draft" || q.status === "requested") && !q.assignedTo)
         );
-        res.json(filtered);
+        res.json(await checkAndExpire(filtered));
       } else {
         const all = await storage.getQuotations();
         const filtered = all.filter((q: any) => q.assignedTo === userId);
-        res.json(filtered);
+        res.json(await checkAndExpire(filtered));
       }
     } catch (error) {
       res.status(500).json({ message: "حدث خطأ" });
@@ -3515,7 +3537,7 @@ export async function registerRoutes(
 
   app.post("/api/pricing/save-quotation", requireAuth, async (req, res) => {
     try {
-      const { customerId, lineItems, discountAmount: clientDiscount = 0, notes, deliveryDays, surveyId, city } = req.body;
+      const { customerId, lineItems, discountAmount: clientDiscount = 0, notes, deliveryDays, surveyId, city, validUntil } = req.body;
       if (!customerId || !lineItems || lineItems.length === 0) {
         return res.status(400).json({ message: "العميل والمنتجات مطلوبة" });
       }
@@ -3596,6 +3618,8 @@ export async function registerRoutes(
 
       const pricingUser = await storage.getUser(req.session.userId!);
       const pricingIsSales = pricingUser?.role === "sales";
+      const autoValidUntil = new Date();
+      autoValidUntil.setDate(autoValidUntil.getDate() + 30);
       const quotation = await storage.createQuotation({
         customerId,
         items,
@@ -3613,6 +3637,7 @@ export async function registerRoutes(
         deliveryDays: deliveryDays || null,
         city: city || null,
         notes: notes || "",
+        validUntil: validUntil || autoValidUntil.toISOString().split("T")[0],
         createdBy: req.session.userId,
       });
 
