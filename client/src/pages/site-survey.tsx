@@ -378,7 +378,7 @@ export default function SiteSurveyPage() {
 
   const saveMutation = useMutation({
     mutationFn: async (data: any) => {
-      const surveyId = existingSurvey?.id || savedSurveyId;
+      const surveyId = existingSurvey?.id || savedSurveyIdRef.current;
       if (surveyId) {
         const res = await apiRequest("PATCH", `/api/site-surveys/${surveyId}`, data);
         return res.json();
@@ -391,7 +391,9 @@ export default function SiteSurveyPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/appointments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/appointments", appointmentId, "site-survey"] });
       toast({ title: t("تم حفظ نموذج الزيارة بنجاح", "Survey saved successfully") });
-      setSavedSurveyId(saved?.id || existingSurvey?.id || null);
+      const newId = saved?.id || existingSurvey?.id || null;
+      if (newId) savedSurveyIdRef.current = newId;
+      setSavedSurveyId(newId);
       setNextStepsDialog(true);
     },
     onError: () => {
@@ -1500,7 +1502,7 @@ export default function SiteSurveyPage() {
         {step === 3 ? (
           <Button
             onClick={handleSave}
-            disabled={saveMutation.isPending}
+            disabled={saveMutation.isPending || autoSavePending}
             data-testid="button-save-survey"
           >
             {saveMutation.isPending ? <Loader2 className="w-4 h-4 me-1 animate-spin" /> : <Save className="w-4 h-4 me-1" />}
