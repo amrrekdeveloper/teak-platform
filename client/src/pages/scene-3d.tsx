@@ -276,30 +276,26 @@ function Cabinet({
   const rW = roomW * SCALE;
   const rH = roomH * SCALE;
 
-  const wallIndex = product.wallIndex ?? 0;
-  const posInWall = product.positionInWall ?? index;
+  const wallIndex = product._wallIndex ?? 0;
+  const xOffset = (product._xOffset ?? 30) * SCALE;
 
   let x = 0, z = 0, rotY = 0;
   const wallOff = isWallUnit(product) ? rH * 0.45 : 0;
 
   if (wallIndex === 0) {
-    const spacing = L / (5 + 1);
-    x = -L / 2 + spacing * ((posInWall % 5) + 1);
+    x = -L / 2 + xOffset;
     z = -rW / 2 + D / 2 + 0.01;
   } else if (wallIndex === 1) {
-    const spacing = rW / (5 + 1);
     x = L / 2 - D / 2 - 0.01;
-    z = -rW / 2 + spacing * ((posInWall % 5) + 1);
+    z = -rW / 2 + xOffset;
     rotY = -Math.PI / 2;
   } else if (wallIndex === 2) {
-    const spacing = L / (5 + 1);
-    x = -L / 2 + spacing * ((posInWall % 5) + 1);
+    x = L / 2 - xOffset;
     z = rW / 2 - D / 2 - 0.01;
     rotY = Math.PI;
   } else {
-    const spacing = rW / (5 + 1);
     x = -L / 2 + D / 2 + 0.01;
-    z = -rW / 2 + spacing * ((posInWall % 5) + 1);
+    z = rW / 2 - xOffset;
     rotY = Math.PI / 2;
   }
 
@@ -371,16 +367,38 @@ function Cabinet({
   );
 }
 
+const WALL_LETTER_MAP: Record<string, number> = { A: 0, B: 1, C: 2, D: 3 };
+
+function getWallIndex(product: any): number {
+  const letter = (product.wallId || "").slice(-1).toUpperCase();
+  return WALL_LETTER_MAP[letter] ?? 0;
+}
+
 function Scene3D({
   survey, selectedIdx, onSelect, lightMode,
 }: {
   survey: any; selectedIdx: number; onSelect: (i: number) => void; lightMode: "day" | "night";
 }) {
-  const roomDims = survey.roomDimensions || { length: 400, width: 300, height: 240 };
-  const L = parseFloat(roomDims.length) || 400;
-  const W = parseFloat(roomDims.width) || 300;
-  const H = parseFloat(roomDims.height) || 240;
+  const firstSpace = (survey.spaces || [])[0];
+  const roomDims = survey.roomDimensions
+    || (firstSpace ? { length: firstSpace.length, width: firstSpace.width, height: firstSpace.height || firstSpace.wallHeight || 280 }
+    : { length: 400, width: 300, height: 240 });
+  const rawL = parseFloat(roomDims.length) || 400;
+  const rawW = parseFloat(roomDims.width) || 300;
+  const rawH = parseFloat(roomDims.height) || 240;
+  const L = rawL <= 30 ? rawL * 100 : rawL;
+  const W = rawW <= 30 ? rawW * 100 : rawW;
+  const H = rawH <= 30 ? rawH * 100 : rawH;
   const products = (survey.selectedProducts || []) as any[];
+
+  const wallOffsets: Record<number, number> = { 0: 10, 1: 10, 2: 10, 3: 10 };
+  const productsWithPos = products.map((p: any) => {
+    const wIdx = getWallIndex(p);
+    const pW = parseFloat(p.designW || p.dimensions?.w || "60");
+    const currentOffset = wallOffsets[wIdx];
+    wallOffsets[wIdx] = currentOffset + pW + 5;
+    return { ...p, _wallIndex: wIdx, _xOffset: currentOffset + pW / 2 };
+  });
 
   return (
     <>
@@ -395,7 +413,7 @@ function Scene3D({
 
       <Room length={L} width={W} height={H} />
 
-      {products.map((p: any, i: number) => (
+      {productsWithPos.map((p: any, i: number) => (
         <Cabinet
           key={`${i}-${p.code || p.productId}`}
           product={p}
@@ -470,12 +488,18 @@ function FloorPlan2D({ survey }: { survey: any }) {
 
   const elements: JSX.Element[] = [];
 
+  const validSpaceIds = new Set(spaces.map((s: any) => s.id));
+
   spaces.forEach((space, spaceIdx) => {
     const spaceProducts = allProducts.filter(
-      (p: any) => p.spaceId === space.id || (!p.spaceId && spaceIdx === 0)
+      (p: any) =>
+        p.spaceId === space.id ||
+        (spaceIdx === 0 && (!p.spaceId || !validSpaceIds.has(p.spaceId)))
     );
-    const roomL = parseFloat(space.length) || 300;
-    const roomW = parseFloat(space.width) || 240;
+    const rawL = parseFloat(space.length) || 3;
+    const rawW = parseFloat(space.width) || 2.4;
+    const roomL = rawL <= 30 ? rawL * 100 : rawL;
+    const roomW = rawW <= 30 ? rawW * 100 : rawW;
 
     const col = spaceIdx % cols;
     const row = Math.floor(spaceIdx / cols);
@@ -527,7 +551,8 @@ function FloorPlan2D({ survey }: { survey: any }) {
 
       const wall = walls[wi];
       if (wall?.length) {
-        const wl = parseFloat(wall.length);
+        const rawWl = parseFloat(wall.length);
+        const wl = rawWl <= 30 ? rawWl * 100 : rawWl;
         let dlx = 0, dly = 0;
         if (wd.side === "top") { dlx = rx + rW / 2; dly = ry - 16; }
         else if (wd.side === "right") { dlx = rx + rW + 18; dly = ry + rH / 2; }
@@ -545,8 +570,10 @@ function FloorPlan2D({ survey }: { survey: any }) {
       if (wall) {
         const items: any[] = wall.items || [];
         items.forEach((item: any, ii: number) => {
-          const dist = parseFloat(item.distanceFromFirst || "0") * scale;
-          const iw = parseFloat(item.width || "90") * scale;
+          const rawDist = parseFloat(item.distanceFromFirst || "0");
+          const dist = (rawDist <= 30 ? rawDist * 100 : rawDist) * scale;
+          const rawIw = parseFloat(item.width || "0");
+          const iw = Math.max((rawIw > 0 ? (rawIw <= 30 ? rawIw * 100 : rawIw) : 90) * scale, 8);
           let ix = 0, iy = 0;
 
           if (wd.side === "top") { ix = rx + dist; iy = ry; }
