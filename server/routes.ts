@@ -125,8 +125,9 @@ export async function registerRoutes(
   }
 
   try {
+    await db.execute(`ALTER TABLE quotations ADD COLUMN IF NOT EXISTS order_stage TEXT DEFAULT 'new'`);
+    // Step 1: status-based baseline for rows with null or legacy stage values
     await db.execute(`
-      ALTER TABLE quotations ADD COLUMN IF NOT EXISTS order_stage TEXT DEFAULT 'new';
       UPDATE quotations SET order_stage = CASE
         WHEN status = 'cancelled' THEN 'cancelled'
         WHEN status IN ('rejected', 'expired') THEN 'rejected'
@@ -135,7 +136,39 @@ export async function registerRoutes(
         WHEN status IN ('draft', 'open') THEN 'quote_draft'
         WHEN status = 'requested' THEN 'new'
         ELSE 'new'
-      END WHERE order_stage IS NULL OR order_stage IN ('new', 'appointment', 'survey', 'sent', 'approved', 'production', 'delivered');
+      END WHERE order_stage IS NULL OR order_stage IN ('appointment', 'survey', 'production')
+    `);
+    // Step 2: promote to appointment_scheduled if a linked appointment exists (unless further advanced)
+    await db.execute(`
+      UPDATE quotations SET order_stage = 'appointment_scheduled'
+      WHERE order_stage NOT IN ('cancelled','rejected','quote_sent','quote_approved','in_production','delivered')
+        AND EXISTS (SELECT 1 FROM appointments WHERE appointments.quotation_id = quotations.id LIMIT 1)
+    `);
+    // Step 3: promote to survey_done if a linked site survey exists (unless further advanced)
+    await db.execute(`
+      UPDATE quotations SET order_stage = 'survey_done'
+      WHERE order_stage NOT IN ('cancelled','rejected','quote_sent','quote_approved','in_production','delivered')
+        AND EXISTS (SELECT 1 FROM site_surveys WHERE site_surveys.quotation_id = quotations.id LIMIT 1)
+    `);
+    // Step 4: promote to in_production if a linked work order exists (unless delivered/cancelled)
+    await db.execute(`
+      UPDATE quotations SET order_stage = 'in_production'
+      WHERE order_stage NOT IN ('cancelled','rejected','delivered')
+        AND EXISTS (
+          SELECT 1 FROM contracts c
+          JOIN work_orders wo ON wo.contract_id = c.id
+          WHERE c.quotation_id = quotations.id LIMIT 1
+        )
+    `);
+    // Step 5: promote to delivered if work order status = 'delivered'
+    await db.execute(`
+      UPDATE quotations SET order_stage = 'delivered'
+      WHERE order_stage NOT IN ('cancelled','rejected')
+        AND EXISTS (
+          SELECT 1 FROM contracts c
+          JOIN work_orders wo ON wo.contract_id = c.id
+          WHERE c.quotation_id = quotations.id AND wo.status = 'delivered' LIMIT 1
+        )
     `);
   } catch (orderStageMigrationError) {
     console.warn("Order stage migration warning (non-fatal):", orderStageMigrationError instanceof Error ? orderStageMigrationError.message : String(orderStageMigrationError));
@@ -258,6 +291,7 @@ export async function registerRoutes(
         totalPrice: "0",
         finalPrice: "0",
         status: "open",
+        orderStage: "new",
         city: city || null,
         notes: [
           productLabel ? `المنتج: ${productLabel}` : "",
@@ -846,6 +880,16 @@ export async function registerRoutes(
           data.claimedAt = null;
         }
       }
+      // Always derive orderStage from initial status if not explicitly provided
+      if (!data.orderStage) {
+        const st = data.status || "draft";
+        if (st === "cancelled") data.orderStage = "cancelled";
+        else if (st === "rejected" || st === "expired") data.orderStage = "rejected";
+        else if (st === "approved") data.orderStage = "quote_approved";
+        else if (st === "sent") data.orderStage = "quote_sent";
+        else if (st === "draft" || st === "open") data.orderStage = "quote_draft";
+        else data.orderStage = "new";
+      }
       const quotation = await storage.createQuotation(data);
 
       const settings = await storage.getCompanySettings();
@@ -1116,6 +1160,7 @@ export async function registerRoutes(
         totalPrice: "0",
         finalPrice: "0",
         status: "draft",
+        orderStage: "new",
         assignedTo: isSalesRep ? req.session.userId : null,
         assignedAt: isSalesRep ? new Date() : null,
         claimedAt: isSalesRep ? new Date() : null,
@@ -3402,6 +3447,7 @@ export async function registerRoutes(
         discount: String(discountVal),
         finalPrice: String(serverTotal),
         status: "draft",
+        orderStage: "quote_draft",
         assignedTo: pricingIsSales ? req.session.userId : null,
         assignedAt: pricingIsSales ? new Date() : null,
         claimedAt: pricingIsSales ? new Date() : null,
