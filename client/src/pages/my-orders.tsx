@@ -29,7 +29,7 @@ import {
   ChevronLeft, ChevronRight, Eye, Phone, MapPin, Calendar,
   Clock, Plus, Hand, Zap, CalendarPlus, CalendarCheck,
   CalendarX, Filter, X, Ruler, Box, Ban, AlertCircle, ArrowRight,
-  FileText, Package, Truck,
+  FileText, Package, Truck, ThumbsDown,
 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -54,7 +54,7 @@ function formatElapsed(fromDate: string | Date, now: number, t: (ar: string, en:
   return t(`${mins} د`, `${mins}m`);
 }
 
-type PipelineStage = "all" | "new" | "appointment" | "survey" | "sent" | "approved" | "production" | "delivered" | "cancelled";
+type PipelineStage = "all" | "new" | "appointment" | "survey" | "sent" | "approved" | "production" | "delivered" | "rejected" | "cancelled";
 
 const CANCEL_REASONS = [
   { value: "لم يرد العميل على التواصل", ar: "لم يرد العميل على التواصل", en: "Customer not responding" },
@@ -75,6 +75,7 @@ const PIPELINE_STAGES: { key: PipelineStage; ar: string; en: string; color: stri
   { key: "approved", ar: "معتمد", en: "Approved", color: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300", icon: CheckCircle2 },
   { key: "production", ar: "في التصنيع", en: "Production", color: "bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300", icon: Package },
   { key: "delivered", ar: "تم التسليم", en: "Delivered", color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300", icon: Truck },
+  { key: "rejected", ar: "مرفوض/منتهٍ", en: "Rejected/Expired", color: "bg-rose-100 text-rose-700 dark:bg-rose-900 dark:text-rose-300", icon: ThumbsDown },
   { key: "cancelled", ar: "ملغى", en: "Cancelled", color: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300", icon: Ban },
 ];
 
@@ -86,7 +87,7 @@ function getOrderStage(
   apptByQuotation: Record<number, any>
 ): PipelineStage {
   if (q.status === "cancelled") return "cancelled";
-  if (q.status === "rejected" || q.status === "expired") return "delivered";
+  if (q.status === "rejected" || q.status === "expired") return "rejected";
 
   if (q.status === "approved") {
     const contract = contracts.find((c: any) => c.quotationId === q.id);
@@ -131,6 +132,8 @@ function getNextAction(stage: PipelineStage, order: any, t: (ar: string, en: str
       return { label: t("متابعة مراحل التصنيع", "Follow up on production stages"), urgent: false };
     case "delivered":
       return { label: t("تم التسليم — الطلب مكتمل", "Delivered — Order complete"), urgent: false };
+    case "rejected":
+      return { label: t("العرض مرفوض أو منتهٍ", "Quote rejected or expired"), urgent: false };
     case "cancelled":
       return { label: t("الطلب ملغى", "Order cancelled"), urgent: false };
     default:
@@ -331,8 +334,9 @@ export default function MyOrdersPage() {
       return enrichedOrders.filter((o: any) => o.assignedTo === parseInt(repFilter));
     }
     return enrichedOrders.filter((o: any) => {
-      const openStages = ["requested", "open"];
-      return o.assignedTo === user.id || (openStages.includes(o.status) && !o.assignedTo);
+      const claimableStatuses = ["requested", "open", "draft"];
+      const isUnassignedAndClaimable = !o.assignedTo && claimableStatuses.includes(o.status);
+      return o.assignedTo === user.id || isUnassignedAndClaimable;
     });
   }, [enrichedOrders, user, isManager, repFilter]);
 
@@ -710,6 +714,16 @@ export default function MyOrdersPage() {
                                 <StageIcon className="w-2.5 h-2.5" />
                                 {t(stageCfg.ar, stageCfg.en)}
                               </Badge>
+                              {isCancelled && order.cancelledAt && (
+                                <div className="mt-0.5">
+                                  <span className="text-[10px] text-red-600 dark:text-red-400">{formatDate(order.cancelledAt)}</span>
+                                </div>
+                              )}
+                              {isCancelled && order.cancellationReason && (
+                                <div className="mt-0.5">
+                                  <span className="text-[10px] text-muted-foreground line-clamp-1 max-w-[140px]" title={order.cancellationReason}>{order.cancellationReason}</span>
+                                </div>
+                              )}
                               {appt && !isCancelled && (
                                 <div className="mt-0.5">
                                   <span className={`text-[10px] ${apptPast ? "text-amber-600 dark:text-amber-400" : "text-blue-600 dark:text-blue-400"}`}>

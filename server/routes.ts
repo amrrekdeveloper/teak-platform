@@ -784,6 +784,10 @@ export async function registerRoutes(
     try {
       const quotation = await storage.getQuotation(parseInt(req.params.id));
       if (!quotation) return res.status(404).json({ message: "عرض السعر غير موجود" });
+      const requestingUser = await storage.getUser(req.session.userId!);
+      if (requestingUser?.role === "sales" && quotation.assignedTo !== req.session.userId) {
+        return res.status(403).json({ message: "غير مصرح لك بالاطلاع على هذا الطلب", messageEn: "You are not authorized to view this order" });
+      }
       res.json(quotation);
     } catch (error) {
       res.status(500).json({ message: "حدث خطأ" });

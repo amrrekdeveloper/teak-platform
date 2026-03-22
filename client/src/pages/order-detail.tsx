@@ -11,10 +11,10 @@ import {
   Loader2, ArrowRight, ArrowLeft, User, Phone, MapPin, Calendar,
   Clock, FileText, Package, Truck, CheckCircle2, Ban, AlertCircle,
   CalendarCheck, CalendarX, Ruler, Box, ChevronLeft, ChevronRight,
-  ClipboardList, Banknote, Home, Zap,
+  ClipboardList, Banknote, Home, Zap, ThumbsDown,
 } from "lucide-react";
 
-type PipelineStage = "new" | "appointment" | "survey" | "sent" | "approved" | "production" | "delivered" | "cancelled";
+type PipelineStage = "new" | "appointment" | "survey" | "sent" | "approved" | "production" | "delivered" | "rejected" | "cancelled";
 
 const PIPELINE_STAGES: { key: PipelineStage; ar: string; en: string; color: string; icon: any }[] = [
   { key: "new", ar: "جديد", en: "New", color: "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300", icon: Zap },
@@ -24,6 +24,7 @@ const PIPELINE_STAGES: { key: PipelineStage; ar: string; en: string; color: stri
   { key: "approved", ar: "معتمد", en: "Approved", color: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300", icon: CheckCircle2 },
   { key: "production", ar: "في التصنيع", en: "Production", color: "bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300", icon: Package },
   { key: "delivered", ar: "تم التسليم", en: "Delivered", color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300", icon: Truck },
+  { key: "rejected", ar: "مرفوض/منتهٍ", en: "Rejected/Expired", color: "bg-rose-100 text-rose-700 dark:bg-rose-900 dark:text-rose-300", icon: ThumbsDown },
   { key: "cancelled", ar: "ملغى", en: "Cancelled", color: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300", icon: Ban },
 ];
 
@@ -35,7 +36,7 @@ function getOrderStage(
   apptByQuotation: Record<number, any>
 ): PipelineStage {
   if (q.status === "cancelled") return "cancelled";
-  if (q.status === "rejected" || q.status === "expired") return "delivered";
+  if (q.status === "rejected" || q.status === "expired") return "rejected";
   if (q.status === "approved") {
     const contract = contractsAll.find((c: any) => c.quotationId === q.id);
     if (contract) {
@@ -193,7 +194,7 @@ export default function OrderDetailPage() {
         </Badge>
       </div>
 
-      {stage !== "cancelled" && stage !== "delivered" && (
+      {stage !== "cancelled" && stage !== "delivered" && stage !== "rejected" && (
         <Card className="overflow-hidden">
           <CardContent className="p-3">
             <div className="flex items-center gap-0">
@@ -224,15 +225,30 @@ export default function OrderDetailPage() {
         </Card>
       )}
 
-      {stage === "cancelled" && quotation.cancellationReason && (
+      {stage === "cancelled" && (
         <Card className="border-red-200 dark:border-red-900 bg-red-50/50 dark:bg-red-950/20">
           <CardContent className="p-4">
             <div className="flex items-start gap-2">
               <Ban className="w-4 h-4 text-red-600 mt-0.5 flex-shrink-0" />
               <div>
                 <p className="text-sm font-semibold text-red-700 dark:text-red-400">{t("تم إلغاء الطلب", "Order Cancelled")}</p>
-                <p className="text-sm mt-0.5">{quotation.cancellationReason}</p>
+                {quotation.cancellationReason && <p className="text-sm mt-0.5">{quotation.cancellationReason}</p>}
                 {quotation.cancelledAt && <p className="text-xs text-muted-foreground mt-1">{formatDate(quotation.cancelledAt)}</p>}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {stage === "rejected" && (
+        <Card className="border-rose-200 dark:border-rose-900 bg-rose-50/50 dark:bg-rose-950/20">
+          <CardContent className="p-4">
+            <div className="flex items-start gap-2">
+              <ThumbsDown className="w-4 h-4 text-rose-600 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="text-sm font-semibold text-rose-700 dark:text-rose-400">
+                  {quotation.status === "expired" ? t("انتهت صلاحية العرض", "Quotation Expired") : t("تم رفض العرض", "Quotation Rejected")}
+                </p>
               </div>
             </div>
           </CardContent>
