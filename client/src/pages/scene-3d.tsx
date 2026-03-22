@@ -846,13 +846,33 @@ function Scene3D({
 
   /* Wall lengths (in cm) for overflow clamping */
   const wallLengths: Record<number, number> = { 0: L, 1: W, 2: L, 3: W };
+
+  /* Pre-pass: reserve right-side space for corner units so regular products
+     don't overflow into the junction zone */
+  const wallRightReserved: Record<number, number> = { 0: 0, 1: 0, 2: 0, 3: 0 };
+  products.forEach((p: any) => {
+    if (!p._isCorner) return;
+    const wIdx = getWallIndex(p);
+    const pW = parseFloat(p.designW || p.dimensions?.w || "60");
+    wallRightReserved[wIdx] = Math.max(wallRightReserved[wIdx], pW + 5);
+  });
+
   const wallOffsets: Record<number, number> = { 0: 10, 1: 10, 2: 10, 3: 10 };
   const productsWithPos = products.reduce((acc: any[], p: any, sourceIdx: number) => {
     const wIdx = getWallIndex(p);
     const pW = parseFloat(p.designW || p.dimensions?.w || "60");
-    const currentOffset = wallOffsets[wIdx];
     const wallLen = wallLengths[wIdx] || L;
-    if (currentOffset + pW > wallLen - 10) return acc; /* skip overflow */
+
+    /* Corner units sit at the junction end of the wall (far right in local x) */
+    if (p._isCorner) {
+      const xOffset = wallLen - pW / 2;
+      acc.push({ ...p, _wallIndex: wIdx, _xOffset: xOffset, _sourceIndex: sourceIdx, _conflict: false });
+      return acc;
+    }
+
+    const currentOffset = wallOffsets[wIdx];
+    const rightReserve = wallRightReserved[wIdx];
+    if (currentOffset + pW > wallLen - rightReserve - 10) return acc; /* skip overflow */
     wallOffsets[wIdx] = currentOffset + pW + 5;
 
     /* Conflict: does this cabinet overlap a door/window opening? */
@@ -1135,6 +1155,8 @@ function FloorPlan2D({ survey }: { survey: any }) {
     });
 
     const wallOffsets: Record<number, number> = { 0: 0, 1: 0, 2: 0, 3: 0 };
+    /* wall lengths in SVG units for corner end-positioning */
+    const wallSvgLengths: Record<number, number> = { 0: rW, 1: rH, 2: rW, 3: rH };
 
     const wallIdToIdx: Record<string, number> = {};
     walls.forEach((w: any, wi: number) => { if (w?.id) wallIdToIdx[w.id] = wi; });
@@ -1149,13 +1171,19 @@ function FloorPlan2D({ survey }: { survey: any }) {
       const wDef = wallDefs[wIdx % 4];
       const prodCode = prod.code || "";
       const isWall2D = isWallUnitByCode(prodCode);
-      /* Wall units are shallower (35cm depth vs 60cm for base) */
       const rawDepth = isWall2D ? 35 : parseFloat(prod.dimensions?.d || "60");
       const pw = Math.max(parseFloat(prod.designW || prod.dimensions?.w || "60") * scale, 6);
       const pd = Math.max(rawDepth * scale * 0.4, 4);
+      const isCorner2D = !!prod._isCorner;
 
-      const pOffset = wallOffsets[wIdx] ?? 0;
-      wallOffsets[wIdx] = pOffset + pw + 2;
+      let pOffset: number;
+      if (isCorner2D) {
+        /* Corner units: placed at the far (junction) end of the wall */
+        pOffset = wallSvgLengths[wIdx] - pw;
+      } else {
+        pOffset = wallOffsets[wIdx] ?? 0;
+        wallOffsets[wIdx] = pOffset + pw + 2;
+      }
 
       let px = 0, py = 0, rectW = pw, rectH = pd;
       if (wDef.side === "top") { px = rx + pOffset; py = ry; rectH = pd; }
@@ -1167,15 +1195,16 @@ function FloorPlan2D({ survey }: { survey: any }) {
         elements.push(
           <g key={`prod-${spaceIdx}-${pi}`}>
             <rect x={px} y={py} width={rectW} height={rectH}
-              fill={isWall2D ? "none" : wDef.color + "40"}
-              stroke={wDef.color}
-              strokeWidth={isWall2D ? 1.2 : 1}
-              strokeDasharray={isWall2D ? "4,3" : undefined}
+              fill={isCorner2D ? "#FDE68A" : isWall2D ? "none" : wDef.color + "40"}
+              stroke={isCorner2D ? "#92400E" : wDef.color}
+              strokeWidth={isWall2D ? 1.2 : isCorner2D ? 1.5 : 1}
+              strokeDasharray={isWall2D && !isCorner2D ? "4,3" : undefined}
               rx={1} />
-            {rectW > 18 && (
+            {rectW > 10 && (
               <text x={px + rectW / 2} y={py + rectH / 2} textAnchor="middle"
-                dominantBaseline="middle" fontSize={6} fill={wDef.color} fontWeight="bold">
-                {(prodCode).slice(0, 7)}
+                dominantBaseline="middle" fontSize={5}
+                fill={isCorner2D ? "#92400E" : wDef.color} fontWeight="bold">
+                {isCorner2D ? "📐" : (prodCode).slice(0, 7)}
               </text>
             )}
           </g>

@@ -8,6 +8,7 @@ import {
   APPLIANCE_VARIANT_LABELS,
   matchKitchenTemplates,
   type ApplianceVariant,
+  type TemplateWarning,
 } from "@/lib/kitchenTemplates";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation, useParams, useSearch } from "wouter";
@@ -654,6 +655,8 @@ export default function SiteSurveyPage() {
         spaceId: currentSpace.id,
         wallId: wallIdMap[item.wall] || "",
         designW: String(parseFloat(adekoProduct.designW || "0") || ""),
+        _isCorner: !!item.cornerAnchor,
+        _zone: item.zone || null,
       }));
     });
 
@@ -1298,11 +1301,21 @@ export default function SiteSurveyPage() {
                                   {t(`تطابق ${Math.round(match.score * 100)}%`, `${Math.round(match.score * 100)}% match`)}
                                 </Badge>
                               )}
-                              {match.warnings.length > 0 && (
-                                <Badge variant="outline" className="text-[9px] h-4 border-amber-300 text-amber-600">
-                                  ⚠ {t("تنبيه", "Warning")}
-                                </Badge>
-                              )}
+                              {(() => {
+                                const errors = match.warnings.filter((w: TemplateWarning) => w.severity === "error");
+                                const warns  = match.warnings.filter((w: TemplateWarning) => w.severity === "warning");
+                                if (errors.length > 0) return (
+                                  <Badge variant="destructive" className="text-[9px] h-4">
+                                    🚫 {errors.length} {t("تعارض", "conflict")}
+                                  </Badge>
+                                );
+                                if (warns.length > 0) return (
+                                  <Badge variant="outline" className="text-[9px] h-4 border-amber-400 text-amber-700 dark:text-amber-400">
+                                    ⚠ {warns.length} {t("تنبيه", "warning")}
+                                  </Badge>
+                                );
+                                return null;
+                              })()}
                             </div>
                           </div>
                           <div className="flex flex-col gap-1 shrink-0">
@@ -1327,20 +1340,36 @@ export default function SiteSurveyPage() {
                         </div>
 
                         {isPreview && (
-                          <div className="pt-1 border-t border-orange-100 dark:border-orange-800">
+                          <div className="pt-1.5 border-t border-orange-100 dark:border-orange-800 space-y-2">
+                            {/* Structured warnings panel */}
                             {match.warnings.length > 0 && (
-                              <div className="text-[10px] text-amber-600 dark:text-amber-400 mb-1.5 flex items-start gap-1">
-                                <span className="shrink-0">⚠</span>
-                                <span>{match.warnings[0]}</span>
+                              <div className="space-y-1">
+                                {match.warnings.map((w: TemplateWarning, wi: number) => {
+                                  const icon  = w.severity === "error" ? "🚫" : w.severity === "warning" ? "⚠" : "✅";
+                                  const bg    = w.severity === "error"
+                                    ? "bg-red-50 dark:bg-red-950 border-red-200 dark:border-red-800 text-red-700 dark:text-red-400"
+                                    : w.severity === "warning"
+                                    ? "bg-amber-50 dark:bg-amber-950 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-400"
+                                    : "bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800 text-green-700 dark:text-green-400";
+                                  return (
+                                    <div key={wi} className={`flex items-start gap-1.5 rounded px-2 py-1 border text-[10px] leading-snug ${bg}`}>
+                                      <span className="shrink-0 mt-px">{icon}</span>
+                                      <span>{isRTL ? w.message : w.messageEn}</span>
+                                    </div>
+                                  );
+                                })}
                               </div>
                             )}
+
+                            {/* Product list */}
                             <div className="grid grid-cols-1 gap-0.5 max-h-40 overflow-y-auto">
                               {items.map((item, idx) => {
                                 const ap = (adekoProducts as any[]).find((p: any) => p.code === item.code);
+                                const cornerIcon = item.cornerAnchor ? "📐 " : "";
                                 return (
                                   <div key={idx} className="flex items-center justify-between text-[10px] py-0.5">
                                     <span className="text-muted-foreground me-1 shrink-0">{item.wall}–</span>
-                                    <span className="font-mono text-primary shrink-0">{item.code}</span>
+                                    <span className="font-mono text-primary shrink-0">{cornerIcon}{item.code}</span>
                                     <span className="flex-1 text-muted-foreground truncate mx-1.5 text-end">
                                       {ap ? (isRTL ? ap.descriptionAr : ap.descriptionEn) : item.code}
                                     </span>
