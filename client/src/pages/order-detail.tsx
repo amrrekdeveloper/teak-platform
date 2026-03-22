@@ -115,7 +115,11 @@ export default function OrderDetailPage() {
   const { data: contracts = [] } = useQuery<Contract[]>({ queryKey: ["/api/contracts"] });
   const { data: appointments = [] } = useQuery<Appointment[]>({ queryKey: ["/api/appointments"] });
   const { data: siteSurveys = [] } = useQuery<SiteSurvey[]>({ queryKey: ["/api/site-surveys"] });
-  const { data: payments = [] } = useQuery<Payment[]>({ queryKey: ["/api/payments"] });
+  const linkedContractId = contracts.find(c => c.quotationId === orderId)?.id ?? null;
+  const { data: orderPayments = [] } = useQuery<Payment[]>({
+    queryKey: ["/api/contracts", linkedContractId, "payments"],
+    enabled: !!linkedContractId,
+  });
 
   const isManager = user && ["owner", "assistant"].includes(user.role);
 
@@ -163,9 +167,6 @@ export default function OrderDetailPage() {
   const linkedSurveys = siteSurveys.filter(s => s.quotationId === quotation.id || (linkedAppt && s.appointmentId === linkedAppt.id));
   const linkedContract = contracts.find(c => c.quotationId === quotation.id);
   const linkedWorkOrder = linkedContract ? workOrders.find(w => w.contractId === linkedContract.id) : null;
-  const orderPayments = linkedContract
-    ? payments.filter(p => p.contractId === linkedContract.id)
-    : [];
 
   const allOrderAppts = appointments.filter(a => a.quotationId === quotation.id)
     .sort((a, b) => new Date(`${a.appointmentDate}T${a.startTime || "00:00"}`).getTime() - new Date(`${b.appointmentDate}T${b.startTime || "00:00"}`).getTime());

@@ -559,7 +559,7 @@ export default function MyOrdersPage() {
         duration={1200}
         onComplete={() => {
           setShowClaimTransition(false);
-          setActiveStage("new");
+          setActiveStage("quote_draft");
           toast({ title: t("تم التقاط الطلب بنجاح!", "Order claimed successfully!") });
         }}
       />

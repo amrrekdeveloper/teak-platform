@@ -133,7 +133,9 @@ export async function registerRoutes(
         WHEN status IN ('rejected', 'expired') THEN 'rejected'
         WHEN status = 'approved' THEN 'quote_approved'
         WHEN status = 'sent' THEN 'quote_sent'
-        WHEN status IN ('draft', 'open') THEN 'quote_draft'
+        WHEN status = 'draft' THEN 'quote_draft'
+        WHEN status = 'open' AND assigned_to IS NOT NULL THEN 'quote_draft'
+        WHEN status = 'open' AND assigned_to IS NULL THEN 'new'
         WHEN status = 'requested' THEN 'new'
         ELSE 'new'
       END WHERE order_stage IS NULL OR order_stage IN ('appointment', 'survey', 'production')
