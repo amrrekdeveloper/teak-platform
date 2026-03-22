@@ -856,7 +856,7 @@ function Cabinet({
         W={W}
         H={H}
         D={D + frameThick}
-        color={bodyColor}
+        color={color}
       />
 
       <mesh
