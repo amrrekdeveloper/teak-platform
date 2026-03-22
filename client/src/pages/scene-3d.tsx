@@ -21,26 +21,80 @@ import { useToast } from "@/hooks/use-toast";
 
 const SCALE = 0.01;
 
-const GROUP_COLORS: Record<string, string> = {
-  TK1: "#8B6340",
-  TK2: "#7A5530",
-  TK3: "#9A7450",
-  TK4: "#6B4A30",
-  TK5: "#5A3D25",
-  default: "#795548",
-};
+/* Natural medium-oak color used as tint when wood texture is active */
+const CABINET_WOOD_COLOR = "#C8A86A";
 
-const PRODUCT_COLORS = [
-  "#8B4513", "#D2691E", "#CD853F", "#A0522D", "#6B3A2A",
-  "#5C4033", "#4A2C2A", "#795548", "#8D6E63", "#A1887F",
-];
+/* Fallback solid color for hover/select states */
+function getCabinetColor(_product: any, _index: number): string {
+  return CABINET_WOOD_COLOR;
+}
 
-function getCabinetColor(product: any, index: number): string {
-  const code = product.code || "";
-  for (const [prefix, color] of Object.entries(GROUP_COLORS)) {
-    if (prefix !== "default" && code.startsWith(prefix)) return color;
+/* ── Wood grain procedural texture (natural oak) ─────── */
+let _woodTexSingleton: THREE.DataTexture | null = null;
+function getWoodTexture(): THREE.DataTexture {
+  if (_woodTexSingleton) return _woodTexSingleton;
+  const size = 512;
+  const data = new Uint8Array(size * size * 4);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const idx = (y * size + x) * 4;
+      /* Horizontal plank bands */
+      const plankH = 96;
+      const plankRow = Math.floor(y / plankH);
+      const py = (y % plankH) / plankH;
+      /* Fine grain lines undulating along x */
+      const grain1 = Math.sin((y + plankRow * 31) * 0.13 + x * 0.009 + Math.cos(x * 0.018) * 10) * 14;
+      const grain2 = Math.sin((y + plankRow * 9) * 0.28 + x * 0.006) * 7;
+      /* Occasional dark medullary ray streaks */
+      const ray = Math.sin(y * 0.07 + plankRow * 1.9 + x * 0.004) > 0.82 ? -16 : 0;
+      /* Plank seam darker edge */
+      const seam = (py < 0.018 || py > 0.982) ? -20 : 0;
+      /* Natural oak: warm honey mid-tone */
+      const base = 188 + grain1 + grain2 + ray + seam;
+      data[idx]     = Math.min(255, Math.max(110, base + 12));      /* R */
+      data[idx + 1] = Math.min(255, Math.max(90,  base - 22));      /* G */
+      data[idx + 2] = Math.min(255, Math.max(55,  base - 72));      /* B */
+      data[idx + 3] = 255;
+    }
   }
-  return PRODUCT_COLORS[index % PRODUCT_COLORS.length];
+  const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(2, 3);
+  tex.needsUpdate = true;
+  _woodTexSingleton = tex;
+  return tex;
+}
+
+/* ── White marble procedural texture (floor + countertop) */
+let _whiteMarbleSingleton: THREE.DataTexture | null = null;
+function getWhiteMarbleTexture(): THREE.DataTexture {
+  if (_whiteMarbleSingleton) return _whiteMarbleSingleton;
+  const size = 512;
+  const data = new Uint8Array(size * size * 4);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const idx = (y * size + x) * 4;
+      /* Diagonal vein network */
+      const v1 = Math.sin((x * 0.016 + y * 0.019 + Math.sin(x * 0.009 - y * 0.011) * 18) * 1.4) * 22;
+      const v2 = Math.sin((x * 0.026 - y * 0.023 + Math.cos(x * 0.013 + y * 0.01) * 12) * 1.1) * 13;
+      const v3 = Math.sin((x * 0.007 + y * 0.031 + Math.sin(y * 0.016) * 9) * 1.7) * 9;
+      /* Gold/ochre vein accent */
+      const gold = Math.sin(x * 0.041 + y * 0.029 + 2.5) > 0.89 ? 18 : 0;
+      const base = 236 + v1 * 0.6 + v2 * 0.4 + v3 * 0.3;
+      data[idx]     = Math.min(255, Math.max(205, base + gold));
+      data[idx + 1] = Math.min(255, Math.max(200, base + gold * 0.7));
+      data[idx + 2] = Math.min(255, Math.max(190, base - gold * 0.2));
+      data[idx + 3] = 255;
+    }
+  }
+  const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(2, 2);
+  tex.needsUpdate = true;
+  _whiteMarbleSingleton = tex;
+  return tex;
 }
 
 function isBaseUnit(product: any): boolean {
@@ -77,12 +131,13 @@ function getDefaultDepth(product: any): number {
 function DayLighting() {
   return (
     <>
-      {/* 6500K daylight: neutral white ambient with slight cool tint */}
-      <ambientLight intensity={0.6} color="#EEF4FF" />
+      {/* Bright studio daylight: warm white ambient */}
+      <ambientLight intensity={0.85} color="#FFF8F0" />
+      {/* Primary sun — upper right, warm white */}
       <directionalLight
-        position={[6, 10, 6]}
-        intensity={1.0}
-        color="#F5F8FF"
+        position={[8, 12, 6]}
+        intensity={1.4}
+        color="#FFFBF2"
         castShadow
         shadow-mapSize-width={2048}
         shadow-mapSize-height={2048}
@@ -92,10 +147,13 @@ function DayLighting() {
         shadow-camera-right={10}
         shadow-camera-top={10}
         shadow-camera-bottom={-10}
-        shadow-radius={4}
+        shadow-radius={6}
+        shadow-bias={-0.0005}
       />
-      {/* sky fill — cool blue sky bounce */}
-      <directionalLight position={[-4, 6, -4]} intensity={0.3} color="#B0CEFF" />
+      {/* Sky fill — cool blue bounce from opposite side */}
+      <directionalLight position={[-6, 8, -5]} intensity={0.45} color="#CADDFF" />
+      {/* Under-floor soft fill — eliminates harsh under-cabinet shadows */}
+      <directionalLight position={[0, -4, 3]} intensity={0.2} color="#FFF5E8" />
     </>
   );
 }
@@ -223,35 +281,38 @@ function makeTileTexture(L: number, W: number): THREE.DataTexture {
   return tex;
 }
 
+/* Better white marble floor: large tiles with thin grout + veins */
 function makeMarbleTexture(L: number, W: number): THREE.DataTexture {
   const size = 512;
   const data = new Uint8Array(size * size * 4);
-  const grout = 10;
+  const grout = 6; /* thin grout line */
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
       const idx = (y * size + x) * 4;
-      const tileX = x % size;
-      const tileY = y % size;
-      const gx = tileX < grout || tileX > size - grout;
-      const gy = tileY < grout || tileY > size - grout;
-      const isGrout = gx || gy;
+      const isGrout = x < grout || y < grout || x > size - grout || y > size - grout;
       if (isGrout) {
-        data[idx] = 160; data[idx + 1] = 158; data[idx + 2] = 155;
+        /* Light grey grout */
+        data[idx] = 195; data[idx + 1] = 193; data[idx + 2] = 190; data[idx + 3] = 255;
       } else {
-        const vein = Math.sin((tileX + tileY * 0.5) * 0.04 + Math.sin(tileX * 0.008 + tileY * 0.012) * 8) * 28;
-        const spot = Math.sin(tileX * 0.019) * Math.sin(tileY * 0.017) * 15;
-        const base = 220 + vein + spot;
-        data[idx] = Math.min(255, Math.max(180, base));
-        data[idx + 1] = Math.min(255, Math.max(178, base - 5));
-        data[idx + 2] = Math.min(255, Math.max(175, base - 8));
+        /* White marble tile with grey/gold veins */
+        const nx = x / size, ny = y / size;
+        const v1 = Math.sin((nx * 2.8 + ny * 3.4 + Math.sin(nx * 1.8 - ny * 1.4) * 2.2) * Math.PI) * 18;
+        const v2 = Math.sin((nx * 4.5 - ny * 2.9 + Math.cos(nx * 2.1 + ny * 1.8) * 1.5) * Math.PI) * 11;
+        const v3 = Math.sin((nx * 1.2 + ny * 5.1 + Math.sin(ny * 2.4) * 1.1) * Math.PI * 1.3) * 7;
+        const gold = Math.sin((nx * 3.2 + ny * 4.1 + 0.8) * Math.PI * 2) > 0.91 ? 20 : 0;
+        const base = 238 + v1 * 0.55 + v2 * 0.35 + v3 * 0.25;
+        data[idx]     = Math.min(255, Math.max(210, base + gold));
+        data[idx + 1] = Math.min(255, Math.max(205, base + gold * 0.65));
+        data[idx + 2] = Math.min(255, Math.max(198, base - gold * 0.15));
+        data[idx + 3] = 255;
       }
-      data[idx + 3] = 255;
     }
   }
   const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(L / 0.8, W / 0.8);
+  /* Large tiles: ~80cm each → repeat = room_size / 0.8m */
+  tex.repeat.set(Math.max(1, L / 0.8), Math.max(1, W / 0.8));
   tex.needsUpdate = true;
   return tex;
 }
@@ -263,8 +324,8 @@ function FloorMesh({ L, W, floorType }: { L: number; W: number; floorType: Floor
     return makeParquetTexture(L, W);
   }, [L, W, floorType]);
 
-  const roughness = floorType === "marble" ? 0.3 : floorType === "tile" ? 0.5 : 0.72;
-  const metalness = floorType === "marble" ? 0.08 : 0.0;
+  const roughness = floorType === "marble" ? 0.18 : floorType === "tile" ? 0.45 : 0.68;
+  const metalness = floorType === "marble" ? 0.12 : 0.0;
 
   return (
     <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.001, 0]} receiveShadow>
@@ -274,26 +335,9 @@ function FloorMesh({ L, W, floorType }: { L: number; W: number; floorType: Floor
   );
 }
 
+/* Countertop uses the white marble singleton */
 function makeGraniteTexture(): THREE.DataTexture {
-  const size = 256;
-  const data = new Uint8Array(size * size * 4);
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const idx = (y * size + x) * 4;
-      const vein = Math.sin(x * 0.08 + y * 0.12 + Math.sin(x * 0.04) * 4) * 25;
-      const speck = Math.sin(x * 1.7 + y * 2.3) > 0.8 ? -30 : (Math.sin(x * 2.1 + y * 1.4) > 0.85 ? 25 : 0);
-      const base = 155 + vein + speck;
-      data[idx] = Math.min(255, Math.max(80, base - 5));
-      data[idx + 1] = Math.min(255, Math.max(75, base - 8));
-      data[idx + 2] = Math.min(255, Math.max(70, base - 12));
-      data[idx + 3] = 255;
-    }
-  }
-  const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
-  tex.wrapS = THREE.ClampToEdgeWrapping;
-  tex.wrapT = THREE.ClampToEdgeWrapping;
-  tex.needsUpdate = true;
-  return tex;
+  return getWhiteMarbleTexture();
 }
 
 function makeBacksplashTexture(): THREE.DataTexture {
@@ -524,25 +568,73 @@ function WallElements({ items, wallLen, wallH }: { items: any[]; wallLen: number
           const iy = parseItemMeasure(item.heightFromFloor, 90);
           return (
             <group key={i} position={[cx, iy + ih / 2, 0.006]}>
-              {/* Glass */}
-              <mesh>
-                <planeGeometry args={[iw - 0.05, ih - 0.05]} />
-                <meshStandardMaterial color="#BFDBFE" transparent opacity={0.38} roughness={0.08} metalness={0.15} />
+              {/* ── Outdoor scene behind window ─────────────── */}
+              {/* Sky — gradient from deep sky to horizon */}
+              <mesh position={[0, ih * 0.22, -0.22]}>
+                <planeGeometry args={[iw * 1.05, ih * 0.6]} />
+                <meshBasicMaterial color="#87CEEB" />
               </mesh>
-              {/* Horizontal frames */}
-              {([-ih / 2, ih / 2] as number[]).map((y, fi) => (
-                <mesh key={fi} position={[0, y, 0.012]}>
-                  <boxGeometry args={[iw + 0.07, FRAME_W, FRAME_W]} />
-                  <meshStandardMaterial color="#EFEFEF" roughness={0.4} metalness={0.05} />
+              {/* Upper sky (deeper blue) */}
+              <mesh position={[0, ih * 0.42, -0.21]}>
+                <planeGeometry args={[iw * 1.05, ih * 0.2]} />
+                <meshBasicMaterial color="#5DA8D4" />
+              </mesh>
+              {/* Ground/horizon pale */}
+              <mesh position={[0, -ih * 0.32, -0.22]}>
+                <planeGeometry args={[iw * 1.05, ih * 0.2]} />
+                <meshBasicMaterial color="#D4E8C2" />
+              </mesh>
+              {/* Tree canopy — dark green middle */}
+              <mesh position={[0, -ih * 0.04, -0.20]}>
+                <planeGeometry args={[iw * 1.05, ih * 0.55]} />
+                <meshBasicMaterial color="#3A7A3A" />
+              </mesh>
+              {/* Tree highlights — lighter green patches */}
+              <mesh position={[-iw * 0.2, ih * 0.03, -0.19]}>
+                <planeGeometry args={[iw * 0.45, ih * 0.38]} />
+                <meshBasicMaterial color="#4F9A4F" />
+              </mesh>
+              <mesh position={[iw * 0.25, -ih * 0.01, -0.19]}>
+                <planeGeometry args={[iw * 0.38, ih * 0.32]} />
+                <meshBasicMaterial color="#56A656" />
+              </mesh>
+              {/* ── Window glass ─────────────────────────────── */}
+              <mesh position={[0, 0, 0.002]}>
+                <planeGeometry args={[iw - 0.05, ih - 0.05]} />
+                <meshPhysicalMaterial
+                  color="#E8F4FF"
+                  transparent
+                  opacity={0.15}
+                  roughness={0.02}
+                  metalness={0.0}
+                  transmission={0.88}
+                />
+              </mesh>
+              {/* ── Window frame (white aluminium) ──────────── */}
+              {/* Top/bottom bars */}
+              {([-ih / 2, ih / 2] as number[]).map((fy, fi) => (
+                <mesh key={fi} position={[0, fy, 0.016]}>
+                  <boxGeometry args={[iw + 0.08, FRAME_W, FRAME_W * 0.8]} />
+                  <meshStandardMaterial color="#F0F0EE" roughness={0.35} metalness={0.08} />
                 </mesh>
               ))}
-              {/* Vertical frames */}
-              {([-iw / 2, iw / 2] as number[]).map((x, fi) => (
-                <mesh key={fi + 2} position={[x, 0, 0.012]}>
-                  <boxGeometry args={[FRAME_W, ih + 0.07, FRAME_W]} />
-                  <meshStandardMaterial color="#EFEFEF" roughness={0.4} metalness={0.05} />
+              {/* Left/right bars */}
+              {([-iw / 2, iw / 2] as number[]).map((fx, fi) => (
+                <mesh key={fi + 2} position={[fx, 0, 0.016]}>
+                  <boxGeometry args={[FRAME_W, ih + 0.08, FRAME_W * 0.8]} />
+                  <meshStandardMaterial color="#F0F0EE" roughness={0.35} metalness={0.08} />
                 </mesh>
               ))}
+              {/* Centre divider bar (horizontal) */}
+              <mesh position={[0, 0, 0.016]}>
+                <boxGeometry args={[iw + 0.02, FRAME_W * 0.7, FRAME_W * 0.7]} />
+                <meshStandardMaterial color="#E8E8E6" roughness={0.35} metalness={0.08} />
+              </mesh>
+              {/* Window sill (protruding white ledge) */}
+              <mesh position={[0, -ih / 2 - 0.035, 0.06]}>
+                <boxGeometry args={[iw + 0.12, 0.04, 0.12]} />
+                <meshStandardMaterial color="#F5F5F3" roughness={0.3} metalness={0.06} />
+              </mesh>
             </group>
           );
         }
@@ -574,7 +666,7 @@ function WallElements({ items, wallLen, wallH }: { items: any[]; wallLen: number
 
 function Room({
   length = 400, width = 300, height = 240,
-  floorType = "parquet" as FloorType,
+  floorType = "marble" as FloorType,
   wallsWithBase = [],
   wallItems,
 }: {
@@ -585,16 +677,17 @@ function Room({
   const L = length * SCALE;
   const W = width * SCALE;
   const H = height * SCALE;
-  const wallColor = "#F4F0EA";
+  /* Neutral warm white walls — professional and clean */
+  const wallColor = "#EEECE8";
   const items = (idx: number) => wallItems?.[idx] || [];
 
   return (
     <group>
       <FloorMesh L={L} W={W} floorType={floorType} />
-      {/* Ceiling */}
+      {/* Ceiling — slightly warm off-white with crown moulding suggestion */}
       <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, H, 0]} receiveShadow>
         <planeGeometry args={[L, W]} />
-        <meshStandardMaterial color="#FAFAF6" roughness={1.0} metalness={0.0} />
+        <meshStandardMaterial color="#F8F6F2" roughness={0.95} metalness={0.0} />
       </mesh>
 
       {/* Wall A — back, wallIndex=0, at z=-W/2 */}
@@ -657,9 +750,9 @@ function CabinetFront({ code, W, H, D, color }: { code: string; W: number; H: nu
       <mesh position={[0, 0, frameDepth + 0.001]} castShadow>
         <planeGeometry args={[faceW, faceH]} />
         <meshStandardMaterial
-          color={texture ? "#FFFFFF" : color}
+          color={texture ? "#FFFFFF" : "#D4AA72"}
           map={texture || undefined}
-          roughness={0.55}
+          roughness={0.50}
           metalness={0.05}
         />
       </mesh>
@@ -708,15 +801,25 @@ function Cabinet({
   }
 
   const y = H / 2 + wallOff;
-  const bodyColor = selected ? "#E8C547" : hovered ? "#B89A60" : color;
-  const frameColor = selected ? "#C8A030" : "#3B2510";
-  const handleColor = "#1A1A1A";
+  const isSelected = selected;
+  const frameColor = isSelected ? "#C8A030" : "#3B2510";
+  const handleColor = "#2A2A2A";
 
   const frameThick = 0.018;
   const handleR = 0.008;
   const handleLen = Math.min(W * 0.35, 0.18);
 
   const graniteTexture = useMemo(() => isBaseUnit(product) ? makeGraniteTexture() : null, []);
+  /* Wood texture for cabinet carcass body */
+  const woodTexture = useMemo(() => {
+    const t = getWoodTexture();
+    /* Per-cabinet repeat: 2 tiles wide × 3 tall at default scale */
+    return t;
+  }, []);
+
+  /* Selection / hover tint overlay */
+  const tintColor = isSelected ? "#E8C547" : hovered ? "#D4B870" : "#FFFFFF";
+  const tintOpacity = (isSelected || hovered) ? 0.28 : 0.0;
 
   return (
     <group
@@ -726,10 +829,25 @@ function Cabinet({
       onPointerOut={() => setHovered(false)}
       onClick={(e) => { e.stopPropagation(); onSelect(index); }}
     >
+      {/* Cabinet carcass with oak wood texture */}
       <mesh castShadow receiveShadow>
         <boxGeometry args={[W, H, D]} />
-        <meshStandardMaterial color={bodyColor} roughness={0.75} metalness={0.08} />
+        <meshStandardMaterial
+          map={woodTexture}
+          roughness={0.62}
+          metalness={0.04}
+          color={tintColor}
+          transparent={tintOpacity > 0}
+          opacity={tintOpacity > 0 ? undefined : 1.0}
+        />
       </mesh>
+      {/* Selection highlight overlay */}
+      {(isSelected || hovered) && (
+        <mesh>
+          <boxGeometry args={[W + 0.002, H + 0.002, D + 0.002]} />
+          <meshBasicMaterial color={tintColor} transparent opacity={tintOpacity} depthWrite={false} />
+        </mesh>
+      )}
 
       <mesh position={[0, 0, D / 2 + frameThick / 2]} castShadow>
         <boxGeometry args={[W - 0.008, H - 0.008, frameThick]} />
@@ -1702,7 +1820,7 @@ export default function Scene3DPage() {
   const [replacingIndex, setReplacingIndex] = useState<number | null>(null);
   const [replaceSearch, setReplaceSearch] = useState("");
   const [lightMode, setLightMode] = useState<"day" | "night">("day");
-  const [floorType, setFloorType] = useState<FloorType>("parquet");
+  const [floorType, setFloorType] = useState<FloorType>("marble");
   const [activeTab, setActiveTab] = useState(() => {
     const t = params.get("tab");
     if (t === "2d") return "2d";
