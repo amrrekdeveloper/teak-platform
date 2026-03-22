@@ -30,7 +30,7 @@ import {
   ChevronLeft, ChevronRight, Eye, Phone, MapPin, Calendar,
   Clock, Plus, Hand, Zap, CalendarPlus, CalendarCheck,
   CalendarX, Filter, X, Ruler, Box, Ban, AlertCircle, ArrowRight,
-  FileText, Package, Truck, ThumbsDown,
+  FileText, Package, Truck, ThumbsDown, type LucideIcon,
 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -50,9 +50,22 @@ function formatElapsed(fromDate: string | Date, now: number, t: (ar: string, en:
   const mins = Math.floor(ms / 60000);
   const hours = Math.floor(mins / 60);
   const days = Math.floor(hours / 24);
-  if (days > 0) return t(`${days} يوم`, `${days}d`);
-  if (hours > 0) return t(`${hours} ساعة`, `${hours}h`);
-  return t(`${mins} د`, `${mins}m`);
+  if (days > 0) return t(`منذ ${days} يوم`, `${days}d ago`);
+  if (hours > 0) return t(`منذ ${hours} ساعة`, `${hours}h ago`);
+  return t(`منذ ${mins} د`, `${mins}m ago`);
+}
+
+function getLastActivityDate(order: Record<string, unknown>): string | Date {
+  const candidates: (string | Date | null | undefined)[] = [
+    order.updatedAt as string | null | undefined,
+    order.cancelledAt as string | null | undefined,
+    order.claimedAt as string | null | undefined,
+    (order._appointment as Record<string, unknown> | null)?.createdAt as string | null | undefined,
+    order.createdAt as string | null | undefined,
+  ];
+  const dates = candidates.filter(Boolean).map(d => new Date(d as string).getTime()).filter(n => !isNaN(n));
+  const latest = Math.max(...dates);
+  return isFinite(latest) ? new Date(latest) : new Date(order.createdAt as string);
 }
 
 type PipelineStage = "all" | "new" | "appointment_scheduled" | "survey_done" | "quote_draft" | "quote_sent" | "quote_approved" | "in_production" | "delivered" | "rejected" | "cancelled";
@@ -67,7 +80,7 @@ const CANCEL_REASONS = [
   { value: "أخرى", ar: "أخرى", en: "Other" },
 ];
 
-const PIPELINE_STAGES: { key: PipelineStage; ar: string; en: string; color: string; icon: any }[] = [
+const PIPELINE_STAGES: { key: PipelineStage; ar: string; en: string; color: string; icon: LucideIcon }[] = [
   { key: "all", ar: "الكل", en: "All", color: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300", icon: ClipboardList },
   { key: "new", ar: "جديد", en: "New", color: "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300", icon: Zap },
   { key: "appointment_scheduled", ar: "موعد مجدول", en: "Appointment", color: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300", icon: CalendarCheck },
@@ -238,8 +251,9 @@ export default function MyOrdersPage() {
     },
   });
 
+  type NewOrderData = { fullName: string; phone: string; productDescription: string; notes: string; city: string };
   const createOrderMutation = useMutation({
-    mutationFn: async (data: any) => apiRequest("POST", "/api/orders/create-direct", data),
+    mutationFn: async (data: NewOrderData) => apiRequest("POST", "/api/orders/create-direct", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/quotations"] });
       queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
@@ -267,8 +281,10 @@ export default function MyOrdersPage() {
     },
   });
 
+  type AppointmentPayload = { title: string; appointmentDate: string; startTime: string; endTime: string; customerId: number | null; quotationId: number; assignedTo: number; notes: string };
+  type AppointmentUpdatePayload = Partial<AppointmentPayload> & { status?: string; failNotes?: string };
   const appointmentMutation = useMutation({
-    mutationFn: async (data: any) => apiRequest("POST", "/api/appointments", data),
+    mutationFn: async (data: AppointmentPayload) => apiRequest("POST", "/api/appointments", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/appointments"] });
       setAppointmentDialog(null);
@@ -286,7 +302,7 @@ export default function MyOrdersPage() {
   });
 
   const updateAppointmentMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: any }) => apiRequest("PATCH", `/api/appointments/${id}`, data),
+    mutationFn: async ({ id, data }: { id: number; data: AppointmentUpdatePayload }) => apiRequest("PATCH", `/api/appointments/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/appointments"] });
       setAppointmentDialog(null);
@@ -766,6 +782,10 @@ export default function MyOrdersPage() {
                               {order.claimedAt && (
                                 <p className="text-[10px] text-muted-foreground/60">{t("التقاط:", "Claimed:")} {formatDate(order.claimedAt)}</p>
                               )}
+                              <p className="text-[10px] text-muted-foreground/70 flex items-center gap-0.5 mt-0.5">
+                                <Clock className="w-2.5 h-2.5" />
+                                {formatElapsed(getLastActivityDate(order), now, t)}
+                              </p>
                             </td>
                             <td className="px-4 py-3">
                               <div className="flex items-center gap-1">
@@ -878,6 +898,10 @@ export default function MyOrdersPage() {
                     <p className="font-medium text-sm" data-testid={`text-customer-mobile-${order.id}`}>
                       {order.customer?.fullName || "—"}
                     </p>
+                    <div className="flex items-center gap-1 text-[10px] text-muted-foreground/70 mt-0.5">
+                      <Clock className="w-2.5 h-2.5" />
+                      {t("آخر نشاط:", "Last activity:")} {formatElapsed(getLastActivityDate(order), now, t)}
+                    </div>
                     <div className="flex items-center gap-3 mt-0.5 text-[11px] text-muted-foreground flex-wrap">
                       {order.customer?.phone && <span dir="ltr" className="flex items-center gap-0.5"><Phone className="w-2.5 h-2.5" />{order.customer.phone}</span>}
                       {(order.city || order.customer?.city) && <span className="flex items-center gap-0.5"><MapPin className="w-2.5 h-2.5" />{order.city || order.customer?.city}</span>}
