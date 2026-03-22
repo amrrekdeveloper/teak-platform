@@ -3,6 +3,12 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLanguage } from "@/components/language-provider";
 import { useAuth } from "@/hooks/use-auth";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import {
+  KITCHEN_TEMPLATES,
+  APPLIANCE_VARIANT_LABELS,
+  matchKitchenTemplates,
+  type ApplianceVariant,
+} from "@/lib/kitchenTemplates";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation, useParams, useSearch } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
@@ -241,6 +247,7 @@ const wallItemColors: Record<string, { bg: string; border: string; icon: string;
 
 export default function SiteSurveyPage() {
   const { t, lang } = useLanguage();
+  const isRTL = lang === "ar";
   const { user } = useAuth();
   const { toast } = useToast();
   const [, navigate] = useLocation();
@@ -260,6 +267,8 @@ export default function SiteSurveyPage() {
   const [productSearch, setProductSearch] = useState("");
   const [selectedGroup, setSelectedGroup] = useState("all");
   const [currentSpaceId, setCurrentSpaceId] = useState<string>("");
+  const [templateVariant, setTemplateVariant] = useState<ApplianceVariant>("none");
+  const [templatePreviewId, setTemplatePreviewId] = useState<string | null>(null);
   const [activeWallSpaceId, setActiveWallSpaceId] = useState<string>("");
   const [selectedWallId, setSelectedWallId] = useState<string>("");
 
@@ -598,6 +607,67 @@ export default function SiteSurveyPage() {
   }, [adekoProducts, selectedGroup, productSearch, spaceUsageFilter]);
 
   const customer = customers.find((c: any) => c.id === appointment?.customerId);
+
+  // ── Kitchen template matching ──────────────────────────────
+  const kitchenTemplateMatches = useMemo(() => {
+    if (!currentSpace || currentSpace.type !== "kitchen") return [];
+    const L = parseFloat(currentSpace.length) || 0;
+    const W = parseFloat(currentSpace.width) || 0;
+    if (!L || !W) return [];
+    const wallObstructions = (currentSpace.walls || []).map((wall: any, idx: number) => ({
+      label: (["A","B","C","D"][idx] || "A") as "A" | "B" | "C" | "D",
+      items: (wall.items || []).map((item: any) => ({ type: item.type, wall: (["A","B","C","D"][idx] || "A") as "A" | "B" | "C" | "D", width: parseFloat(item.width) || 0 })),
+    }));
+    return matchKitchenTemplates(L, W, wallObstructions).slice(0, 4);
+  }, [currentSpace]);
+
+  function applyKitchenTemplate(templateId: string, variant: ApplianceVariant) {
+    if (!currentSpace) return;
+    const tmpl = KITCHEN_TEMPLATES.find((t) => t.id === templateId);
+    if (!tmpl) return;
+    const items = tmpl.variants[variant];
+    const allProducts = adekoProducts as any[];
+
+    const wallLetters = ["A","B","C","D"];
+    const wallIdMap: Record<string, string> = {};
+    (currentSpace.walls || []).forEach((wall: any, idx: number) => {
+      const letter = wallLetters[idx];
+      if (letter) wallIdMap[letter] = wall.id;
+    });
+
+    const newProducts = items.flatMap((item) => {
+      const adekoProduct = allProducts.find((p: any) => p.code === item.code);
+      if (!adekoProduct) return [];
+      return Array.from({ length: item.qty }, (_, i) => ({
+        id: `prod_${Date.now()}_${Math.random().toString(36).slice(2,6)}_${i}`,
+        adekoProductId: adekoProduct.id,
+        code: adekoProduct.code,
+        description: adekoProduct.descriptionEn,
+        groupName: adekoProduct.groupNameEn,
+        thumbnail: adekoProduct.thumbnail || undefined,
+        quantity: 1,
+        doorType: "",
+        drawerType: "",
+        liftMechanism: "none",
+        liftMechanismNote: "",
+        notes: item.notes || (item.isApplianceSpace ? t("مكان جهاز", "Appliance space") : ""),
+        spaceId: currentSpace.id,
+        wallId: wallIdMap[item.wall] || "",
+        designW: String(parseFloat(adekoProduct.designW || "0") || ""),
+      }));
+    });
+
+    const withoutCurrentSpace = selectedProducts.filter((p) => p.spaceId !== currentSpace.id);
+    setSelectedProducts([...withoutCurrentSpace, ...newProducts]);
+    performAutoSave();
+    toast({
+      title: t("تم تطبيق القالب", "Template Applied"),
+      description: t(
+        `تم إضافة ${newProducts.length} منتج من قالب ${tmpl.nameAr}`,
+        `Added ${newProducts.length} products from ${tmpl.nameEn}`
+      ),
+    });
+  }
 
   return (
     <div className="max-w-2xl mx-auto space-y-4 pb-24" data-testid="page-site-survey">
@@ -1149,6 +1219,125 @@ export default function SiteSurveyPage() {
               </Button>
             </div>
           </div>
+
+          {/* ── مطابخ تيك القياسية — Kitchen Templates ────── */}
+          {currentSpace?.type === "kitchen" && kitchenTemplateMatches.length > 0 && (
+            <Card className="border-orange-200 dark:border-orange-800 bg-orange-50 dark:bg-orange-950/30">
+              <CardContent className="p-3 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-orange-800 dark:text-orange-300">
+                    <UtensilsCrossed className="w-4 h-4" />
+                    {t("مطابخ تيك القياسية", "Teak Standard Kitchens")}
+                  </div>
+                  <Select
+                    value={templateVariant}
+                    onValueChange={(v) => setTemplateVariant(v as ApplianceVariant)}
+                  >
+                    <SelectTrigger className="h-7 text-xs w-[150px]" data-testid="select-template-variant">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(["none","spaces","full"] as ApplianceVariant[]).map((v) => (
+                        <SelectItem key={v} value={v}>
+                          {t(APPLIANCE_VARIANT_LABELS[v].ar, APPLIANCE_VARIANT_LABELS[v].en)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="grid grid-cols-1 gap-2">
+                  {kitchenTemplateMatches.map((match) => {
+                    const tmpl = match.template;
+                    const items = tmpl.variants[templateVariant];
+                    const count = items.reduce((s, it) => s + it.qty, 0);
+                    const isPreview = templatePreviewId === tmpl.id;
+                    return (
+                      <div
+                        key={tmpl.id}
+                        className="rounded-md border border-orange-200 dark:border-orange-700 bg-white dark:bg-gray-900 p-2.5 space-y-2"
+                        data-testid={`card-kitchen-template-${tmpl.id}`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="text-xs font-semibold text-gray-800 dark:text-gray-200">
+                              {isRTL ? tmpl.nameAr : tmpl.nameEn}
+                            </div>
+                            <div className="text-[10px] text-muted-foreground mt-0.5">
+                              {isRTL ? tmpl.subtitleAr : tmpl.nameEn}
+                            </div>
+                            <div className="flex items-center gap-2 mt-1 flex-wrap">
+                              <Badge variant="outline" className="text-[9px] h-4 border-orange-300 text-orange-700 dark:text-orange-400">
+                                {tmpl.layout.toUpperCase()}
+                              </Badge>
+                              <span className="text-[10px] text-muted-foreground">
+                                {t(`${count} قطعة`, `${count} pcs`)}
+                              </span>
+                              {match.score > 0 && (
+                                <Badge className="text-[9px] h-4 bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 border-none">
+                                  {t(`تطابق ${Math.round(match.score * 100)}%`, `${Math.round(match.score * 100)}% match`)}
+                                </Badge>
+                              )}
+                              {match.warnings.length > 0 && (
+                                <Badge variant="outline" className="text-[9px] h-4 border-amber-300 text-amber-600">
+                                  ⚠ {t("تنبيه", "Warning")}
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex flex-col gap-1 shrink-0">
+                            <Button
+                              size="sm"
+                              className="h-7 text-xs bg-orange-600 hover:bg-orange-700 text-white"
+                              onClick={() => applyKitchenTemplate(tmpl.id, templateVariant)}
+                              data-testid={`button-apply-template-${tmpl.id}`}
+                            >
+                              {t("تطبيق", "Apply")}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 text-xs text-muted-foreground"
+                              onClick={() => setTemplatePreviewId(isPreview ? null : tmpl.id)}
+                              data-testid={`button-preview-template-${tmpl.id}`}
+                            >
+                              {isPreview ? t("إخفاء", "Hide") : t("معاينة", "Preview")}
+                            </Button>
+                          </div>
+                        </div>
+
+                        {isPreview && (
+                          <div className="pt-1 border-t border-orange-100 dark:border-orange-800">
+                            {match.warnings.length > 0 && (
+                              <div className="text-[10px] text-amber-600 dark:text-amber-400 mb-1.5 flex items-start gap-1">
+                                <span className="shrink-0">⚠</span>
+                                <span>{match.warnings[0]}</span>
+                              </div>
+                            )}
+                            <div className="grid grid-cols-1 gap-0.5 max-h-40 overflow-y-auto">
+                              {items.map((item, idx) => {
+                                const ap = (adekoProducts as any[]).find((p: any) => p.code === item.code);
+                                return (
+                                  <div key={idx} className="flex items-center justify-between text-[10px] py-0.5">
+                                    <span className="text-muted-foreground me-1 shrink-0">{item.wall}–</span>
+                                    <span className="font-mono text-primary shrink-0">{item.code}</span>
+                                    <span className="flex-1 text-muted-foreground truncate mx-1.5 text-end">
+                                      {ap ? (isRTL ? ap.descriptionAr : ap.descriptionEn) : item.code}
+                                    </span>
+                                    <span className="shrink-0 text-gray-500">×{item.qty}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {spaces.map((space) => {
             const spaceProducts = selectedProducts.filter((p) => p.spaceId === space.id);
