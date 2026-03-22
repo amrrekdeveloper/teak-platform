@@ -1065,14 +1065,12 @@ function FloorPlan2D({ survey }: { survey: any }) {
 
           if (item.type === "door") {
             /* Door: arc from hinge corner + door leaf line + "ب" label */
-            const arcDH = `M ${ix} ${iy} a ${iw} ${iw} 0 0 1 ${iw} ${iw}`;
-            const arcDV = `M ${ix} ${iy} a ${iw} ${iw} 0 0 1 ${iw} ${iw}`;
-            const arcD = isHoriz ? arcDH : arcDV;
+            const arcD = `M ${ix} ${iy} a ${iw} ${iw} 0 0 1 ${iw} ${iw}`;
             const lbX = ix + (isHoriz ? iw / 2 : -4);
             const lbY = iy + (isHoriz ? -4 : iw / 2);
             elements.push(
               <g key={`item-${spaceIdx}-${wi}-${ii}`}>
-                <rect x={ix} y={iy - (isHoriz ? 0 : 0)} width={isHoriz ? iw : 4} height={isHoriz ? 4 : iw}
+                <rect x={ix} y={iy} width={isHoriz ? iw : 4} height={isHoriz ? 4 : iw}
                   fill="#FEF3C7" stroke="none" />
                 <path d={arcD} fill="none" stroke="#92400E" strokeWidth={1.5} />
                 <line x1={ix} y1={iy}
@@ -1110,8 +1108,9 @@ function FloorPlan2D({ survey }: { survey: any }) {
               </g>
             );
           } else if (item.type === "outlet") {
-            const symX = ix + (isHoriz ? iw / 2 : 0);
-            const symY = iy + (isHoriz ? 0 : iw / 2);
+            /* Outlet: center symbol AT distanceFromFirst (ix/iy is already at dist) */
+            const symX = ix;
+            const symY = iy;
             elements.push(
               <g key={`item-${spaceIdx}-${wi}-${ii}`}>
                 <circle cx={symX} cy={symY} r={4} fill="#F59E0B" stroke="#D97706" strokeWidth={1} />
@@ -1120,8 +1119,9 @@ function FloorPlan2D({ survey }: { survey: any }) {
               </g>
             );
           } else if (item.type === "drain") {
-            const symX = ix + (isHoriz ? iw / 2 : 0);
-            const symY = iy + (isHoriz ? 0 : iw / 2);
+            /* Drain: center symbol AT distanceFromFirst */
+            const symX = ix;
+            const symY = iy;
             elements.push(
               <g key={`item-${spaceIdx}-${wi}-${ii}`}>
                 <circle cx={symX} cy={symY} r={4} fill="#3B82F6" stroke="#1D4ED8" strokeWidth={1} />
@@ -2013,8 +2013,8 @@ export default function Scene3DPage() {
                             <div className="flex items-center gap-1">
                               <p className="text-xs font-medium line-clamp-1 flex-1">{p.nameAr || p.code || `Item ${spaceIdx + 1}`}</p>
                               {conflictIndices.has(spaceIdx) && (
-                                <Badge variant="destructive" className="text-[9px] px-1 py-0 h-4 shrink-0" data-testid={`badge-conflict-${spaceIdx}`}>
-                                  {t("تعارض", "Conflict")}
+                                <Badge variant="destructive" className="text-[9px] px-1 py-0 h-4 shrink-0 gap-0.5" data-testid={`badge-conflict-${spaceIdx}`}>
+                                  ⚠ {t("تعارض", "Conflict")}
                                 </Badge>
                               )}
                             </div>
