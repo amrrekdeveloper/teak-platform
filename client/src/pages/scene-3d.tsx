@@ -11,9 +11,6 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
-import {
   RotateCcw, Package, ArrowLeft, Trash2, Share2, Loader2,
   RefreshCw, Search, Sun, Moon, Download, Map,
 } from "lucide-react";
@@ -1512,18 +1509,23 @@ export default function Scene3DPage() {
             </p>
           </div>
           {surveySpaces.length > 1 && (
-            <Select value={activeSpaceId} onValueChange={(v) => { setActiveSpaceId(v); setKey(k => k + 1); setSelectedProduct(-1); }}>
-              <SelectTrigger className="h-8 text-xs w-[160px]" data-testid="select-active-space">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {surveySpaces.map((s: any) => (
-                  <SelectItem key={s.id} value={s.id}>
-                    {s.name || t("مكان", "Space")}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="flex items-center gap-1 bg-muted rounded-lg p-1" data-testid="space-tabs">
+              {surveySpaces.map((s: any) => (
+                <button
+                  key={s.id}
+                  onClick={() => { setActiveSpaceId(s.id); setKey(k => k + 1); setSelectedProduct(-1); }}
+                  data-testid={`btn-space-${s.id}`}
+                  className={`text-xs px-3 py-1 rounded-md transition-all whitespace-nowrap max-w-[140px] truncate ${
+                    activeSpaceId === s.id
+                      ? "bg-background shadow font-semibold text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                  title={s.name || t("مكان", "Space")}
+                >
+                  {s.name || t("مكان", "Space")}
+                </button>
+              ))}
+            </div>
           )}
         </div>
         <div className="flex items-center gap-2">
