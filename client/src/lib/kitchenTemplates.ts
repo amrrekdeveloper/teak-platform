@@ -534,60 +534,104 @@ export function matchKitchenTemplates(
       score *= 0.8;
     }
 
-    /* ── Door-swing clearance on corner walls ───────── */
+    /* ── Door-swing clearance against corner footprints ─ */
     if (tmpl.cornerUnits) {
-      /* Collect corner unit width from template variants (use "spaces" or first available) */
-      const variantItems = tmpl.variants["spaces"] || tmpl.variants["none"] || tmpl.variants["full"] || [];
-      const cornerItem = variantItems.find((it) => it.cornerAnchor);
-      /* AKK 115 → 115cm, AKK 125 → 125cm; parse from code or default 115 */
-      const cornerWidthCm = cornerItem
-        ? (parseFloat(cornerItem.code.replace(/[^0-9]/g, "")) || 115)
-        : 115;
+      /* Wall length helper (cm) by wall index (even=long/A&C, odd=short/B&D) */
+      const wallLenCmByIdx = (idx: number) =>
+        (idx % 2 === 0 ? Math.max(lengthM, widthM) : Math.min(lengthM, widthM)) * 100;
 
+      /* Wall letter ↔ index */
+      const W2I: Record<string, number> = { A: 0, B: 1, C: 2, D: 3 };
+      const I2W = ["A", "B", "C", "D"];
+
+      /* AKK perpendicular depth on the adjacent wall (cm).
+         AKK 115 dimensions are typically 115×65 cm; use 65 as adj footprint. */
+      const ADJ_DEPTH_CM = 65;
+
+      /* Build per-wall corner zones from template corner items.
+         Each corner item occupies:
+           (a) Its own wall: [wallLen-cW, wallLen] for "end", [0, cW] for "start"
+           (b) The adjacent wall (perpendicular footprint of ADJ_DEPTH_CM):
+               - "end" corner → next wall start: [0, ADJ_DEPTH_CM]
+               - "start" corner → prev wall end: [wallLen - ADJ_DEPTH_CM, wallLen]
+      */
+      const variantItems =
+        tmpl.variants["spaces"] || tmpl.variants["none"] || tmpl.variants["full"] || [];
+      const cornerZonesMap: Record<string, Array<{ zStart: number; zEnd: number }>> = {
+        A: [], B: [], C: [], D: [],
+      };
+
+      for (const cItem of variantItems.filter((it) => it.cornerAnchor)) {
+        const wIdx = W2I[cItem.wall] ?? 0;
+        const lenCm = wallLenCmByIdx(wIdx);
+        const cW = parseFloat(cItem.code.replace(/[^0-9]/g, "")) || 115;
+        const junc = cItem.cornerJunction ?? "end";
+
+        /* Primary footprint on own wall */
+        if (junc === "end") {
+          cornerZonesMap[cItem.wall].push({ zStart: lenCm - cW, zEnd: lenCm });
+        } else {
+          cornerZonesMap[cItem.wall].push({ zStart: 0, zEnd: cW });
+        }
+
+        /* Perpendicular footprint on adjacent wall */
+        if (junc === "end") {
+          /* AKK at X-end → occupies start of next wall (X+1) */
+          const adjLabel = I2W[(wIdx + 1) % 4];
+          cornerZonesMap[adjLabel].push({ zStart: 0, zEnd: ADJ_DEPTH_CM });
+        } else {
+          /* AKK at X-start → occupies end of previous wall (X-1) */
+          const adjIdx = (wIdx - 1 + 4) % 4;
+          const adjLabel = I2W[adjIdx];
+          const adjLen = wallLenCmByIdx(adjIdx);
+          cornerZonesMap[adjLabel].push({ zStart: adjLen - ADJ_DEPTH_CM, zEnd: adjLen });
+        }
+      }
+
+      /* Check each wall for doors that overlap a corner zone.
+         door.width and door.distanceFromFirst arrive in meters → convert to cm. */
       for (const wallInfo of walls) {
-        if (wallInfo.label !== "B" && wallInfo.label !== "C") continue;
-        const wallLenCm = wallInfo.label === "B" || wallInfo.label === "D"
-          ? Math.min(lengthM, widthM) * 100
-          : Math.max(lengthM, widthM) * 100;
+        const zones = cornerZonesMap[wallInfo.label] || [];
+        if (zones.length === 0) continue;
         const doors = wallInfo.items.filter((obs) => obs.type === "door");
 
         for (const door of doors) {
-          const doorW = (door.width ?? 0);           /* cm */
-          const doorPos = (door.distanceFromFirst ?? 0); /* cm from wall start */
-          const swingEnd = doorPos + doorW;           /* swing zone: [doorPos, swingEnd] */
+          /* Convert meters → cm (survey data stored in meters) */
+          const doorW   = (door.width ?? 0) * 100;
+          const doorPos = (door.distanceFromFirst ?? 0) * 100;
+          const swingEnd = doorPos + doorW;
 
-          /* Corner unit occupies junction zone.
-             Wall B "end" junction (near Wall A): [wallLen - cornerWidth, wallLen]
-             Wall C "start" junction (near Wall B): [0, cornerWidth] */
-          const junc = wallInfo.label === "C" ? "start" : "end";
-          const cornerStart = junc === "start" ? 0 : wallLenCm - cornerWidthCm;
-          const cornerEnd   = junc === "start" ? cornerWidthCm : wallLenCm;
+          for (const zone of zones) {
+            const { zStart, zEnd } = zone;
+            const overlaps = doorPos < zEnd && swingEnd > zStart;
+            const overlapCm = overlaps
+              ? Math.min(swingEnd, zEnd) - Math.max(doorPos, zStart)
+              : 0;
+            const gapCm = overlaps ? 0 : Math.min(
+              Math.abs(doorPos - zEnd), Math.abs(swingEnd - zStart)
+            );
 
-          /* Check overlap: swing zone [doorPos, swingEnd] vs corner zone [cornerStart, cornerEnd] */
-          const overlaps = doorPos < cornerEnd && swingEnd > cornerStart;
-
-          if (overlaps) {
-            warnings.push({
-              severity: "error",
-              message: `باب الجدار ${wallInfo.label} (عرضه ${doorW.toFixed(0)} سم) يتعارض مع وحدة الزاوية — مسافة تداخل ${Math.min(swingEnd, cornerEnd) - Math.max(doorPos, cornerStart)}سم`,
-              messageEn: `Wall ${wallInfo.label} door (${doorW.toFixed(0)} cm) swing overlaps corner unit — ${(Math.min(swingEnd, cornerEnd) - Math.max(doorPos, cornerStart)).toFixed(0)} cm conflict`,
-            });
-            score *= 0.75;
-          } else if (doorW > 0 && Math.abs(swingEnd - cornerStart) < 30) {
-            /* Door is within 30cm of corner unit — tight clearance warning */
-            warnings.push({
-              severity: "warning",
-              message: `باب الجدار ${wallInfo.label} قريب من وحدة الزاوية — مسافة فاصلة ${Math.abs(swingEnd - cornerStart).toFixed(0)} سم فقط`,
-              messageEn: `Wall ${wallInfo.label} door near corner unit — only ${Math.abs(swingEnd - cornerStart).toFixed(0)} cm clearance`,
-            });
-            score *= 0.9;
-          } else {
-            /* Door exists but doesn't conflict */
-            warnings.push({
-              severity: "info",
-              message: `باب الجدار ${wallInfo.label} — لا تعارض مع وحدة الزاوية`,
-              messageEn: `Wall ${wallInfo.label} door — no conflict with corner unit`,
-            });
+            if (overlaps) {
+              warnings.push({
+                severity: "error",
+                message: `باب الجدار ${wallInfo.label} (${doorW.toFixed(0)} سم) يتعارض مع وحدة الزاوية — تداخل ${overlapCm.toFixed(0)} سم`,
+                messageEn: `Wall ${wallInfo.label} door (${doorW.toFixed(0)} cm) swing overlaps corner unit — ${overlapCm.toFixed(0)} cm conflict`,
+              });
+              score *= 0.75;
+            } else if (doorW > 0 && gapCm < 30) {
+              warnings.push({
+                severity: "warning",
+                message: `باب الجدار ${wallInfo.label} قريب من وحدة الزاوية — فاصل ${gapCm.toFixed(0)} سم فقط`,
+                messageEn: `Wall ${wallInfo.label} door near corner unit — only ${gapCm.toFixed(0)} cm clearance`,
+              });
+              score *= 0.9;
+            } else if (doorW > 0) {
+              warnings.push({
+                severity: "info",
+                message: `باب الجدار ${wallInfo.label} — مسافة كافية من وحدة الزاوية (${gapCm.toFixed(0)} سم)`,
+                messageEn: `Wall ${wallInfo.label} door — adequate clearance from corner unit (${gapCm.toFixed(0)} cm)`,
+              });
+            }
           }
         }
       }

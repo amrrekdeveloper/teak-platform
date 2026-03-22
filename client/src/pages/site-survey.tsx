@@ -1308,12 +1308,17 @@ export default function SiteSurveyPage() {
                                   {t(`تطابق ${Math.round(match.score * 100)}%`, `${Math.round(match.score * 100)}% match`)}
                                 </Badge>
                               )}
-                              {(() => {
+                              {match.warnings.length > 0 && (() => {
                                 const errors = match.warnings.filter((w: TemplateWarning) => w.severity === "error");
                                 const warns  = match.warnings.filter((w: TemplateWarning) => w.severity === "warning");
-                                const totalIssues = errors.length + warns.length;
                                 const isWarningsOpen = templateWarningsId === tmpl.id;
-                                if (totalIssues === 0) return null;
+                                /* Icon/colour based on worst severity */
+                                const hasErrors = errors.length > 0;
+                                const hasWarns  = warns.length > 0;
+                                const icon  = hasErrors ? "🚫" : hasWarns ? "⚠" : "✅";
+                                const borderColor = hasErrors ? "rgb(239,68,68)" : hasWarns ? "rgb(251,191,36)" : "rgb(34,197,94)";
+                                const textColor   = hasErrors ? "rgb(185,28,28)" : hasWarns ? "rgb(146,64,14)" : "rgb(21,128,61)";
+                                const bgOpen      = hasErrors ? "rgb(254,226,226)" : hasWarns ? "rgb(254,243,199)" : "rgb(220,252,231)";
                                 return (
                                   <button
                                     type="button"
@@ -1324,14 +1329,12 @@ export default function SiteSurveyPage() {
                                     }}
                                     className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-medium border cursor-pointer transition-colors select-none"
                                     style={{
-                                      borderColor: errors.length > 0 ? "rgb(239,68,68)" : "rgb(251,191,36)",
-                                      color: errors.length > 0 ? "rgb(185,28,28)" : "rgb(146,64,14)",
-                                      background: isWarningsOpen
-                                        ? (errors.length > 0 ? "rgb(254,226,226)" : "rgb(254,243,199)")
-                                        : "transparent",
+                                      borderColor,
+                                      color: textColor,
+                                      background: isWarningsOpen ? bgOpen : "transparent",
                                     }}
                                   >
-                                    {errors.length > 0 ? "🚫" : "⚠"} {totalIssues} {t(errors.length > 0 ? "تعارض" : "تنبيه", errors.length > 0 ? "conflict" : "warning")}
+                                    {icon} {match.warnings.length} {t("تنبيهات", "checks")}
                                   </button>
                                 );
                               })()}
