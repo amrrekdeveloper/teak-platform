@@ -252,6 +252,7 @@ export default function SiteSurveyPage() {
   const [selectedGroup, setSelectedGroup] = useState("all");
   const [currentSpaceId, setCurrentSpaceId] = useState<string>("");
   const [activeWallSpaceId, setActiveWallSpaceId] = useState<string>("");
+  const [selectedWallId, setSelectedWallId] = useState<string>("");
 
   const { data: appointment } = useQuery<any>({
     queryKey: ["/api/appointments", appointmentId],
@@ -319,6 +320,10 @@ export default function SiteSurveyPage() {
       return { ...space, walls: [...space.walls, ...missing] };
     });
     setSpaces(updatedSpaces);
+    const spaceAfter = updatedSpaces.find((s) => s.id === spaceId);
+    if (spaceAfter && spaceAfter.walls.length > 0) {
+      setSelectedWallId(spaceAfter.walls[0].id);
+    }
     setSubStep("walls");
   }
 
@@ -868,201 +873,239 @@ export default function SiteSurveyPage() {
                   )}
 
                   {/* WALLS sub-step */}
-                  {subStep === "walls" && (
-                    <div className="space-y-3" data-testid={`section-space-walls-${editSpace.id}`}>
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1">
-                          <LayoutGrid className="w-3.5 h-3.5" />
-                          {t("جدران", "Walls")} ({editSpace.walls.length})
-                        </span>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => addWallToSpace(editSpace.id)}
-                          data-testid="button-add-wall"
-                        >
-                          <Plus className="w-3 h-3 me-1" />
-                          {t("إضافة جدار", "Add Wall")}
-                        </Button>
-                      </div>
+                  {subStep === "walls" && (() => {
+                    const wallLetters = ["A", "B", "C", "D"];
+                    const activeWall = editSpace.walls.find((w) => w.id === selectedWallId) || editSpace.walls[0];
+                    const activeWallIndex = editSpace.walls.findIndex((w) => w.id === activeWall?.id);
+                    const wallLen = activeWall ? (parseFloat(activeWall.length) || 0) : 0;
+                    const spaceHeight = parseFloat(editSpace.height) || 0;
+                    return (
+                      <div className="space-y-3" data-testid={`section-space-walls-${editSpace.id}`}>
 
-                      {editSpace.walls.map((wall, wallIndex) => {
-                        const wallLen = parseFloat(wall.length) || 0;
-                        const spaceHeight = parseFloat(editSpace.height) || 0;
-                        return (
-                          <Card key={wall.id}>
-                            <CardContent className="p-3 space-y-3">
-                              <div className="flex items-center justify-between gap-2">
-                                <Input
-                                  value={wall.name}
-                                  onChange={(e) => updateWall(editSpace.id, wall.id, "name", e.target.value)}
-                                  className="h-8 text-sm font-medium flex-1"
-                                  data-testid={`input-wall-name-${wallIndex}`}
-                                />
-                                <div className="flex items-center gap-1 flex-shrink-0">
-                                  <Input
-                                    type="number"
-                                    step="0.01"
-                                    value={wall.length}
-                                    onChange={(e) => updateWall(editSpace.id, wall.id, "length", e.target.value)}
-                                    placeholder={t("الطول (م)", "Length (m)")}
-                                    className="w-28 h-8 text-xs"
-                                    data-testid={`input-wall-length-${wallIndex}`}
-                                  />
-                                  {editSpace.walls.length > 1 && (
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      className="h-8 w-8"
-                                      onClick={() => removeWall(editSpace.id, wall.id)}
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5 text-destructive" />
-                                    </Button>
-                                  )}
-                                </div>
+                        {/* Wall tab selector — max 4 walls */}
+                        <div className="flex gap-2 flex-wrap">
+                          {editSpace.walls.map((wall, idx) => {
+                            const isActive = wall.id === (activeWall?.id);
+                            const hasItems = wall.items.length > 0;
+                            const letter = wallLetters[idx] || String(idx + 1);
+                            return (
+                              <button
+                                key={wall.id}
+                                onClick={() => setSelectedWallId(wall.id)}
+                                className={`relative flex flex-col items-center justify-center w-16 h-16 rounded-xl border-2 transition-all text-center ${
+                                  isActive
+                                    ? "border-primary bg-primary/10 text-primary"
+                                    : "border-border bg-card text-muted-foreground hover:border-primary/40"
+                                }`}
+                                data-testid={`wall-tab-${idx}`}
+                              >
+                                <span className="text-lg font-bold leading-none">{letter}</span>
+                                <span className="text-[10px] mt-0.5 opacity-70">{wall.length ? `${wall.length}م` : "—"}</span>
+                                {hasItems && <span className="absolute top-1 end-1 w-2 h-2 rounded-full bg-primary" />}
+                                {editSpace.walls.length > 1 && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); removeWall(editSpace.id, wall.id); if (wall.id === selectedWallId) setSelectedWallId(editSpace.walls.find(w => w.id !== wall.id)?.id || ""); }}
+                                    className="absolute -top-1.5 -start-1.5 w-4 h-4 rounded-full bg-destructive text-white flex items-center justify-center"
+                                    data-testid={`button-remove-wall-${idx}`}
+                                  >
+                                    <X className="w-2.5 h-2.5" />
+                                  </button>
+                                )}
+                              </button>
+                            );
+                          })}
+                          {editSpace.walls.length < 4 && (
+                            <button
+                              onClick={() => {
+                                const newWall: WallData = {
+                                  id: `wall_${editSpace.id}_${Date.now()}`,
+                                  name: `${t("الجدار", "Wall")} ${wallLetters[editSpace.walls.length] || editSpace.walls.length + 1}`,
+                                  length: "",
+                                  wallHeight: editSpace.height || "",
+                                  items: [],
+                                };
+                                const updated = spaces.map((s) => s.id === editSpace.id ? { ...s, walls: [...s.walls, newWall] } : s);
+                                setSpaces(updated);
+                                setSelectedWallId(newWall.id);
+                              }}
+                              className="flex flex-col items-center justify-center w-16 h-16 rounded-xl border-2 border-dashed border-border text-muted-foreground hover:border-primary/50 hover:text-primary transition-all"
+                              data-testid="button-add-wall"
+                            >
+                              <Plus className="w-5 h-5" />
+                              <span className="text-[10px] mt-0.5">{t("جدار", "Wall")}</span>
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Active wall details panel */}
+                        {activeWall && (
+                          <div className="rounded-xl border bg-card p-3 space-y-3">
+                            {/* Wall name + length */}
+                            <div className="flex items-center gap-2">
+                              <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary/10 text-primary text-sm font-bold flex-shrink-0">
+                                {wallLetters[activeWallIndex] || String(activeWallIndex + 1)}
                               </div>
+                              <Input
+                                value={activeWall.name}
+                                onChange={(e) => updateWall(editSpace.id, activeWall.id, "name", e.target.value)}
+                                className="h-8 text-sm font-medium flex-1"
+                                data-testid={`input-wall-name-${activeWallIndex}`}
+                              />
+                              <div className="flex items-center gap-1 flex-shrink-0">
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  value={activeWall.length}
+                                  onChange={(e) => updateWall(editSpace.id, activeWall.id, "length", e.target.value)}
+                                  placeholder={t("م", "m")}
+                                  className="w-20 h-8 text-xs text-center"
+                                  data-testid={`input-wall-length-${activeWallIndex}`}
+                                />
+                                <span className="text-xs text-muted-foreground">م</span>
+                              </div>
+                            </div>
 
-                              {wall.items.map((item, itemIndex) => {
-                                const ItemIcon = wallItemIcons[item.type] || X;
-                                const isDoorOrWindow = item.type === "door" || item.type === "window";
-                                const isOutletOrDrain = item.type === "outlet" || item.type === "drain";
-                                const distFromSecond = isDoorOrWindow && wallLen > 0
-                                  ? (wallLen - (parseFloat(item.distanceFromFirst) || 0) - (parseFloat(item.width) || 0)).toFixed(2)
-                                  : null;
-                                const heightFromCeiling = isOutletOrDrain && spaceHeight > 0
-                                  ? (spaceHeight - (parseFloat(item.heightFromFloor) || 0)).toFixed(2)
-                                  : null;
-
-                                return (
-                                  <div key={itemIndex} className="p-2 bg-muted/50 rounded-lg space-y-2">
-                                    <div className="flex items-center justify-between">
-                                      <div className="flex items-center gap-1">
-                                        <ItemIcon className="w-3.5 h-3.5 text-muted-foreground" />
-                                        <span className="text-xs font-medium">{t(wallItemLabels[item.type]?.ar || "", wallItemLabels[item.type]?.en || "")}</span>
-                                      </div>
-                                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => removeWallItem(editSpace.id, wall.id, itemIndex)}>
-                                        <X className="w-3 h-3" />
-                                      </Button>
-                                    </div>
-
-                                    {isDoorOrWindow && (
-                                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
-                                        <div>
-                                          <Label className="text-[10px]">{t("العرض (م)", "Width (m)")}</Label>
-                                          <Input type="number" step="0.01" value={item.width} onChange={(e) => updateWallItem(editSpace.id, wall.id, itemIndex, "width", e.target.value)} className="h-7 text-xs" />
-                                        </div>
-                                        <div>
-                                          <Label className="text-[10px]">{t("الارتفاع (م)", "Height (m)")}</Label>
-                                          <Input type="number" step="0.01" value={item.height} onChange={(e) => updateWallItem(editSpace.id, wall.id, itemIndex, "height", e.target.value)} className="h-7 text-xs" />
-                                        </div>
-                                        <div>
-                                          <Label className="text-[10px]">{t("بُعد عن الحرف الأول (م)", "Distance from First Edge (m)")}</Label>
-                                          <Input type="number" step="0.01" value={item.distanceFromFirst} onChange={(e) => updateWallItem(editSpace.id, wall.id, itemIndex, "distanceFromFirst", e.target.value)} className="h-7 text-xs" />
-                                        </div>
-                                      </div>
-                                    )}
-                                    {isDoorOrWindow && distFromSecond !== null && (
-                                      <p className="text-[10px] text-muted-foreground">
-                                        {t("بُعد عن الحرف الثاني", "Distance from Second Edge")}: <span className="font-semibold text-foreground">{distFromSecond} م</span>
-                                      </p>
-                                    )}
-
-                                    {isOutletOrDrain && (
-                                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                                        <div>
-                                          <Label className="text-[10px]">{t("ارتفاع عن الأرضية (م)", "Height from Floor (m)")}</Label>
-                                          <Input type="number" step="0.01" value={item.heightFromFloor} onChange={(e) => updateWallItem(editSpace.id, wall.id, itemIndex, "heightFromFloor", e.target.value)} className="h-7 text-xs" />
-                                        </div>
-                                        <div>
-                                          <Label className="text-[10px]">{t("بُعد عن الحرف الأول (م)", "Distance from First Edge (m)")}</Label>
-                                          <Input type="number" step="0.01" value={item.distanceFromFirst} onChange={(e) => updateWallItem(editSpace.id, wall.id, itemIndex, "distanceFromFirst", e.target.value)} className="h-7 text-xs" />
-                                        </div>
-                                      </div>
-                                    )}
-                                    {isOutletOrDrain && heightFromCeiling !== null && (
-                                      <p className="text-[10px] text-muted-foreground">
-                                        {t("مسافة من السقف", "Distance from Ceiling")}: <span className="font-semibold text-foreground">{heightFromCeiling} م</span>
-                                      </p>
-                                    )}
-
-                                    {item.type === "outlet" && (
-                                      <div>
-                                        <Label className="text-[10px] mb-1 block">{t("نوع مخرج الكهرباء", "Outlet Type")}</Label>
-                                        <div className="flex flex-wrap gap-1">
-                                          {OUTLET_SPECS.map((spec) => {
-                                            const selected = item.specs.split(",").map((s) => s.trim()).filter(Boolean).includes(spec.value);
-                                            return (
-                                              <button
-                                                key={spec.value}
-                                                type="button"
-                                                onClick={() => {
-                                                  const current = item.specs.split(",").map((s) => s.trim()).filter(Boolean);
-                                                  const next = selected ? current.filter((v) => v !== spec.value) : [...current, spec.value];
-                                                  updateWallItem(editSpace.id, wall.id, itemIndex, "specs", next.join(","));
-                                                }}
-                                                className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${selected ? "bg-primary text-primary-foreground border-primary" : "bg-background text-muted-foreground border-border hover:border-primary/50"}`}
-                                              >
-                                                {t(spec.ar, spec.en)}
-                                              </button>
-                                            );
-                                          })}
-                                        </div>
-                                      </div>
-                                    )}
-                                    {item.type === "drain" && (
-                                      <div>
-                                        <Label className="text-[10px]">{t("مواصفات", "Specs")}</Label>
-                                        <Input value={item.specs} onChange={(e) => updateWallItem(editSpace.id, wall.id, itemIndex, "specs", e.target.value)} placeholder={t("مثال: فتحة تصريف مياه", "e.g. drain opening")} className="h-7 text-xs" />
-                                      </div>
-                                    )}
-                                    {item.type === "obstacle" && (
-                                      <div>
-                                        <Label className="text-[10px]">{t("وصف العائق", "Obstacle Description")}</Label>
-                                        <Input value={item.notes} onChange={(e) => updateWallItem(editSpace.id, wall.id, itemIndex, "notes", e.target.value)} placeholder={t("وصف العائق", "Describe the obstacle")} className="h-7 text-xs" />
-                                      </div>
-                                    )}
-                                  </div>
-                                );
-                              })}
-
-                              <div className="flex flex-wrap gap-1">
-                                {(["door", "window", "outlet", "drain", "obstacle"] as WallItem["type"][]).map((type) => {
-                                  const Icon = wallItemIcons[type];
+                            {/* Wall items list */}
+                            {activeWall.items.length > 0 && (
+                              <div className="space-y-2">
+                                {activeWall.items.map((item, itemIndex) => {
+                                  const ItemIcon = wallItemIcons[item.type] || X;
+                                  const isDoorOrWindow = item.type === "door" || item.type === "window";
+                                  const isOutletOrDrain = item.type === "outlet" || item.type === "drain";
+                                  const distFromSecond = isDoorOrWindow && wallLen > 0
+                                    ? (wallLen - (parseFloat(item.distanceFromFirst) || 0) - (parseFloat(item.width) || 0)).toFixed(2)
+                                    : null;
+                                  const heightFromCeiling = isOutletOrDrain && spaceHeight > 0
+                                    ? (spaceHeight - (parseFloat(item.heightFromFloor) || 0)).toFixed(2)
+                                    : null;
                                   return (
-                                    <Button key={type} variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => addWallItem(editSpace.id, wall.id, type)} data-testid={`button-add-${type}-${wallIndex}`}>
-                                      <Icon className="w-3 h-3 me-1" />
-                                      {t(wallItemLabels[type].ar, wallItemLabels[type].en)}
-                                    </Button>
+                                    <div key={itemIndex} className="p-2.5 bg-muted/40 rounded-lg border border-border/50 space-y-2">
+                                      <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-1.5">
+                                          <ItemIcon className="w-3.5 h-3.5 text-primary" />
+                                          <span className="text-xs font-semibold">{t(wallItemLabels[item.type]?.ar || "", wallItemLabels[item.type]?.en || "")}</span>
+                                        </div>
+                                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => removeWallItem(editSpace.id, activeWall.id, itemIndex)}>
+                                          <Trash2 className="w-3 h-3 text-destructive" />
+                                        </Button>
+                                      </div>
+                                      {isDoorOrWindow && (
+                                        <div className="grid grid-cols-3 gap-1.5">
+                                          <div>
+                                            <Label className="text-[10px] text-muted-foreground">{t("العرض م", "W (m)")}</Label>
+                                            <Input type="number" step="0.01" value={item.width} onChange={(e) => updateWallItem(editSpace.id, activeWall.id, itemIndex, "width", e.target.value)} className="h-7 text-xs" />
+                                          </div>
+                                          <div>
+                                            <Label className="text-[10px] text-muted-foreground">{t("الارتفاع م", "H (m)")}</Label>
+                                            <Input type="number" step="0.01" value={item.height} onChange={(e) => updateWallItem(editSpace.id, activeWall.id, itemIndex, "height", e.target.value)} className="h-7 text-xs" />
+                                          </div>
+                                          <div>
+                                            <Label className="text-[10px] text-muted-foreground">{t("بُعد عن الحرف الأول م", "From Edge (m)")}</Label>
+                                            <Input type="number" step="0.01" value={item.distanceFromFirst} onChange={(e) => updateWallItem(editSpace.id, activeWall.id, itemIndex, "distanceFromFirst", e.target.value)} className="h-7 text-xs" />
+                                          </div>
+                                        </div>
+                                      )}
+                                      {isDoorOrWindow && distFromSecond !== null && (
+                                        <p className="text-[10px] text-muted-foreground">
+                                          {t("بُعد عن الحرف الثاني", "From Second Edge")}: <span className="font-semibold text-foreground">{distFromSecond} م</span>
+                                        </p>
+                                      )}
+                                      {isOutletOrDrain && (
+                                        <div className="grid grid-cols-2 gap-1.5">
+                                          <div>
+                                            <Label className="text-[10px] text-muted-foreground">{t("ارتفاع عن الأرضية م", "From Floor (m)")}</Label>
+                                            <Input type="number" step="0.01" value={item.heightFromFloor} onChange={(e) => updateWallItem(editSpace.id, activeWall.id, itemIndex, "heightFromFloor", e.target.value)} className="h-7 text-xs" />
+                                          </div>
+                                          <div>
+                                            <Label className="text-[10px] text-muted-foreground">{t("بُعد عن الحرف الأول م", "From Edge (m)")}</Label>
+                                            <Input type="number" step="0.01" value={item.distanceFromFirst} onChange={(e) => updateWallItem(editSpace.id, activeWall.id, itemIndex, "distanceFromFirst", e.target.value)} className="h-7 text-xs" />
+                                          </div>
+                                        </div>
+                                      )}
+                                      {isOutletOrDrain && heightFromCeiling !== null && (
+                                        <p className="text-[10px] text-muted-foreground">
+                                          {t("مسافة من السقف", "From Ceiling")}: <span className="font-semibold text-foreground">{heightFromCeiling} م</span>
+                                        </p>
+                                      )}
+                                      {item.type === "outlet" && (
+                                        <div>
+                                          <Label className="text-[10px] text-muted-foreground mb-1 block">{t("نوع مخرج الكهرباء", "Outlet Type")}</Label>
+                                          <div className="flex flex-wrap gap-1">
+                                            {OUTLET_SPECS.map((spec) => {
+                                              const selected = item.specs.split(",").map((s) => s.trim()).filter(Boolean).includes(spec.value);
+                                              return (
+                                                <button key={spec.value} type="button"
+                                                  onClick={() => {
+                                                    const current = item.specs.split(",").map((s) => s.trim()).filter(Boolean);
+                                                    const next = selected ? current.filter((v) => v !== spec.value) : [...current, spec.value];
+                                                    updateWallItem(editSpace.id, activeWall.id, itemIndex, "specs", next.join(","));
+                                                  }}
+                                                  className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${selected ? "bg-primary text-primary-foreground border-primary" : "bg-background text-muted-foreground border-border hover:border-primary/50"}`}
+                                                >{t(spec.ar, spec.en)}</button>
+                                              );
+                                            })}
+                                          </div>
+                                        </div>
+                                      )}
+                                      {item.type === "drain" && (
+                                        <div>
+                                          <Label className="text-[10px] text-muted-foreground">{t("مواصفات", "Specs")}</Label>
+                                          <Input value={item.specs} onChange={(e) => updateWallItem(editSpace.id, activeWall.id, itemIndex, "specs", e.target.value)} placeholder={t("مثال: فتحة تصريف مياه", "e.g. drain opening")} className="h-7 text-xs" />
+                                        </div>
+                                      )}
+                                      {item.type === "obstacle" && (
+                                        <div>
+                                          <Label className="text-[10px] text-muted-foreground">{t("وصف العائق", "Obstacle Description")}</Label>
+                                          <Input value={item.notes} onChange={(e) => updateWallItem(editSpace.id, activeWall.id, itemIndex, "notes", e.target.value)} placeholder={t("وصف العائق", "Describe obstacle")} className="h-7 text-xs" />
+                                        </div>
+                                      )}
+                                    </div>
                                   );
                                 })}
                               </div>
-                            </CardContent>
-                          </Card>
-                        );
-                      })}
+                            )}
 
-                      {/* Add another space button in walls sub-step */}
-                      <Button
-                        variant="outline"
-                        className="w-full border-dashed"
-                        onClick={() => {
-                          performAutoSave();
-                          const s = newSpace();
-                          s.name = t(`المكان ${spaces.length + 1}`, `Space ${spaces.length + 1}`);
-                          const updated = [...spaces, s];
-                          setSpaces(updated);
-                          setActiveWallSpaceId(s.id);
-                          setSubStep("info");
-                        }}
-                        data-testid="button-add-space"
-                      >
-                        <Plus className="w-4 h-4 me-2" />
-                        {t("إضافة مكان آخر", "Add Another Space")}
-                      </Button>
-                    </div>
-                  )}
+                            {/* Add item buttons */}
+                            <div className="flex flex-wrap gap-1.5 pt-1 border-t border-border/40">
+                              <span className="text-[10px] text-muted-foreground self-center w-full mb-0.5">{t("إضافة عنصر للجدار", "Add to wall")}:</span>
+                              {(["door", "window", "outlet", "drain", "obstacle"] as WallItem["type"][]).map((type) => {
+                                const Icon = wallItemIcons[type];
+                                return (
+                                  <Button key={type} variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => addWallItem(editSpace.id, activeWall.id, type)} data-testid={`button-add-${type}-${activeWallIndex}`}>
+                                    <Icon className="w-3 h-3 me-1" />
+                                    {t(wallItemLabels[type].ar, wallItemLabels[type].en)}
+                                  </Button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </CardContent>
               </Card>
+            )}
+
+            {/* Add another space — visible in walls sub-step */}
+            {subStep === "walls" && (
+              <button
+                onClick={() => {
+                  performAutoSave();
+                  const s = newSpace();
+                  s.name = t(`المكان ${spaces.length + 1}`, `Space ${spaces.length + 1}`);
+                  const updated = [...spaces, s];
+                  setSpaces(updated);
+                  setActiveWallSpaceId(s.id);
+                  setSubStep("info");
+                }}
+                className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl border-2 border-dashed border-primary/40 text-primary hover:bg-primary/5 hover:border-primary/70 transition-all text-sm font-medium"
+                data-testid="button-add-space"
+              >
+                <Plus className="w-4 h-4" />
+                {t("إضافة غرفة أخرى", "Add Another Room")}
+              </button>
             )}
 
           </div>
