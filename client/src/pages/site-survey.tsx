@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLanguage } from "@/components/language-provider";
 import { useAuth } from "@/hooks/use-auth";
@@ -245,6 +245,7 @@ export default function SiteSurveyPage() {
   const [subStep, setSubStep] = useState<SubStep>("info");
   const [autoSavePending, setAutoSavePending] = useState(false);
   const [autoSaveError, setAutoSaveError] = useState(false);
+  const autoSaveDirtyRef = useRef(false);
   const [productSearchDialog, setProductSearchDialog] = useState(false);
   const [productSearch, setProductSearch] = useState("");
   const [selectedGroup, setSelectedGroup] = useState("all");
@@ -339,15 +340,19 @@ export default function SiteSurveyPage() {
       setSavedSurveyId((prev) => prev || saved?.id || null);
       queryClient.invalidateQueries({ queryKey: ["/api/site-surveys"] });
       queryClient.invalidateQueries({ queryKey: ["/api/appointments", appointmentId, "site-survey"] });
+      if (autoSaveDirtyRef.current) {
+        autoSaveDirtyRef.current = false;
+        performAutoSaveNow();
+      }
     },
     onError: () => {
       setAutoSavePending(false);
       setAutoSaveError(true);
+      autoSaveDirtyRef.current = false;
     },
   });
 
-  function performAutoSave(currentSpaces?: SpaceData[]) {
-    if (autoSaveMutation.isPending) return;
+  function performAutoSaveNow(currentSpaces?: SpaceData[]) {
     const data = {
       appointmentId,
       customerId: appointment?.customerId || null,
@@ -358,6 +363,14 @@ export default function SiteSurveyPage() {
       photos,
     };
     autoSaveMutation.mutate(data);
+  }
+
+  function performAutoSave(currentSpaces?: SpaceData[]) {
+    if (autoSaveMutation.isPending) {
+      autoSaveDirtyRef.current = true;
+      return;
+    }
+    performAutoSaveNow(currentSpaces);
   }
 
   const saveMutation = useMutation({
