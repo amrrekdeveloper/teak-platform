@@ -3425,7 +3425,7 @@ export async function registerRoutes(
         return res.status(403).json({ message: "غير مصرح - عرض السعر ليس مخصصاً لك" });
       }
 
-      const updated = await storage.updateQuotation(quotation.id, { status: "sent" });
+      const updated = await storage.updateQuotation(quotation.id, { status: "sent", orderStage: "sent" });
 
       const customer = await storage.getCustomer(quotation.customerId);
       const staffUsers = (await storage.getUsers()).filter(u => ["owner", "assistant", "sales"].includes(u.role));

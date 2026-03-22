@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { ORDER_STAGE_VALUES } from "@shared/schema";
 import { useRoute, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useLanguage } from "@/components/language-provider";
@@ -35,8 +36,7 @@ function getOrderStage(
   siteSurveysAll: any[],
   apptByQuotation: Record<number, any>
 ): PipelineStage {
-  const validStages: PipelineStage[] = ["new", "appointment", "survey", "sent", "approved", "production", "delivered", "rejected", "cancelled"];
-  if (q.orderStage && validStages.includes(q.orderStage as PipelineStage)) return q.orderStage as PipelineStage;
+  if (q.orderStage && (ORDER_STAGE_VALUES as readonly string[]).includes(q.orderStage)) return q.orderStage as PipelineStage;
   if (q.status === "cancelled") return "cancelled";
   if (q.status === "rejected" || q.status === "expired") return "rejected";
   if (q.status === "approved") {
@@ -153,7 +153,9 @@ export default function OrderDetailPage() {
   const linkedSurveys = (siteSurveys as any[]).filter((s: any) => s.quotationId === quotation.id || (linkedAppt && s.appointmentId === linkedAppt.id));
   const linkedContract = (contracts as any[]).find((c: any) => c.quotationId === quotation.id);
   const linkedWorkOrder = linkedContract ? (workOrders as any[]).find((w: any) => w.contractId === linkedContract.id) : null;
-  const orderPayments = (payments as any[]).filter((p: any) => p.quotationId === quotation.id);
+  const orderPayments = linkedContract
+    ? (payments as any[]).filter((p: any) => p.contractId === linkedContract.id)
+    : [];
 
   const allOrderAppts = (appointments as any[]).filter((a: any) => a.quotationId === quotation.id)
     .sort((a: any, b: any) => new Date(`${a.appointmentDate}T${a.startTime || "00:00"}`).getTime() - new Date(`${b.appointmentDate}T${b.startTime || "00:00"}`).getTime());

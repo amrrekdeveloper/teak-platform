@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
+import { ORDER_STAGE_VALUES } from "@shared/schema";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLanguage } from "@/components/language-provider";
@@ -86,8 +87,7 @@ function getOrderStage(
   siteSurveys: any[],
   apptByQuotation: Record<number, any>
 ): PipelineStage {
-  const validStages: PipelineStage[] = ["new", "appointment", "survey", "sent", "approved", "production", "delivered", "rejected", "cancelled"];
-  if (q.orderStage && validStages.includes(q.orderStage as PipelineStage)) {
+  if (q.orderStage && (ORDER_STAGE_VALUES as readonly string[]).includes(q.orderStage)) {
     return q.orderStage as PipelineStage;
   }
   if (q.status === "cancelled") return "cancelled";

@@ -197,6 +197,19 @@ export const quotationStatusEnum = pgEnum("quotation_status", [
   "cancelled",
 ]);
 
+export const ORDER_STAGE_VALUES = [
+  "new",
+  "appointment",
+  "survey",
+  "sent",
+  "approved",
+  "production",
+  "delivered",
+  "rejected",
+  "cancelled",
+] as const;
+export type OrderStageValue = typeof ORDER_STAGE_VALUES[number];
+
 export const quotations = pgTable("quotations", {
   id: serial("id").primaryKey(),
   quotationNumber: serial("quotation_number"),
