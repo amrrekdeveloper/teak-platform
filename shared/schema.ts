@@ -205,7 +205,10 @@ export const ORDER_STAGE_VALUES = [
   "quote_sent",
   "quote_approved",
   "in_production",
+  "ready_for_delivery",
   "delivered",
+  "installed",
+  "completed",
   "rejected",
   "cancelled",
 ] as const;
@@ -246,6 +249,8 @@ export const quotations = pgTable("quotations", {
   paymentReceiptName: text("payment_receipt_name"),
   approvedBy: integer("approved_by").references(() => users.id),
   approvedAt: timestamp("approved_at"),
+  warrantyMonths: integer("warranty_months").default(24),
+  paymentInstallments: jsonb("payment_installments").default([]),
   createdBy: integer("created_by").references(() => users.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -259,6 +264,47 @@ export const insertQuotationSchema = createInsertSchema(quotations).omit({
 });
 export type InsertQuotation = z.infer<typeof insertQuotationSchema>;
 export type Quotation = typeof quotations.$inferSelect;
+
+export const paymentScheduleStatusEnum = pgEnum("payment_schedule_status", [
+  "pending",
+  "due",
+  "paid",
+  "overdue",
+]);
+
+export const paymentScheduleTriggerEnum = pgEnum("payment_schedule_trigger", [
+  "on_approval",
+  "on_production",
+  "on_delivery",
+  "on_installation",
+  "on_completion",
+]);
+
+export const paymentSchedules = pgTable("payment_schedules", {
+  id: serial("id").primaryKey(),
+  quotationId: integer("quotation_id").references(() => quotations.id).notNull(),
+  contractId: integer("contract_id"),
+  customerId: integer("customer_id").references(() => customers.id).notNull(),
+  installmentNumber: integer("installment_number").notNull(),
+  amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+  percentage: decimal("percentage", { precision: 5, scale: 2 }),
+  triggerStage: paymentScheduleTriggerEnum("trigger_stage").notNull(),
+  dueDate: date("due_date"),
+  status: paymentScheduleStatusEnum("status").notNull().default("pending"),
+  paidAt: timestamp("paid_at"),
+  paymentMethod: text("payment_method"),
+  receiptData: text("receipt_data"),
+  confirmedBy: integer("confirmed_by").references(() => users.id),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertPaymentScheduleSchema = createInsertSchema(paymentSchedules).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertPaymentSchedule = z.infer<typeof insertPaymentScheduleSchema>;
+export type PaymentSchedule = typeof paymentSchedules.$inferSelect;
 
 export const contractStatusEnum = pgEnum("contract_status", [
   "active",
@@ -790,6 +836,8 @@ export const warranties = pgTable("warranties", {
   contractId: integer("contract_id").references(() => contracts.id),
   workOrderId: integer("work_order_id").references(() => workOrders.id),
   customerId: integer("customer_id").references(() => customers.id).notNull(),
+  quotationId: integer("quotation_id").references(() => quotations.id),
+  durationMonths: integer("duration_months").default(24),
   startDate: date("start_date").notNull(),
   endDate: date("end_date").notNull(),
   terms: text("terms"),

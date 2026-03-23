@@ -42,6 +42,7 @@ import {
   insertDesignAssignmentSchema, insertWarrantySchema,
   productionStages,
   type OrderStageValue,
+  type PaymentSchedule,
 } from "@shared/schema";
 
 async function setOrderStage(quotationId: number, stage: OrderStageValue) {
@@ -49,6 +50,38 @@ async function setOrderStage(quotationId: number, stage: OrderStageValue) {
     await storage.updateQuotation(quotationId, { orderStage: stage });
   } catch (e) {
     console.warn(`setOrderStage(${quotationId}, ${stage}) failed:`, e);
+  }
+}
+
+async function materializePaymentSchedules(quotationId: number, customerId: number, contractId: number) {
+  try {
+    const quotation = await storage.getQuotation(quotationId);
+    const installments = (quotation as any)?.paymentInstallments;
+    if (!Array.isArray(installments) || installments.length === 0) return;
+
+    const finalPrice = parseFloat((quotation as any)?.finalPrice || (quotation as any)?.totalPrice || (quotation as any)?.subtotal || "0") || 0;
+    const existing = await storage.getPaymentSchedulesByQuotation(quotationId);
+    if (existing.length > 0) return;
+
+    for (let i = 0; i < installments.length; i++) {
+      const inst = installments[i];
+      const pct = parseFloat(inst.percentage) || 0;
+      const amount = finalPrice > 0 ? ((pct / 100) * finalPrice).toFixed(2) : "0";
+      await storage.createPaymentSchedule({
+        quotationId,
+        customerId,
+        contractId,
+        installmentNumber: i + 1,
+        amount,
+        percentage: String(pct),
+        triggerStage: inst.triggerStage || "on_approval",
+        dueDate: null,
+        status: inst.triggerStage === "on_approval" ? "due" : "pending",
+        notes: inst.label || null,
+      } as any);
+    }
+  } catch (e) {
+    console.warn("materializePaymentSchedules failed:", e);
   }
 }
 
@@ -292,6 +325,54 @@ export async function registerRoutes(
     await db.execute(`ALTER TABLE survey_design_files ALTER COLUMN file_data DROP NOT NULL`);
   } catch (designFilesMigrationError) {
     console.warn("Survey design files table migration (non-fatal):", designFilesMigrationError instanceof Error ? designFilesMigrationError.message : String(designFilesMigrationError));
+  }
+
+  // Task #30: DB migrations for payment_schedules, warranty_months, payment_installments
+  try {
+    await db.execute(`
+      ALTER TABLE quotations ADD COLUMN IF NOT EXISTS warranty_months INTEGER DEFAULT 24;
+      ALTER TABLE quotations ADD COLUMN IF NOT EXISTS payment_installments JSONB DEFAULT '[]';
+    `);
+    await db.execute(`
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'payment_schedule_status') THEN
+          CREATE TYPE payment_schedule_status AS ENUM ('pending','due','paid','overdue');
+        END IF;
+      END $$;
+    `);
+    await db.execute(`
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'payment_schedule_trigger') THEN
+          CREATE TYPE payment_schedule_trigger AS ENUM ('on_approval','on_production','on_delivery','on_installation','on_completion');
+        END IF;
+      END $$;
+    `);
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS payment_schedules (
+        id SERIAL PRIMARY KEY,
+        quotation_id INTEGER NOT NULL REFERENCES quotations(id),
+        contract_id INTEGER,
+        customer_id INTEGER NOT NULL REFERENCES customers(id),
+        installment_number INTEGER NOT NULL,
+        amount NUMERIC(12,2) NOT NULL,
+        percentage NUMERIC(5,2),
+        trigger_stage TEXT NOT NULL,
+        due_date DATE,
+        status TEXT NOT NULL DEFAULT 'pending',
+        paid_at TIMESTAMP,
+        payment_method TEXT,
+        receipt_data TEXT,
+        confirmed_by INTEGER REFERENCES users(id),
+        notes TEXT,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    `);
+    await db.execute(`
+      ALTER TABLE warranties ADD COLUMN IF NOT EXISTS duration_months INTEGER DEFAULT 24;
+      ALTER TABLE warranties ADD COLUMN IF NOT EXISTS quotation_id INTEGER REFERENCES quotations(id);
+    `);
+  } catch (task30MigrationError) {
+    console.warn("Task #30 migration warning (non-fatal):", task30MigrationError instanceof Error ? task30MigrationError.message : String(task30MigrationError));
   }
 
   // Startup cleanup: delete orphaned empty draft quotations older than 1 hour.
@@ -1209,6 +1290,10 @@ export async function registerRoutes(
         });
       }
 
+      if (contract) {
+        await materializePaymentSchedules(quotationId, quotation.customerId, contract.id);
+      }
+
       res.json({ ...updated, contract });
     } catch (error) {
       console.error("Approve quotation error:", error);
@@ -1989,7 +2074,7 @@ export async function registerRoutes(
 
   // ==================== WORK ORDERS ====================
 
-  app.get("/api/work-orders", requireAuth, requireRole("owner", "assistant", "production", "designer", "sales"), async (req, res) => {
+  app.get("/api/work-orders", requireAuth, requireRole("owner", "assistant", "production", "designer", "sales", "delivery", "installation"), async (req, res) => {
     try {
       const allOrders = await storage.getWorkOrders();
       const status = req.query.status as string | undefined;
@@ -2000,7 +2085,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/work-orders/:id", requireAuth, requireRole("owner", "assistant", "production", "designer", "sales"), async (req, res) => {
+  app.get("/api/work-orders/:id", requireAuth, requireRole("owner", "assistant", "production", "designer", "sales", "delivery", "installation"), async (req, res) => {
     try {
       const wo = await storage.getWorkOrder(parseInt(req.params.id));
       if (!wo) return res.status(404).json({ message: "أمر العمل غير موجود", messageEn: "Work order not found" });
@@ -2380,19 +2465,28 @@ export async function registerRoutes(
         return res.status(404).json({ message: "أمر العمل غير موجود", messageEn: "Work order not found" });
       }
 
+      const contract = workOrder.contractId ? await storage.getContract(workOrder.contractId) : null;
+      const quotation = contract?.quotationId ? await storage.getQuotation(contract.quotationId) : null;
+      const warrantyMonths = (quotation as any)?.warrantyMonths || 24;
+
       const today = new Date();
       const warrantyEnd = new Date(today);
-      warrantyEnd.setFullYear(warrantyEnd.getFullYear() + 2);
+      warrantyEnd.setMonth(warrantyEnd.getMonth() + warrantyMonths);
 
-      const warranty = await storage.createWarranty({
+      const existingWarranties = await storage.getWarranties();
+      const alreadyExists = existingWarranties.find(w => w.workOrderId === workOrder.id);
+
+      const warranty = alreadyExists || await storage.createWarranty({
         contractId: workOrder.contractId,
         workOrderId: workOrder.id,
         customerId: workOrder.customerId,
+        quotationId: contract?.quotationId || null,
+        durationMonths: warrantyMonths,
         startDate: today.toISOString().split("T")[0],
         endDate: warrantyEnd.toISOString().split("T")[0],
-        terms: "ضمان سنتين على التركيب والتصنيع - Two year warranty on installation and manufacturing",
+        terms: `ضمان ${warrantyMonths} شهراً على التركيب والتصنيع - ${warrantyMonths}-month warranty on installation and manufacturing`,
         status: "active",
-      });
+      } as any);
 
       const customer = await storage.getCustomer(workOrder.customerId);
       const allUsers = await storage.getUsers();
@@ -2807,6 +2901,8 @@ export async function registerRoutes(
           messageEn: `Customer ${customer.fullName} approved quotation #${quotation.id}`,
         });
       }
+
+      await materializePaymentSchedules(quotation.id, customer.id, contract.id);
 
       res.json({ message: "تم اعتماد عرض السعر بنجاح", messageEn: "Quotation approved successfully", contract });
     } catch (error) { console.error(error); res.status(500).json({ message: "حدث خطأ", messageEn: "Error approving quotation" }); }
@@ -4385,6 +4481,163 @@ export async function registerRoutes(
   // ══════════════════════════════════════════════════════════════════════════
   // TASK #5: Financial Manager — approved orders ready for invoicing
   // ══════════════════════════════════════════════════════════════════════════
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // TASK #30: Lifecycle Stage Advancement
+  // ══════════════════════════════════════════════════════════════════════════
+
+  app.patch("/api/work-orders/:id/advance-stage", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const sessionUserId = (req.session as any).userId;
+      const user = sessionUserId ? await storage.getUser(sessionUserId) : null;
+      if (!user) return res.status(401).json({ message: "غير مصادق" });
+      const wo = await storage.getWorkOrder(id);
+      if (!wo) return res.status(404).json({ message: "أمر العمل غير موجود" });
+
+      const currentStatus = wo.status;
+      const stageFlow: Record<string, { next: string; allowedRoles: string[]; quotationStage: OrderStageValue; triggerStage?: string }> = {
+        pending:      { next: "in_production",     allowedRoles: ["owner","assistant","production"],   quotationStage: "in_production",     triggerStage: "on_production" },
+        in_production:{ next: "ready",             allowedRoles: ["owner","assistant","production"],   quotationStage: "ready_for_delivery" },
+        ready:        { next: "delivered",         allowedRoles: ["owner","assistant","delivery"],     quotationStage: "delivered",          triggerStage: "on_delivery" },
+        delivered:    { next: "installed",         allowedRoles: ["owner","assistant","installation"], quotationStage: "installed",          triggerStage: "on_installation" },
+        installed:    { next: "completed",         allowedRoles: ["owner","assistant"],               quotationStage: "completed",          triggerStage: "on_completion" },
+      };
+
+      const transition = stageFlow[currentStatus];
+      if (!transition) return res.status(400).json({ message: "لا يمكن تقديم هذا الأمر" });
+
+      if (!transition.allowedRoles.includes(user.role)) {
+        return res.status(403).json({ message: "غير مصرح بهذا الإجراء" });
+      }
+
+      const updatedWO = await storage.updateWorkOrder(id, { status: transition.next as any });
+
+      // Update quotation order stage
+      const contract = wo.contractId ? await storage.getContract(wo.contractId) : null;
+      if (contract?.quotationId) {
+        await setOrderStage(contract.quotationId, transition.quotationStage);
+      }
+
+      // Mark triggered payment schedules as "due"
+      if (transition.triggerStage && contract?.quotationId) {
+        try {
+          const schedules = await storage.getPaymentSchedulesByQuotation(contract.quotationId);
+          for (const s of schedules) {
+            if (s.triggerStage === transition.triggerStage && s.status === "pending") {
+              await storage.updatePaymentSchedule(s.id, { status: "due" });
+            }
+          }
+        } catch (scheduleErr) {
+          console.warn("Payment schedule update warning:", scheduleErr);
+        }
+      }
+
+      // Auto-create warranty on "completed"
+      if (transition.next === "completed" && contract) {
+        try {
+          const quotation = contract.quotationId ? await storage.getQuotation(contract.quotationId) : null;
+          const warrantyMonths = (quotation as any)?.warrantyMonths || 24;
+          const today = new Date().toISOString().split("T")[0];
+          const endDate = new Date();
+          endDate.setMonth(endDate.getMonth() + warrantyMonths);
+          const endDateStr = endDate.toISOString().split("T")[0];
+
+          const existingWarranties = await storage.getWarranties();
+          const alreadyExists = existingWarranties.find(w => w.workOrderId === id);
+          if (!alreadyExists) {
+            const warranty = await storage.createWarranty({
+              contractId: contract.id,
+              workOrderId: id,
+              customerId: wo.customerId,
+              quotationId: contract.quotationId || null,
+              durationMonths: warrantyMonths,
+              startDate: today,
+              endDate: endDateStr,
+              terms: `ضمان ${warrantyMonths} شهراً على التركيب والتصنيع - ${warrantyMonths}-month warranty on installation and manufacturing`,
+              status: "active",
+            } as any);
+
+            const ownerUsers = (await storage.getUsers()).filter(u => ["owner", "assistant"].includes(u.role));
+            for (const ou of ownerUsers) {
+              await storage.createNotification({
+                userId: ou.id,
+                titleAr: "تم إكمال الطلب وإنشاء شهادة الضمان",
+                titleEn: "Order Completed - Warranty Created",
+                messageAr: `تم إكمال أمر العمل #${wo.orderNumber} وإنشاء شهادة ضمان لمدة ${warrantyMonths} شهراً`,
+                messageEn: `Work order #${wo.orderNumber} completed and ${warrantyMonths}-month warranty created`,
+                type: "success",
+                relatedEntity: "warranty",
+                relatedId: warranty.id,
+                isRead: false,
+              });
+            }
+          }
+        } catch (warrantyErr) {
+          console.warn("Warranty creation warning:", warrantyErr);
+        }
+      }
+
+      res.json({ workOrder: updatedWO, message: "تم تحديث مرحلة الطلب" });
+    } catch (error) {
+      console.error("Advance stage error:", error);
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  // ── Payment Schedules CRUD ────────────────────────────────────────────────
+
+  app.get("/api/payment-schedules/quotation/:quotationId", requireRole("owner", "assistant", "accountant", "sales"), async (req, res) => {
+    try {
+      const quotationId = parseInt(req.params.quotationId);
+      const quotation = await storage.getQuotation(quotationId);
+      if (!quotation) return res.status(404).json({ message: "غير موجود" });
+      const schedules = await storage.getPaymentSchedulesByQuotation(quotationId);
+      res.json(schedules);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  app.post("/api/payment-schedules", requireRole("owner", "assistant", "sales"), async (req, res) => {
+    try {
+      const { quotationId, customerId, installmentNumber, amount, percentage, triggerStage, dueDate, notes } = req.body;
+      if (!quotationId || !customerId || !amount || !triggerStage) {
+        return res.status(400).json({ message: "بيانات ناقصة" });
+      }
+      const ps = await storage.createPaymentSchedule({
+        quotationId, customerId, installmentNumber: installmentNumber || 1,
+        amount: String(amount), percentage: percentage ? String(percentage) : null,
+        triggerStage, dueDate: dueDate || null, status: "pending", notes: notes || null,
+      } as any);
+      res.status(201).json(ps);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  app.patch("/api/payment-schedules/:id", requireRole("owner", "assistant", "accountant"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const updated = await storage.updatePaymentSchedule(id, req.body);
+      if (!updated) return res.status(404).json({ message: "غير موجود" });
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  // ── Customer portal: payment schedules ───────────────────────────────────
+
+  app.get("/api/customer-portal/payment-schedules", requirePortalAuth, async (req, res) => {
+    try {
+      const customer = (req as any).portalCustomer;
+      const schedules = await storage.getPaymentSchedulesByCustomer(customer.id);
+      res.json(schedules);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
 
   app.get("/api/finance/ready-to-invoice", requireRole("owner", "assistant", "accountant"), async (req, res) => {
     try {

@@ -7,6 +7,7 @@ import {
   woodTypes, type WoodType, type InsertWoodType,
   doorTypes, type DoorType, type InsertDoorType,
   quotations, type Quotation, type InsertQuotation,
+  paymentSchedules, type PaymentSchedule, type InsertPaymentSchedule,
   contracts, type Contract, type InsertContract,
   payments, type Payment, type InsertPayment,
   invoices, type Invoice, type InsertInvoice,
@@ -186,6 +187,13 @@ export interface IStorage {
   getPasswordResetRequests(status?: string): Promise<PasswordResetRequest[]>;
   createPasswordResetRequest(req: InsertPasswordResetRequest): Promise<PasswordResetRequest>;
   resolvePasswordResetRequest(id: number, resolvedBy: number): Promise<PasswordResetRequest | undefined>;
+
+  // Payment Schedules (Task #30)
+  getPaymentSchedulesByQuotation(quotationId: number): Promise<PaymentSchedule[]>;
+  getPaymentSchedulesByContract(contractId: number): Promise<PaymentSchedule[]>;
+  createPaymentSchedule(ps: InsertPaymentSchedule): Promise<PaymentSchedule>;
+  updatePaymentSchedule(id: number, data: Partial<InsertPaymentSchedule>): Promise<PaymentSchedule | undefined>;
+  getPaymentSchedulesByCustomer(customerId: number): Promise<PaymentSchedule[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -804,6 +812,28 @@ export class DatabaseStorage implements IStorage {
   async resolvePasswordResetRequest(id: number, resolvedBy: number): Promise<PasswordResetRequest | undefined> {
     const [updated] = await db.update(passwordResetRequests).set({ status: "resolved", resolvedBy, resolvedAt: new Date() }).where(eq(passwordResetRequests.id, id)).returning();
     return updated;
+  }
+
+  async getPaymentSchedulesByQuotation(quotationId: number): Promise<PaymentSchedule[]> {
+    return db.select().from(paymentSchedules).where(eq(paymentSchedules.quotationId, quotationId)).orderBy(paymentSchedules.installmentNumber);
+  }
+
+  async getPaymentSchedulesByContract(contractId: number): Promise<PaymentSchedule[]> {
+    return db.select().from(paymentSchedules).where(eq(paymentSchedules.contractId, contractId)).orderBy(paymentSchedules.installmentNumber);
+  }
+
+  async createPaymentSchedule(ps: InsertPaymentSchedule): Promise<PaymentSchedule> {
+    const [created] = await db.insert(paymentSchedules).values(ps).returning();
+    return created;
+  }
+
+  async updatePaymentSchedule(id: number, data: Partial<InsertPaymentSchedule>): Promise<PaymentSchedule | undefined> {
+    const [updated] = await db.update(paymentSchedules).set(data).where(eq(paymentSchedules.id, id)).returning();
+    return updated;
+  }
+
+  async getPaymentSchedulesByCustomer(customerId: number): Promise<PaymentSchedule[]> {
+    return db.select().from(paymentSchedules).where(eq(paymentSchedules.customerId, customerId)).orderBy(paymentSchedules.installmentNumber);
   }
 }
 

@@ -1,13 +1,17 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLanguage } from "@/components/language-provider";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 import { Link } from "wouter";
 import type { WorkOrder, Customer } from "@shared/schema";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { DeliveryCountdown } from "@/components/delivery-countdown";
 import {
   Loader2, Factory, AlertTriangle, CheckCircle2, Clock, Play,
-  Package, TrendingUp
+  Package, TrendingUp, PackageCheck
 } from "lucide-react";
 
 const statusGroups = [
@@ -47,6 +51,8 @@ const statusGroups = [
 
 export default function ProductionPage() {
   const { t } = useLanguage();
+  const { toast } = useToast();
+  const { user } = useAuth();
 
   const { data: workOrders = [], isLoading } = useQuery<WorkOrder[]>({
     queryKey: ["/api/work-orders"],
@@ -55,6 +61,19 @@ export default function ProductionPage() {
   const { data: customers = [] } = useQuery<Customer[]>({
     queryKey: ["/api/customers"],
   });
+
+  const advanceStageMutation = useMutation({
+    mutationFn: (woId: number) => apiRequest("PATCH", `/api/work-orders/${woId}/advance-stage`, {}),
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/work-orders"] });
+      toast({ title: data?.message || t("تم تحديث مرحلة الطلب", "Stage advanced") });
+    },
+    onError: (err: any) => {
+      toast({ title: err?.message || t("حدث خطأ", "Error"), variant: "destructive" });
+    },
+  });
+
+  const canAdvanceProduction = user && ["owner", "assistant", "production"].includes(user.role);
 
   const getCustomerName = (customerId: number | null) => {
     if (!customerId) return "";
@@ -143,9 +162,9 @@ export default function ProductionPage() {
                   </p>
                 ) : (
                   groupOrders.map(wo => (
-                    <Link key={wo.id} href={`/work-orders/${wo.id}`}>
-                      <Card className="cursor-pointer hover:shadow-sm transition-shadow" data-testid={`board-card-${wo.id}`}>
-                        <CardContent className="p-3">
+                    <Card key={wo.id} className="cursor-pointer hover:shadow-sm transition-shadow" data-testid={`board-card-${wo.id}`}>
+                      <CardContent className="p-3">
+                        <Link href={`/work-orders/${wo.id}`}>
                           <div className="flex items-center justify-between mb-1">
                             <span className="text-xs font-bold">#{wo.orderNumber}</span>
                             {wo.priority === "urgent" && (
@@ -166,9 +185,29 @@ export default function ProductionPage() {
                               {new Date(wo.dueDate).toLocaleDateString("ar-SA")}
                             </p>
                           ) : null}
-                        </CardContent>
-                      </Card>
-                    </Link>
+                        </Link>
+                        {canAdvanceProduction && wo.status === "in_production" && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="w-full mt-2 h-7 text-xs text-green-700 border-green-300 hover:bg-green-50"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              advanceStageMutation.mutate(wo.id);
+                            }}
+                            disabled={advanceStageMutation.isPending}
+                            data-testid={`button-ready-${wo.id}`}
+                          >
+                            {advanceStageMutation.isPending
+                              ? <Loader2 className="w-3 h-3 animate-spin me-1" />
+                              : <PackageCheck className="w-3 h-3 me-1" />
+                            }
+                            {t("جاهز للتوصيل", "Ready for Delivery")}
+                          </Button>
+                        )}
+                      </CardContent>
+                    </Card>
                   ))
                 )}
               </div>

@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLanguage } from "@/components/language-provider";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 import type { Installation, MaintenanceRequest, WorkOrder, Customer } from "@shared/schema";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -40,6 +41,7 @@ const priorityConfig: Record<string, { ar: string; en: string; color: string }> 
 export default function InstallationsPage() {
   const { t } = useLanguage();
   const { toast } = useToast();
+  const { user } = useAuth();
   const [tab, setTab] = useState("installations");
   const [installDialog, setInstallDialog] = useState(false);
   const [maintDialog, setMaintDialog] = useState(false);
@@ -73,6 +75,19 @@ export default function InstallationsPage() {
     mutationFn: ({ id, data }: { id: number; data: any }) => apiRequest("PATCH", `/api/maintenance-requests/${id}`, data),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/maintenance-requests"] }); setDetailMaint(null); toast({ title: t("تم التحديث", "Updated") }); },
   });
+
+  const advanceStageMutation = useMutation({
+    mutationFn: (woId: number) => apiRequest("PATCH", `/api/work-orders/${woId}/advance-stage`, {}),
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/work-orders"] });
+      toast({ title: data?.message || t("تم تحديث مرحلة الطلب", "Stage advanced") });
+    },
+    onError: (err: any) => {
+      toast({ title: err?.message || t("حدث خطأ", "Error"), variant: "destructive" });
+    },
+  });
+
+  const canAdvanceInstall = user && ["owner", "assistant", "installation"].includes(user.role);
 
   const getCustomerName = (id: number | null) => { if (!id) return ""; return customers.find(c => c.id === id)?.fullName || ""; };
 
@@ -204,9 +219,32 @@ export default function InstallationsPage() {
             <div className="space-y-4">
               <div className="flex justify-between"><span className="text-muted-foreground">{t("أمر العمل", "Work Order")}</span><span>#{detailInstall.workOrderId}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">{t("الحالة", "Status")}</span><Badge className={installStatusConfig[detailInstall.status]?.color}>{t(installStatusConfig[detailInstall.status]?.ar, installStatusConfig[detailInstall.status]?.en)}</Badge></div>
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
                 {detailInstall.status === "scheduled" && <Button className="flex-1" onClick={() => updateInstallMutation.mutate({ id: detailInstall.id, data: { status: "in_progress" } })} data-testid="button-start-install"><Play className="w-4 h-4 me-1" />{t("بدء التركيب", "Start")}</Button>}
-                {detailInstall.status === "in_progress" && <Button className="flex-1" onClick={() => updateInstallMutation.mutate({ id: detailInstall.id, data: { status: "completed", completedDate: new Date().toISOString().split("T")[0] } })} data-testid="button-complete-install"><CheckCircle2 className="w-4 h-4 me-1" />{t("إتمام", "Complete")}</Button>}
+                {detailInstall.status === "in_progress" && (
+                  <Button className="flex-1" onClick={async () => {
+                    await updateInstallMutation.mutateAsync({ id: detailInstall.id, data: { status: "completed", completedDate: new Date().toISOString().split("T")[0] } });
+                    if (canAdvanceInstall && detailInstall.workOrderId) {
+                      const wo = workOrders.find(w => w.id === detailInstall.workOrderId);
+                      if (wo && wo.status === "delivered") {
+                        advanceStageMutation.mutate(detailInstall.workOrderId);
+                      }
+                    }
+                  }} disabled={updateInstallMutation.isPending || advanceStageMutation.isPending} data-testid="button-complete-install">
+                    <CheckCircle2 className="w-4 h-4 me-1" />{t("تم التركيب", "Installation Complete")}
+                  </Button>
+                )}
+                {detailInstall.status === "completed" && canAdvanceInstall && (() => {
+                  const wo = workOrders.find(w => w.id === detailInstall.workOrderId);
+                  if (wo && wo.status === "delivered") {
+                    return (
+                      <Button className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white" onClick={() => advanceStageMutation.mutate(detailInstall.workOrderId!)} disabled={advanceStageMutation.isPending} data-testid="button-advance-wo-installed">
+                        <CheckCircle2 className="w-4 h-4 me-1" />{t("تحديث أمر العمل: تم التركيب", "Advance WO to Installed")}
+                      </Button>
+                    );
+                  }
+                  return null;
+                })()}
               </div>
             </div>
           )}

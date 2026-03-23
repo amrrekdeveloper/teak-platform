@@ -11,7 +11,7 @@ import {
   FileText, Receipt, Shield, Wrench, LogOut, CheckCircle2,
   Clock, Eye, Loader2,
   Calendar, Sun, Moon, Share2, Printer,
-  AlertCircle, X, ClipboardList, ChevronDown, ChevronUp,
+  AlertCircle, AlertTriangle, X, ClipboardList, ChevronDown, ChevronUp,
   User, MapPin, Phone, Package, CalendarPlus,
   Palette, ThumbsUp, MessageSquare, Maximize, Image,
   Upload, CreditCard, Banknote, RotateCcw, Download, FileDown, Paperclip,
@@ -2095,7 +2095,7 @@ function InvoicesTab({ invoices, contracts, payments, customerName }: { invoices
   );
 }
 
-function WarrantyTab({ warranties }: { warranties: any[] }) {
+function WarrantyTab({ warranties, onRequestMaintenance }: { warranties: any[]; onRequestMaintenance?: () => void }) {
   const { t } = useLanguage();
   if (!warranties.length) return <EmptyState icon={Shield} titleAr="لا توجد شهادات ضمان" titleEn="No warranty certificates" />;
 
@@ -2104,10 +2104,13 @@ function WarrantyTab({ warranties }: { warranties: any[] }) {
   return (
     <div className="space-y-3">
       {warranties.map((w: any) => {
+        const startDate = w.startDate ? new Date(w.startDate) : null;
         const endDate = w.endDate ? new Date(w.endDate) : null;
         const isExpired = endDate && endDate < now;
         const isActive = w.status === "active" && !isExpired;
         const daysLeft = endDate ? Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)) : null;
+        const totalDays = startDate && endDate ? Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) : null;
+        const progressPct = totalDays && daysLeft !== null ? Math.max(0, Math.min(100, Math.round(((totalDays - (isExpired ? 0 : Math.max(0, daysLeft))) / totalDays) * 100))) : null;
 
         return (
           <Card key={w.id} className={`overflow-hidden ${isActive ? "border-green-200 dark:border-green-900" : isExpired ? "border-red-200 dark:border-red-900" : ""}`} data-testid={`card-warranty-${w.id}`}>
@@ -2128,13 +2131,41 @@ function WarrantyTab({ warranties }: { warranties: any[] }) {
                   <span className="text-muted-foreground flex items-center gap-1"><Calendar className="w-3 h-3" /> {t("نهاية الضمان", "Warranty End")}</span>
                   <span className="font-medium">{w.endDate ? new Date(w.endDate).toLocaleDateString("ar-SA") : "-"}</span>
                 </div>
-                {isActive && daysLeft !== null && daysLeft > 0 && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground flex items-center gap-1"><Clock className="w-3 h-3" /> {t("المتبقي", "Remaining")}</span>
-                    <span className="font-medium text-green-600 dark:text-green-400">{daysLeft} {t("يوم", "days")}</span>
+                {daysLeft !== null && isActive && (
+                  <div className="space-y-1 pt-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground flex items-center gap-1"><Clock className="w-3 h-3" /> {t("المتبقي", "Remaining")}</span>
+                      <span className="font-semibold text-green-600 dark:text-green-400" data-testid={`text-warranty-days-${w.id}`}>
+                        {daysLeft > 0 ? `${daysLeft} ${t("يوم", "days")}` : t("اليوم الأخير", "Last day")}
+                      </span>
+                    </div>
+                    {progressPct !== null && (
+                      <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all ${daysLeft > 180 ? "bg-green-500" : daysLeft > 60 ? "bg-yellow-500" : "bg-red-400"}`}
+                          style={{ width: `${100 - progressPct}%` }}
+                          data-testid={`bar-warranty-${w.id}`}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+                {isExpired && (
+                  <div className="flex items-center gap-1 text-red-500">
+                    <AlertTriangle className="w-3 h-3" />
+                    {t("انتهت صلاحية الضمان", "Warranty expired")}
                   </div>
                 )}
                 {w.terms && <p className="pt-2 border-t text-muted-foreground">{w.terms}</p>}
+                {isActive && onRequestMaintenance && (
+                  <button
+                    onClick={onRequestMaintenance}
+                    className="mt-2 w-full text-center text-primary text-[11px] font-medium py-1.5 border border-primary/30 rounded-md hover:bg-primary/5 transition-colors"
+                    data-testid={`button-warranty-maintenance-${w.id}`}
+                  >
+                    {t("تقديم طلب صيانة / ضمان", "Submit Warranty / Maintenance Request")}
+                  </button>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -2417,7 +2448,7 @@ export default function CustomerPortal() {
           />
         )}
         {activeTab === "invoices" && <InvoicesTab invoices={data.invoices || []} contracts={data.contracts || []} payments={data.payments || []} customerName={data.customer?.fullName} />}
-        {activeTab === "warranty" && <WarrantyTab warranties={data.warranties || []} />}
+        {activeTab === "warranty" && <WarrantyTab warranties={data.warranties || []} onRequestMaintenance={() => setActiveTab("maintenance")} />}
         {activeTab === "maintenance" && (
           <MaintenanceTab
             maintenance={data.maintenance || []}

@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLanguage } from "@/components/language-provider";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 import type { Delivery, WorkOrder } from "@shared/schema";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, Plus, Truck, Clock, CheckCircle2, XCircle, Navigation } from "lucide-react";
+import { Loader2, Plus, Truck, Clock, CheckCircle2, XCircle, Navigation, PackageCheck } from "lucide-react";
 
 const statusConfig: Record<string, { ar: string; en: string; color: string }> = {
   scheduled: { ar: "مجدول", en: "Scheduled", color: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300" },
@@ -24,6 +25,7 @@ const statusConfig: Record<string, { ar: string; en: string; color: string }> = 
 export default function DeliveriesPage() {
   const { t } = useLanguage();
   const { toast } = useToast();
+  const { user } = useAuth();
   const [filter, setFilter] = useState("all");
   const [createOpen, setCreateOpen] = useState(false);
   const [detailItem, setDetailItem] = useState<Delivery | null>(null);
@@ -50,6 +52,20 @@ export default function DeliveriesPage() {
       toast({ title: t("تم تحديث التوصيل", "Delivery updated") });
     },
   });
+
+  const advanceStageMutation = useMutation({
+    mutationFn: (woId: number) => apiRequest("PATCH", `/api/work-orders/${woId}/advance-stage`, {}),
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/work-orders"] });
+      setDetailItem(null);
+      toast({ title: data?.message || t("تم تحديث مرحلة الطلب", "Stage advanced") });
+    },
+    onError: (err: any) => {
+      toast({ title: err?.message || t("حدث خطأ", "Error"), variant: "destructive" });
+    },
+  });
+
+  const canAdvance = user && ["owner", "assistant", "delivery"].includes(user.role);
 
   const filtered = filter === "all" ? deliveries : deliveries.filter(d => d.status === filter);
 
@@ -143,14 +159,33 @@ export default function DeliveriesPage() {
                 )}
                 {detailItem.status === "in_transit" && (
                   <>
-                    <Button className="flex-1" onClick={() => updateMutation.mutate({ id: detailItem.id, data: { status: "delivered", deliveredDate: new Date().toISOString().split("T")[0] } })} disabled={updateMutation.isPending} data-testid="button-mark-delivered">
-                      <CheckCircle2 className="w-4 h-4 me-1" />{t("تم التوصيل", "Delivered")}
+                    <Button className="flex-1" onClick={async () => {
+                      await updateMutation.mutateAsync({ id: detailItem.id, data: { status: "delivered", deliveredDate: new Date().toISOString().split("T")[0] } });
+                      if (canAdvance && detailItem.workOrderId) {
+                        const wo = workOrders.find(w => w.id === detailItem.workOrderId);
+                        if (wo && wo.status === "ready") {
+                          advanceStageMutation.mutate(detailItem.workOrderId);
+                        }
+                      }
+                    }} disabled={updateMutation.isPending || advanceStageMutation.isPending} data-testid="button-mark-delivered">
+                      <CheckCircle2 className="w-4 h-4 me-1" />{t("تم التسليم", "Mark Delivered")}
                     </Button>
                     <Button variant="destructive" className="flex-1" onClick={() => updateMutation.mutate({ id: detailItem.id, data: { status: "failed" } })} disabled={updateMutation.isPending} data-testid="button-mark-failed">
                       <XCircle className="w-4 h-4 me-1" />{t("فشل", "Failed")}
                     </Button>
                   </>
                 )}
+                {detailItem.status === "delivered" && canAdvance && (() => {
+                  const wo = workOrders.find(w => w.id === detailItem.workOrderId);
+                  if (wo && wo.status === "ready") {
+                    return (
+                      <Button className="flex-1 bg-teal-600 hover:bg-teal-700 text-white" onClick={() => advanceStageMutation.mutate(detailItem.workOrderId)} disabled={advanceStageMutation.isPending} data-testid="button-advance-wo-delivered">
+                        <PackageCheck className="w-4 h-4 me-1" />{t("تحديث أمر العمل: تم التسليم", "Advance WO to Delivered")}
+                      </Button>
+                    );
+                  }
+                  return null;
+                })()}
               </div>
             </div>
           )}

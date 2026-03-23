@@ -126,6 +126,9 @@ export default function QuotationBuilderPage() {
   const [discountType, setDiscountType] = useState<"percent" | "fixed">("fixed");
   const [deliveryDays, setDeliveryDays] = useState<number | null>(null);
   const [notes, setNotes] = useState("");
+  const [warrantyMonths, setWarrantyMonths] = useState<number>(24);
+  const [paymentInstallments, setPaymentInstallments] = useState<Array<{ id: string; percentage: number; triggerStage: string; label: string }>>([]);
+  const [showInstallmentsSection, setShowInstallmentsSection] = useState(false);
   const [adekoSearch, setAdekoSearch] = useState("");
   const [adekoDialog, setAdekoDialog] = useState<string | null>(null);
   const [productSearch, setProductSearch] = useState("");
@@ -183,6 +186,16 @@ export default function QuotationBuilderPage() {
       setCustomerId(String(existingQuotation.customerId));
       setNotes(existingQuotation.notes || "");
       setDeliveryDays(existingQuotation.deliveryDays || null);
+      setWarrantyMonths(existingQuotation.warrantyMonths || 24);
+      if (existingQuotation.paymentInstallments && Array.isArray(existingQuotation.paymentInstallments) && existingQuotation.paymentInstallments.length > 0) {
+        setPaymentInstallments(existingQuotation.paymentInstallments.map((inst: any) => ({
+          id: inst.id || (Date.now().toString() + Math.random().toString(36).slice(2)),
+          percentage: inst.percentage || 0,
+          triggerStage: inst.triggerStage || "on_approval",
+          label: inst.label || "",
+        })));
+        setShowInstallmentsSection(true);
+      }
       if (existingQuotation.validUntil) setValidUntilDate(existingQuotation.validUntil);
       setSavedQuotationStatus(existingQuotation.status);
       if (existingQuotation.attachmentData) {
@@ -528,6 +541,13 @@ export default function QuotationBuilderPage() {
     attachmentName: attachmentFile?.name || null,
     attachmentMime: attachmentFile?.mime || null,
     showAttachmentToCustomer,
+    warrantyMonths,
+    paymentInstallments: paymentInstallments.map(inst => ({
+      id: inst.id,
+      percentage: inst.percentage,
+      triggerStage: inst.triggerStage,
+      label: inst.label,
+    })),
   });
 
   const saveMutation = useMutation({
@@ -1406,6 +1426,114 @@ export default function QuotationBuilderPage() {
                   <Label className="text-xs">{t("ملاحظات", "Notes")}</Label>
                   <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} data-testid="input-notes" />
                 </div>
+
+                {/* Warranty + Installments */}
+                <div className="space-y-2 pt-1 border-t">
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 space-y-1">
+                      <Label className="text-xs">{t("مدة الضمان (شهور)", "Warranty (months)")}</Label>
+                      <Input
+                        type="number" min="1" max="120"
+                        value={warrantyMonths}
+                        onChange={(e) => setWarrantyMonths(parseInt(e.target.value) || 24)}
+                        placeholder="24"
+                        data-testid="input-warranty-months"
+                      />
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="w-full flex items-center justify-between text-xs font-medium text-muted-foreground hover:text-foreground transition-colors py-1"
+                    onClick={() => {
+                      if (!showInstallmentsSection && paymentInstallments.length === 0) {
+                        setPaymentInstallments([{ id: Date.now().toString(), percentage: 30, triggerStage: "on_approval", label: t("دفعة الاعتماد", "Approval Installment") }]);
+                      }
+                      setShowInstallmentsSection(v => !v);
+                    }}
+                    data-testid="button-toggle-installments"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <span>{t("جدول الدفعات", "Payment Schedule")}</span>
+                      {paymentInstallments.length > 0 && (
+                        <span className="bg-primary/10 text-primary rounded px-1.5 py-0.5">{paymentInstallments.length}</span>
+                      )}
+                    </span>
+                    <span>{showInstallmentsSection ? "▲" : "▼"}</span>
+                  </button>
+
+                  {showInstallmentsSection && (
+                    <div className="space-y-2" data-testid="installments-section">
+                      {paymentInstallments.map((inst, idx) => (
+                        <div key={inst.id} className="flex items-start gap-2 p-2 rounded-md border bg-muted/20">
+                          <div className="flex-1 space-y-1">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-xs font-medium w-4">{idx + 1}.</span>
+                              <Input
+                                className="h-7 text-xs"
+                                value={inst.label}
+                                onChange={(e) => setPaymentInstallments(prev => prev.map((p, i) => i === idx ? { ...p, label: e.target.value } : p))}
+                                placeholder={t("وصف الدفعة", "Installment label")}
+                                data-testid={`input-inst-label-${idx}`}
+                              />
+                            </div>
+                            <div className="flex gap-1.5 items-center">
+                              <Input
+                                type="number" min="0" max="100" className="h-7 text-xs w-20"
+                                value={inst.percentage}
+                                onChange={(e) => setPaymentInstallments(prev => prev.map((p, i) => i === idx ? { ...p, percentage: parseFloat(e.target.value) || 0 } : p))}
+                                placeholder="%"
+                                data-testid={`input-inst-pct-${idx}`}
+                              />
+                              <span className="text-xs text-muted-foreground">%</span>
+                              <select
+                                className="h-7 text-xs flex-1 border rounded-md px-1 bg-background"
+                                value={inst.triggerStage}
+                                onChange={(e) => setPaymentInstallments(prev => prev.map((p, i) => i === idx ? { ...p, triggerStage: e.target.value } : p))}
+                                data-testid={`select-inst-trigger-${idx}`}
+                              >
+                                <option value="on_approval">{t("عند الاعتماد", "On Approval")}</option>
+                                <option value="on_production">{t("بدء التصنيع", "On Production")}</option>
+                                <option value="on_delivery">{t("عند التسليم", "On Delivery")}</option>
+                                <option value="on_installation">{t("عند التركيب", "On Installation")}</option>
+                                <option value="on_completion">{t("عند الاكتمال", "On Completion")}</option>
+                              </select>
+                              <button
+                                type="button"
+                                className="text-destructive hover:opacity-70 transition-opacity shrink-0"
+                                onClick={() => setPaymentInstallments(prev => prev.filter((_, i) => i !== idx))}
+                                data-testid={`button-remove-inst-${idx}`}
+                              >
+                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                      {paymentInstallments.length < 4 && (
+                        <button
+                          type="button"
+                          className="w-full text-xs text-primary border border-dashed border-primary/40 rounded-md py-1.5 hover:bg-primary/5 transition-colors"
+                          onClick={() => setPaymentInstallments(prev => [
+                            ...prev,
+                            { id: Date.now().toString(), percentage: 0, triggerStage: "on_delivery", label: "" }
+                          ])}
+                          data-testid="button-add-installment"
+                        >
+                          + {t("إضافة دفعة", "Add Installment")}
+                        </button>
+                      )}
+                      {paymentInstallments.length > 0 && (
+                        <div className="text-xs text-muted-foreground text-end">
+                          {t("المجموع", "Total")}: {paymentInstallments.reduce((s, i) => s + i.percentage, 0)}%
+                          {Math.abs(paymentInstallments.reduce((s, i) => s + i.percentage, 0) - 100) > 0.1 && (
+                            <span className="text-amber-600 ms-1">({t("يجب أن يساوي 100%", "must equal 100%")})</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
                 <div className="space-y-1">
                   <Label className="text-xs flex items-center gap-1">
                     {t("صالح حتى (تاريخ الانتهاء)", "Valid Until (Expiry Date)")}
