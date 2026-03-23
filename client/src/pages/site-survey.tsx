@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from "react";
+import teakLogoUrl from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLanguage } from "@/components/language-provider";
 import { useAuth } from "@/hooks/use-auth";
@@ -489,21 +490,65 @@ export default function SiteSurveyPage() {
       const jsPDFModule = await import("jspdf");
       const jsPDF = jsPDFModule.default || (jsPDFModule as any).jsPDF;
       await import("jspdf-autotable");
+
+      // Load company settings for VAT# and names
+      let vatNumber = "310012345600003";
+      let companyNameAr = "مصنع تيك للمنتجات الخشبية";
+      let companyNameEn = "Teak Wood Products Factory";
+      try {
+        const settingsRes = await fetch("/api/company-settings/public");
+        if (settingsRes.ok) {
+          const settings = await settingsRes.json();
+          if (settings.vatNumber) vatNumber = settings.vatNumber;
+          if (settings.nameAr) companyNameAr = settings.nameAr;
+          if (settings.nameEn) companyNameEn = settings.nameEn;
+        }
+      } catch (_) {}
+
+      // Load TEAK logo as base64 via Canvas
+      let logoBase64 = "";
+      try {
+        logoBase64 = await new Promise<string>((resolve) => {
+          const img = new Image();
+          img.crossOrigin = "anonymous";
+          img.onload = () => {
+            const canvas = document.createElement("canvas");
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext("2d");
+            if (ctx) { ctx.drawImage(img, 0, 0); resolve(canvas.toDataURL("image/png")); }
+            else resolve("");
+          };
+          img.onerror = () => resolve("");
+          img.src = teakLogoUrl;
+        });
+      } catch (_) {}
+
       const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" }) as any;
       const pageW = 210;
       const margin = 14;
       let y = margin;
-      doc.setFont("helvetica", "bold");
+
+      // Header: dark blue banner
       doc.setFillColor(26, 54, 93);
-      doc.rect(margin, y, pageW - margin * 2, 20, "F");
+      doc.rect(margin, y, pageW - margin * 2, 22, "F");
+
+      // Logo on the left side of banner
+      if (logoBase64) {
+        doc.addImage(logoBase64, "PNG", margin + 2, y + 3, 28, 16);
+      }
+
+      // Company name & report title centered
+      doc.setFont("helvetica", "bold");
       doc.setTextColor(255, 255, 255);
-      doc.setFontSize(14);
-      doc.text("مصنع تيك للمنتجات الخشبية", pageW / 2, y + 8, { align: "center" });
-      doc.setFontSize(9);
-      doc.text("Teak Wood Products Factory", pageW / 2, y + 14, { align: "center" });
+      doc.setFontSize(13);
+      doc.text(companyNameAr, pageW / 2, y + 8, { align: "center" });
+      doc.setFontSize(8.5);
+      doc.text(companyNameEn, pageW / 2, y + 14, { align: "center" });
       doc.setFontSize(7.5);
-      doc.text("تقرير الزيارة الميدانية  |  Site Survey Report", pageW / 2, y + 19, { align: "center" });
-      y += 26;
+      doc.text("تقرير الزيارة الميدانية  |  Site Survey Report", pageW / 2, y + 20, { align: "center" });
+      y += 28;
+
       doc.setTextColor(0, 0, 0);
       doc.setFont("helvetica", "normal");
       doc.setFontSize(8);
@@ -516,7 +561,7 @@ export default function SiteSurveyPage() {
       doc.text(`Phone / الجوال: ${customer?.phone || "—"}`, margin, y);
       doc.text(`Survey# / رقم الزيارة: ${surveyNum}  |  Appt# ${apptNum}`, pageW - margin, y, { align: "right" });
       y += 5;
-      doc.text(`VAT# / الرقم الضريبي: 310012345600003`, margin, y);
+      doc.text(`VAT# / الرقم الضريبي: ${vatNumber}`, margin, y);
       y += 8;
       doc.setLineWidth(0.3);
       doc.setDrawColor(180, 180, 180);

@@ -947,4 +947,25 @@ export const insertPasswordResetRequestSchema = createInsertSchema(passwordReset
   requestedAt: true,
 });
 export type InsertPasswordResetRequest = z.infer<typeof insertPasswordResetRequestSchema>;
+
+export const surveyDesignFiles = pgTable("survey_design_files", {
+  id: serial("id").primaryKey(),
+  surveyId: integer("survey_id"),
+  quotationId: integer("quotation_id").references(() => quotations.id),
+  fileName: text("file_name").notNull(),
+  fileLabel: text("file_label"),
+  fileData: text("file_data").notNull(),
+  mimeType: text("mime_type").notNull().default("application/pdf"),
+  fileSize: integer("file_size").notNull().default(0),
+  attachToQuote: boolean("attach_to_quote").notNull().default(false),
+  uploadedBy: integer("uploaded_by").references(() => users.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertSurveyDesignFileSchema = createInsertSchema(surveyDesignFiles).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertSurveyDesignFile = z.infer<typeof insertSurveyDesignFileSchema>;
+export type SurveyDesignFile = typeof surveyDesignFiles.$inferSelect;
 export type PasswordResetRequest = typeof passwordResetRequests.$inferSelect;
