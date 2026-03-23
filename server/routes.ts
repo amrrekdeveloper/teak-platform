@@ -1220,8 +1220,8 @@ export async function registerRoutes(
 
       const requestingUser = await storage.getUser(userId);
       if (requestingUser?.role === "sales") {
-        if (quotation.status !== "draft" || quotation.createdBy !== userId) {
-          return res.status(403).json({ message: "غير مصرح: يمكن للمندوب اعتماد مسوداته فقط" });
+        if (!["draft", "sent"].includes(quotation.status) || (quotation.assignedTo !== userId && quotation.createdBy !== userId)) {
+          return res.status(403).json({ message: "غير مصرح: يمكن للمندوب اعتماد عروض الأسعار المسندة إليه فقط" });
         }
       }
 

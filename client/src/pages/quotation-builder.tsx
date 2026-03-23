@@ -1648,11 +1648,14 @@ export default function QuotationBuilderPage() {
               </CardContent>
             </Card>
 
-            {savedQuotationId && savedQuotationStatus === "draft" ? (
+            {savedQuotationId && (savedQuotationStatus === "draft" || savedQuotationStatus === "sent") ? (
               <div className="space-y-2">
                 <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded-md px-3 py-2">
                   <Save className="w-3.5 h-3.5 text-green-600" />
-                  <span>{t(`تم الحفظ كمسودة — رقم عرض السعر: #${savedQuotationId}`, `Saved as draft — Quotation #${savedQuotationId}`)}</span>
+                  <span>{savedQuotationStatus === "sent"
+                    ? t(`تم الإرسال للعميل — رقم عرض السعر: #${savedQuotationId}`, `Sent to customer — Quotation #${savedQuotationId}`)
+                    : t(`تم الحفظ كمسودة — رقم عرض السعر: #${savedQuotationId}`, `Saved as draft — Quotation #${savedQuotationId}`)
+                  }</span>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <Button

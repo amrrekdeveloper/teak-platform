@@ -200,6 +200,9 @@ export default function MyOrdersPage() {
   const [cancelReason, setCancelReason] = useState("");
   const [cancelNotes, setCancelNotes] = useState("");
   const [repFilter, setRepFilter] = useState<string>("all");
+  const [approveDialog, setApproveDialog] = useState<EnrichedOrder | null>(null);
+  const [approveReceiptFile, setApproveReceiptFile] = useState<File | null>(null);
+  const [approveReceiptPreview, setApproveReceiptPreview] = useState<string | null>(null);
 
   const _today = new Date();
   const _currentYear = _today.getFullYear();
@@ -332,6 +335,35 @@ export default function MyOrdersPage() {
       }
     },
   });
+
+  const approveOrderMutation = useMutation({
+    mutationFn: async ({ id, receiptData, receiptName }: { id: number; receiptData?: string; receiptName?: string }) => {
+      const body: Record<string, string> = {};
+      if (receiptData) { body.paymentReceiptData = receiptData; body.paymentReceiptName = receiptName || "receipt"; }
+      const res = await apiRequest("POST", `/api/quotations/${id}/approve`, body);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/quotations"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/contracts"] });
+      toast({ title: t("تم اعتماد عرض السعر وإنشاء العقد بنجاح", "Quotation approved and contract created") });
+      setApproveDialog(null);
+      setApproveReceiptFile(null);
+      setApproveReceiptPreview(null);
+    },
+    onError: () => {
+      toast({ title: t("حدث خطأ أثناء الاعتماد", "Error during approval"), variant: "destructive" });
+    },
+  });
+
+  const handleApproveOrder = () => {
+    if (!approveDialog) return;
+    if (approveReceiptFile && approveReceiptPreview) {
+      approveOrderMutation.mutate({ id: approveDialog.id, receiptData: approveReceiptPreview, receiptName: approveReceiptFile.name });
+    } else {
+      approveOrderMutation.mutate({ id: approveDialog.id });
+    }
+  };
 
   const appointmentByQuotation = useMemo((): Record<number, Appointment> => {
     const map: Record<number, Appointment> = {};
@@ -635,7 +667,8 @@ export default function MyOrdersPage() {
               <SelectValue placeholder={t("كل المناديب", "All Reps")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">{t("كل المناديب", "All Reps")}</SelectItem>
+              <SelectItem value="all">{t("طلباتي", "My Orders")}</SelectItem>
+              <SelectItem value="all_reps">{t("جميع المناديب", "All Reps")}</SelectItem>
               <SelectItem value="unassigned">{t("غير مُسندة", "Unassigned")}</SelectItem>
               {salesReps.map((rep) => (
                 <SelectItem key={rep.id} value={String(rep.id)}>
@@ -874,6 +907,18 @@ export default function MyOrdersPage() {
                                         )}
                                       </>
                                     )}
+                                    {["quote_draft", "quote_sent"].includes(order.stage) && isMine && (
+                                      <Button
+                                        variant="ghost" size="sm"
+                                        className="h-7 w-7 p-0 text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950/30"
+                                        onClick={() => { setApproveDialog(order); setApproveReceiptFile(null); setApproveReceiptPreview(null); }}
+                                        title={t("اعتماد بالحضور", "Approve In-Person")}
+                                        disabled={approveOrderMutation.isPending}
+                                        data-testid={`button-approve-${order.id}`}
+                                      >
+                                        {approveOrderMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                                      </Button>
+                                    )}
                                     {canCancel && (
                                       <Button
                                         variant="ghost" size="sm"
@@ -1023,6 +1068,18 @@ export default function MyOrdersPage() {
                               <FileText className="w-3.5 h-3.5 me-1" />{t("عرض السعر", "Quote")}
                             </Button>
                           )}
+                          {["quote_draft", "quote_sent"].includes(order.stage) && isMine && (
+                            <Button
+                              size="sm"
+                              className="h-8 text-xs flex-1 bg-green-600 hover:bg-green-700 text-white"
+                              onClick={() => { setApproveDialog(order); setApproveReceiptFile(null); setApproveReceiptPreview(null); }}
+                              disabled={approveOrderMutation.isPending}
+                              data-testid={`button-approve-mobile-${order.id}`}
+                            >
+                              {approveOrderMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin me-1" /> : <CheckCircle2 className="w-3.5 h-3.5 me-1" />}
+                              {t("اعتماد بالحضور", "Approve In-Person")}
+                            </Button>
+                          )}
                           {canCancel && (
                             <Button
                               variant="outline" size="sm"
@@ -1129,6 +1186,83 @@ export default function MyOrdersPage() {
         </Dialog>
       )}
 
+
+      {approveDialog && (
+        <Dialog open onOpenChange={() => { setApproveDialog(null); setApproveReceiptFile(null); setApproveReceiptPreview(null); }}>
+          <DialogContent className="max-w-md" data-testid="dialog-approve-order">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5 text-green-600" />
+                {t("اعتماد عرض السعر بالحضور الشخصي", "Approve Quotation In-Person")}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="bg-muted/50 rounded-lg p-3 flex items-center gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs text-muted-foreground">{t("الطلب", "Order")} #{approveDialog.quotationNumber || approveDialog.id}</p>
+                  <p className="text-sm font-semibold truncate">{approveDialog.customer?.fullName || "—"}</p>
+                </div>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                {t(
+                  "يُستخدم هذا الاعتماد عندما يحضر العميل للمعرض ويوافق على عرض السعر ويسدد الدفعة الأولى نقداً أو عبر نقاط البيع أو حوالة بنكية.",
+                  "Use this when the customer visits the showroom and approves the quotation, paying the first installment in cash, POS, or bank transfer."
+                )}
+              </p>
+              <div className="space-y-2">
+                <p className="text-sm font-medium">{t("وصل الدفع (اختياري)", "Payment Receipt (optional)")}</p>
+                {approveReceiptPreview ? (
+                  <div className="relative rounded-md border overflow-hidden">
+                    <img src={approveReceiptPreview} alt="receipt" className="w-full max-h-40 object-contain bg-muted/20" />
+                    <button
+                      className="absolute top-1 end-1 bg-background/80 rounded-full p-0.5 hover:bg-destructive hover:text-white transition-colors"
+                      onClick={() => { setApproveReceiptFile(null); setApproveReceiptPreview(null); }}
+                      data-testid="button-remove-receipt-order"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <label
+                    className="w-full border-2 border-dashed rounded-md py-4 flex flex-col items-center gap-2 text-muted-foreground hover:border-primary hover:text-primary transition-colors cursor-pointer"
+                    data-testid="button-upload-receipt-order"
+                  >
+                    <input
+                      type="file"
+                      accept="image/*,application/pdf"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        setApproveReceiptFile(file);
+                        const reader = new FileReader();
+                        reader.onload = (ev) => setApproveReceiptPreview(ev.target?.result as string);
+                        reader.readAsDataURL(file);
+                      }}
+                      data-testid="input-receipt-file-order"
+                    />
+                    <span className="text-sm">{t("ارفع صورة الوصل", "Upload receipt image")}</span>
+                  </label>
+                )}
+              </div>
+            </div>
+            <DialogFooter className="gap-2">
+              <Button variant="ghost" onClick={() => { setApproveDialog(null); setApproveReceiptFile(null); setApproveReceiptPreview(null); }} data-testid="button-cancel-approve-order">
+                {t("إلغاء", "Cancel")}
+              </Button>
+              <Button
+                className="bg-green-600 hover:bg-green-700 text-white"
+                onClick={handleApproveOrder}
+                disabled={approveOrderMutation.isPending}
+                data-testid="button-confirm-approve-order"
+              >
+                {approveOrderMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin me-1.5" /> : <CheckCircle2 className="w-4 h-4 me-1.5" />}
+                {t("تأكيد الاعتماد", "Confirm Approval")}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {appointmentDialog && (() => {
         const monthNames = [
