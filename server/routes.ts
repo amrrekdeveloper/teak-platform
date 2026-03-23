@@ -6,6 +6,34 @@ import { setupAuth, requireAuth, requireRole } from "./auth";
 import { seedDatabase } from "./seed";
 import { db, pool } from "./db";
 import { verifyFirebaseToken } from "./firebase-admin";
+import multer from "multer";
+import path from "path";
+import fs from "fs";
+import { fileURLToPath } from "url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const UPLOADS_DIR = path.join(__dirname, "..", "uploads", "survey-files");
+fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+
+const surveyFileStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
+  filename: (_req, file, cb) => {
+    const safeBase = file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_");
+    cb(null, `${Date.now()}_${safeBase}`);
+  },
+});
+
+const surveyFileUpload = multer({
+  storage: surveyFileStorage,
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype === "application/pdf" || file.originalname.toLowerCase().endsWith(".pdf")) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only PDF files are allowed"));
+    }
+  },
+});
 import {
   insertCustomerSchema, insertProductSchema, insertWoodTypeSchema,
   insertDoorTypeSchema, insertQuotationSchema, insertContractSchema,
@@ -86,6 +114,10 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
   setupAuth(app);
+
+  // Serve uploaded survey design files
+  const express = await import("express");
+  app.use("/uploads", express.default.static(path.join(__dirname, "..", "uploads")));
 
   await seedDatabase();
 
@@ -3444,35 +3476,40 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/site-surveys/:id/design-files", requireAuth, async (req, res) => {
-    try {
-      const surveyId = parseInt(req.params.id);
-      const { allowed } = await verifySurveyAccess(surveyId, req);
-      if (!allowed) return res.status(403).json({ message: "غير مصرح" });
-      const userId = req.session.userId!;
-      const { fileName, fileLabel, fileData, mimeType, fileSize, quotationId } = req.body;
-      if (!fileName || !fileData) return res.status(400).json({ message: "fileName and fileData are required" });
-      const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
-      const actualSize = fileSize || (typeof fileData === "string" ? Math.ceil(fileData.length * 0.75) : 0);
-      if (actualSize > MAX_FILE_SIZE_BYTES) {
-        return res.status(400).json({ message: "حجم الملف يتجاوز الحد المسموح به (10 ميغابايت)" });
+  app.post("/api/site-surveys/:id/design-files", requireAuth, (req, res) => {
+    const surveyId = parseInt(req.params.id);
+    surveyFileUpload.single("file")(req, res, async (err) => {
+      if (err instanceof multer.MulterError) {
+        return res.status(400).json({ message: err.code === "LIMIT_FILE_SIZE" ? "حجم الملف يتجاوز الحد المسموح به (10 ميغابايت)" : err.message });
       }
-      const effectiveMime = mimeType || "";
-      const isAllowedPdf = effectiveMime === "application/pdf" || String(fileName).toLowerCase().endsWith(".pdf");
-      if (!isAllowedPdf) {
-        return res.status(400).json({ message: "يُسمح برفع ملفات PDF فقط", messageEn: "Only PDF files are allowed" });
+      if (err) {
+        return res.status(400).json({ message: err.message || "خطأ في رفع الملف", messageEn: "Only PDF files are allowed" });
       }
-      const label = (fileLabel && String(fileLabel).trim()) ? String(fileLabel).trim() : fileName;
-      const result = await pool.query(
-        `INSERT INTO survey_design_files (survey_id, quotation_id, file_name, file_label, file_data, mime_type, file_size, uploaded_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-         RETURNING id, survey_id, quotation_id, file_name, file_label, mime_type, file_size, attach_to_quote, uploaded_by, created_at`,
-        [surveyId, quotationId || null, fileName, label, fileData, effectiveMime, actualSize, userId]
-      );
-      res.status(201).json(result.rows[0]);
-    } catch (error) {
-      res.status(500).json({ message: "حدث خطأ في رفع الملف" });
-    }
+      try {
+        const { allowed } = await verifySurveyAccess(surveyId, req);
+        if (!allowed) {
+          if (req.file) fs.unlinkSync(req.file.path);
+          return res.status(403).json({ message: "غير مصرح" });
+        }
+        const userId = (req as any).session.userId!;
+        const uploadedFile = req.file;
+        if (!uploadedFile) return res.status(400).json({ message: "لم يتم إرسال ملف" });
+        const { fileLabel, quotationId } = req.body;
+        const fileUrl = `/uploads/survey-files/${uploadedFile.filename}`;
+        const label = (fileLabel && String(fileLabel).trim()) ? String(fileLabel).trim() : uploadedFile.originalname;
+        const result = await pool.query(
+          `INSERT INTO survey_design_files (survey_id, quotation_id, file_name, file_label, file_url, mime_type, file_size, uploaded_by)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+           RETURNING id, survey_id, quotation_id, file_name, file_label, file_url, mime_type, file_size, attach_to_quote, uploaded_by, created_at`,
+          [surveyId, quotationId || null, uploadedFile.originalname, label, fileUrl, "application/pdf", uploadedFile.size, userId]
+        );
+        res.status(201).json(result.rows[0]);
+      } catch (error) {
+        if (req.file) fs.unlinkSync(req.file.path);
+        console.error("design-file upload error:", error);
+        res.status(500).json({ message: "حدث خطأ في رفع الملف" });
+      }
+    });
   });
 
   app.patch("/api/site-surveys/:id/design-files/:fileId", requireAuth, async (req, res) => {
@@ -3481,19 +3518,32 @@ export async function registerRoutes(
       const fileId = parseInt(req.params.fileId);
       const { allowed } = await verifySurveyAccess(surveyId, req);
       if (!allowed) return res.status(403).json({ message: "غير مصرح" });
-      const { attachToQuote } = req.body;
-      const result = await pool.query(
-        `UPDATE survey_design_files SET attach_to_quote = $1 WHERE id = $2 AND survey_id = $3
-         RETURNING id, survey_id, quotation_id, file_name, file_label, mime_type, file_size, attach_to_quote, uploaded_by, created_at`,
-        [attachToQuote, fileId, surveyId]
-      );
-      if (result.rows.length === 0) return res.status(404).json({ message: "الملف غير موجود" });
-      const updatedFile = result.rows[0];
-      // Also update quotation.attachedDesignFiles (per-quotation source of truth)
-      if (updatedFile.quotation_id) {
-        const qid = updatedFile.quotation_id;
+      const { attachToQuote, quotationId } = req.body;
+      // If quotationId provided, link file to quotation at same time
+      let updateResult;
+      if (quotationId) {
+        updateResult = await pool.query(
+          `UPDATE survey_design_files SET attach_to_quote = $1, quotation_id = COALESCE(quotation_id, $2)
+           WHERE id = $3 AND survey_id = $4
+           RETURNING id, survey_id, quotation_id, file_name, file_label, file_url, mime_type, file_size, attach_to_quote, uploaded_by, created_at`,
+          [attachToQuote, quotationId, fileId, surveyId]
+        );
+      } else {
+        updateResult = await pool.query(
+          `UPDATE survey_design_files SET attach_to_quote = $1 WHERE id = $2 AND survey_id = $3
+           RETURNING id, survey_id, quotation_id, file_name, file_label, file_url, mime_type, file_size, attach_to_quote, uploaded_by, created_at`,
+          [attachToQuote, fileId, surveyId]
+        );
+      }
+      if (updateResult.rows.length === 0) return res.status(404).json({ message: "الملف غير موجود" });
+      const updatedFile = updateResult.rows[0];
+      // Always sync quotation.attachedDesignFiles when quotationId is known
+      const effectiveQuotationId = quotationId || updatedFile.quotation_id;
+      if (effectiveQuotationId) {
+        const qid = effectiveQuotationId;
+        // Use survey-wide toggle state for this quotation
         const attachedRows = await pool.query(
-          `SELECT id FROM survey_design_files WHERE survey_id = $1 AND quotation_id = $2 AND attach_to_quote = TRUE`,
+          `SELECT id FROM survey_design_files WHERE survey_id = $1 AND attach_to_quote = TRUE AND (quotation_id = $2 OR quotation_id IS NULL)`,
           [surveyId, qid]
         );
         const attachedIds = attachedRows.rows.map((r: any) => r.id);
@@ -3516,10 +3566,18 @@ export async function registerRoutes(
       const { allowed } = await verifySurveyAccess(surveyId, req);
       if (!allowed) return res.status(403).json({ message: "غير مصرح" });
       const del = await pool.query(
-        `DELETE FROM survey_design_files WHERE id = $1 AND survey_id = $2 RETURNING id`,
+        `DELETE FROM survey_design_files WHERE id = $1 AND survey_id = $2 RETURNING id, file_url`,
         [fileId, surveyId]
       );
       if (del.rows.length === 0) return res.status(404).json({ message: "الملف غير موجود" });
+      // Clean up filesystem file
+      const fileUrl: string | null = del.rows[0].file_url;
+      if (fileUrl) {
+        try {
+          const filePath = path.join(__dirname, "..", fileUrl);
+          if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+        } catch (_) {}
+      }
       res.json({ message: "تم الحذف" });
     } catch (error) {
       res.status(500).json({ message: "حدث خطأ في الحذف" });
@@ -3533,11 +3591,16 @@ export async function registerRoutes(
       const { allowed } = await verifySurveyAccess(surveyId, req);
       if (!allowed) return res.status(403).json({ message: "غير مصرح" });
       const result = await pool.query(
-        `SELECT file_name, file_data, mime_type FROM survey_design_files WHERE id = $1 AND survey_id = $2`,
+        `SELECT file_name, file_data, file_url, mime_type FROM survey_design_files WHERE id = $1 AND survey_id = $2`,
         [fileId, surveyId]
       );
       if (result.rows.length === 0) return res.status(404).json({ message: "الملف غير موجود" });
-      const { file_name, file_data, mime_type } = result.rows[0];
+      const { file_name, file_data, file_url, mime_type } = result.rows[0];
+      if (file_url) {
+        // New: redirect to static file URL
+        return res.json({ fileName: file_name, fileUrl: file_url, mimeType: mime_type });
+      }
+      // Legacy: base64 data
       res.json({ fileName: file_name, fileData: file_data, mimeType: mime_type });
     } catch (error) {
       res.status(500).json({ message: "حدث خطأ" });

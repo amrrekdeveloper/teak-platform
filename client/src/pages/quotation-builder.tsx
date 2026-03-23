@@ -744,7 +744,7 @@ export default function QuotationBuilderPage() {
         const shouldAttach = selectedAttachments.has(f.id);
         if (f.attach_to_quote !== shouldAttach) {
           try {
-            await apiRequest("PATCH", `/api/site-surveys/${preselectedSurveyId}/design-files/${f.id}`, { attachToQuote: shouldAttach });
+            await apiRequest("PATCH", `/api/site-surveys/${preselectedSurveyId}/design-files/${f.id}`, { attachToQuote: shouldAttach, quotationId: savedQuotationId });
           } catch (err) {
             console.error("[send] Failed to update attachment:", f.id, err);
           }
@@ -924,11 +924,12 @@ export default function QuotationBuilderPage() {
                     className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border transition-colors shrink-0 ${f.attach_to_quote ? "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 border-green-300 dark:border-green-700" : "bg-muted text-muted-foreground border-border hover:border-primary"}`}
                     onClick={async () => {
                       try {
+                        const qid = savedQuotationId || (preselectedQuotationId ? parseInt(preselectedQuotationId) : null);
                         await fetch(`/api/site-surveys/${preselectedSurveyId}/design-files/${f.id}`, {
                           method: "PATCH",
                           headers: { "Content-Type": "application/json" },
                           credentials: "include",
-                          body: JSON.stringify({ attachToQuote: !f.attach_to_quote }),
+                          body: JSON.stringify({ attachToQuote: !f.attach_to_quote, ...(qid ? { quotationId: qid } : {}) }),
                         });
                         refetchDesignFiles();
                       } catch {}

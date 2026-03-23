@@ -641,26 +641,25 @@ export default function SiteSurveyPage() {
     }
     setUploadingFile(true);
     try {
-      const reader = new FileReader();
-      const fileData = await new Promise<string>((resolve, reject) => {
-        reader.onload = (e) => resolve(e.target?.result as string);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
+      const formData = new FormData();
+      formData.append("file", file);
+      if (fileLabel && fileLabel.trim()) formData.append("fileLabel", fileLabel.trim());
+      if (appointment?.quotationId) formData.append("quotationId", String(appointment.quotationId));
+      const res = await fetch(`/api/site-surveys/${sid}/design-files`, {
+        method: "POST",
+        credentials: "include",
+        body: formData,
       });
-      const res = await apiRequest("POST", `/api/site-surveys/${sid}/design-files`, {
-        fileName: file.name,
-        fileLabel: fileLabel && fileLabel.trim() ? fileLabel.trim() : file.name,
-        fileData,
-        mimeType: file.type,
-        fileSize: file.size,
-        quotationId: appointment?.quotationId || null,
-      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || "Upload failed");
+      }
       const newFile = await res.json();
       setUploadedFiles(prev => [newFile, ...prev]);
       setPendingFileLabel("");
       toast({ title: t("تم رفع الملف بنجاح", "File uploaded successfully") });
-    } catch {
-      toast({ title: t("حدث خطأ في رفع الملف", "File upload failed"), variant: "destructive" });
+    } catch (e: any) {
+      toast({ title: e.message || t("حدث خطأ في رفع الملف", "File upload failed"), variant: "destructive" });
     } finally {
       setUploadingFile(false);
     }
@@ -671,12 +670,13 @@ export default function SiteSurveyPage() {
     if (!sid) return;
     const quotationId = appointment?.quotationId;
     try {
-      await apiRequest("PATCH", `/api/site-surveys/${sid}/design-files/${fileId}`, { attachToQuote });
+      // Send quotationId so server can sync quotation.attachedDesignFiles directly
+      await apiRequest("PATCH", `/api/site-surveys/${sid}/design-files/${fileId}`, {
+        attachToQuote,
+        ...(quotationId ? { quotationId } : {}),
+      });
       setUploadedFiles(prev => prev.map(f => f.id === fileId ? { ...f, attach_to_quote: attachToQuote } : f));
       if (quotationId) {
-        const currentAttached = uploadedFiles.filter(f => f.id === fileId ? attachToQuote : f.attach_to_quote).filter(f => f.attach_to_quote || (f.id === fileId && attachToQuote)).map(f => f.id);
-        const attachedIds = uploadedFiles.map(f => f.id === fileId ? (attachToQuote ? fileId : null) : (f.attach_to_quote ? f.id : null)).filter(Boolean);
-        await apiRequest("PATCH", `/api/quotations/${quotationId}`, { attachedDesignFiles: attachedIds });
         queryClient.invalidateQueries({ queryKey: ["/api/quotations", String(quotationId)] });
       }
       queryClient.invalidateQueries({ queryKey: ["/api/site-surveys", String(sid), "design-files"] });
