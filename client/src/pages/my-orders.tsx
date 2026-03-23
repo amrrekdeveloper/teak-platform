@@ -367,8 +367,9 @@ export default function MyOrdersPage() {
   const visibleOrders = useMemo((): EnrichedOrder[] => {
     if (!user) return [];
     if (isManager) {
-      if (repFilter === "all") return enrichedOrders;
+      if (repFilter === "all_reps") return enrichedOrders;
       if (repFilter === "unassigned") return enrichedOrders.filter(o => !o.assignedTo);
+      if (repFilter === "all") return enrichedOrders.filter(o => o.assignedTo === user.id || o.createdBy === user.id);
       return enrichedOrders.filter(o => o.assignedTo === parseInt(repFilter));
     }
     return enrichedOrders.filter(o => {
