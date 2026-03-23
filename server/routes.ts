@@ -1650,73 +1650,53 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/payments", requireRole("owner", "assistant", "sales", "accountant"), async (req, res) => {
+  app.post("/api/payments", requireRole("owner", "assistant", "accountant"), async (req, res) => {
     try {
-      const currentUser = await storage.getUser(req.session.userId!);
-      const isSalesRep = currentUser?.role === "sales";
-      const needsApproval = isSalesRep;
-      const paymentStatus = needsApproval ? "pending" : (req.body.status || "confirmed");
+      const paymentStatus = req.body.status || "confirmed";
 
       const data = { ...req.body, recordedBy: req.session.userId, status: paymentStatus };
       const payment = await storage.createPayment(data);
 
-      if (!needsApproval) {
-        const contract = await storage.getContract(payment.contractId);
-        if (contract) {
-          const newPaidAmount = parseFloat(contract.paidAmount) + parseFloat(payment.amount);
-          const newRemaining = parseFloat(contract.totalAmount) - newPaidAmount;
-          await storage.updateContract(contract.id, {
-            paidAmount: String(newPaidAmount),
-            remainingAmount: String(newRemaining),
-            status: newRemaining <= 0 ? "completed" : "active",
-          });
-        }
+      const contract = await storage.getContract(payment.contractId);
+      if (contract) {
+        const newPaidAmount = parseFloat(contract.paidAmount) + parseFloat(payment.amount);
+        const newRemaining = parseFloat(contract.totalAmount) - newPaidAmount;
+        await storage.updateContract(contract.id, {
+          paidAmount: String(newPaidAmount),
+          remainingAmount: String(newRemaining),
+          status: newRemaining <= 0 ? "completed" : "active",
+        });
+      }
 
-        const settings = await storage.getCompanySettings();
-        const customer = await storage.getCustomer(payment.customerId);
-        if (settings && customer) {
-          const invoiceData: any = {
-            contractId: payment.contractId,
-            customerId: payment.customerId,
-            paymentStage: payment.paymentStage,
-            type: "simplified_tax_invoice",
-            items: [{ description: `دفعة - ${payment.paymentStage}`, amount: payment.amount }],
-            subtotal: String(parseFloat(payment.amount) / 1.15),
-            vatRate: "15",
-            vatAmount: String(parseFloat(payment.amount) - parseFloat(payment.amount) / 1.15),
-            totalWithVat: payment.amount,
-            sellerName: settings.nameAr,
-            sellerVatNumber: settings.vatNumber,
-            sellerAddress: settings.address,
-            buyerName: customer.fullName,
-            buyerPhone: customer.phone,
-            paymentMethod: payment.method === "bank_transfer" ? "تحويل بنكي" : payment.method === "cash" ? "نقدي" : "بطاقة",
-            status: "paid",
-            issuedAt: new Date(),
-            paidAt: new Date(),
-            createdBy: req.session.userId,
-          };
+      const settings = await storage.getCompanySettings();
+      const customer = await storage.getCustomer(payment.customerId);
+      if (settings && customer) {
+        const invoiceData: any = {
+          contractId: payment.contractId,
+          customerId: payment.customerId,
+          paymentStage: payment.paymentStage,
+          type: "simplified_tax_invoice",
+          items: [{ description: `دفعة - ${payment.paymentStage}`, amount: payment.amount }],
+          subtotal: String(parseFloat(payment.amount) / 1.15),
+          vatRate: "15",
+          vatAmount: String(parseFloat(payment.amount) - parseFloat(payment.amount) / 1.15),
+          totalWithVat: payment.amount,
+          sellerName: settings.nameAr,
+          sellerVatNumber: settings.vatNumber,
+          sellerAddress: settings.address,
+          buyerName: customer.fullName,
+          buyerPhone: customer.phone,
+          paymentMethod: payment.method === "bank_transfer" ? "تحويل بنكي" : payment.method === "cash" ? "نقدي" : "بطاقة",
+          status: "paid",
+          issuedAt: new Date(),
+          paidAt: new Date(),
+          createdBy: req.session.userId,
+        };
 
-          invoiceData.qrCodeData = generateQRData(invoiceData);
-          const invoice = await storage.createInvoice(invoiceData);
+        invoiceData.qrCodeData = generateQRData(invoiceData);
+        const invoice = await storage.createInvoice(invoiceData);
 
-          await storage.updatePayment(payment.id, { invoiceId: invoice.id } as any).catch(() => {});
-        }
-      } else {
-        const customer = await storage.getCustomer(payment.customerId);
-        const allUsers = await storage.getUsers();
-        const managers = allUsers.filter((u: any) => ["owner", "assistant", "accountant"].includes(u.role));
-        for (const mgr of managers) {
-          await storage.createNotification({
-            userId: mgr.id,
-            type: "action",
-            titleAr: "دفعة جديدة بانتظار الاعتماد",
-            titleEn: "New Payment Awaiting Approval",
-            messageAr: `المندوب ${currentUser?.fullNameAr || ""} سجّل دفعة بمبلغ ${payment.amount} ريال من العميل ${customer?.fullName || ""}`,
-            messageEn: `Sales rep ${currentUser?.fullNameEn || ""} recorded a payment of ${payment.amount} SAR from ${customer?.fullName || ""}`,
-            isRead: false,
-          });
-        }
+        await storage.updatePayment(payment.id, { invoiceId: invoice.id } as any).catch(() => {});
       }
 
       res.status(201).json(payment);
