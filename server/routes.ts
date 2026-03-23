@@ -3457,11 +3457,10 @@ export async function registerRoutes(
       if (actualSize > MAX_FILE_SIZE_BYTES) {
         return res.status(400).json({ message: "حجم الملف يتجاوز الحد المسموح به (10 ميغابايت)" });
       }
-      const ALLOWED_MIME_TYPES = ["application/pdf", "image/png", "image/jpeg", "image/gif", "image/svg+xml", "image/webp", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/octet-stream"];
-      const effectiveMime = mimeType || "application/octet-stream";
-      const isAllowed = ALLOWED_MIME_TYPES.some(m => effectiveMime.startsWith(m.split("/")[0] + "/") || effectiveMime === m);
-      if (!isAllowed) {
-        return res.status(400).json({ message: "نوع الملف غير مسموح به" });
+      const effectiveMime = mimeType || "";
+      const isAllowedPdf = effectiveMime === "application/pdf" || String(fileName).toLowerCase().endsWith(".pdf");
+      if (!isAllowedPdf) {
+        return res.status(400).json({ message: "يُسمح برفع ملفات PDF فقط", messageEn: "Only PDF files are allowed" });
       }
       const label = (fileLabel && String(fileLabel).trim()) ? String(fileLabel).trim() : fileName;
       const result = await pool.query(

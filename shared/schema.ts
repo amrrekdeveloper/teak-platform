@@ -241,6 +241,7 @@ export const quotations = pgTable("quotations", {
   attachmentName: text("attachment_name"),
   attachmentMime: text("attachment_mime"),
   showAttachmentToCustomer: boolean("show_attachment_to_customer").default(false),
+  attachedDesignFiles: jsonb("attached_design_files").default([]),
   paymentReceiptData: text("payment_receipt_data"),
   paymentReceiptName: text("payment_receipt_name"),
   approvedBy: integer("approved_by").references(() => users.id),

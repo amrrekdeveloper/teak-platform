@@ -495,22 +495,28 @@ export default function SiteSurveyPage() {
       let y = margin;
       doc.setFont("helvetica", "bold");
       doc.setFillColor(26, 54, 93);
-      doc.rect(margin, y, pageW - margin * 2, 16, "F");
+      doc.rect(margin, y, pageW - margin * 2, 20, "F");
       doc.setTextColor(255, 255, 255);
-      doc.setFontSize(13);
-      doc.text("Teak Wood Products Factory", pageW / 2, y + 7, { align: "center" });
-      doc.setFontSize(8);
-      doc.text("Site Survey Report / تقرير الزيارة الميدانية", pageW / 2, y + 13, { align: "center" });
-      y += 22;
+      doc.setFontSize(14);
+      doc.text("مصنع تيك للمنتجات الخشبية", pageW / 2, y + 8, { align: "center" });
+      doc.setFontSize(9);
+      doc.text("Teak Wood Products Factory", pageW / 2, y + 14, { align: "center" });
+      doc.setFontSize(7.5);
+      doc.text("تقرير الزيارة الميدانية  |  Site Survey Report", pageW / 2, y + 19, { align: "center" });
+      y += 26;
       doc.setTextColor(0, 0, 0);
       doc.setFont("helvetica", "normal");
       doc.setFontSize(8);
       const customer = (customers as any[]).find((c: any) => c.id === appointment?.customerId);
-      doc.text(`Date: ${new Date().toLocaleDateString("en-GB")}`, pageW - margin, y, { align: "right" });
-      doc.text(`Customer: ${customer?.fullName || "—"}`, margin, y);
+      const surveyNum = savedSurveyId || existingSurvey?.id || "—";
+      const apptNum = appointmentId || "—";
+      doc.text(`Date / التاريخ: ${new Date().toLocaleDateString("en-GB")}`, pageW - margin, y, { align: "right" });
+      doc.text(`Customer / العميل: ${customer?.fullName || "—"}`, margin, y);
       y += 5;
-      doc.text(`Phone: ${customer?.phone || "—"}`, margin, y);
-      doc.text(`Appointment: #${appointmentId}`, pageW - margin, y, { align: "right" });
+      doc.text(`Phone / الجوال: ${customer?.phone || "—"}`, margin, y);
+      doc.text(`Survey# / رقم الزيارة: ${surveyNum}  |  Appt# ${apptNum}`, pageW - margin, y, { align: "right" });
+      y += 5;
+      doc.text(`VAT# / الرقم الضريبي: 310012345600003`, margin, y);
       y += 8;
       doc.setLineWidth(0.3);
       doc.setDrawColor(180, 180, 180);
@@ -618,11 +624,18 @@ export default function SiteSurveyPage() {
   async function handleToggleAttach(fileId: number, attachToQuote: boolean) {
     const sid = savedSurveyId || existingSurvey?.id;
     if (!sid) return;
+    const quotationId = appointment?.quotationId;
     try {
-      const res = await apiRequest("PATCH", `/api/site-surveys/${sid}/design-files/${fileId}`, { attachToQuote });
-      const updated = await res.json();
-      setUploadedFiles(prev => prev.map(f => f.id === fileId ? { ...f, attach_to_quote: updated.attach_to_quote } : f));
+      await apiRequest("PATCH", `/api/site-surveys/${sid}/design-files/${fileId}`, { attachToQuote });
+      setUploadedFiles(prev => prev.map(f => f.id === fileId ? { ...f, attach_to_quote: attachToQuote } : f));
+      if (quotationId) {
+        const currentAttached = uploadedFiles.filter(f => f.id === fileId ? attachToQuote : f.attach_to_quote).filter(f => f.attach_to_quote || (f.id === fileId && attachToQuote)).map(f => f.id);
+        const attachedIds = uploadedFiles.map(f => f.id === fileId ? (attachToQuote ? fileId : null) : (f.attach_to_quote ? f.id : null)).filter(Boolean);
+        await apiRequest("PATCH", `/api/quotations/${quotationId}`, { attachedDesignFiles: attachedIds });
+        queryClient.invalidateQueries({ queryKey: ["/api/quotations", String(quotationId)] });
+      }
       queryClient.invalidateQueries({ queryKey: ["/api/site-surveys", String(sid), "design-files"] });
+      toast({ title: attachToQuote ? t("تم إرفاق الملف بعرض السعر", "File attached to quotation") : t("تم إلغاء الإرفاق", "Attachment removed") });
     } catch {
       toast({ title: t("حدث خطأ", "Error"), variant: "destructive" });
     }
@@ -1422,6 +1435,16 @@ export default function SiteSurveyPage() {
               )}
               <Button
                 size="sm"
+                variant="outline"
+                onClick={() => setUploadDesignDialog(true)}
+                data-testid="button-upload-manual-plan"
+                title={t("رفع مخطط من برنامج خارجي", "Upload plan from external software")}
+              >
+                <Paperclip className="w-3 h-3 me-1" />
+                {t("رفع مخطط", "Upload Plan")}
+              </Button>
+              <Button
+                size="sm"
                 onClick={() => { setProductSearch(""); setSelectedGroup("all"); setProductSearchDialog(true); }}
                 data-testid="button-add-product"
               >
@@ -1982,7 +2005,7 @@ export default function SiteSurveyPage() {
               data-testid="button-print-survey"
             >
               {printingPdf ? <Loader2 className="w-3.5 h-3.5 me-1 animate-spin" /> : <Printer className="w-3.5 h-3.5 me-1" />}
-              {t("طباعة", "Print")}
+              {t("تصدير تقرير الزيارة PDF", "Export Survey Report PDF")}
             </Button>
           )}
         </div>
@@ -2214,12 +2237,12 @@ export default function SiteSurveyPage() {
             </DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            {t("ارفع ملفات المخططات من برنامج AutoCAD أو غيره. يمكنك تفعيل الإرفاق مع عرض السعر لكل ملف.", "Upload plan files from AutoCAD or other software. You can toggle attachment to quotation per file.")}
+            {t("ارفع ملفات PDF للمخططات من برنامج AutoCAD أو غيره. أضف تسمية لكل ملف ثم اضغط اختيار الملف.", "Upload PDF plan files from AutoCAD or other software. Add a label for each file then select the file.")}
           </p>
 
           <div className="space-y-2">
             <div>
-              <label className="text-xs font-medium text-foreground mb-1 block">{t("تسمية الملف (اختياري)", "File Label (optional)")}</label>
+              <label className="text-xs font-medium text-foreground mb-1 block">{t("تسمية الملف", "File Label")}</label>
               <input
                 type="text"
                 className="w-full h-8 rounded-md border border-input bg-background px-3 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
@@ -2240,17 +2263,23 @@ export default function SiteSurveyPage() {
                 <Upload className="w-8 h-8 text-blue-400" />
               )}
               <span className="text-sm font-medium text-blue-700 dark:text-blue-400">
-                {uploadingFile ? t("جاري الرفع...", "Uploading...") : t("اختر ملفاً أو اسحبه هنا", "Choose a file or drag here")}
+                {uploadingFile ? t("جاري الرفع...", "Uploading...") : t("اختر ملف PDF أو اسحبه هنا", "Choose a PDF file or drag here")}
               </span>
-              <span className="text-xs text-muted-foreground">{t("PDF، صور، DWG", "PDF, Images, DWG")}</span>
+              <span className="text-xs text-muted-foreground">{t("PDF فقط", "PDF only")}</span>
               <input
                 type="file"
-                accept=".pdf,.png,.jpg,.jpeg,.gif,.svg,.dwg,.dxf,.docx,.xlsx"
+                accept=".pdf,application/pdf"
                 className="hidden"
                 disabled={uploadingFile}
                 onChange={(e) => {
                   const file = e.target.files?.[0];
-                  if (file) handleFileUpload(file, pendingFileLabel);
+                  if (!file) return;
+                  if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
+                    toast({ title: t("الرجاء اختيار ملف PDF فقط", "Please select a PDF file only"), variant: "destructive" });
+                    e.target.value = "";
+                    return;
+                  }
+                  handleFileUpload(file, pendingFileLabel);
                   e.target.value = "";
                 }}
               />
