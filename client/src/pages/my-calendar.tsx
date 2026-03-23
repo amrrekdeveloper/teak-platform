@@ -273,26 +273,27 @@ export default function MyCalendarPage() {
 
       <Card className="mb-6">
         <CardContent className="p-4">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="icon" onClick={() => navigateDate(-1)}>
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center gap-1.5">
+              <Button variant="outline" size="icon" className="shrink-0 h-8 w-8" onClick={() => navigateDate(-1)}>
                 <ChevronRight className="w-4 h-4" />
               </Button>
-              <Button variant="outline" className="min-w-[200px] justify-start font-normal">
-                <CalendarIcon className="w-4 h-4 me-2 text-muted-foreground" />
-                {getDateLabel()}
+              <Button variant="outline" className="flex-1 min-w-0 justify-center font-normal text-sm h-8 px-2">
+                <CalendarIcon className="w-3.5 h-3.5 me-1.5 text-muted-foreground shrink-0" />
+                <span className="truncate">{getDateLabel()}</span>
               </Button>
-              <Button variant="outline" size="icon" onClick={() => navigateDate(1)}>
+              <Button variant="outline" size="icon" className="shrink-0 h-8 w-8" onClick={() => navigateDate(1)}>
                 <ChevronLeft className="w-4 h-4" />
               </Button>
-              <Button variant="ghost" onClick={() => setCurrentDate(new Date())}>
+              <Button variant="ghost" size="sm" className="shrink-0 h-8 px-2 text-sm" onClick={() => setCurrentDate(new Date())}>
                 {t("اليوم", "Today")}
               </Button>
             </div>
-            <div className="flex bg-muted p-1 rounded-lg">
+            <div className="flex bg-muted p-1 rounded-lg w-full">
               <Button
                 variant={viewMode === "day" ? "secondary" : "ghost"}
                 size="sm"
+                className="flex-1"
                 onClick={() => setViewMode("day")}
               >
                 {t("يوم", "Day")}
@@ -300,6 +301,7 @@ export default function MyCalendarPage() {
               <Button
                 variant={viewMode === "week" ? "secondary" : "ghost"}
                 size="sm"
+                className="flex-1"
                 onClick={() => setViewMode("week")}
               >
                 {t("أسبوع", "Week")}
@@ -307,6 +309,7 @@ export default function MyCalendarPage() {
               <Button
                 variant={viewMode === "month" ? "secondary" : "ghost"}
                 size="sm"
+                className="flex-1"
                 onClick={() => setViewMode("month")}
               >
                 {t("شهر", "Month")}
