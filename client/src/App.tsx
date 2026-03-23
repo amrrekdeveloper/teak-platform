@@ -51,6 +51,7 @@ import MyProfilePage from "@/pages/my-profile";
 import AppLayout from "@/components/app-layout";
 import NotFound from "@/pages/not-found";
 import teakLogo from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
+import FloatingContact from "@/components/floating-contact";
 
 function SplashScreen({ onFinish }: { onFinish: () => void }) {
   const [progress, setProgress] = useState(0);
@@ -230,6 +231,7 @@ function App() {
               <>
                 <Toaster />
                 <Router />
+                <FloatingContact />
               </>
             )}
           </TooltipProvider>
