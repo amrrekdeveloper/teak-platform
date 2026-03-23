@@ -3488,8 +3488,23 @@ export async function registerRoutes(
         [attachToQuote, fileId, surveyId]
       );
       if (result.rows.length === 0) return res.status(404).json({ message: "الملف غير موجود" });
-      res.json(result.rows[0]);
+      const updatedFile = result.rows[0];
+      // Also update quotation.attachedDesignFiles (per-quotation source of truth)
+      if (updatedFile.quotation_id) {
+        const qid = updatedFile.quotation_id;
+        const attachedRows = await pool.query(
+          `SELECT id FROM survey_design_files WHERE survey_id = $1 AND quotation_id = $2 AND attach_to_quote = TRUE`,
+          [surveyId, qid]
+        );
+        const attachedIds = attachedRows.rows.map((r: any) => r.id);
+        await pool.query(
+          `UPDATE quotations SET attached_design_files = $1::jsonb WHERE id = $2`,
+          [JSON.stringify(attachedIds), qid]
+        );
+      }
+      res.json(updatedFile);
     } catch (error) {
+      console.error("design-files patch error:", error);
       res.status(500).json({ message: "حدث خطأ في التحديث" });
     }
   });
@@ -4111,10 +4126,24 @@ export async function registerRoutes(
       const filteredSurveys = allSurveys.filter(s => s.quotationId && quotationIds.includes(s.quotationId));
       const customerSurveys = await Promise.all(
         filteredSurveys.map(async (s) => {
-          const filesResult = await pool.query(
-            `SELECT id, file_name, mime_type, file_size, file_data, created_at FROM survey_design_files WHERE survey_id = $1 AND attach_to_quote = TRUE ORDER BY created_at DESC`,
-            [s.id]
-          );
+          // Use quotation.attached_design_files (per-quotation source of truth) when available
+          const quotation = s.quotationId ? quotations.find((q: any) => q.id === s.quotationId) : null;
+          const attachedIds: number[] = Array.isArray((quotation as any)?.attachedDesignFiles) && (quotation as any).attachedDesignFiles.length > 0
+            ? (quotation as any).attachedDesignFiles
+            : [];
+          let filesResult;
+          if (attachedIds.length > 0) {
+            filesResult = await pool.query(
+              `SELECT id, file_name, file_label, mime_type, file_size, file_data, created_at FROM survey_design_files WHERE survey_id = $1 AND id = ANY($2::int[]) ORDER BY created_at DESC`,
+              [s.id, attachedIds]
+            );
+          } else {
+            // Fallback: use attach_to_quote flag
+            filesResult = await pool.query(
+              `SELECT id, file_name, file_label, mime_type, file_size, file_data, created_at FROM survey_design_files WHERE survey_id = $1 AND attach_to_quote = TRUE ORDER BY created_at DESC`,
+              [s.id]
+            );
+          }
           return { ...s, shareToken: generateShareToken(s.id), designFiles: filesResult.rows };
         })
       );

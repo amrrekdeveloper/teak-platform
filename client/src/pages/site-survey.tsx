@@ -1408,6 +1408,27 @@ export default function SiteSurveyPage() {
 
       {step === 2 && (
         <div className="space-y-3" data-testid="section-products">
+          {/* ── مسار اختيار: منتجات أو مخطط يدوي ── */}
+          {selectedProducts.length === 0 && (
+            <div className="grid grid-cols-2 gap-3" data-testid="section-path-selector">
+              <button
+                className="flex flex-col items-center justify-center gap-2 p-4 rounded-xl border-2 border-primary/40 text-primary hover:bg-primary/5 hover:border-primary/60 transition-all text-center"
+                onClick={() => { setProductSearch(""); setSelectedGroup("all"); setProductSearchDialog(true); }}
+                data-testid="button-path-products"
+              >
+                <Package className="w-7 h-7" />
+                <span className="text-xs font-semibold leading-snug">{t("إضافة منتجات من الكتالوج", "Add Products from Catalog")}</span>
+              </button>
+              <button
+                className="flex flex-col items-center justify-center gap-2 p-4 rounded-xl border-2 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/20 hover:border-blue-500 transition-all text-center"
+                onClick={() => setUploadDesignDialog(true)}
+                data-testid="button-path-manual-plan"
+              >
+                <Upload className="w-7 h-7" />
+                <span className="text-xs font-semibold leading-snug">{t("رفع مخطط من برنامج خارجي", "Upload Plan from External Software")}</span>
+              </button>
+            </div>
+          )}
           <div className="flex items-center justify-between">
             <h3 className="font-semibold text-sm flex items-center gap-2">
               <Package className="w-4 h-4 text-primary" />
