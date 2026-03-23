@@ -1528,11 +1528,20 @@ export default function MyOrdersPage() {
                 <Input
                   id="my-order-phone"
                   value={newOrderForm.phone}
-                  onChange={(e) => setNewOrderForm({ ...newOrderForm, phone: e.target.value })}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/[^0-9]/g, "").slice(0, 10);
+                    setNewOrderForm({ ...newOrderForm, phone: val });
+                  }}
                   placeholder="05XXXXXXXX"
                   dir="ltr"
+                  inputMode="numeric"
+                  maxLength={10}
+                  className={newOrderForm.phone && !/^05\d{8}$/.test(newOrderForm.phone) ? "border-red-500 focus-visible:ring-red-500" : ""}
                   data-testid="input-my-order-phone"
                 />
+                {newOrderForm.phone && !/^05\d{8}$/.test(newOrderForm.phone) && (
+                  <p className="text-xs text-red-500">{t("يجب أن يبدأ بـ 05 ويتكون من 10 أرقام", "Must start with 05 and be 10 digits")}</p>
+                )}
               </div>
               <div className="space-y-1.5">
                 <Label>{t("المدينة", "City")}</Label>
@@ -1576,7 +1585,7 @@ export default function MyOrdersPage() {
                 {t("إلغاء", "Cancel")}
               </Button>
               <Button
-                disabled={!newOrderForm.fullName.trim() || !newOrderForm.phone.trim() || !newOrderForm.productDescription.trim() || createOrderMutation.isPending}
+                disabled={!newOrderForm.fullName.trim() || !/^05\d{8}$/.test(newOrderForm.phone) || !newOrderForm.productDescription.trim() || createOrderMutation.isPending}
                 onClick={() => createOrderMutation.mutate(newOrderForm)}
                 data-testid="button-submit-new-order"
               >
