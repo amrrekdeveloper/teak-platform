@@ -2,6 +2,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
+import { seedProductionDatabase } from "./db-seed";
 
 const app = express();
 const httpServer = createServer(app);
@@ -61,6 +62,8 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  await seedProductionDatabase();
+
   await registerRoutes(httpServer, app).catch(err => {
     console.error("Failed to register routes:", err);
     process.exit(1);
