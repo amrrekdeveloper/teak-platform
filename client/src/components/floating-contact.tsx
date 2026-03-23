@@ -165,7 +165,7 @@ function PanelHeader({ isRTL, t, onClose }: {
 
 function PanelBody({ isRTL, t }: { isRTL: boolean; t: (ar: string, en: string) => string }) {
   return (
-    <div className="flex flex-col gap-3 overflow-y-auto p-4" style={{ WebkitOverflowScrolling: "touch" }}>
+    <div className="flex flex-col gap-3 p-4">
       {CONTACTS.map((c, i) => (
         <motion.div
           key={c.nameAr}
@@ -337,7 +337,7 @@ export default function FloatingContact() {
                 transition={{ type: "spring", stiffness: 320, damping: 30 }}
               >
                 <PanelHeader isRTL={isRTL} t={t} onClose={() => setOpen(false)} />
-                <div className="flex-1 overflow-y-auto">
+                <div className="flex-1 overflow-y-auto min-h-0">
                   <PanelBody isRTL={isRTL} t={t} />
                 </div>
               </motion.div>
