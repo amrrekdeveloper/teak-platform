@@ -262,6 +262,8 @@ export default function SiteSurveyPage() {
   const params = useParams<{ appointmentId: string }>();
   const appointmentId = parseInt(params.appointmentId || "0");
   const returnTo = new URLSearchParams(search).get("returnTo") || "/my-orders";
+  const autoPrint = new URLSearchParams(search).get("print") === "1";
+  const autoPrintDoneRef = useRef(false);
 
   const [step, setStep] = useState<WizardStep>(1);
   const [subStep, setSubStep] = useState<SubStep>("info");
@@ -341,6 +343,13 @@ export default function SiteSurveyPage() {
       }
     }
   }, [spaces]);
+
+  useEffect(() => {
+    if (autoPrint && !autoPrintDoneRef.current && (existingSurvey || spaces.length > 0)) {
+      autoPrintDoneRef.current = true;
+      setTimeout(() => { handlePrintSurveyReport(); }, 600);
+    }
+  }, [autoPrint, existingSurvey, spaces.length]);
 
   function goToWallsSubStep(spaceId: string, currentSpaces?: SpaceData[]) {
     const src = currentSpaces || spaces;

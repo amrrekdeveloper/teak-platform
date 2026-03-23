@@ -442,20 +442,27 @@ export default function OrderDetailPage() {
                             return (
                               <div key={sp.id} className="rounded border border-violet-200 dark:border-violet-700 bg-white/60 dark:bg-violet-950/30 p-2">
                                 <p className="font-medium text-foreground mb-1">{sp.name}</p>
-                                <div className="grid grid-cols-3 gap-x-2 gap-y-0.5 text-muted-foreground">
-                                  {sp.length && <span>{t("الطول", "L")}: <strong className="text-foreground">{sp.length}م</strong></span>}
-                                  {sp.width && <span>{t("العرض", "W")}: <strong className="text-foreground">{sp.width}م</strong></span>}
-                                  {sp.height && <span>{t("الارتفاع", "H")}: <strong className="text-foreground">{sp.height}م</strong></span>}
-                                </div>
+                                {(sp.length || sp.width || sp.height) ? (
+                                  <div className="grid grid-cols-3 gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+                                    {sp.length && <span>{t("ط", "L")}: <strong className="text-foreground">{sp.length}م</strong></span>}
+                                    {sp.width && <span>{t("ع", "W")}: <strong className="text-foreground">{sp.width}م</strong></span>}
+                                    {sp.height && <span>{t("ار", "H")}: <strong className="text-foreground">{sp.height}م</strong></span>}
+                                  </div>
+                                ) : (
+                                  <p className="text-[10px] text-amber-600 dark:text-amber-400 italic">{t("لم تُدخل أبعاد المكان بعد", "Room dimensions not entered yet")}</p>
+                                )}
                                 {spaceWalls.length > 0 && (
                                   <div className="mt-1 pt-1 border-t border-violet-100 dark:border-violet-800">
-                                    <p className="text-muted-foreground mb-0.5">{t("الجدران", "Walls")}:</p>
-                                    <div className="space-y-0.5">
+                                    <p className="text-[10px] text-muted-foreground mb-0.5">{t("الجدران", "Walls")}:</p>
+                                    <div className="flex flex-wrap gap-x-3 gap-y-0.5">
                                       {spaceWalls.map(w => (
-                                        <div key={w.id} className="flex items-center gap-2">
+                                        <span key={w.id} className="text-[10px]">
                                           <span className="text-muted-foreground">{w.name}</span>
-                                          {w.length && <span className="font-medium text-foreground">{w.length}م</span>}
-                                        </div>
+                                          {w.length
+                                            ? <strong className="text-foreground ms-1">{w.length}م</strong>
+                                            : <span className="text-muted-foreground/50 ms-1">—</span>
+                                          }
+                                        </span>
                                       ))}
                                     </div>
                                   </div>
@@ -610,7 +617,11 @@ export default function OrderDetailPage() {
           <Button
             variant="outline"
             className="w-full h-10 text-violet-700 border-violet-300 dark:border-violet-700"
-            onClick={() => window.open(`/site-survey/${linkedSurveys[0].id}?print=1`, "_blank")}
+            onClick={() => {
+              const s = linkedSurveys[0];
+              const apptId = (s as any).appointmentId || linkedAppt?.id;
+              if (apptId) window.open(`/site-survey/${apptId}?print=1&returnTo=/orders/${orderId}`, "_blank");
+            }}
             data-testid="button-detail-print-survey"
           >
             <ClipboardList className="w-4 h-4 me-1.5" />
