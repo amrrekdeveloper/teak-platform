@@ -179,7 +179,12 @@ export default function QuotationsPage() {
     return matchSearch && matchStatus && matchCustomer;
   });
 
-  const canApprove = user?.role === "owner" || user?.role === "assistant";
+  const isManager = user?.role === "owner" || user?.role === "assistant";
+  const canApproveQuotation = (q: Quotation) => {
+    if (isManager) return q.status === "draft" || q.status === "sent";
+    if (user?.role === "sales") return q.status === "draft" && q.createdBy === user.id;
+    return false;
+  };
   const canAssign = user?.role === "owner" || user?.role === "assistant" || user?.role === "sales";
 
   const handleOpenAssignDialog = (customer: Customer) => {
@@ -386,7 +391,7 @@ export default function QuotationsPage() {
                           <Eye className="w-4 h-4" />
                         </Button>
                       </Link>
-                      {canApprove && (q.status === "draft" || q.status === "sent") && (
+                      {canApproveQuotation(q) && (
                         <div className="flex gap-1">
                           <Button
                             size="icon"

@@ -294,6 +294,23 @@ export async function registerRoutes(
     console.warn("Survey design files table migration (non-fatal):", designFilesMigrationError instanceof Error ? designFilesMigrationError.message : String(designFilesMigrationError));
   }
 
+  // Startup cleanup: delete orphaned draft quotations older than 1 hour with no items and finalPrice=0
+  try {
+    const cleanupResult = await pool.query(`
+      DELETE FROM quotations
+      WHERE status = 'draft'
+        AND (final_price = '0' OR final_price = '0.00' OR final_price IS NULL)
+        AND created_at < NOW() - INTERVAL '1 hour'
+        AND (items IS NULL OR jsonb_array_length(items) = 0)
+      RETURNING id
+    `);
+    if (cleanupResult.rowCount && cleanupResult.rowCount > 0) {
+      console.log(`[startup] Cleaned up ${cleanupResult.rowCount} empty draft quotation(s)`);
+    }
+  } catch (cleanupError) {
+    console.warn("Empty draft cleanup (non-fatal):", cleanupError instanceof Error ? cleanupError.message : String(cleanupError));
+  }
+
   app.get("/api/products/public", async (req, res) => {
     try {
       const category = req.query.category as string | undefined;
