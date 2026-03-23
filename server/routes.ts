@@ -3729,7 +3729,29 @@ export async function registerRoutes(
       console.log(`[save-quotation] Created quotation #${quotation.id}: items=${items.length}, subtotal=${serverSubtotal}, discount=${discountVal}, vat=${serverVat}, finalPrice=${serverTotal}`);
 
       if (surveyId) {
-        await storage.updateSiteSurvey(parseInt(surveyId), { quotationId: quotation.id } as any);
+        const sid = parseInt(surveyId);
+        await storage.updateSiteSurvey(sid, { quotationId: quotation.id } as any);
+        // Link survey design files that are marked attach_to_quote to this quotation
+        const attachedFilesResult = await pool.query(
+          `UPDATE survey_design_files SET quotation_id = $1 WHERE survey_id = $2 AND attach_to_quote = TRUE RETURNING id`,
+          [quotation.id, sid]
+        );
+        const attachedIds = attachedFilesResult.rows.map((r: any) => r.id);
+        if (attachedIds.length > 0) {
+          await pool.query(
+            `UPDATE quotations SET attached_design_files = $1::jsonb WHERE id = $2`,
+            [JSON.stringify(attachedIds), quotation.id]
+          );
+        }
+      }
+
+      // Persist attachment metadata if provided (for single main attachment)
+      const { attachmentData, attachmentName, attachmentMime, showAttachmentToCustomer } = req.body;
+      if (attachmentData) {
+        await pool.query(
+          `UPDATE quotations SET attachment_data = $1, attachment_name = $2, attachment_mime = $3, show_attachment_to_customer = $4 WHERE id = $5`,
+          [attachmentData, attachmentName || null, attachmentMime || null, showAttachmentToCustomer || false, quotation.id]
+        );
       }
 
       res.status(201).json(quotation);

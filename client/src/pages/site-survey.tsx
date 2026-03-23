@@ -2204,7 +2204,11 @@ export default function SiteSurveyPage() {
               onClick={() => {
                 setNextStepsDialog(false);
                 const cid = appointment?.customerId;
-                navigate(`/quotations/new${cid ? `?customerId=${cid}` : ""}`);
+                const sid = savedSurveyId || existingSurvey?.id;
+                const params = new URLSearchParams();
+                if (cid) params.set("customerId", String(cid));
+                if (sid) params.set("surveyId", String(sid));
+                navigate(`/quotations/new${params.toString() ? "?" + params.toString() : ""}`);
               }}
               data-testid="button-create-quotation"
             >
