@@ -712,7 +712,7 @@ export default function QuotationBuilderPage() {
       }
     } else {
       if (items.length === 0) {
-        toast({ title: t("يجب إضافة عنصر واحد على الأقل", "Add at least one item"), variant: "destructive" });
+        toast({ title: t("أضف بنداً واحداً على الأقل", "Add at least one item"), variant: "destructive" });
         return;
       }
       const zeroPricedItems = items.filter(i => (i.unitPrice === 0 || !i.unitPrice) && (i.useAdeko || i.productId));

@@ -1116,7 +1116,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/quotations/:id/approve", requireRole("owner", "assistant"), async (req, res) => {
+  app.post("/api/quotations/:id/approve", requireRole("owner", "assistant", "sales"), async (req, res) => {
     try {
       const quotationId = parseInt(req.params.id);
       const userId = req.session.userId!;
@@ -1124,6 +1124,13 @@ export async function registerRoutes(
 
       const quotation = await storage.getQuotation(quotationId);
       if (!quotation) return res.status(404).json({ message: "عرض السعر غير موجود" });
+
+      const requestingUser = await storage.getUser(userId);
+      if (requestingUser?.role === "sales") {
+        if (quotation.status !== "draft" || (quotation as any).createdBy !== userId) {
+          return res.status(403).json({ message: "غير مصرح: يمكن للمندوب اعتماد مسوداته فقط" });
+        }
+      }
 
       const updateData: any = { status: "approved", orderStage: "quote_approved", approvedBy: userId, approvedAt: new Date() };
       if (paymentReceiptData) { updateData.paymentReceiptData = paymentReceiptData; updateData.paymentReceiptName = paymentReceiptName || "receipt"; }
@@ -1197,9 +1204,22 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/quotations/:id/reject", requireRole("owner", "assistant"), async (req, res) => {
+  app.post("/api/quotations/:id/reject", requireRole("owner", "assistant", "sales"), async (req, res) => {
     try {
-      const updated = await storage.updateQuotation(parseInt(req.params.id), { status: "rejected", orderStage: "rejected" });
+      const quotationId = parseInt(req.params.id);
+      const userId = req.session.userId!;
+
+      const quotation = await storage.getQuotation(quotationId);
+      if (!quotation) return res.status(404).json({ message: "عرض السعر غير موجود" });
+
+      const requestingUser = await storage.getUser(userId);
+      if (requestingUser?.role === "sales") {
+        if (quotation.status !== "draft" || (quotation as any).createdBy !== userId) {
+          return res.status(403).json({ message: "غير مصرح: يمكن للمندوب رفض مسوداته فقط" });
+        }
+      }
+
+      const updated = await storage.updateQuotation(quotationId, { status: "rejected", orderStage: "rejected" });
       if (!updated) return res.status(404).json({ message: "عرض السعر غير موجود" });
       res.json(updated);
     } catch (error) {
