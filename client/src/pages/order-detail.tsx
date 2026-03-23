@@ -500,7 +500,7 @@ export default function OrderDetailPage() {
                 </div>
                 <div className="px-3 py-2 space-y-1.5">
                   {surveyDesignFiles.map((file) => {
-                    const filename = file.file_url.split("/").pop() || "";
+                    const filename = file.file_url ? file.file_url.split("/").pop() : (file.file_name || file.file_label || "");
                     const sizeKb = Math.round(file.file_size / 1024);
                     return (
                       <div key={file.id} className="flex items-center gap-2 rounded border border-amber-200 dark:border-amber-700 bg-white/60 dark:bg-amber-950/30 p-2 text-xs">

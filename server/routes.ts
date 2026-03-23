@@ -3681,7 +3681,7 @@ export async function registerRoutes(
       const { allowed } = await verifySurveyAccess(surveyId, req);
       if (!allowed) return res.status(403).json({ message: "غير مصرح" });
       const result = await pool.query(
-        `SELECT id, survey_id, quotation_id, file_name, file_label, mime_type, file_size, attach_to_quote, uploaded_by, created_at
+        `SELECT id, survey_id, quotation_id, file_name, file_label, mime_type, file_size, attach_to_quote, uploaded_by, created_at, file_url
          FROM survey_design_files WHERE survey_id = $1 ORDER BY created_at DESC`,
         [surveyId]
       );
