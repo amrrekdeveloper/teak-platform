@@ -5,18 +5,25 @@ import { useLanguage } from "@/components/language-provider";
 
 const CONTACTS = [
   {
+    nameAr: "خدمة العملاء",
+    nameEn: "Customer Service",
+    phone: "0558090498",
+    wa: "966558090498",
+    highlight: true,
+  },
+  {
     nameAr: "مهند",
     nameEn: "Mohannad",
     phone: "0557753491",
     wa: "966557753491",
-    color: "#25D366",
+    highlight: false,
   },
   {
     nameAr: "هادي",
     nameEn: "Hadi",
     phone: "0553053995",
     wa: "966553053995",
-    color: "#25D366",
+    highlight: false,
   },
   {
     nameAr: "تيك",
@@ -190,15 +197,30 @@ export default function FloatingContact() {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.08 + i * 0.07, duration: 0.3 }}
                     className="rounded-2xl overflow-hidden"
-                    style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}
+                    style={
+                      c.highlight
+                        ? { background: "rgba(37,211,102,0.1)", border: "1px solid rgba(37,211,102,0.35)" }
+                        : { background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }
+                    }
                   >
+                    {c.highlight && (
+                      <div className="px-4 pt-2.5 pb-0" style={{ textAlign: isRTL ? "right" : "left" }}>
+                        <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#25D366" }}>
+                          {t("الخط الرئيسي", "Main Line")}
+                        </span>
+                      </div>
+                    )}
                     <div
                       className="flex items-center gap-3 px-4 py-3"
                       style={{ flexDirection: isRTL ? "row" : "row-reverse" }}
                     >
                       <div
                         className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-white text-base flex-shrink-0"
-                        style={{ background: "linear-gradient(135deg, #1a6b3c, #25D366)" }}
+                        style={
+                          c.highlight
+                            ? { background: "linear-gradient(135deg, #128C7E, #25D366)" }
+                            : { background: "linear-gradient(135deg, #1a6b3c, #25D366)" }
+                        }
                       >
                         {t(c.nameAr[0], c.nameEn[0])}
                       </div>

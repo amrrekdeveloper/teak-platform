@@ -1270,21 +1270,6 @@ function ScrollToTop() {
   );
 }
 
-function WhatsAppFAB() {
-  return (
-    <a
-      href="https://wa.me/966558090498"
-      target="_blank"
-      rel="noopener noreferrer"
-      className="fixed bottom-6 start-6 z-50 w-14 h-14 rounded-full bg-green-500 hover:bg-green-600 text-white flex items-center justify-center shadow-lg transition-colors"
-      data-testid="button-whatsapp-fab"
-      aria-label="WhatsApp"
-    >
-      <SiWhatsapp className="w-7 h-7" />
-    </a>
-  );
-}
-
 export default function LandingPage() {
   return (
     <div className="min-h-screen bg-background overflow-x-hidden">
@@ -1300,7 +1285,6 @@ export default function LandingPage() {
       <ContactSection />
       <Footer />
       <ScrollToTop />
-      <WhatsAppFAB />
     </div>
   );
 }
