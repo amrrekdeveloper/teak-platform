@@ -1090,11 +1090,21 @@ export async function registerRoutes(
       const quotation = await storage.getQuotation(parseInt(req.params.id));
       if (!quotation) return res.status(404).json({ message: "عرض السعر غير موجود" });
       if (currentUser?.role === "sales") {
-        if (quotation.assignedTo !== userId) {
+        if (quotation.assignedTo !== userId && quotation.createdBy !== userId) {
           return res.status(403).json({ message: "غير مصرح", messageEn: "Not authorized to modify this quotation" });
         }
+        // Block sales from changing authorization-sensitive fields
         delete req.body.assignedTo;
         delete req.body.assignedAt;
+        delete req.body.createdBy;
+        delete req.body.approvedBy;
+        delete req.body.approvedAt;
+        delete req.body.paymentReceiptData;
+        delete req.body.paymentReceiptName;
+        // Block status escalation: sales may only set draft/sent, not approved/rejected
+        if (req.body.status && !["draft", "sent"].includes(req.body.status)) {
+          delete req.body.status;
+        }
       }
       const data = { ...req.body };
       if (data.assignedTo) {
