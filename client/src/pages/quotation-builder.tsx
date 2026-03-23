@@ -1663,34 +1663,22 @@ export default function QuotationBuilderPage() {
                   {saveMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin me-1.5" /> : <Save className="w-4 h-4 me-1.5" />}
                   {t("حفظ التعديلات", "Save Changes")}
                 </Button>
-                <div className="flex items-center gap-2">
-                  <Button
-                    className="flex-1"
-                    onClick={() => {
-                      const initialAttachments = new Set<number>(
-                        surveyDesignFiles.filter((f: any) => f.attach_to_quote).map((f: any) => f.id)
-                      );
-                      setSelectedAttachments(initialAttachments);
-                      handleSendOption("portal", initialAttachments);
-                    }}
-                    disabled={sendToCustomerMutation.isPending}
-                    data-testid="button-send-to-customer"
-                  >
-                    {sendToCustomerMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin me-1.5" /> : (
-                      <><Send className="w-4 h-4 me-1.5" />{t("إرسال للعميل", "Send to Customer")}</>
-                    )}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-xs text-muted-foreground hover:text-foreground shrink-0"
-                    onClick={() => handleSendOption("pdf")}
-                    data-testid="button-download-pdf"
-                  >
-                    <Download className="w-3.5 h-3.5 me-1" />
-                    {t("تحميل PDF", "Download PDF")}
-                  </Button>
-                </div>
+                <Button
+                  className="w-full"
+                  onClick={() => {
+                    const initialAttachments = new Set<number>(
+                      surveyDesignFiles.filter((f: any) => f.attach_to_quote).map((f: any) => f.id)
+                    );
+                    setSelectedAttachments(initialAttachments);
+                    handleSendOption("portal", initialAttachments);
+                  }}
+                  disabled={sendToCustomerMutation.isPending}
+                  data-testid="button-send-to-customer"
+                >
+                  {sendToCustomerMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin me-1.5" /> : (
+                    <><Send className="w-4 h-4 me-1.5" />{t("إرسال للعميل", "Send to Customer")}</>
+                  )}
+                </Button>
                 {(user?.role === "sales" || user?.role === "owner" || user?.role === "assistant") && (
                   <Button
                     variant="default"
@@ -1700,45 +1688,20 @@ export default function QuotationBuilderPage() {
                     data-testid="button-approve-inperson"
                   >
                     <Check className="w-4 h-4 me-1.5" />
-                    {t("اعتماد بالحضور الشخصي", "Approve In-Person")}
+                    {t("اعتماد في المعرض", "Approve In Showroom")}
                   </Button>
                 )}
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  onClick={() => setLocation("/quotations")}
-                  data-testid="button-back-to-quotations"
-                >
-                  {t("الرجوع لعروض الأسعار", "Back to Quotations")}
-                </Button>
               </div>
             ) : (
-              <div className="flex gap-3">
-                <Button
-                  variant="outline"
-                  className="flex-1"
-                  onClick={() => handleSubmit("draft")}
-                  disabled={saveMutation.isPending}
-                  data-testid="button-save-draft"
-                >
-                  {saveMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : (
-                    <><Save className="w-4 h-4 me-1.5" />{t("حفظ كمسودة", "Save as Draft")}</>
-                  )}
-                </Button>
-                <Button
-                  className="flex-1"
-                  onClick={() => {
-                    pendingSendAfterSave.current = true;
-                    handleSubmit("draft");
-                  }}
-                  disabled={saveMutation.isPending}
-                  data-testid="button-send-quotation"
-                >
-                  {saveMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : (
-                    <><Send className="w-4 h-4 me-1.5" />{t("حفظ وإرسال", "Save & Send")}</>
-                  )}
-                </Button>
-              </div>
+              <Button
+                className="w-full"
+                onClick={() => handleSubmit("draft")}
+                disabled={saveMutation.isPending}
+                data-testid="button-save-draft"
+              >
+                {saveMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin me-1.5" /> : <Save className="w-4 h-4 me-1.5" />}
+                {t("حفظ عرض السعر", "Save Quotation")}
+              </Button>
             )}
           </>
         )}
@@ -1796,7 +1759,7 @@ export default function QuotationBuilderPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Check className="w-5 h-5 text-green-600" />
-              {t("اعتماد عرض السعر بالحضور الشخصي", "Approve Quotation In-Person")}
+              {t("اعتماد عرض السعر في المعرض", "Approve Quotation In Showroom")}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">

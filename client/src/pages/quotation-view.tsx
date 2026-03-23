@@ -255,7 +255,7 @@ export default function QuotationViewPage() {
               data-testid="button-approve-quotation"
             >
               <CheckCircle2 className="w-4 h-4 me-2" />
-              {t("اعتماد بالحضور", "Approve In-Person")}
+              {t("اعتماد في المعرض", "Approve In Showroom")}
             </Button>
           )}
           <Button onClick={handlePrint} size="sm" variant="outline" data-testid="button-print">

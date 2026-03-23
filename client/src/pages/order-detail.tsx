@@ -620,7 +620,7 @@ export default function OrderDetailPage() {
             onClick={() => {
               const s = linkedSurveys[0];
               const apptId = (s as any).appointmentId || linkedAppt?.id;
-              if (apptId) window.open(`/site-survey/${apptId}?print=1&returnTo=/orders/${orderId}`, "_blank");
+              if (apptId) window.open(`/dashboard/site-survey/${apptId}?print=1&returnTo=/orders/${orderId}`, "_blank");
             }}
             data-testid="button-detail-print-survey"
           >
@@ -633,24 +633,47 @@ export default function OrderDetailPage() {
             {lang === "ar" ? <ArrowRight className="w-4 h-4 me-1" /> : <ArrowLeft className="w-4 h-4 me-1" />}
             {t("العودة", "Back")}
           </Button>
-          {stage !== "cancelled" && stage !== "rejected" && (quotation.assignedTo === user?.id || isManager) && (
-            <Button
-              className="flex-1 h-11"
-              onClick={() => {
-                if (["survey_done"].includes(stage) && !(Array.isArray((quotation as any).items) && (quotation as any).items.length > 0)) {
-                  navigate(`/quotation-builder?quotationId=${quotation.id}`);
-                } else {
-                  navigate(`/quotations/${quotation.id}/view?returnTo=/orders/${orderId}`);
-                }
-              }}
-              data-testid="button-detail-open-quotation"
-            >
-              <FileText className="w-4 h-4 me-1" />
-              {["survey_done"].includes(stage) && !(Array.isArray((quotation as any).items) && (quotation as any).items.length > 0)
-                ? t("بناء العرض", "Build Quote")
-                : t("مشاهدة العرض", "View Quote")}
-            </Button>
-          )}
+          {stage !== "cancelled" && stage !== "rejected" && (quotation.assignedTo === user?.id || isManager) && (() => {
+            const hasItems = Array.isArray((quotation as any).items) && (quotation as any).items.length > 0;
+            if (["new", "appointment_scheduled"].includes(stage) && linkedAppt) {
+              return (
+                <Button
+                  className="flex-1 h-11"
+                  onClick={() => navigate(`/site-survey/${linkedAppt.id}?returnTo=/orders/${orderId}`)}
+                  data-testid="button-detail-take-measurements"
+                >
+                  <Ruler className="w-4 h-4 me-1" />
+                  {t("رفع المقاسات", "Take Measurements")}
+                </Button>
+              );
+            }
+            if (stage === "survey_done" && !hasItems) {
+              return (
+                <Button
+                  className="flex-1 h-11"
+                  onClick={() => navigate(`/quotation-builder?quotationId=${quotation.id}`)}
+                  data-testid="button-detail-create-quotation"
+                >
+                  <FileText className="w-4 h-4 me-1" />
+                  {t("إنشاء عرض سعر", "Create Quotation")}
+                </Button>
+              );
+            }
+            if (["survey_done", "quote_draft", "quote_sent", "quote_approved", "in_production", "delivered"].includes(stage) && hasItems ||
+                ["quote_draft", "quote_sent", "quote_approved", "in_production", "delivered"].includes(stage)) {
+              return (
+                <Button
+                  className="flex-1 h-11"
+                  onClick={() => navigate(`/quotations/${quotation.id}/view?returnTo=/orders/${orderId}`)}
+                  data-testid="button-detail-open-quotation"
+                >
+                  <FileText className="w-4 h-4 me-1" />
+                  {t("مشاهدة العرض", "View Quote")}
+                </Button>
+              );
+            }
+            return null;
+          })()}
         </div>
       </div>
     </div>
