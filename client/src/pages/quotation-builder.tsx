@@ -740,14 +740,13 @@ export default function QuotationBuilderPage() {
   const handleSendOption = async (option: "portal" | "pdf" | "both") => {
     if (!savedQuotationId) return;
     if (surveyDesignFiles.length > 0 && preselectedSurveyId) {
+      // Always sync ALL files (not just deltas) to ensure quotation.attachedDesignFiles is authoritative
       for (const f of surveyDesignFiles) {
         const shouldAttach = selectedAttachments.has(f.id);
-        if (f.attach_to_quote !== shouldAttach) {
-          try {
-            await apiRequest("PATCH", `/api/site-surveys/${preselectedSurveyId}/design-files/${f.id}`, { attachToQuote: shouldAttach, quotationId: savedQuotationId });
-          } catch (err) {
-            console.error("[send] Failed to update attachment:", f.id, err);
-          }
+        try {
+          await apiRequest("PATCH", `/api/site-surveys/${preselectedSurveyId}/design-files/${f.id}`, { attachToQuote: shouldAttach, quotationId: savedQuotationId });
+        } catch (err) {
+          console.error("[send] Failed to update attachment:", f.id, err);
         }
       }
     }

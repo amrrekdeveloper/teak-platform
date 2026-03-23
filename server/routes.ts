@@ -115,30 +115,37 @@ export async function registerRoutes(
 ): Promise<Server> {
   setupAuth(app);
 
-  // Authenticated endpoint to serve uploaded survey design files from disk
-  // (Replaces public static serving to enforce access control)
+  // Authenticated endpoint to serve uploaded survey design files from disk.
+  // Verifies the requesting user has access to the survey that owns the file.
   app.get("/api/uploads/survey-files/:filename", requireAuth, async (req, res) => {
     const filename = req.params.filename.replace(/[^a-zA-Z0-9._-]/g, "");
+    const urlPath = `/uploads/survey-files/${filename}`;
+    // Lookup file and verify user has survey access
+    const fileRow = await pool.query(
+      `SELECT sdf.id, sdf.survey_id FROM survey_design_files sdf WHERE sdf.file_url = $1 LIMIT 1`,
+      [urlPath]
+    );
+    if (fileRow.rows.length === 0) return res.status(404).json({ message: "الملف غير موجود" });
+    const surveyId = fileRow.rows[0].survey_id;
+    const { allowed } = await verifySurveyAccess(surveyId, req);
+    if (!allowed) return res.status(403).json({ message: "غير مصرح" });
     const filePath = path.join(UPLOADS_DIR, filename);
-    if (!fs.existsSync(filePath)) return res.status(404).json({ message: "الملف غير موجود" });
+    if (!fs.existsSync(filePath)) return res.status(404).json({ message: "الملف غير موجود على القرص" });
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(filename)}"`);
     fs.createReadStream(filePath).pipe(res);
   });
 
-  // Customer-accessible endpoint: only for files attached to quote they own
-  app.get("/api/customer/survey-files/:filename", requireAuth, async (req, res) => {
+  // Customer-accessible endpoint: only for files attached to a quote owned by the portal customer
+  app.get("/api/customer/survey-files/:filename", requirePortalAuth, async (req, res) => {
     const filename = req.params.filename.replace(/[^a-zA-Z0-9._-]/g, "");
     const urlPath = `/uploads/survey-files/${filename}`;
-    // Check file is attached to a quotation the customer owns
-    const uid = req.session.userId!;
+    const portalCustomer = (req as any).portalCustomer;
     const check = await pool.query(
       `SELECT sdf.id FROM survey_design_files sdf
        JOIN quotations q ON q.id = sdf.quotation_id
-       JOIN customers c ON c.id = q.customer_id
-       JOIN users u ON u.id = c.user_id
-       WHERE sdf.file_url = $1 AND sdf.attach_to_quote = TRUE AND u.id = $2 LIMIT 1`,
-      [urlPath, uid]
+       WHERE sdf.file_url = $1 AND sdf.attach_to_quote = TRUE AND q.customer_id = $2 LIMIT 1`,
+      [urlPath, portalCustomer.id]
     );
     if (check.rows.length === 0) return res.status(403).json({ message: "غير مصرح" });
     const filePath = path.join(UPLOADS_DIR, filename);
