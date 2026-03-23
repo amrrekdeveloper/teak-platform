@@ -1023,18 +1023,10 @@ export default function QuotationBuilderPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             {items.length === 0 ? (
-              <div className="text-center py-8 space-y-3">
-                <p className="text-sm text-muted-foreground">
-                  {t("اضغط لإضافة بند — منتج Adeko أو تسعير بالمتر المربع", "Add an item — Adeko product or m² pricing")}
+              <div className="text-center py-10">
+                <p className="text-sm text-muted-foreground" data-testid="text-no-items">
+                  {t("لم تُضف أي بنود بعد — استخدم الأزرار أعلاه", "No items yet — use the buttons above")}
                 </p>
-                <div className="flex gap-2 justify-center">
-                  <Button variant="outline" onClick={addProductItem} data-testid="button-add-product-empty">
-                    <Package className="w-4 h-4 me-1" /> {t("منتج Adeko", "Adeko Product")}
-                  </Button>
-                  <Button onClick={addAreaItem} data-testid="button-add-area-empty">
-                    <Ruler className="w-4 h-4 me-1" /> {t("تسعير بالمتر²", "By m²")}
-                  </Button>
-                </div>
               </div>
             ) : (
               items.map((item, index) => (
