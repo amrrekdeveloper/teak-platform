@@ -294,7 +294,9 @@ export async function registerRoutes(
     console.warn("Survey design files table migration (non-fatal):", designFilesMigrationError instanceof Error ? designFilesMigrationError.message : String(designFilesMigrationError));
   }
 
-  // Startup cleanup: delete orphaned draft quotations older than 1 hour with no items and finalPrice=0
+  // Startup cleanup: delete orphaned empty draft quotations older than 1 hour.
+  // Items are stored as JSONB in quotations.items (no separate quotation_items table exists).
+  // Condition: status=draft, finalPrice=0, created >1h ago, items array empty.
   try {
     const cleanupResult = await pool.query(`
       DELETE FROM quotations
@@ -1127,7 +1129,7 @@ export async function registerRoutes(
 
       const requestingUser = await storage.getUser(userId);
       if (requestingUser?.role === "sales") {
-        if (quotation.status !== "draft" || (quotation as any).createdBy !== userId) {
+        if (quotation.status !== "draft" || quotation.createdBy !== userId) {
           return res.status(403).json({ message: "غير مصرح: يمكن للمندوب اعتماد مسوداته فقط" });
         }
       }
@@ -1214,7 +1216,7 @@ export async function registerRoutes(
 
       const requestingUser = await storage.getUser(userId);
       if (requestingUser?.role === "sales") {
-        if (quotation.status !== "draft" || (quotation as any).createdBy !== userId) {
+        if (quotation.status !== "draft" || quotation.createdBy !== userId) {
           return res.status(403).json({ message: "غير مصرح: يمكن للمندوب رفض مسوداته فقط" });
         }
       }
