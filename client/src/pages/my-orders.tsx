@@ -63,6 +63,7 @@ interface EnrichedOrder extends Quotation {
   assignedUser: SchemaUser | undefined;
   stage: PipelineStage;
   _appointment: Appointment | null;
+  quotationId?: number;
 }
 
 type WorkOrderWithContract = WorkOrder & { _contract: Contract | undefined };
@@ -907,12 +908,18 @@ export default function MyOrdersPage() {
                                         )}
                                       </>
                                     )}
-                                    {["quote_draft", "quote_sent"].includes(order.stage) && isMine && (
+                                    {["survey_done", "quote_draft", "quote_sent"].includes(order.stage) && isMine && (
                                       <Button
                                         variant="ghost" size="sm"
                                         className="h-7 w-7 p-0 text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950/30"
-                                        onClick={() => { setApproveDialog(order); setApproveReceiptFile(null); setApproveReceiptPreview(null); }}
-                                        title={t("اعتماد بالحضور", "Approve In-Person")}
+                                        onClick={() => {
+                                          if (order.stage === "survey_done" && !["draft", "sent"].includes(order.status)) {
+                                            navigate(`/quotation-builder?quotationId=${order.quotationId ?? order.id}`);
+                                          } else {
+                                            setApproveDialog(order); setApproveReceiptFile(null); setApproveReceiptPreview(null);
+                                          }
+                                        }}
+                                        title={order.stage === "survey_done" ? t("استعراض العرض + الاعتماد بالحضور", "View Quote + Approve In-Person") : t("اعتماد بالحضور", "Approve In-Person")}
                                         disabled={approveOrderMutation.isPending}
                                         data-testid={`button-approve-${order.id}`}
                                       >
@@ -1068,16 +1075,22 @@ export default function MyOrdersPage() {
                               <FileText className="w-3.5 h-3.5 me-1" />{t("عرض السعر", "Quote")}
                             </Button>
                           )}
-                          {["quote_draft", "quote_sent"].includes(order.stage) && isMine && (
+                          {["survey_done", "quote_draft", "quote_sent"].includes(order.stage) && isMine && (
                             <Button
                               size="sm"
                               className="h-8 text-xs flex-1 bg-green-600 hover:bg-green-700 text-white"
-                              onClick={() => { setApproveDialog(order); setApproveReceiptFile(null); setApproveReceiptPreview(null); }}
+                              onClick={() => {
+                                if (order.stage === "survey_done" && !["draft", "sent"].includes(order.status)) {
+                                  navigate(`/quotation-builder?quotationId=${order.quotationId ?? order.id}`);
+                                } else {
+                                  setApproveDialog(order); setApproveReceiptFile(null); setApproveReceiptPreview(null);
+                                }
+                              }}
                               disabled={approveOrderMutation.isPending}
                               data-testid={`button-approve-mobile-${order.id}`}
                             >
                               {approveOrderMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin me-1" /> : <CheckCircle2 className="w-3.5 h-3.5 me-1" />}
-                              {t("اعتماد بالحضور", "Approve In-Person")}
+                              {order.stage === "survey_done" ? t("استعراض العرض + الاعتماد", "View Quote + Approve") : t("اعتماد بالحضور", "Approve In-Person")}
                             </Button>
                           )}
                           {canCancel && (

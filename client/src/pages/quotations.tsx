@@ -182,7 +182,7 @@ export default function QuotationsPage() {
   const isManager = user?.role === "owner" || user?.role === "assistant";
   const canApproveQuotation = (q: Quotation) => {
     if (isManager) return q.status === "draft" || q.status === "sent";
-    if (user?.role === "sales") return q.status === "draft" && q.createdBy === user.id;
+    if (user?.role === "sales") return (q.status === "draft" || q.status === "sent") && (Number(q.assignedTo) === Number(user.id) || Number(q.createdBy) === Number(user.id));
     return false;
   };
   const canAssign = user?.role === "owner" || user?.role === "assistant" || user?.role === "sales";

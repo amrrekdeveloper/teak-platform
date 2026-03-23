@@ -1087,7 +1087,9 @@ export async function registerRoutes(
       const quotation = await storage.getQuotation(parseInt(req.params.id));
       if (!quotation) return res.status(404).json({ message: "عرض السعر غير موجود" });
       const requestingUser = await storage.getUser(req.session.userId!);
-      if (requestingUser?.role === "sales" && quotation.assignedTo !== req.session.userId) {
+      if (requestingUser?.role === "sales" &&
+          Number(quotation.assignedTo) !== Number(req.session.userId) &&
+          Number(quotation.createdBy) !== Number(req.session.userId)) {
         return res.status(403).json({ message: "غير مصرح لك بالاطلاع على هذا الطلب", messageEn: "You are not authorized to view this order" });
       }
       res.json(quotation);
@@ -1171,7 +1173,7 @@ export async function registerRoutes(
       const quotation = await storage.getQuotation(parseInt(req.params.id));
       if (!quotation) return res.status(404).json({ message: "عرض السعر غير موجود" });
       if (currentUser?.role === "sales") {
-        if (quotation.assignedTo !== userId && quotation.createdBy !== userId) {
+        if (Number(quotation.assignedTo) !== Number(userId) && Number(quotation.createdBy) !== Number(userId)) {
           return res.status(403).json({ message: "غير مصرح", messageEn: "Not authorized to modify this quotation" });
         }
         // Block sales from changing authorization-sensitive fields
@@ -1219,8 +1221,10 @@ export async function registerRoutes(
       if (!quotation) return res.status(404).json({ message: "عرض السعر غير موجود" });
 
       const requestingUser = await storage.getUser(userId);
+      const numUserId = Number(userId);
       if (requestingUser?.role === "sales") {
-        if (!["draft", "sent"].includes(quotation.status) || (quotation.assignedTo !== userId && quotation.createdBy !== userId)) {
+        if (!["draft", "sent"].includes(quotation.status) ||
+            (Number(quotation.assignedTo) !== numUserId && Number(quotation.createdBy) !== numUserId)) {
           return res.status(403).json({ message: "غير مصرح: يمكن للمندوب اعتماد عروض الأسعار المسندة إليه فقط" });
         }
       }

@@ -25,8 +25,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Plus, Trash2, Loader2, Calculator, ArrowLeft, ArrowRight, Paperclip, Image, FileText, Search, Package, Ruler, Send, Save, ChevronDown, ChevronUp, Settings2, Eye, Download, Globe, List, LayoutList, Upload, X as XIcon, Check, Receipt } from "lucide-react";
-import { Checkbox as CheckboxUI } from "@/components/ui/checkbox";
+import { Plus, Trash2, Loader2, Calculator, ArrowLeft, ArrowRight, Paperclip, Image, FileText, Search, Package, Ruler, Send, Save, ChevronDown, ChevronUp, Settings2, Eye, Download, List, LayoutList, Upload, X as XIcon, Check, Receipt } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { DialogFooter } from "@/components/ui/dialog";
 
@@ -139,7 +138,6 @@ export default function QuotationBuilderPage() {
   const [quotationMode, setQuotationMode] = useState<"detailed" | "summary">("detailed");
   const [summaryDescription, setSummaryDescription] = useState("");
   const [summaryPriceBeforeVat, setSummaryPriceBeforeVat] = useState<number>(0);
-  const [sendDialogOpen, setSendDialogOpen] = useState(false);
   const [approveDialogOpen, setApproveDialogOpen] = useState(false);
   const [approveReceiptFile, setApproveReceiptFile] = useState<File | null>(null);
   const [approveReceiptPreview, setApproveReceiptPreview] = useState<string | null>(null);
@@ -684,17 +682,20 @@ export default function QuotationBuilderPage() {
       if (quotation?.id) {
         queryClient.invalidateQueries({ queryKey: ["/api/quotations", String(quotation.id)] });
       }
-      if (status === "draft") {
+      const editingId = preselectedQuotationId ? parseInt(preselectedQuotationId) : savedQuotationId;
+      if (status === "draft" || editingId) {
         setSavedQuotationId(quotation?.id || null);
-        setSavedQuotationStatus(quotation?.status || "draft");
-        toast({ title: preselectedQuotationId ? t("تم حفظ التعديلات", "Changes saved") : t("تم حفظ عرض السعر كمسودة", "Quotation saved as draft") });
+        setSavedQuotationStatus(quotation?.status || status);
+        toast({ title: editingId ? t("تم حفظ التعديلات", "Changes saved") : t("تم حفظ عرض السعر كمسودة", "Quotation saved as draft") });
         if (pendingSendAfterSave.current) {
           pendingSendAfterSave.current = false;
           const initialAttachments = new Set<number>(
             surveyDesignFiles.filter((f: any) => f.attach_to_quote).map((f: any) => f.id)
           );
           setSelectedAttachments(initialAttachments);
-          setSendDialogOpen(true);
+          if (quotation?.id) {
+            handleSendOption("portal", initialAttachments);
+          }
         }
       } else {
         toast({ title: t("تم إرسال عرض السعر للعميل بنجاح", "Quotation sent to customer successfully") });
@@ -746,6 +747,10 @@ export default function QuotationBuilderPage() {
 
   const handleApproveFromBuilder = () => {
     if (!savedQuotationId) return;
+    if (totals.finalPrice <= 0) {
+      toast({ title: t("لا يمكن الاعتماد: المبلغ الإجمالي يساوي صفر", "Cannot approve: total price is zero"), variant: "destructive" });
+      return;
+    }
     if (approveReceiptFile && approveReceiptPreview) {
       approveFromBuilderMutation.mutate({ id: savedQuotationId, receiptData: approveReceiptPreview, receiptName: approveReceiptFile.name });
     } else {
@@ -785,21 +790,13 @@ export default function QuotationBuilderPage() {
     saveMutation.mutate(status);
   };
 
-  const handleOpenSendDialog = () => {
+  const handleSendOption = async (option: "portal" | "pdf" | "both", attachmentIds?: Set<number>) => {
     if (!savedQuotationId) return;
-    const initialAttachments = new Set<number>(
-      surveyDesignFiles.filter((f: any) => f.attach_to_quote).map((f: any) => f.id)
-    );
-    setSelectedAttachments(initialAttachments);
-    setSendDialogOpen(true);
-  };
-
-  const handleSendOption = async (option: "portal" | "pdf" | "both") => {
-    if (!savedQuotationId) return;
+    const effectiveAttachments = attachmentIds ?? selectedAttachments;
     if (surveyDesignFiles.length > 0 && preselectedSurveyId) {
       // Always sync ALL files (not just deltas) to ensure quotation.attachedDesignFiles is authoritative
       for (const f of surveyDesignFiles) {
-        const shouldAttach = selectedAttachments.has(f.id);
+        const shouldAttach = effectiveAttachments.has(f.id);
         try {
           await apiRequest("PATCH", `/api/site-surveys/${preselectedSurveyId}/design-files/${f.id}`, { attachToQuote: shouldAttach, quotationId: savedQuotationId });
         } catch (err) {
@@ -814,7 +811,6 @@ export default function QuotationBuilderPage() {
       const pdfUrl = `/quotations/${savedQuotationId}/view?print=1`;
       window.open(pdfUrl, "_blank");
     }
-    setSendDialogOpen(false);
   };
 
   const filteredAdeko = useMemo(() => {
@@ -1657,17 +1653,26 @@ export default function QuotationBuilderPage() {
                     : t(`تم الحفظ كمسودة — رقم عرض السعر: #${savedQuotationId}`, `Saved as draft — Quotation #${savedQuotationId}`)
                   }</span>
                 </div>
-                <div className="grid grid-cols-2 gap-2">
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => handleSubmit((savedQuotationStatus as "draft" | "sent") || "draft")}
+                  disabled={saveMutation.isPending}
+                  data-testid="button-save-edits"
+                >
+                  {saveMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin me-1.5" /> : <Save className="w-4 h-4 me-1.5" />}
+                  {t("حفظ التعديلات", "Save Changes")}
+                </Button>
+                <div className="flex items-center gap-2">
                   <Button
-                    variant="outline"
-                    onClick={() => setLocation(`/quotations/${savedQuotationId}/view`)}
-                    data-testid="button-preview-quotation"
-                  >
-                    <Eye className="w-4 h-4 me-1.5" />
-                    {t("معاينة / طباعة", "Preview / Print")}
-                  </Button>
-                  <Button
-                    onClick={handleOpenSendDialog}
+                    className="flex-1"
+                    onClick={() => {
+                      const initialAttachments = new Set<number>(
+                        surveyDesignFiles.filter((f: any) => f.attach_to_quote).map((f: any) => f.id)
+                      );
+                      setSelectedAttachments(initialAttachments);
+                      handleSendOption("portal", initialAttachments);
+                    }}
                     disabled={sendToCustomerMutation.isPending}
                     data-testid="button-send-to-customer"
                   >
@@ -1675,8 +1680,18 @@ export default function QuotationBuilderPage() {
                       <><Send className="w-4 h-4 me-1.5" />{t("إرسال للعميل", "Send to Customer")}</>
                     )}
                   </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-xs text-muted-foreground hover:text-foreground shrink-0"
+                    onClick={() => handleSendOption("pdf")}
+                    data-testid="button-download-pdf"
+                  >
+                    <Download className="w-3.5 h-3.5 me-1" />
+                    {t("تحميل PDF", "Download PDF")}
+                  </Button>
                 </div>
-                {user?.role === "sales" && totals.finalPrice > 0 && (
+                {(user?.role === "sales" || user?.role === "owner" || user?.role === "assistant") && (
                   <Button
                     variant="default"
                     className="w-full bg-green-600 hover:bg-green-700 text-white"
@@ -1773,95 +1788,6 @@ export default function QuotationBuilderPage() {
               ))
             )}
           </div>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={sendDialogOpen} onOpenChange={setSendDialogOpen}>
-        <DialogContent className="max-w-md" data-testid="dialog-send-options">
-          <DialogHeader>
-            <DialogTitle>{t("إرسال عرض السعر للعميل", "Send Quotation to Customer")}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              {t("اختر طريقة الإرسال:", "Choose how to send:")}
-            </p>
-
-            {surveyDesignFiles.length > 0 && (
-              <div className="space-y-2">
-                <p className="text-sm font-medium flex items-center gap-1.5">
-                  <Paperclip className="w-3.5 h-3.5" />
-                  {t("المخططات المرفقة", "Attached Plans")}
-                </p>
-                <div className="space-y-1">
-                  {surveyDesignFiles.map((f: any) => (
-                    <label
-                      key={f.id}
-                      className="flex items-center gap-2 p-2 rounded-md border cursor-pointer hover:bg-muted/30"
-                      data-testid={`label-attach-${f.id}`}
-                    >
-                      <CheckboxUI
-                        checked={selectedAttachments.has(f.id)}
-                        onCheckedChange={(checked) => {
-                          const next = new Set(selectedAttachments);
-                          if (checked) next.add(f.id);
-                          else next.delete(f.id);
-                          setSelectedAttachments(next);
-                        }}
-                        data-testid={`checkbox-attach-${f.id}`}
-                      />
-                      <FileText className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-                      <span className="text-sm truncate">{f.file_name}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div className="space-y-2">
-              <Button
-                className="w-full justify-start gap-3"
-                variant="outline"
-                onClick={() => handleSendOption("portal")}
-                disabled={sendToCustomerMutation.isPending}
-                data-testid="button-send-portal"
-              >
-                <Globe className="w-4 h-4 text-blue-600" />
-                <div className="text-start">
-                  <div className="font-medium text-sm">{t("إرسال للبوابة الإلكترونية", "Send to Customer Portal")}</div>
-                  <div className="text-xs text-muted-foreground">{t("يُحدّث الحالة إلى 'مرسل' ويُرسل إشعاراً", "Updates status to 'sent' and notifies customer")}</div>
-                </div>
-              </Button>
-              <Button
-                className="w-full justify-start gap-3"
-                variant="outline"
-                onClick={() => handleSendOption("pdf")}
-                data-testid="button-send-pdf"
-              >
-                <Download className="w-4 h-4 text-green-600" />
-                <div className="text-start">
-                  <div className="font-medium text-sm">{t("تحميل / طباعة PDF", "Download / Print PDF")}</div>
-                  <div className="text-xs text-muted-foreground">{t("فتح صفحة المعاينة للطباعة أو التحميل", "Open preview page for printing or downloading")}</div>
-                </div>
-              </Button>
-              <Button
-                className="w-full justify-start gap-3"
-                onClick={() => handleSendOption("both")}
-                disabled={sendToCustomerMutation.isPending}
-                data-testid="button-send-both"
-              >
-                <Send className="w-4 h-4" />
-                <div className="text-start">
-                  <div className="font-medium text-sm">{t("كلاهما", "Both")}</div>
-                  <div className="text-xs opacity-80">{t("إرسال للبوابة وتحميل PDF", "Send to portal and download PDF")}</div>
-                </div>
-              </Button>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setSendDialogOpen(false)} data-testid="button-close-send-dialog">
-              {t("إلغاء", "Cancel")}
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
 
