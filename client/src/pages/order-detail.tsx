@@ -14,6 +14,7 @@ import {
   Clock, FileText, Package, Truck, CheckCircle2, Ban, AlertCircle,
   CalendarCheck, CalendarX, Ruler, Box, ChevronLeft, ChevronRight,
   ClipboardList, Banknote, Home, Zap, ThumbsDown, type LucideIcon,
+  Paperclip, Download, Eye,
 } from "lucide-react";
 
 type PipelineStage = "new" | "appointment_scheduled" | "survey_done" | "quote_draft" | "quote_sent" | "quote_approved" | "in_production" | "delivered" | "rejected" | "cancelled";
@@ -119,6 +120,30 @@ export default function OrderDetailPage() {
   const { data: orderPayments = [] } = useQuery<Payment[]>({
     queryKey: ["/api/contracts", linkedContractId, "payments"],
     enabled: !!linkedContractId,
+  });
+
+  const linkedSurveysTemp = (siteSurveys as SiteSurvey[]).filter(s => {
+    const apptByQ: Record<number, Appointment> = {};
+    for (const appt of appointments) {
+      if (!appt.quotationId) continue;
+      if (!apptByQ[appt.quotationId]) apptByQ[appt.quotationId] = appt;
+    }
+    const la = apptByQ[orderId] || null;
+    return s.quotationId === orderId || (la && s.appointmentId === la.id);
+  });
+  const firstSurveyId = linkedSurveysTemp[0]?.id;
+
+  const { data: surveyDesignFiles = [] } = useQuery<{
+    id: number; file_name: string; file_label: string; file_url: string;
+    mime_type: string; file_size: number; attach_to_quote: boolean; created_at: string;
+  }[]>({
+    queryKey: ["/api/site-surveys", firstSurveyId, "design-files"],
+    queryFn: async () => {
+      const res = await fetch(`/api/site-surveys/${firstSurveyId}/design-files`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!firstSurveyId,
   });
 
   const isManager = user && ["owner", "assistant"].includes(user.role);
@@ -392,29 +417,128 @@ export default function OrderDetailPage() {
 
       {linkedSurveys.length > 0 && (
         <SectionCard title={t("المسوحات الميدانية", "Site Surveys")} icon={Ruler}>
-          <div className="space-y-2">
-            {linkedSurveys.map((survey) => (
-              <div key={survey.id} className="rounded-lg p-3 border bg-violet-50/50 dark:bg-violet-950/20 border-violet-200 dark:border-violet-900 text-xs space-y-1">
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold">{survey.projectType || t("مسح", "Survey")} #{survey.id}</span>
-                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-violet-700 border-violet-300">
-                    {t("مكتمل", "Complete")}
+          <div className="space-y-3">
+            {linkedSurveys.map((survey) => {
+              const spaces: { id: string; name: string; length: string; width: string; height: string; walls?: { id: string; name: string; length: string }[] }[] =
+                Array.isArray((survey as any).spaces) ? (survey as any).spaces : [];
+              return (
+                <div key={survey.id} className="rounded-lg border bg-violet-50/50 dark:bg-violet-950/20 border-violet-200 dark:border-violet-900 text-xs overflow-hidden">
+                  <div className="flex items-center justify-between px-3 py-2 border-b border-violet-200 dark:border-violet-800">
+                    <span className="font-semibold">{survey.projectType || t("مسح ميداني", "Site Survey")} #{survey.id}</span>
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-violet-700 border-violet-300">{t("مكتمل", "Complete")}</Badge>
+                  </div>
+                  <div className="px-3 py-2 space-y-1">
+                    {survey.city && <p className="flex items-center gap-1 text-muted-foreground"><MapPin className="w-3 h-3" />{survey.city}</p>}
+                    {survey.totalArea && <InfoRow label={t("المساحة الكلية", "Total Area")} value={`${survey.totalArea} م²`} />}
+                    {survey.roomsCount && <InfoRow label={t("عدد الغرف", "Rooms")} value={String(survey.roomsCount)} />}
+                    {survey.notes && <p className="text-muted-foreground border-t pt-1 mt-1">{survey.notes}</p>}
+
+                    {spaces.length > 0 && (
+                      <div className="mt-2 pt-2 border-t border-violet-200 dark:border-violet-800">
+                        <p className="font-semibold text-violet-700 dark:text-violet-400 mb-1.5">{t("المساحات والمقاسات", "Spaces & Dimensions")}</p>
+                        <div className="space-y-1.5">
+                          {spaces.map((sp) => {
+                            const spaceWalls = Array.isArray(sp.walls) ? sp.walls : [];
+                            return (
+                              <div key={sp.id} className="rounded border border-violet-200 dark:border-violet-700 bg-white/60 dark:bg-violet-950/30 p-2">
+                                <p className="font-medium text-foreground mb-1">{sp.name}</p>
+                                <div className="grid grid-cols-3 gap-x-2 gap-y-0.5 text-muted-foreground">
+                                  {sp.length && <span>{t("الطول", "L")}: <strong className="text-foreground">{sp.length}م</strong></span>}
+                                  {sp.width && <span>{t("العرض", "W")}: <strong className="text-foreground">{sp.width}م</strong></span>}
+                                  {sp.height && <span>{t("الارتفاع", "H")}: <strong className="text-foreground">{sp.height}م</strong></span>}
+                                </div>
+                                {spaceWalls.length > 0 && (
+                                  <div className="mt-1 pt-1 border-t border-violet-100 dark:border-violet-800">
+                                    <p className="text-muted-foreground mb-0.5">{t("الجدران", "Walls")}:</p>
+                                    <div className="space-y-0.5">
+                                      {spaceWalls.map(w => (
+                                        <div key={w.id} className="flex items-center gap-2">
+                                          <span className="text-muted-foreground">{w.name}</span>
+                                          {w.length && <span className="font-medium text-foreground">{w.length}م</span>}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <div className="px-3 pb-2">
+                    <Button
+                      variant="outline" size="sm"
+                      className="h-6 text-[10px] px-2 w-full border-violet-300 text-violet-700 hover:bg-violet-50"
+                      onClick={() => navigate(`/site-survey/${survey.appointmentId || linkedAppt?.id}?returnTo=/orders/${orderId}`)}
+                      data-testid={`button-detail-open-survey-${survey.id}`}
+                    >
+                      <Ruler className="w-3 h-3 me-1" />
+                      {t("فتح نموذج المسح الميداني", "Open Survey Form")}
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+
+            {surveyDesignFiles.length > 0 && (
+              <div className="rounded-lg border bg-amber-50/50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900 overflow-hidden">
+                <div className="flex items-center gap-1.5 px-3 py-2 border-b border-amber-200 dark:border-amber-800">
+                  <Paperclip className="w-3.5 h-3.5 text-amber-600" />
+                  <span className="text-xs font-semibold text-amber-700 dark:text-amber-400">{t("المخططات والملفات المرفقة", "Attached Plans & Files")}</span>
+                  <Badge className="ms-auto text-[10px] px-1.5 py-0 bg-amber-100 text-amber-700 border-amber-300 border">
+                    {surveyDesignFiles.length}
                   </Badge>
                 </div>
-                {survey.city && <p className="flex items-center gap-1 text-muted-foreground"><MapPin className="w-3 h-3" />{survey.city}</p>}
-                {survey.totalArea && <InfoRow label={t("المساحة الكلية", "Total Area")} value={`${survey.totalArea} م²`} />}
-                {survey.roomsCount && <InfoRow label={t("عدد الغرف", "Rooms")} value={String(survey.roomsCount)} />}
-                {survey.notes && <p className="text-muted-foreground border-t pt-1 mt-1">{survey.notes}</p>}
-                <Button
-                  variant="outline" size="sm"
-                  className="h-6 text-[10px] px-2 mt-1"
-                  onClick={() => navigate(`/site-survey/${survey.appointmentId || linkedAppt?.id}?returnTo=/orders/${orderId}`)}
-                  data-testid={`button-detail-open-survey-${survey.id}`}
-                >
-                  {t("عرض المسح الكامل", "View Full Survey")}
-                </Button>
+                <div className="px-3 py-2 space-y-1.5">
+                  {surveyDesignFiles.map((file) => {
+                    const filename = file.file_url.split("/").pop() || "";
+                    const sizeKb = Math.round(file.file_size / 1024);
+                    return (
+                      <div key={file.id} className="flex items-center gap-2 rounded border border-amber-200 dark:border-amber-700 bg-white/60 dark:bg-amber-950/30 p-2 text-xs">
+                        <FileText className="w-4 h-4 text-amber-500 flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-foreground truncate">{file.file_label || file.file_name}</p>
+                          <p className="text-muted-foreground">{sizeKb > 0 ? `${sizeKb} KB` : ""}{file.attach_to_quote ? ` · ${t("مرفق بالعرض", "Attached to Quote")}` : ""}</p>
+                        </div>
+                        <div className="flex gap-1 flex-shrink-0">
+                          <Button
+                            variant="outline" size="icon"
+                            className="h-6 w-6 border-amber-300 hover:bg-amber-50"
+                            title={t("فتح", "View")}
+                            data-testid={`button-view-design-file-${file.id}`}
+                            onClick={() => window.open(`/api/uploads/survey-files/${filename}`, "_blank")}
+                          >
+                            <Eye className="w-3 h-3 text-amber-600" />
+                          </Button>
+                          <Button
+                            variant="outline" size="icon"
+                            className="h-6 w-6 border-amber-300 hover:bg-amber-50"
+                            title={t("تحميل", "Download")}
+                            data-testid={`button-download-design-file-${file.id}`}
+                            onClick={() => {
+                              const a = document.createElement("a");
+                              a.href = `/api/uploads/survey-files/${filename}`;
+                              a.download = file.file_name;
+                              a.click();
+                            }}
+                          >
+                            <Download className="w-3 h-3 text-amber-600" />
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-            ))}
+            )}
+
+            {firstSurveyId && surveyDesignFiles.length === 0 && (
+              <p className="text-xs text-muted-foreground text-center py-1">
+                {t("لا توجد مخططات مرفقة بهذه الزيارة", "No design files attached to this survey")}
+              </p>
+            )}
           </div>
         </SectionCard>
       )}
