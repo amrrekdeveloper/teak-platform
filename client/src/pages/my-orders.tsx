@@ -908,18 +908,30 @@ export default function MyOrdersPage() {
                                         )}
                                       </>
                                     )}
-                                    {["survey_done", "quote_draft", "quote_sent"].includes(order.stage) && isMine && (
+                                    {["survey_done", "quote_draft", "quote_sent"].includes(order.stage) && (isMine || isManager) && (
+                                      <Button
+                                        variant="ghost" size="sm"
+                                        className="h-7 w-7 p-0 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 dark:hover:bg-indigo-950/30"
+                                        onClick={() => {
+                                          const hasItems = Array.isArray((order as any).items) && (order as any).items.length > 0;
+                                          if (order.stage === "survey_done" && !hasItems) {
+                                            navigate(`/quotation-builder?quotationId=${order.id}`);
+                                          } else {
+                                            navigate(`/quotations/${order.id}/view?returnTo=/my-orders`);
+                                          }
+                                        }}
+                                        title={t("مشاهدة عرض السعر", "View Quotation")}
+                                        data-testid={`button-view-quote-${order.id}`}
+                                      >
+                                        <FileText className="w-3.5 h-3.5" />
+                                      </Button>
+                                    )}
+                                    {["quote_draft", "quote_sent"].includes(order.stage) && isMine && (
                                       <Button
                                         variant="ghost" size="sm"
                                         className="h-7 w-7 p-0 text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950/30"
-                                        onClick={() => {
-                                          if (order.stage === "survey_done" && !["draft", "sent"].includes(order.status)) {
-                                            navigate(`/quotation-builder?quotationId=${order.quotationId ?? order.id}`);
-                                          } else {
-                                            setApproveDialog(order); setApproveReceiptFile(null); setApproveReceiptPreview(null);
-                                          }
-                                        }}
-                                        title={order.stage === "survey_done" ? t("استعراض العرض + الاعتماد بالحضور", "View Quote + Approve In-Person") : t("اعتماد بالحضور", "Approve In-Person")}
+                                        onClick={() => { setApproveDialog(order); setApproveReceiptFile(null); setApproveReceiptPreview(null); }}
+                                        title={t("اعتماد بالحضور", "Approve In-Person")}
                                         disabled={approveOrderMutation.isPending}
                                         data-testid={`button-approve-${order.id}`}
                                       >
@@ -1069,28 +1081,32 @@ export default function MyOrdersPage() {
                             <Button
                               variant="outline" size="sm"
                               className="h-8 text-xs flex-1 text-indigo-700 border-indigo-300 dark:border-indigo-800"
-                              onClick={() => navigate(`/quotation-builder?quotationId=${order.id}`)}
+                              onClick={() => {
+                                const hasItems = Array.isArray((order as any).items) && (order as any).items.length > 0;
+                                if (order.stage === "survey_done" && !hasItems) {
+                                  navigate(`/quotation-builder?quotationId=${order.id}`);
+                                } else {
+                                  navigate(`/quotations/${order.id}/view?returnTo=/my-orders`);
+                                }
+                              }}
                               data-testid={`button-view-quote-mobile-${order.id}`}
                             >
-                              <FileText className="w-3.5 h-3.5 me-1" />{t("عرض السعر", "Quote")}
+                              <FileText className="w-3.5 h-3.5 me-1" />
+                              {order.stage === "survey_done" && !(Array.isArray((order as any).items) && (order as any).items.length > 0)
+                                ? t("بناء العرض", "Build Quote")
+                                : t("مشاهدة العرض", "View Quote")}
                             </Button>
                           )}
-                          {["survey_done", "quote_draft", "quote_sent"].includes(order.stage) && isMine && (
+                          {["quote_draft", "quote_sent"].includes(order.stage) && isMine && (
                             <Button
                               size="sm"
                               className="h-8 text-xs flex-1 bg-green-600 hover:bg-green-700 text-white"
-                              onClick={() => {
-                                if (order.stage === "survey_done" && !["draft", "sent"].includes(order.status)) {
-                                  navigate(`/quotation-builder?quotationId=${order.quotationId ?? order.id}`);
-                                } else {
-                                  setApproveDialog(order); setApproveReceiptFile(null); setApproveReceiptPreview(null);
-                                }
-                              }}
+                              onClick={() => { setApproveDialog(order); setApproveReceiptFile(null); setApproveReceiptPreview(null); }}
                               disabled={approveOrderMutation.isPending}
                               data-testid={`button-approve-mobile-${order.id}`}
                             >
                               {approveOrderMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin me-1" /> : <CheckCircle2 className="w-3.5 h-3.5 me-1" />}
-                              {order.stage === "survey_done" ? t("استعراض العرض + الاعتماد", "View Quote + Approve") : t("اعتماد بالحضور", "Approve In-Person")}
+                              {t("اعتماد بالحضور", "Approve In-Person")}
                             </Button>
                           )}
                           {canCancel && (

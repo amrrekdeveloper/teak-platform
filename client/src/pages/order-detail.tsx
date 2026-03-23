@@ -501,11 +501,19 @@ export default function OrderDetailPage() {
           {stage !== "cancelled" && stage !== "rejected" && (quotation.assignedTo === user?.id || isManager) && (
             <Button
               className="flex-1 h-11"
-              onClick={() => navigate(`/quotation-builder?quotationId=${quotation.id}`)}
+              onClick={() => {
+                if (["survey_done"].includes(stage) && !(Array.isArray((quotation as any).items) && (quotation as any).items.length > 0)) {
+                  navigate(`/quotation-builder?quotationId=${quotation.id}`);
+                } else {
+                  navigate(`/quotations/${quotation.id}/view?returnTo=/orders/${orderId}`);
+                }
+              }}
               data-testid="button-detail-open-quotation"
             >
               <FileText className="w-4 h-4 me-1" />
-              {t("عرض السعر", "Quotation")}
+              {["survey_done"].includes(stage) && !(Array.isArray((quotation as any).items) && (quotation as any).items.length > 0)
+                ? t("بناء العرض", "Build Quote")
+                : t("مشاهدة العرض", "View Quote")}
             </Button>
           )}
         </div>

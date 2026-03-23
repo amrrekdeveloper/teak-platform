@@ -2248,19 +2248,28 @@ export default function SiteSurveyPage() {
               className="w-full justify-start gap-3 h-14"
               onClick={() => {
                 setNextStepsDialog(false);
-                const cid = appointment?.customerId;
-                const sid = savedSurveyId || existingSurvey?.id;
-                const params = new URLSearchParams();
-                if (cid) params.set("customerId", String(cid));
-                if (sid) params.set("surveyId", String(sid));
-                navigate(`/quotations/new${params.toString() ? "?" + params.toString() : ""}`);
+                const existingQid = appointment?.quotationId;
+                if (existingQid) {
+                  navigate(`/quotation-builder?quotationId=${existingQid}`);
+                } else {
+                  const cid = appointment?.customerId;
+                  const sid = savedSurveyId || existingSurvey?.id;
+                  const params = new URLSearchParams();
+                  if (cid) params.set("customerId", String(cid));
+                  if (sid) params.set("surveyId", String(sid));
+                  navigate(`/quotations/new${params.toString() ? "?" + params.toString() : ""}`);
+                }
               }}
               data-testid="button-create-quotation"
             >
               <FileText className="w-5 h-5 shrink-0" />
               <div className="text-start">
-                <div className="font-semibold text-sm">{t("إنشاء عرض سعر", "Create Quotation")}</div>
-                <div className="text-xs opacity-75">{t("أنشئ عرض سعر للعميل", "Build a price quotation")}</div>
+                <div className="font-semibold text-sm">
+                  {appointment?.quotationId ? t("تعديل عرض السعر", "Edit Quotation") : t("إنشاء عرض سعر", "Create Quotation")}
+                </div>
+                <div className="text-xs opacity-75">
+                  {appointment?.quotationId ? t("تعديل عرض السعر المرتبط بهذا الطلب", "Edit the linked quotation") : t("أنشئ عرض سعر للعميل", "Build a price quotation")}
+                </div>
               </div>
             </Button>
             <Button

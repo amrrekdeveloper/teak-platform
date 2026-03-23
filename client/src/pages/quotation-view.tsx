@@ -1,18 +1,29 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLanguage } from "@/components/language-provider";
-import { useRoute, Link } from "wouter";
+import { useRoute, Link, useLocation } from "wouter";
 import type { Quotation, Customer } from "@shared/schema";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, ArrowRight, Loader2, Printer, Send, CheckCircle2, Receipt } from "lucide-react";
-import { useState, useEffect } from "react";
+import { ArrowLeft, ArrowRight, Loader2, Printer, Send, CheckCircle2, Receipt, X, Pencil } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
 import teakLogo from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
 import { LoadingTransition } from "@/components/loading-transition";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 
 export default function QuotationViewPage() {
   const { t, isRTL } = useLanguage();
   const { toast } = useToast();
+  const { user } = useAuth();
+  const [, navigate] = useLocation();
   const [, params] = useRoute("/quotations/:id/view");
   const id = params?.id;
   const autoPrint = new URLSearchParams(window.location.search).get("print") === "1";
@@ -36,6 +47,39 @@ export default function QuotationViewPage() {
   });
 
   const [showPrintTransition, setShowPrintTransition] = useState(false);
+  const [approveDialogOpen, setApproveDialogOpen] = useState(false);
+  const [approveReceiptFile, setApproveReceiptFile] = useState<File | null>(null);
+  const [approveReceiptPreview, setApproveReceiptPreview] = useState<string | null>(null);
+  const approveReceiptInputRef = useRef<HTMLInputElement>(null);
+
+  const returnTo = new URLSearchParams(window.location.search).get("returnTo");
+
+  const isManager = user?.role === "owner" || user?.role === "assistant";
+  const canApprove = quotation &&
+    (quotation.status === "draft" || quotation.status === "sent") &&
+    (isManager || user?.role === "sales");
+
+  const approveMutation = useMutation({
+    mutationFn: async () => {
+      const body: Record<string, string> = {};
+      if (approveReceiptPreview) body.receiptData = approveReceiptPreview;
+      if (approveReceiptFile) body.receiptName = approveReceiptFile.name;
+      const res = await apiRequest("POST", `/api/quotations/${id}/approve`, body);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/quotations", id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/quotations"] });
+      toast({ title: t("تم اعتماد عرض السعر وإنشاء العقد بنجاح", "Quotation approved and contract created") });
+      setApproveDialogOpen(false);
+      setApproveReceiptFile(null);
+      setApproveReceiptPreview(null);
+      if (returnTo) navigate(returnTo);
+    },
+    onError: (err: any) => {
+      toast({ title: t("حدث خطأ أثناء الاعتماد", "Error during approval"), description: err?.message, variant: "destructive" });
+    },
+  });
 
   const sendMutation = useMutation({
     mutationFn: async () => {
@@ -155,24 +199,43 @@ export default function QuotationViewPage() {
         }}
       />
 
-      <div className="flex items-center justify-between mb-4 print:hidden gap-2">
-        <div className="flex items-center gap-3">
-          <Link href="/quotations">
-            <Button variant="ghost" size="icon" data-testid="button-back">
-              <BackIcon className="w-4 h-4" />
-            </Button>
-          </Link>
+      <div className="flex items-center justify-between mb-4 print:hidden gap-2 flex-wrap">
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="icon" data-testid="button-back" onClick={() => navigate(returnTo || "/quotations")}>
+            <BackIcon className="w-4 h-4" />
+          </Button>
           <h1 className="text-lg font-bold">
             {t("عرض سعر", "Price Quotation")} #{quotation.quotationNumber}
           </h1>
-        </div>
-        <div className="flex items-center gap-2">
-          {quotation.status === "sent" || quotation.status === "approved" ? (
-            <div className="flex items-center gap-1 text-sm text-green-600 dark:text-green-400 font-medium">
-              <CheckCircle2 className="w-4 h-4" />
+          {quotation.status === "approved" && (
+            <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-950/30 dark:text-green-400 font-medium flex items-center gap-1">
+              <CheckCircle2 className="w-3 h-3" />{t("مُعتمد", "Approved")}
+            </span>
+          )}
+          {quotation.status === "sent" && (
+            <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400 font-medium">
               {t("مُرسل", "Sent")}
-            </div>
-          ) : (
+            </span>
+          )}
+          {quotation.status === "draft" && (
+            <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400 font-medium">
+              {t("مسودة", "Draft")}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          {(quotation.status === "draft" || quotation.status === "sent") && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => navigate(`/quotation-builder?quotationId=${id}`)}
+              data-testid="button-edit-quotation"
+            >
+              <Pencil className="w-4 h-4 me-2" />
+              {t("تعديل", "Edit")}
+            </Button>
+          )}
+          {quotation.status === "draft" && (
             <Button
               size="sm"
               variant="outline"
@@ -184,7 +247,18 @@ export default function QuotationViewPage() {
               {t("إرسال للعميل", "Send to Customer")}
             </Button>
           )}
-          <Button onClick={handlePrint} size="sm" data-testid="button-print">
+          {canApprove && (
+            <Button
+              size="sm"
+              className="bg-green-600 hover:bg-green-700 text-white"
+              onClick={() => setApproveDialogOpen(true)}
+              data-testid="button-approve-quotation"
+            >
+              <CheckCircle2 className="w-4 h-4 me-2" />
+              {t("اعتماد بالحضور", "Approve In-Person")}
+            </Button>
+          )}
+          <Button onClick={handlePrint} size="sm" variant="outline" data-testid="button-print">
             <Printer className="w-4 h-4 me-2" />
             {t("طباعة", "Print")}
           </Button>
@@ -638,6 +712,86 @@ export default function QuotationViewPage() {
           </div>
         </div>
       </div>
+
+      {/* Approve In-Person Dialog */}
+      <Dialog open={approveDialogOpen} onOpenChange={(open) => {
+        setApproveDialogOpen(open);
+        if (!open) { setApproveReceiptFile(null); setApproveReceiptPreview(null); }
+      }}>
+        <DialogContent className="max-w-sm" data-testid="dialog-approve-view">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckCircle2 className="w-5 h-5 text-green-600" />
+              {t("اعتماد عرض السعر بالحضور الشخصي", "Approve Quotation In-Person")}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="bg-muted/50 rounded-lg p-3">
+              <p className="text-xs text-muted-foreground">{t("عرض السعر", "Quotation")} #{quotation.quotationNumber}</p>
+              <p className="text-sm font-semibold">{customer?.fullName || "—"}</p>
+              <p className="text-base font-bold text-primary mt-1">{parseFloat(quotation.finalPrice).toLocaleString()} {t("ر.س", "SAR")}</p>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {t(
+                "يُستخدم هذا الاعتماد عندما يحضر العميل للمعرض ويوافق على عرض السعر ويسدد الدفعة الأولى نقداً أو عبر نقاط البيع أو حوالة بنكية.",
+                "Use this when the customer visits the showroom and approves the quotation, paying the first installment in cash, POS, or bank transfer."
+              )}
+            </p>
+            <div className="space-y-2">
+              <Label>{t("وصل الدفع (اختياري)", "Payment Receipt (optional)")}</Label>
+              {approveReceiptPreview ? (
+                <div className="relative rounded-md border overflow-hidden">
+                  <img src={approveReceiptPreview} alt="receipt" className="w-full max-h-40 object-contain bg-muted/20" />
+                  <button
+                    className="absolute top-1 end-1 bg-background/80 rounded-full p-0.5 hover:bg-destructive hover:text-white transition-colors"
+                    onClick={() => { setApproveReceiptFile(null); setApproveReceiptPreview(null); }}
+                    data-testid="button-remove-receipt-view"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : (
+                <label
+                  className="w-full border-2 border-dashed rounded-md py-4 flex flex-col items-center gap-2 text-muted-foreground hover:border-primary hover:text-primary transition-colors cursor-pointer"
+                  data-testid="button-upload-receipt-view"
+                >
+                  <input
+                    ref={approveReceiptInputRef}
+                    type="file"
+                    accept="image/*,application/pdf"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      setApproveReceiptFile(file);
+                      const reader = new FileReader();
+                      reader.onload = (ev) => setApproveReceiptPreview(ev.target?.result as string);
+                      reader.readAsDataURL(file);
+                    }}
+                    data-testid="input-receipt-file-view"
+                  />
+                  <Receipt className="w-5 h-5" />
+                  <span className="text-sm">{t("ارفع صورة الوصل", "Upload receipt image")}</span>
+                </label>
+              )}
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="ghost" onClick={() => { setApproveDialogOpen(false); setApproveReceiptFile(null); setApproveReceiptPreview(null); }} data-testid="button-cancel-approve-view">
+              {t("إلغاء", "Cancel")}
+            </Button>
+            <Button
+              className="bg-green-600 hover:bg-green-700 text-white"
+              onClick={() => approveMutation.mutate()}
+              disabled={approveMutation.isPending}
+              data-testid="button-confirm-approve-view"
+            >
+              {approveMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin me-1.5" /> : <CheckCircle2 className="w-4 h-4 me-1.5" />}
+              {t("تأكيد الاعتماد", "Confirm Approval")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
