@@ -136,15 +136,24 @@ export async function registerRoutes(
     fs.createReadStream(filePath).pipe(res);
   });
 
-  // Customer-accessible endpoint: only for files attached to a quote owned by the portal customer
+  // Customer-accessible endpoint: only for files attached to a quote owned by the portal customer.
+  // Uses quotation.attached_design_files (source of truth) OR attach_to_quote flag as fallback.
   app.get("/api/customer/survey-files/:filename", requirePortalAuth, async (req, res) => {
     const filename = req.params.filename.replace(/[^a-zA-Z0-9._-]/g, "");
     const urlPath = `/uploads/survey-files/${filename}`;
     const portalCustomer = (req as any).portalCustomer;
+    // Check by source-of-truth: file ID in quotation.attached_design_files, customer owns quote
     const check = await pool.query(
       `SELECT sdf.id FROM survey_design_files sdf
        JOIN quotations q ON q.id = sdf.quotation_id
-       WHERE sdf.file_url = $1 AND sdf.attach_to_quote = TRUE AND q.customer_id = $2 LIMIT 1`,
+       WHERE sdf.file_url = $1
+         AND q.customer_id = $2
+         AND (
+           (q.attached_design_files IS NOT NULL AND q.attached_design_files != '[]'::jsonb
+             AND q.attached_design_files @> to_jsonb(sdf.id))
+           OR sdf.attach_to_quote = TRUE
+         )
+       LIMIT 1`,
       [urlPath, portalCustomer.id]
     );
     if (check.rows.length === 0) return res.status(403).json({ message: "غير مصرح" });
@@ -242,6 +251,23 @@ export async function registerRoutes(
     `);
   } catch (orderStageMigrationError) {
     console.warn("Order stage migration warning (non-fatal):", orderStageMigrationError instanceof Error ? orderStageMigrationError.message : String(orderStageMigrationError));
+  }
+
+  // Ensure quotations has all required columns for attach/approval workflow
+  try {
+    await db.execute(`
+      ALTER TABLE quotations ADD COLUMN IF NOT EXISTS attached_design_files JSONB DEFAULT '[]';
+      ALTER TABLE quotations ADD COLUMN IF NOT EXISTS payment_receipt_data TEXT;
+      ALTER TABLE quotations ADD COLUMN IF NOT EXISTS payment_receipt_name TEXT;
+      ALTER TABLE quotations ADD COLUMN IF NOT EXISTS approved_by INTEGER;
+      ALTER TABLE quotations ADD COLUMN IF NOT EXISTS approved_at TIMESTAMP;
+      ALTER TABLE quotations ADD COLUMN IF NOT EXISTS attachment_data TEXT;
+      ALTER TABLE quotations ADD COLUMN IF NOT EXISTS attachment_name TEXT;
+      ALTER TABLE quotations ADD COLUMN IF NOT EXISTS attachment_mime TEXT;
+      ALTER TABLE quotations ADD COLUMN IF NOT EXISTS show_attachment_to_customer BOOLEAN DEFAULT FALSE;
+    `);
+  } catch (e) {
+    console.warn("Quotations migration (non-fatal):", e instanceof Error ? e.message : e);
   }
 
   try {
