@@ -30,7 +30,7 @@ const CONTACTS = [
     nameEn: "Teak",
     phone: "0542662889",
     wa: "966542662889",
-    color: "#25D366",
+    highlight: false,
   },
 ];
 
@@ -42,10 +42,165 @@ function WhatsAppIcon({ size = 20 }: { size?: number }) {
   );
 }
 
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== "undefined" ? window.innerWidth < 640 : false
+  );
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 640);
+    window.addEventListener("resize", handler);
+    return () => window.removeEventListener("resize", handler);
+  }, []);
+  return isMobile;
+}
+
+function ContactCard({ c, isRTL, t }: {
+  c: typeof CONTACTS[0];
+  isRTL: boolean;
+  t: (ar: string, en: string) => string;
+}) {
+  return (
+    <div
+      className="rounded-2xl overflow-hidden"
+      style={
+        c.highlight
+          ? { background: "rgba(37,211,102,0.1)", border: "1px solid rgba(37,211,102,0.35)" }
+          : { background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }
+      }
+    >
+      {c.highlight && (
+        <div className="px-4 pt-2.5 pb-0" style={{ textAlign: isRTL ? "right" : "left" }}>
+          <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#25D366" }}>
+            {t("الخط الرئيسي", "Main Line")}
+          </span>
+        </div>
+      )}
+      <div
+        className="flex items-center gap-3 px-4 py-3"
+        style={{ flexDirection: isRTL ? "row" : "row-reverse" }}
+      >
+        <div
+          className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-white text-base flex-shrink-0"
+          style={{
+            background: c.highlight
+              ? "linear-gradient(135deg, #128C7E, #25D366)"
+              : "linear-gradient(135deg, #1a6b3c, #25D366)",
+          }}
+        >
+          {t(c.nameAr[0], c.nameEn[0])}
+        </div>
+        <div className="flex-1 min-w-0" style={{ textAlign: isRTL ? "right" : "left" }}>
+          <p className="text-white font-semibold text-sm">{t(c.nameAr, c.nameEn)}</p>
+          <p className="text-white/50 text-xs font-mono mt-0.5" dir="ltr">{c.phone}</p>
+        </div>
+      </div>
+      <div
+        className="flex gap-2 px-4 pb-3"
+        style={{ flexDirection: isRTL ? "row" : "row-reverse" }}
+      >
+        <a
+          href={`https://wa.me/${c.wa}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          data-testid={`link-whatsapp-${c.nameAr}`}
+          className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl font-semibold text-xs transition-all hover:opacity-90 active:scale-95"
+          style={{
+            background: "linear-gradient(135deg, #1a6b3c, #25D366)",
+            color: "white",
+            flexDirection: isRTL ? "row" : "row-reverse",
+          }}
+        >
+          <WhatsAppIcon size={14} />
+          {t("واتساب", "WhatsApp")}
+        </a>
+        <a
+          href={`tel:${c.phone}`}
+          data-testid={`link-call-${c.nameAr}`}
+          className="flex items-center justify-center w-10 h-8 rounded-xl transition-all hover:opacity-90 active:scale-95"
+          style={{ background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.7)" }}
+        >
+          <Phone size={14} />
+        </a>
+      </div>
+    </div>
+  );
+}
+
+function PanelHeader({ isRTL, t, onClose }: {
+  isRTL: boolean;
+  t: (ar: string, en: string) => string;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      className="relative flex items-center justify-between px-5 py-4 flex-shrink-0"
+      style={{
+        background: "linear-gradient(135deg, #1a6b3c 0%, #25D366 100%)",
+        flexDirection: isRTL ? "row" : "row-reverse",
+      }}
+    >
+      <div className="flex items-center gap-2.5" style={{ flexDirection: isRTL ? "row" : "row-reverse" }}>
+        <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center">
+          <WhatsAppIcon size={20} />
+        </div>
+        <div style={{ textAlign: isRTL ? "right" : "left" }}>
+          <p className="text-white font-bold text-sm leading-tight">
+            {t("تواصل معنا", "Contact Us")}
+          </p>
+          <p className="text-white/70 text-xs">
+            {t("نرد فوراً", "We respond immediately")}
+          </p>
+        </div>
+      </div>
+      <button
+        onClick={onClose}
+        data-testid="button-close-contact"
+        className="w-8 h-8 rounded-full bg-white/15 hover:bg-white/30 flex items-center justify-center transition-colors"
+      >
+        <X size={16} className="text-white" />
+      </button>
+    </div>
+  );
+}
+
+function PanelBody({ isRTL, t }: { isRTL: boolean; t: (ar: string, en: string) => string }) {
+  return (
+    <div className="flex flex-col gap-3 overflow-y-auto p-4" style={{ WebkitOverflowScrolling: "touch" }}>
+      {CONTACTS.map((c, i) => (
+        <motion.div
+          key={c.nameAr}
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.06 + i * 0.06, duration: 0.28 }}
+        >
+          <ContactCard c={c} isRTL={isRTL} t={t} />
+        </motion.div>
+      ))}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.36 }}
+        className="rounded-2xl px-4 py-3 flex items-center gap-2.5"
+        style={{
+          background: "rgba(37,211,102,0.06)",
+          border: "1px solid rgba(37,211,102,0.15)",
+          flexDirection: isRTL ? "row" : "row-reverse",
+        }}
+      >
+        <MessageCircle size={15} className="flex-shrink-0" style={{ color: "#25D366" }} />
+        <p className="text-xs" style={{ color: "rgba(255,255,255,0.5)", textAlign: isRTL ? "right" : "left" }}>
+          {t("أوقات الدوام: السبت – الخميس، ٨ص – ٦م", "Working hours: Sat – Thu, 8am – 6pm")}
+        </p>
+      </motion.div>
+    </div>
+  );
+}
+
 export default function FloatingContact() {
   const { isRTL, t } = useLanguage();
   const [open, setOpen] = useState(false);
   const [pulse, setPulse] = useState(true);
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     const timer = setTimeout(() => setPulse(false), 8000);
@@ -53,18 +208,13 @@ export default function FloatingContact() {
   }, []);
 
   const side = isRTL ? "right" : "left";
-  const panelFrom = isRTL ? { x: 120 } : { x: -120 };
-  const panelTo = { x: 0 };
 
   return (
     <>
+      {/* Floating Tab Button */}
       <div
         className="fixed z-[999]"
-        style={{
-          top: "50%",
-          transform: "translateY(-50%)",
-          [side]: 0,
-        }}
+        style={{ top: "50%", transform: "translateY(-50%)", [side]: 0 }}
       >
         <motion.button
           onClick={() => setOpen(true)}
@@ -79,11 +229,8 @@ export default function FloatingContact() {
             boxShadow: "0 4px 24px rgba(37,211,102,0.4), 0 2px 8px rgba(0,0,0,0.3)",
             color: "white",
           }}
-          initial={{ x: isRTL ? 10 : -10 }}
           animate={{
-            x: isRTL
-              ? [10, 0, 10]
-              : [-10, 0, -10],
+            x: isRTL ? [10, 0, 10] : [-10, 0, -10],
             boxShadow: pulse
               ? [
                   "0 4px 24px rgba(37,211,102,0.4), 0 2px 8px rgba(0,0,0,0.3)",
@@ -106,9 +253,7 @@ export default function FloatingContact() {
               transition={{ duration: 1.6, repeat: Infinity, ease: "easeOut" }}
             />
           )}
-
           <WhatsAppIcon size={20} />
-
           <span
             className="text-white font-bold"
             style={{
@@ -128,160 +273,75 @@ export default function FloatingContact() {
       <AnimatePresence>
         {open && (
           <>
+            {/* Backdrop */}
             <motion.div
               className="fixed inset-0 z-[1000]"
-              style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }}
+              style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(4px)" }}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setOpen(false)}
             />
 
-            <motion.div
-              className="fixed z-[1001] flex flex-col"
-              style={{
-                top: "50%",
-                [side]: 0,
-                transform: "translateY(-50%)",
-                width: "min(340px, 92vw)",
-                maxHeight: "90vh",
-                background: "linear-gradient(145deg, #0f1a14 0%, #162214 50%, #0d1f11 100%)",
-                borderRadius: isRTL ? "20px 0 0 20px" : "0 20px 20px 0",
-                boxShadow: "0 20px 60px rgba(0,0,0,0.6), 0 4px 20px rgba(37,211,102,0.15)",
-                overflow: "hidden",
-                border: isRTL
-                  ? "1px solid rgba(37,211,102,0.2)"
-                  : "1px solid rgba(37,211,102,0.2)",
-                borderRight: isRTL ? "none" : "1px solid rgba(37,211,102,0.2)",
-                borderLeft: isRTL ? "1px solid rgba(37,211,102,0.2)" : "none",
-              }}
-              initial={{ ...panelFrom, opacity: 0 }}
-              animate={{ ...panelTo, opacity: 1 }}
-              exit={{ ...panelFrom, opacity: 0 }}
-              transition={{ type: "spring", stiffness: 320, damping: 30 }}
-            >
-              <div
-                className="relative flex items-center justify-between px-5 py-4"
+            {/* MOBILE: Bottom Sheet */}
+            {isMobile ? (
+              <motion.div
+                className="fixed z-[1001] flex flex-col"
                 style={{
-                  background: "linear-gradient(135deg, #1a6b3c 0%, #25D366 100%)",
-                  flexDirection: isRTL ? "row" : "row-reverse",
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  maxHeight: "88vh",
+                  background: "linear-gradient(180deg, #0f1a14 0%, #0d1f11 100%)",
+                  borderRadius: "24px 24px 0 0",
+                  boxShadow: "0 -8px 40px rgba(0,0,0,0.6), 0 -2px 12px rgba(37,211,102,0.12)",
+                  border: "1px solid rgba(37,211,102,0.2)",
+                  borderBottom: "none",
+                  overflow: "hidden",
                 }}
+                initial={{ y: "100%" }}
+                animate={{ y: 0 }}
+                exit={{ y: "100%" }}
+                transition={{ type: "spring", stiffness: 340, damping: 32 }}
               >
-                <div className="flex items-center gap-2.5" style={{ flexDirection: isRTL ? "row" : "row-reverse" }}>
-                  <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center">
-                    <WhatsAppIcon size={20} />
-                  </div>
-                  <div style={{ textAlign: isRTL ? "right" : "left" }}>
-                    <p className="text-white font-bold text-sm leading-tight">
-                      {t("تواصل معنا", "Contact Us")}
-                    </p>
-                    <p className="text-white/70 text-xs">
-                      {t("نرد فوراً", "We respond immediately")}
-                    </p>
-                  </div>
+                {/* Drag handle */}
+                <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
+                  <div className="w-10 h-1 rounded-full" style={{ background: "rgba(255,255,255,0.2)" }} />
                 </div>
-                <button
-                  onClick={() => setOpen(false)}
-                  data-testid="button-close-contact"
-                  className="w-8 h-8 rounded-full bg-white/15 hover:bg-white/30 flex items-center justify-center transition-colors"
-                >
-                  <X size={16} className="text-white" />
-                </button>
-              </div>
-
-              <div className="p-4 flex flex-col gap-3 overflow-y-auto">
-                {CONTACTS.map((c, i) => (
-                  <motion.div
-                    key={c.nameAr}
-                    initial={{ opacity: 0, y: 16 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.08 + i * 0.07, duration: 0.3 }}
-                    className="rounded-2xl overflow-hidden"
-                    style={
-                      c.highlight
-                        ? { background: "rgba(37,211,102,0.1)", border: "1px solid rgba(37,211,102,0.35)" }
-                        : { background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }
-                    }
-                  >
-                    {c.highlight && (
-                      <div className="px-4 pt-2.5 pb-0" style={{ textAlign: isRTL ? "right" : "left" }}>
-                        <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#25D366" }}>
-                          {t("الخط الرئيسي", "Main Line")}
-                        </span>
-                      </div>
-                    )}
-                    <div
-                      className="flex items-center gap-3 px-4 py-3"
-                      style={{ flexDirection: isRTL ? "row" : "row-reverse" }}
-                    >
-                      <div
-                        className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-white text-base flex-shrink-0"
-                        style={
-                          c.highlight
-                            ? { background: "linear-gradient(135deg, #128C7E, #25D366)" }
-                            : { background: "linear-gradient(135deg, #1a6b3c, #25D366)" }
-                        }
-                      >
-                        {t(c.nameAr[0], c.nameEn[0])}
-                      </div>
-                      <div className="flex-1 min-w-0" style={{ textAlign: isRTL ? "right" : "left" }}>
-                        <p className="text-white font-semibold text-sm">{t(c.nameAr, c.nameEn)}</p>
-                        <p className="text-white/50 text-xs font-mono mt-0.5" dir="ltr">{c.phone}</p>
-                      </div>
-                    </div>
-
-                    <div
-                      className="flex gap-2 px-4 pb-3"
-                      style={{ flexDirection: isRTL ? "row" : "row-reverse" }}
-                    >
-                      <a
-                        href={`https://wa.me/${c.wa}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        data-testid={`link-whatsapp-${c.nameAr}`}
-                        className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl font-semibold text-xs transition-all hover:opacity-90 active:scale-95"
-                        style={{
-                          background: "linear-gradient(135deg, #1a6b3c, #25D366)",
-                          color: "white",
-                          flexDirection: isRTL ? "row" : "row-reverse",
-                        }}
-                      >
-                        <WhatsAppIcon size={14} />
-                        {t("واتساب", "WhatsApp")}
-                      </a>
-                      <a
-                        href={`tel:${c.phone}`}
-                        data-testid={`link-call-${c.nameAr}`}
-                        className="flex items-center justify-center w-10 h-8 rounded-xl transition-all hover:opacity-90 active:scale-95"
-                        style={{ background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.7)" }}
-                      >
-                        <Phone size={14} />
-                      </a>
-                    </div>
-                  </motion.div>
-                ))}
-
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: 0.4 }}
-                  className="rounded-2xl px-4 py-3 flex items-center gap-2.5"
-                  style={{
-                    background: "rgba(37,211,102,0.06)",
-                    border: "1px solid rgba(37,211,102,0.15)",
-                    flexDirection: isRTL ? "row" : "row-reverse",
-                  }}
-                >
-                  <MessageCircle size={15} className="flex-shrink-0" style={{ color: "#25D366" }} />
-                  <p className="text-xs" style={{ color: "rgba(255,255,255,0.5)", textAlign: isRTL ? "right" : "left" }}>
-                    {t(
-                      "أوقات الدوام: السبت – الخميس، ٨ص – ٦م",
-                      "Working hours: Sat – Thu, 8am – 6pm"
-                    )}
-                  </p>
-                </motion.div>
-              </div>
-            </motion.div>
+                <PanelHeader isRTL={isRTL} t={t} onClose={() => setOpen(false)} />
+                <div className="flex-1 overflow-y-auto" style={{ WebkitOverflowScrolling: "touch" }}>
+                  <PanelBody isRTL={isRTL} t={t} />
+                </div>
+              </motion.div>
+            ) : (
+              /* DESKTOP: Side Panel */
+              <motion.div
+                className="fixed z-[1001] flex flex-col"
+                style={{
+                  top: "50%",
+                  [side]: 0,
+                  transform: "translateY(-50%)",
+                  width: 340,
+                  maxHeight: "88vh",
+                  background: "linear-gradient(145deg, #0f1a14 0%, #162214 50%, #0d1f11 100%)",
+                  borderRadius: isRTL ? "20px 0 0 20px" : "0 20px 20px 0",
+                  boxShadow: "0 20px 60px rgba(0,0,0,0.6), 0 4px 20px rgba(37,211,102,0.15)",
+                  border: "1px solid rgba(37,211,102,0.2)",
+                  borderRight: isRTL ? "none" : "1px solid rgba(37,211,102,0.2)",
+                  borderLeft: isRTL ? "1px solid rgba(37,211,102,0.2)" : "none",
+                  overflow: "hidden",
+                }}
+                initial={{ x: isRTL ? 120 : -120, opacity: 0 }}
+                animate={{ x: 0, opacity: 1 }}
+                exit={{ x: isRTL ? 120 : -120, opacity: 0 }}
+                transition={{ type: "spring", stiffness: 320, damping: 30 }}
+              >
+                <PanelHeader isRTL={isRTL} t={t} onClose={() => setOpen(false)} />
+                <div className="flex-1 overflow-y-auto">
+                  <PanelBody isRTL={isRTL} t={t} />
+                </div>
+              </motion.div>
+            )}
           </>
         )}
       </AnimatePresence>
