@@ -316,13 +316,14 @@ export default function FloatingContact() {
             ) : (
               /* DESKTOP: Side Panel */
               <motion.div
-                className="fixed z-[1001] flex flex-col"
+                className="fixed z-[1001]"
                 style={{
-                  top: "50%",
+                  top: "5vh",
+                  bottom: "5vh",
                   [side]: 0,
-                  transform: "translateY(-50%)",
                   width: 340,
-                  maxHeight: "88vh",
+                  display: "flex",
+                  flexDirection: "column",
                   background: "linear-gradient(145deg, #0f1a14 0%, #162214 50%, #0d1f11 100%)",
                   borderRadius: isRTL ? "20px 0 0 20px" : "0 20px 20px 0",
                   boxShadow: "0 20px 60px rgba(0,0,0,0.6), 0 4px 20px rgba(37,211,102,0.15)",
@@ -337,7 +338,7 @@ export default function FloatingContact() {
                 transition={{ type: "spring", stiffness: 320, damping: 30 }}
               >
                 <PanelHeader isRTL={isRTL} t={t} onClose={() => setOpen(false)} />
-                <div className="flex-1 overflow-y-auto min-h-0">
+                <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
                   <PanelBody isRTL={isRTL} t={t} />
                 </div>
               </motion.div>
