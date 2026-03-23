@@ -9,13 +9,11 @@ import { verifyFirebaseToken } from "./firebase-admin";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
-import { fileURLToPath } from "url";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const UPLOADS_DIR = path.join(__dirname, "..", "uploads", "survey-files");
+const UPLOADS_DIR = path.join(process.cwd(), "uploads", "survey-files");
 fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
-const DELIVERY_PHOTOS_DIR = path.join(__dirname, "..", "uploads", "delivery-photos");
+const DELIVERY_PHOTOS_DIR = path.join(process.cwd(), "uploads", "delivery-photos");
 fs.mkdirSync(DELIVERY_PHOTOS_DIR, { recursive: true });
 
 const surveyFileStorage = multer.diskStorage({
