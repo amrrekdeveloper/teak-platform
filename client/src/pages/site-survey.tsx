@@ -436,6 +436,44 @@ export default function SiteSurveyPage() {
     },
   });
 
+  const saveMeasurementsMutation = useMutation({
+    mutationFn: async (data: any) => {
+      const surveyId = existingSurvey?.id || savedSurveyIdRef.current;
+      if (surveyId) {
+        const res = await apiRequest("PATCH", `/api/site-surveys/${surveyId}`, data);
+        return res.json();
+      }
+      const res = await apiRequest("POST", "/api/site-surveys", data);
+      return res.json();
+    },
+    onSuccess: (saved: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/site-surveys"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/appointments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/appointments", appointmentId, "site-survey"] });
+      const newId = saved?.id || existingSurvey?.id || null;
+      if (newId) savedSurveyIdRef.current = newId;
+      setSavedSurveyId(newId);
+      toast({ title: t("تم حفظ المقاسات بنجاح", "Measurements saved successfully"), description: t("يمكنك استكمال النموذج لاحقاً", "You can complete the form later") });
+      navigate(returnTo);
+    },
+    onError: () => {
+      toast({ title: t("حدث خطأ في الحفظ", "Save failed"), variant: "destructive" });
+    },
+  });
+
+  function handleSaveMeasurements() {
+    const data: any = {
+      appointmentId,
+      customerId: appointment?.customerId || null,
+      quotationId: appointment?.quotationId || null,
+      spaces,
+      selectedProducts,
+      notes: surveyNotes || null,
+      photos,
+    };
+    saveMeasurementsMutation.mutate(data);
+  }
+
   function navigateToStep(targetStep: WizardStep) {
     const currentStep = step;
     if (targetStep === currentStep) return;
@@ -2109,6 +2147,31 @@ export default function SiteSurveyPage() {
             {saveMutation.isPending ? <Loader2 className="w-4 h-4 me-1 animate-spin" /> : <Save className="w-4 h-4 me-1" />}
             {t("حفظ النموذج", "Save Survey")}
           </Button>
+        ) : step === 1 && subStep === "walls" ? (
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9 text-sm text-green-700 border-green-400 dark:border-green-700 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-950/30"
+              onClick={handleSaveMeasurements}
+              disabled={saveMeasurementsMutation.isPending}
+              data-testid="button-save-measurements"
+            >
+              {saveMeasurementsMutation.isPending
+                ? <Loader2 className="w-4 h-4 animate-spin me-1" />
+                : <Save className="w-4 h-4 me-1" />}
+              <span className="hidden sm:inline">{t("حفظ المقاسات", "Save Measurements")}</span>
+              <span className="sm:hidden">{t("حفظ", "Save")}</span>
+            </Button>
+            <Button
+              onClick={() => navigateToStep((step + 1) as WizardStep)}
+              data-testid="button-next-step"
+            >
+              <span className="hidden sm:inline">{t("التالي: المنتجات", "Next: Products")}</span>
+              <span className="sm:hidden">{t("المنتجات", "Products")}</span>
+              {lang === "ar" ? <ChevronLeft className="w-4 h-4 ms-1" /> : <ChevronRight className="w-4 h-4 ms-1" />}
+            </Button>
+          </div>
         ) : (
           <Button
             onClick={() => navigateToStep((step + 1) as WizardStep)}
@@ -2116,8 +2179,6 @@ export default function SiteSurveyPage() {
           >
             {step === 1 && subStep === "info"
               ? <><span className="hidden sm:inline">{t("التالي: الجدران", "Next: Walls")}</span><span className="sm:hidden">{t("الجدران", "Walls")}</span></>
-              : step === 1 && subStep === "walls"
-              ? <><span className="hidden sm:inline">{t("التالي: المنتجات", "Next: Products")}</span><span className="sm:hidden">{t("المنتجات", "Products")}</span></>
               : t("التالي", "Next")}
             {lang === "ar" ? <ChevronLeft className="w-4 h-4 ms-1" /> : <ChevronRight className="w-4 h-4 ms-1" />}
           </Button>
