@@ -52,6 +52,7 @@ import AppLayout from "@/components/app-layout";
 import NotFound from "@/pages/not-found";
 import teakLogo from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
 import FloatingContact from "@/components/floating-contact";
+import { useLocation } from "wouter";
 
 function SplashScreen({ onFinish }: { onFinish: () => void }) {
   const [progress, setProgress] = useState(0);
@@ -211,6 +212,13 @@ function Router() {
   );
 }
 
+function FloatingContactWrapper() {
+  const [location] = useLocation();
+  const isPublicPage = !location.startsWith("/dashboard") && !location.startsWith("/login");
+  if (!isPublicPage) return null;
+  return <FloatingContact />;
+}
+
 function App() {
   const [showSplash, setShowSplash] = useState(() => {
     if (sessionStorage.getItem("splashShown")) return false;
@@ -231,7 +239,7 @@ function App() {
               <>
                 <Toaster />
                 <Router />
-                <FloatingContact />
+                <FloatingContactWrapper />
               </>
             )}
           </TooltipProvider>
