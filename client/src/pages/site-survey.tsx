@@ -2068,10 +2068,11 @@ export default function SiteSurveyPage() {
               className="h-8 text-xs text-blue-600 border-blue-300 dark:border-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950/30"
               onClick={handlePrintSurveyReport}
               disabled={printingPdf}
+              title={t("تصدير تقرير الزيارة PDF", "Export Survey Report PDF")}
               data-testid="button-print-survey"
             >
-              {printingPdf ? <Loader2 className="w-3.5 h-3.5 me-1 animate-spin" /> : <Printer className="w-3.5 h-3.5 me-1" />}
-              {t("تصدير تقرير الزيارة PDF", "Export Survey Report PDF")}
+              {printingPdf ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Printer className="w-3.5 h-3.5" />}
+              <span className="hidden sm:inline ms-1">{t("تقرير PDF", "PDF Report")}</span>
             </Button>
           )}
         </div>
@@ -2114,9 +2115,9 @@ export default function SiteSurveyPage() {
             data-testid="button-next-step"
           >
             {step === 1 && subStep === "info"
-              ? t("التالي: الجدران", "Next: Walls")
+              ? <><span className="hidden sm:inline">{t("التالي: الجدران", "Next: Walls")}</span><span className="sm:hidden">{t("الجدران", "Walls")}</span></>
               : step === 1 && subStep === "walls"
-              ? t("التالي: المنتجات", "Next: Products")
+              ? <><span className="hidden sm:inline">{t("التالي: المنتجات", "Next: Products")}</span><span className="sm:hidden">{t("المنتجات", "Products")}</span></>
               : t("التالي", "Next")}
             {lang === "ar" ? <ChevronLeft className="w-4 h-4 ms-1" /> : <ChevronRight className="w-4 h-4 ms-1" />}
           </Button>

@@ -1252,7 +1252,6 @@ export async function registerRoutes(
           notes: "تم الاعتماد بواسطة الإدارة",
         });
         const settings = await storage.getCompanySettings();
-        const invoiceNumber = `INV-${Date.now().toString(36).toUpperCase()}`;
         const qrData = generateQRData({
           sellerName: settings?.nameAr || "تيك للتصنيع",
           sellerVatNumber: settings?.vatNumber || "310012345600003",
@@ -1260,18 +1259,20 @@ export async function registerRoutes(
           totalWithVat: q.finalPrice || q.totalPrice || q.totalWithVat || q.total,
           vatAmount: quotation.vatAmount || "0",
         });
-        await (storage.createInvoice as any)({
-          invoiceNumber,
+        const subtotalVal = String(quotation.subtotal || q.totalPrice || "0");
+        const vatAmountVal = String(quotation.vatAmount || "0");
+        const totalWithVatVal = String(q.finalPrice || q.totalPrice || quotation.subtotal || "0");
+        await storage.createInvoice({
           type: "simplified_tax_invoice",
           status: "issued",
           customerId: quotation.customerId,
           contractId: contract.id,
           quotationId,
           items: Array.isArray(quotation.items) ? quotation.items : [],
-          subtotal: quotation.subtotal || q.totalPrice || "0",
-          vatRate: quotation.vatRate || "15",
-          vatAmount: quotation.vatAmount || "0",
-          totalWithVat: q.finalPrice || q.totalPrice || "0",
+          subtotal: subtotalVal,
+          vatRate: String(quotation.vatRate || "15"),
+          vatAmount: vatAmountVal,
+          totalWithVat: totalWithVatVal,
           sellerName: settings?.nameAr || "تيك للتصنيع",
           sellerVatNumber: settings?.vatNumber || "310012345600003",
           sellerAddress: settings?.address || "",
@@ -1279,7 +1280,7 @@ export async function registerRoutes(
           buyerPhone: customer?.phone || "",
           qrCodeData: qrData,
           issuedAt: new Date(),
-        });
+        } as any);
       }
 
       const staffUsers = (await storage.getUsers()).filter((u: any) => ["owner", "assistant", "sales", "accountant"].includes(u.role));
