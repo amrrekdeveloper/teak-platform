@@ -625,6 +625,7 @@ export const deliveries = pgTable("deliveries", {
   deliveredBy: integer("delivered_by").references(() => users.id),
   notes: text("notes"),
   customerSignature: text("customer_signature"),
+  deliveryPhotos: text("delivery_photos").array(),
 });
 
 export const insertDeliverySchema = createInsertSchema(deliveries).omit({

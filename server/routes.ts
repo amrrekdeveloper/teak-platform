@@ -15,6 +15,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UPLOADS_DIR = path.join(__dirname, "..", "uploads", "survey-files");
 fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
+const DELIVERY_PHOTOS_DIR = path.join(__dirname, "..", "uploads", "delivery-photos");
+fs.mkdirSync(DELIVERY_PHOTOS_DIR, { recursive: true });
+
 const surveyFileStorage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
   filename: (_req, file, cb) => {
@@ -31,6 +34,28 @@ const surveyFileUpload = multer({
       cb(null, true);
     } else {
       cb(new Error("Only PDF files are allowed"));
+    }
+  },
+});
+
+const deliveryPhotoStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, DELIVERY_PHOTOS_DIR),
+  filename: (_req, file, cb) => {
+    const safeBase = file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_");
+    cb(null, `${Date.now()}_${safeBase}`);
+  },
+});
+
+const ALLOWED_DELIVERY_PHOTO_MIMES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+
+const deliveryPhotoUpload = multer({
+  storage: deliveryPhotoStorage,
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (ALLOWED_DELIVERY_PHOTO_MIMES.has(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only JPEG, PNG, WebP, or GIF images are allowed"));
     }
   },
 });
@@ -373,6 +398,13 @@ export async function registerRoutes(
     `);
   } catch (task30MigrationError) {
     console.warn("Task #30 migration warning (non-fatal):", task30MigrationError instanceof Error ? task30MigrationError.message : String(task30MigrationError));
+  }
+
+  // Task #33: DB migration for delivery_photos column
+  try {
+    await db.execute(`ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS delivery_photos TEXT[]`);
+  } catch (task33MigrationError) {
+    console.warn("Task #33 migration warning (non-fatal):", task33MigrationError instanceof Error ? task33MigrationError.message : String(task33MigrationError));
   }
 
   // Startup cleanup: delete orphaned empty draft quotations older than 1 hour.
@@ -759,7 +791,7 @@ export async function registerRoutes(
     try {
       const userId = (req as any).session.userId!;
       const user = await storage.getUser(userId);
-      const isManager = user?.role === "owner" || user?.role === "assistant" || user?.role === "it" || user?.role === "accountant" || user?.role === "customer_service";
+      const isManager = user?.role === "owner" || user?.role === "assistant" || user?.role === "it" || user?.role === "accountant" || user?.role === "customer_service" || user?.role === "delivery" || user?.role === "production" || user?.role === "installation";
       if (isManager) {
         res.json(await storage.getCustomers());
       } else {
@@ -782,7 +814,7 @@ export async function registerRoutes(
     try {
       const userId = (req as any).session.userId!;
       const user = await storage.getUser(userId);
-      const isManager = user?.role === "owner" || user?.role === "assistant" || user?.role === "it" || user?.role === "accountant" || user?.role === "customer_service";
+      const isManager = user?.role === "owner" || user?.role === "assistant" || user?.role === "it" || user?.role === "accountant" || user?.role === "customer_service" || user?.role === "delivery" || user?.role === "production" || user?.role === "installation";
       const customer = await storage.getCustomer(parseInt(req.params.id));
       if (!customer) return res.status(404).json({ message: "العميل غير موجود" });
       if (!isManager) {
@@ -2431,8 +2463,24 @@ export async function registerRoutes(
   });
 
   app.post("/api/deliveries", requireRole("owner", "assistant", "delivery", "production"), async (req, res) => {
-    try { res.status(201).json(await storage.createDelivery(req.body)); }
-    catch (error) { console.error(error); res.status(500).json({ message: "حدث خطأ", messageEn: "Error creating delivery" }); }
+    try {
+      const delivery = await storage.createDelivery(req.body);
+      // Automatically advance work order to "ready_for_delivery" stage when delivery is scheduled
+      if (delivery.workOrderId) {
+        const wo = await storage.getWorkOrder(delivery.workOrderId);
+        if (wo && wo.status === "ready") {
+          try {
+            const quotation = wo.quotationId ? await storage.getQuotation(wo.quotationId) : null;
+            if (quotation) {
+              await setOrderStage(quotation.id, "ready_for_delivery");
+            }
+          } catch (stageErr) {
+            console.warn("Stage transition on delivery create (non-fatal):", stageErr);
+          }
+        }
+      }
+      res.status(201).json(delivery);
+    } catch (error) { console.error(error); res.status(500).json({ message: "حدث خطأ", messageEn: "Error creating delivery" }); }
   });
 
   app.patch("/api/deliveries/:id", requireRole("owner", "assistant", "delivery"), async (req, res) => {
@@ -2441,6 +2489,54 @@ export async function registerRoutes(
       if (!updated) return res.status(404).json({ message: "غير موجود", messageEn: "Not found" });
       res.json(updated);
     } catch (error) { res.status(500).json({ message: "حدث خطأ", messageEn: "Error updating delivery" }); }
+  });
+
+  app.post("/api/deliveries/:id/photos", requireRole("owner", "assistant", "delivery"), deliveryPhotoUpload.array("photos", 10), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const files = req.files as Express.Multer.File[];
+      if (!files || files.length === 0) return res.status(400).json({ message: "لا توجد صور مرفوعة", messageEn: "No photos uploaded" });
+      const newFilePaths = files.map(f => path.join(DELIVERY_PHOTOS_DIR, f.filename));
+      const newPhotoPaths = files.map(f => `/uploads/delivery-photos/${f.filename}`);
+
+      const cleanupNewFiles = () => {
+        for (const fp of newFilePaths) {
+          try { fs.unlinkSync(fp); } catch { /* ignore */ }
+        }
+      };
+
+      const existing = await storage.getDelivery(id);
+      if (!existing) {
+        cleanupNewFiles();
+        return res.status(404).json({ message: "غير موجود", messageEn: "Not found" });
+      }
+
+      // Server-side status guard: only allow uploads for in_transit or delivered
+      if (existing.status !== "in_transit" && existing.status !== "delivered") {
+        cleanupNewFiles();
+        return res.status(422).json({ message: "لا يمكن رفع الصور إلا في حالات 'في الطريق' أو 'تم التوصيل'", messageEn: "Photos can only be uploaded for in_transit or delivered deliveries" });
+      }
+
+      const existingPhotos: string[] = existing.deliveryPhotos || [];
+      const allPhotos = [...existingPhotos, ...newPhotoPaths];
+      const updated = await storage.updateDelivery(id, { deliveryPhotos: allPhotos });
+      res.json(updated);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: "حدث خطأ في رفع الصور", messageEn: "Error uploading photos" });
+    }
+  });
+
+  app.get("/uploads/delivery-photos/:filename", requireRole("owner", "assistant", "delivery", "production", "installation"), async (req, res) => {
+    const filename = req.params.filename.replace(/[^a-zA-Z0-9._-]/g, "");
+    const photoPath = `/uploads/delivery-photos/${filename}`;
+    // Verify that this photo path exists in at least one delivery record
+    const allDeliveries = await storage.getDeliveries();
+    const hasAccess = allDeliveries.some(d => d.deliveryPhotos && d.deliveryPhotos.includes(photoPath));
+    if (!hasAccess) return res.status(403).json({ message: "غير مصرح" });
+    const filePath = path.join(DELIVERY_PHOTOS_DIR, filename);
+    if (!fs.existsSync(filePath)) return res.status(404).json({ message: "الملف غير موجود" });
+    res.sendFile(filePath);
   });
 
   // ==================== INSTALLATIONS ====================

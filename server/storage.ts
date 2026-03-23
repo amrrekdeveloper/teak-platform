@@ -117,6 +117,7 @@ export interface IStorage {
   updatePurchaseOrder(id: number, data: Partial<InsertPurchaseOrder>): Promise<PurchaseOrder | undefined>;
 
   getDeliveries(): Promise<Delivery[]>;
+  getDelivery(id: number): Promise<Delivery | undefined>;
   createDelivery(delivery: InsertDelivery): Promise<Delivery>;
   updateDelivery(id: number, data: Partial<InsertDelivery>): Promise<Delivery | undefined>;
 
@@ -529,6 +530,11 @@ export class DatabaseStorage implements IStorage {
 
   async getDeliveries(): Promise<Delivery[]> {
     return db.select().from(deliveries);
+  }
+
+  async getDelivery(id: number): Promise<Delivery | undefined> {
+    const [delivery] = await db.select().from(deliveries).where(eq(deliveries.id, id));
+    return delivery;
   }
 
   async createDelivery(delivery: InsertDelivery): Promise<Delivery> {
