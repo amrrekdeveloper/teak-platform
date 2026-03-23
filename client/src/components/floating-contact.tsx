@@ -214,7 +214,7 @@ export default function FloatingContact() {
       {/* Floating Tab Button */}
       <div
         className="fixed z-[999]"
-        style={{ top: "50%", transform: "translateY(-50%)", [side]: 0 }}
+        style={{ top: "38%", transform: "translateY(-50%)", [side]: 0 }}
       >
         <motion.button
           onClick={() => setOpen(true)}
