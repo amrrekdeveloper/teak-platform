@@ -527,7 +527,8 @@ export default function SiteSurveyPage() {
     try {
       const jsPDFModule = await import("jspdf");
       const jsPDF = jsPDFModule.default || (jsPDFModule as any).jsPDF;
-      await import("jspdf-autotable");
+      const autoTableModule = await import("jspdf-autotable");
+      const autoTable = autoTableModule.default || (autoTableModule as any).autoTable || autoTableModule;
 
       // Load company settings for VAT# and names
       let vatNumber = "310012345600003";
@@ -635,8 +636,8 @@ export default function SiteSurveyPage() {
             }).join("; ") || "-";
             return [letter, w.length || "—", w.wallHeight || space.height || "—", itemsSummary];
           });
-          doc.autoTable({ startY: y, head, body, theme: "grid", styles: { fontSize: 7, cellPadding: 2 }, headStyles: { fillColor: [26, 54, 93], textColor: 255, fontStyle: "bold" }, alternateRowStyles: { fillColor: [248, 250, 252] }, columnStyles: { 0: { cellWidth: 12 }, 1: { cellWidth: 22 }, 2: { cellWidth: 22 }, 3: { cellWidth: "auto" } }, margin: { left: margin, right: margin } });
-          y = doc.lastAutoTable?.finalY ? doc.lastAutoTable.finalY + 5 : y + 20;
+          autoTable(doc, { startY: y, head, body, theme: "grid", styles: { fontSize: 7, cellPadding: 2 }, headStyles: { fillColor: [26, 54, 93], textColor: 255, fontStyle: "bold" }, alternateRowStyles: { fillColor: [248, 250, 252] }, columnStyles: { 0: { cellWidth: 12 }, 1: { cellWidth: 22 }, 2: { cellWidth: 22 }, 3: { cellWidth: "auto" } }, margin: { left: margin, right: margin } });
+          y = (doc as any).lastAutoTable?.finalY ? (doc as any).lastAutoTable.finalY + 5 : y + 20;
         }
       });
       if (selectedProducts.length > 0) {
@@ -652,7 +653,7 @@ export default function SiteSurveyPage() {
           const space = spaces.find(s => s.id === p.spaceId);
           return [String(pi + 1), p.code || "—", p.name || p.nameAr || "—", String(p.quantity || 1), space?.name || "—"];
         });
-        doc.autoTable({ startY: y, head, body, theme: "grid", styles: { fontSize: 7, cellPadding: 2 }, headStyles: { fillColor: [26, 54, 93], textColor: 255, fontStyle: "bold" }, alternateRowStyles: { fillColor: [248, 250, 252] }, margin: { left: margin, right: margin } });
+        autoTable(doc, { startY: y, head, body, theme: "grid", styles: { fontSize: 7, cellPadding: 2 }, headStyles: { fillColor: [26, 54, 93], textColor: 255, fontStyle: "bold" }, alternateRowStyles: { fillColor: [248, 250, 252] }, margin: { left: margin, right: margin } });
       }
       const totalPages = doc.getNumberOfPages();
       for (let i = 1; i <= totalPages; i++) {
@@ -2095,11 +2096,11 @@ export default function SiteSurveyPage() {
               onClick={() => navigate(`/scene-3d?surveyId=${savedSurveyId || existingSurvey?.id}`)}
               data-testid="button-quick-3d"
             >
-              <Box className="w-3.5 h-3.5 me-1" />
-              {t("3D", "3D")}
+              <Box className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline ms-1">{t("3D", "3D")}</span>
             </Button>
           )}
-          {step === 1 && subStep === "walls" && (
+          {step === 3 && (
             <Button
               variant="outline"
               size="sm"
