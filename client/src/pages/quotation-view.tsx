@@ -50,6 +50,8 @@ export default function QuotationViewPage() {
   const [approveDialogOpen, setApproveDialogOpen] = useState(false);
   const [approveReceiptFile, setApproveReceiptFile] = useState<File | null>(null);
   const [approveReceiptPreview, setApproveReceiptPreview] = useState<string | null>(null);
+  const [approveAmount, setApproveAmount] = useState<string>("");
+  const [approveMethod, setApproveMethod] = useState<string>("bank_transfer");
   const approveReceiptInputRef = useRef<HTMLInputElement>(null);
 
   const returnTo = new URLSearchParams(window.location.search).get("returnTo");
@@ -62,18 +64,22 @@ export default function QuotationViewPage() {
   const approveMutation = useMutation({
     mutationFn: async () => {
       const body: Record<string, string> = {};
-      if (approveReceiptPreview) body.receiptData = approveReceiptPreview;
-      if (approveReceiptFile) body.receiptName = approveReceiptFile.name;
+      if (approveReceiptPreview) body.paymentReceiptData = approveReceiptPreview;
+      if (approveReceiptFile) body.paymentReceiptName = approveReceiptFile.name;
+      if (approveAmount) body.paymentAmount = approveAmount;
+      body.paymentMethod = approveMethod;
       const res = await apiRequest("POST", `/api/quotations/${id}/approve`, body);
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/quotations", id] });
       queryClient.invalidateQueries({ queryKey: ["/api/quotations"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
       toast({ title: t("تم اعتماد عرض السعر وإنشاء العقد بنجاح", "Quotation approved and contract created") });
       setApproveDialogOpen(false);
       setApproveReceiptFile(null);
       setApproveReceiptPreview(null);
+      setApproveAmount("");
       if (returnTo) navigate(returnTo);
     },
     onError: (err: any) => {
@@ -737,6 +743,33 @@ export default function QuotationViewPage() {
                 "Use this when the customer visits the showroom and approves the quotation, paying the first installment in cash, POS, or bank transfer."
               )}
             </p>
+            <div className="space-y-2">
+              <Label>{t("المبلغ المدفوع", "Amount Paid")}</Label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder={t("أدخل المبلغ", "Enter amount")}
+                className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                value={approveAmount}
+                onChange={(e) => setApproveAmount(e.target.value)}
+                data-testid="input-approve-amount"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>{t("طريقة الدفع", "Payment Method")}</Label>
+              <select
+                className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                value={approveMethod}
+                onChange={(e) => setApproveMethod(e.target.value)}
+                data-testid="select-approve-method"
+              >
+                <option value="bank_transfer">{t("تحويل بنكي", "Bank Transfer")}</option>
+                <option value="cash">{t("نقداً", "Cash")}</option>
+                <option value="pos">{t("نقطة بيع (POS)", "POS")}</option>
+                <option value="check">{t("شيك", "Check")}</option>
+              </select>
+            </div>
             <div className="space-y-2">
               <Label>{t("وصل الدفع (اختياري)", "Payment Receipt (optional)")}</Label>
               {approveReceiptPreview ? (

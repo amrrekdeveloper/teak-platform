@@ -1215,7 +1215,7 @@ export async function registerRoutes(
     try {
       const quotationId = parseInt(req.params.id);
       const userId = req.session.userId!;
-      const { paymentReceiptData, paymentReceiptName } = req.body || {};
+      const { paymentReceiptData, paymentReceiptName, paymentAmount, paymentMethod } = req.body || {};
 
       const quotation = await storage.getQuotation(quotationId);
       if (!quotation) return res.status(404).json({ message: "عرض السعر غير موجود" });
@@ -1297,6 +1297,38 @@ export async function registerRoutes(
 
       if (contract) {
         await materializePaymentSchedules(quotationId, quotation.customerId, contract.id);
+      }
+
+      // Create a pending payment for the accountant to confirm if receipt was provided
+      if (paymentReceiptData && contract) {
+        const q = quotation as any;
+        const defaultAmount = q.finalPrice || q.totalPrice || quotation.subtotal || "0";
+        const validMethods = ["cash", "bank_transfer", "pos", "check", "other"];
+        const safeMethod = validMethods.includes(paymentMethod) ? paymentMethod : "bank_transfer";
+        const payment = await storage.createPayment({
+          contractId: contract.id,
+          customerId: quotation.customerId,
+          amount: paymentAmount && parseFloat(paymentAmount) > 0 ? paymentAmount : defaultAmount,
+          method: safeMethod,
+          paymentStage: "deposit",
+          notes: `دفعة مسجّلة عند الاعتماد في المعرض — بانتظار تأكيد المحاسب`,
+          attachmentUrl: paymentReceiptData,
+          recordedBy: userId,
+          status: "pending",
+        });
+        const accountantStaff = (await storage.getUsers()).filter((u: any) => ["owner", "assistant", "accountant"].includes(u.role));
+        for (const staff of accountantStaff) {
+          await storage.createNotification({
+            userId: staff.id,
+            type: "action",
+            titleAr: "وصل دفع جديد بانتظار التأكيد",
+            titleEn: "New Payment Receipt Pending Confirmation",
+            messageAr: `المندوب رفع وصل دفع للعميل ${(await storage.getCustomer(quotation.customerId))?.fullName || ""} بمبلغ ${payment.amount} ر.س`,
+            messageEn: `Sales rep uploaded payment receipt of ${payment.amount} SAR`,
+            relatedEntity: "payment",
+            relatedId: payment.id,
+          });
+        }
       }
 
       res.json({ ...updated, contract });
