@@ -115,9 +115,38 @@ export async function registerRoutes(
 ): Promise<Server> {
   setupAuth(app);
 
-  // Serve uploaded survey design files
-  const express = await import("express");
-  app.use("/uploads", express.default.static(path.join(__dirname, "..", "uploads")));
+  // Authenticated endpoint to serve uploaded survey design files from disk
+  // (Replaces public static serving to enforce access control)
+  app.get("/api/uploads/survey-files/:filename", requireAuth, async (req, res) => {
+    const filename = req.params.filename.replace(/[^a-zA-Z0-9._-]/g, "");
+    const filePath = path.join(UPLOADS_DIR, filename);
+    if (!fs.existsSync(filePath)) return res.status(404).json({ message: "الملف غير موجود" });
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(filename)}"`);
+    fs.createReadStream(filePath).pipe(res);
+  });
+
+  // Customer-accessible endpoint: only for files attached to quote they own
+  app.get("/api/customer/survey-files/:filename", requireAuth, async (req, res) => {
+    const filename = req.params.filename.replace(/[^a-zA-Z0-9._-]/g, "");
+    const urlPath = `/uploads/survey-files/${filename}`;
+    // Check file is attached to a quotation the customer owns
+    const uid = req.session.userId!;
+    const check = await pool.query(
+      `SELECT sdf.id FROM survey_design_files sdf
+       JOIN quotations q ON q.id = sdf.quotation_id
+       JOIN customers c ON c.id = q.customer_id
+       JOIN users u ON u.id = c.user_id
+       WHERE sdf.file_url = $1 AND sdf.attach_to_quote = TRUE AND u.id = $2 LIMIT 1`,
+      [urlPath, uid]
+    );
+    if (check.rows.length === 0) return res.status(403).json({ message: "غير مصرح" });
+    const filePath = path.join(UPLOADS_DIR, filename);
+    if (!fs.existsSync(filePath)) return res.status(404).json({ message: "الملف غير موجود" });
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(filename)}"`);
+    fs.createReadStream(filePath).pipe(res);
+  });
 
   await seedDatabase();
 
@@ -216,7 +245,8 @@ export async function registerRoutes(
         quotation_id INTEGER,
         file_name TEXT NOT NULL,
         file_label TEXT,
-        file_data TEXT NOT NULL,
+        file_data TEXT,
+        file_url TEXT,
         mime_type TEXT NOT NULL DEFAULT 'application/octet-stream',
         file_size INTEGER DEFAULT 0,
         attach_to_quote BOOLEAN NOT NULL DEFAULT FALSE,
@@ -225,6 +255,8 @@ export async function registerRoutes(
       )
     `);
     await db.execute(`ALTER TABLE survey_design_files ADD COLUMN IF NOT EXISTS file_label TEXT`);
+    await db.execute(`ALTER TABLE survey_design_files ADD COLUMN IF NOT EXISTS file_url TEXT`);
+    await db.execute(`ALTER TABLE survey_design_files ALTER COLUMN file_data DROP NOT NULL`);
   } catch (designFilesMigrationError) {
     console.warn("Survey design files table migration (non-fatal):", designFilesMigrationError instanceof Error ? designFilesMigrationError.message : String(designFilesMigrationError));
   }
@@ -3597,8 +3629,12 @@ export async function registerRoutes(
       if (result.rows.length === 0) return res.status(404).json({ message: "الملف غير موجود" });
       const { file_name, file_data, file_url, mime_type } = result.rows[0];
       if (file_url) {
-        // New: redirect to static file URL
-        return res.json({ fileName: file_name, fileUrl: file_url, mimeType: mime_type });
+        // New: stream from disk
+        const diskPath = path.join(UPLOADS_DIR, path.basename(file_url));
+        if (!fs.existsSync(diskPath)) return res.status(404).json({ message: "الملف غير موجود على القرص" });
+        res.setHeader("Content-Type", mime_type || "application/pdf");
+        res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(file_name)}"`);
+        return fs.createReadStream(diskPath).pipe(res);
       }
       // Legacy: base64 data
       res.json({ fileName: file_name, fileData: file_data, mimeType: mime_type });
@@ -4219,13 +4255,13 @@ export async function registerRoutes(
           let filesResult;
           if (attachedIds.length > 0) {
             filesResult = await pool.query(
-              `SELECT id, file_name, file_label, mime_type, file_size, file_data, created_at FROM survey_design_files WHERE survey_id = $1 AND id = ANY($2::int[]) ORDER BY created_at DESC`,
+              `SELECT id, file_name, file_label, mime_type, file_size, file_data, file_url, created_at FROM survey_design_files WHERE survey_id = $1 AND id = ANY($2::int[]) ORDER BY created_at DESC`,
               [s.id, attachedIds]
             );
           } else {
             // Fallback: use attach_to_quote flag
             filesResult = await pool.query(
-              `SELECT id, file_name, file_label, mime_type, file_size, file_data, created_at FROM survey_design_files WHERE survey_id = $1 AND attach_to_quote = TRUE ORDER BY created_at DESC`,
+              `SELECT id, file_name, file_label, mime_type, file_size, file_data, file_url, created_at FROM survey_design_files WHERE survey_id = $1 AND attach_to_quote = TRUE ORDER BY created_at DESC`,
               [s.id]
             );
           }

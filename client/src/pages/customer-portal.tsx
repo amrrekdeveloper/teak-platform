@@ -1278,10 +1278,20 @@ function PortalSurveyDesignFiles({ quotationId }: { quotationId: number }) {
               <button
                 className="text-blue-600 dark:text-blue-400 underline shrink-0 hover:opacity-75"
                 onClick={() => {
-                  const a = document.createElement("a");
-                  a.href = f.file_data;
-                  a.download = f.file_name;
-                  a.click();
+                  if (f.file_url) {
+                    // New: authenticated endpoint for filesystem files
+                    const filename = f.file_url.split("/").pop();
+                    const a = document.createElement("a");
+                    a.href = `/api/customer/survey-files/${filename}`;
+                    a.download = f.file_name;
+                    a.click();
+                  } else if (f.file_data) {
+                    // Legacy: base64 data URL
+                    const a = document.createElement("a");
+                    a.href = f.file_data;
+                    a.download = f.file_name;
+                    a.click();
+                  }
                 }}
                 data-testid={`button-download-file-${f.id}`}
               >
