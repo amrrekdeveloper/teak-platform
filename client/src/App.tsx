@@ -152,6 +152,7 @@ function DashboardRoutes() {
         <Route path="/customers/:id" component={CustomerDetailPage} />
         <Route path="/customers" component={CustomersPage} />
         <Route path="/quotations/new" component={QuotationBuilderPage} />
+        <Route path="/quotation-builder" component={QuotationBuilderPage} />
         <Route path="/quotations/:id/view" component={QuotationViewPage} />
         <Route path="/quotations" component={QuotationsPage} />
         <Route path="/contracts/:id" component={ContractDetailPage} />

@@ -1004,10 +1004,81 @@ export async function registerRoutes(
 
   app.post("/api/quotations/:id/approve", requireRole("owner", "assistant"), async (req, res) => {
     try {
-      const updated = await storage.updateQuotation(parseInt(req.params.id), { status: "approved", orderStage: "quote_approved" });
+      const quotationId = parseInt(req.params.id);
+      const userId = req.session.userId!;
+      const { paymentReceiptData, paymentReceiptName } = req.body || {};
+
+      const quotation = await storage.getQuotation(quotationId);
+      if (!quotation) return res.status(404).json({ message: "عرض السعر غير موجود" });
+
+      const updateData: any = { status: "approved", orderStage: "quote_approved", approvedBy: userId, approvedAt: new Date() };
+      if (paymentReceiptData) { updateData.paymentReceiptData = paymentReceiptData; updateData.paymentReceiptName = paymentReceiptName || "receipt"; }
+      const updated = await storage.updateQuotation(quotationId, updateData);
       if (!updated) return res.status(404).json({ message: "عرض السعر غير موجود" });
-      res.json(updated);
+
+      const allContracts = await storage.getContracts?.() ?? [];
+      const existingContract = allContracts.find((c: any) => c.quotationId === quotationId);
+      let contract = existingContract;
+      if (!existingContract) {
+        const q = quotation as any;
+        const totalAmt = q.finalPrice || q.totalPrice || q.totalWithVat || q.total || quotation.subtotal || "0";
+        const customer = await storage.getCustomer(quotation.customerId);
+        contract = await storage.createContract({
+          contractNumber: `CNT-${Date.now().toString(36).toUpperCase()}`,
+          quotationId,
+          customerId: quotation.customerId,
+          totalAmount: totalAmt,
+          paidAmount: "0",
+          remainingAmount: totalAmt,
+          status: "active",
+          notes: "تم الاعتماد بواسطة الإدارة",
+        });
+        const settings = await storage.getCompanySettings();
+        const invoiceNumber = `INV-${Date.now().toString(36).toUpperCase()}`;
+        const qrData = generateQRData({
+          sellerName: settings?.nameAr || "تيك للتصنيع",
+          sellerVatNumber: settings?.vatNumber || "310012345600003",
+          issuedAt: new Date(),
+          totalWithVat: q.finalPrice || q.totalPrice || q.totalWithVat || q.total,
+          vatAmount: quotation.vatAmount || "0",
+        });
+        await (storage.createInvoice as any)({
+          invoiceNumber,
+          type: "simplified_tax_invoice",
+          status: "issued",
+          customerId: quotation.customerId,
+          contractId: contract.id,
+          quotationId,
+          items: Array.isArray(quotation.items) ? quotation.items : [],
+          subtotal: quotation.subtotal || q.totalPrice || "0",
+          vatRate: quotation.vatRate || "15",
+          vatAmount: quotation.vatAmount || "0",
+          totalWithVat: q.finalPrice || q.totalPrice || "0",
+          sellerName: settings?.nameAr || "تيك للتصنيع",
+          sellerVatNumber: settings?.vatNumber || "310012345600003",
+          sellerAddress: settings?.address || "",
+          buyerName: customer?.fullName || "",
+          buyerPhone: customer?.phone || "",
+          qrCodeData: qrData,
+          issuedAt: new Date(),
+        });
+      }
+
+      const staffUsers = (await storage.getUsers()).filter((u: any) => ["owner", "assistant", "sales", "accountant"].includes(u.role));
+      for (const staff of staffUsers) {
+        await storage.createNotification({
+          userId: staff.id,
+          type: "success",
+          titleAr: "تم اعتماد عرض سعر",
+          titleEn: "Quotation Approved",
+          messageAr: `تم اعتماد عرض السعر رقم ${quotation.quotationNumber || quotationId} وإنشاء العقد`,
+          messageEn: `Quotation #${quotation.quotationNumber || quotationId} approved and contract created`,
+        });
+      }
+
+      res.json({ ...updated, contract });
     } catch (error) {
+      console.error("Approve quotation error:", error);
       res.status(500).json({ message: "حدث خطأ" });
     }
   });

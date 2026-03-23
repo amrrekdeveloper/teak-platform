@@ -1941,7 +1941,8 @@ export default function SiteSurveyPage() {
         </Card>
       )}
 
-      <div className="fixed bottom-0 start-0 end-0 bg-card border-t border-border p-3 flex items-center justify-between z-40">
+      <div className="fixed bottom-0 start-0 end-0 md:start-16 bg-card border-t border-border z-40" style={{ paddingBottom: "max(12px, env(safe-area-inset-bottom))" }}>
+        <div className="px-3 pt-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
@@ -2031,6 +2032,7 @@ export default function SiteSurveyPage() {
             {lang === "ar" ? <ChevronLeft className="w-4 h-4 ms-1" /> : <ChevronRight className="w-4 h-4 ms-1" />}
           </Button>
         )}
+        </div>
       </div>
 
       <Dialog open={productSearchDialog} onOpenChange={setProductSearchDialog}>

@@ -541,6 +541,26 @@ export default function MyOrdersPage() {
     if (!dateStr) return "—";
     return new Date(dateStr).toLocaleString(lang === "ar" ? "ar-SA" : "en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
   }
+  function formatFullDate(dateStr: string, timeStr?: string | null) {
+    if (!dateStr) return "—";
+    const d = new Date(dateStr);
+    const dateFormatted = d.toLocaleDateString(lang === "ar" ? "ar-SA" : "en-US", {
+      year: "numeric", month: "long", day: "numeric",
+    });
+    if (!timeStr) return dateFormatted;
+    const [h, m] = timeStr.split(":");
+    const hours = parseInt(h);
+    const mins = m ? m.substring(0, 2) : "00";
+    if (lang === "ar") {
+      const isPM = hours >= 12;
+      const h12 = hours % 12 || 12;
+      const amPm = isPM ? "مساءً" : "صباحاً";
+      return `${dateFormatted} الساعة ${h12}:${mins} ${amPm}`;
+    }
+    const amPm = hours >= 12 ? "PM" : "AM";
+    const h12 = hours % 12 || 12;
+    return `${dateFormatted} ${h12}:${mins} ${amPm}`;
+  }
 
   if (isLoading) {
     return (
@@ -929,10 +949,14 @@ export default function MyOrdersPage() {
                     )}
 
                     {appt && !isCancelled && (
-                      <div className={`mt-1.5 flex items-center gap-1 text-[11px] ${apptPast ? "text-amber-600 dark:text-amber-400" : "text-blue-600 dark:text-blue-400"}`}>
-                        {apptPast ? <CalendarX className="w-3 h-3" /> : <CalendarCheck className="w-3 h-3" />}
-                        {formatDate(appt.appointmentDate)} {appt.startTime?.slice(0, 5)}
-                        {apptPast && <span className="text-[10px]">{t("— منتهٍ", "— expired")}</span>}
+                      <div className={`mt-1.5 flex items-center gap-1 text-[11px] ${order.stage === "survey_done" ? "text-violet-600 dark:text-violet-400" : apptPast ? "text-amber-600 dark:text-amber-400" : "text-blue-600 dark:text-blue-400"}`}>
+                        {order.stage === "survey_done" ? <Ruler className="w-3 h-3 flex-shrink-0" /> : apptPast ? <CalendarX className="w-3 h-3 flex-shrink-0" /> : <CalendarCheck className="w-3 h-3 flex-shrink-0" />}
+                        <span className="flex-1">
+                          {order.stage === "survey_done"
+                            ? t(`تم المسح بتاريخ ${formatFullDate(appt.appointmentDate, appt.startTime)}`, `Survey done: ${formatFullDate(appt.appointmentDate, appt.startTime)}`)
+                            : `${formatFullDate(appt.appointmentDate, appt.startTime)}${apptPast ? ` (${t("منتهٍ", "expired")})` : ""}`
+                          }
+                        </span>
                       </div>
                     )}
 
@@ -986,6 +1010,16 @@ export default function MyOrdersPage() {
                               data-testid={`button-survey-mobile-${order.id}`}
                             >
                               <Ruler className="w-3.5 h-3.5 me-1" />{t("المسح", "Survey")}
+                            </Button>
+                          )}
+                          {["survey_done", "quote_draft", "quote_sent"].includes(order.stage) && (isMine || isManager) && (
+                            <Button
+                              variant="outline" size="sm"
+                              className="h-8 text-xs flex-1 text-indigo-700 border-indigo-300 dark:border-indigo-800"
+                              onClick={() => navigate(`/quotation-builder?quotationId=${order.id}`)}
+                              data-testid={`button-view-quote-mobile-${order.id}`}
+                            >
+                              <FileText className="w-3.5 h-3.5 me-1" />{t("عرض السعر", "Quote")}
                             </Button>
                           )}
                           {canCancel && (

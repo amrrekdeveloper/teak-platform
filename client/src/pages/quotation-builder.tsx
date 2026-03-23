@@ -24,8 +24,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Plus, Trash2, Loader2, Calculator, ArrowLeft, ArrowRight, Paperclip, Image, FileText, Search, Package, Ruler, Send, Save, ChevronDown, ChevronUp, Settings2, Eye, Download, Globe, List, LayoutList } from "lucide-react";
+import { Plus, Trash2, Loader2, Calculator, ArrowLeft, ArrowRight, Paperclip, Image, FileText, Search, Package, Ruler, Send, Save, ChevronDown, ChevronUp, Settings2, Eye, Download, Globe, List, LayoutList, Upload, X as XIcon } from "lucide-react";
 import { Checkbox as CheckboxUI } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { DialogFooter } from "@/components/ui/dialog";
 
 type ItemMode = "area" | "product";
@@ -115,24 +116,30 @@ export default function QuotationBuilderPage() {
   const searchParams = new URLSearchParams(window.location.search);
   const preselectedCustomerId = searchParams.get("customerId");
   const preselectedSurveyId = searchParams.get("surveyId");
+  const preselectedQuotationId = searchParams.get("quotationId");
 
   const [customerId, setCustomerId] = useState(preselectedCustomerId || "");
   const [items, setItems] = useState<LineItem[]>([]);
   const [discount, setDiscount] = useState(0);
-  const [discountType, setDiscountType] = useState<"percent" | "fixed">("percent");
+  const [discountType, setDiscountType] = useState<"percent" | "fixed">("fixed");
   const [deliveryDays, setDeliveryDays] = useState<number | null>(null);
   const [notes, setNotes] = useState("");
   const [adekoSearch, setAdekoSearch] = useState("");
   const [adekoDialog, setAdekoDialog] = useState<string | null>(null);
   const [productSearch, setProductSearch] = useState("");
-  const [savedQuotationId, setSavedQuotationId] = useState<number | null>(null);
+  const [savedQuotationId, setSavedQuotationId] = useState<number | null>(
+    preselectedQuotationId ? parseInt(preselectedQuotationId) : null
+  );
   const [savedQuotationStatus, setSavedQuotationStatus] = useState<string | null>(null);
   const [quotationMode, setQuotationMode] = useState<"detailed" | "summary">("detailed");
   const [summaryDescription, setSummaryDescription] = useState("");
   const [summaryPriceBeforeVat, setSummaryPriceBeforeVat] = useState<number>(0);
   const [sendDialogOpen, setSendDialogOpen] = useState(false);
   const [selectedAttachments, setSelectedAttachments] = useState<Set<number>>(new Set());
+  const [attachmentFile, setAttachmentFile] = useState<{ data: string; name: string; mime: string } | null>(null);
+  const [showAttachmentToCustomer, setShowAttachmentToCustomer] = useState(false);
   const pendingSendAfterSave = useRef(false);
+  const existingQuotationLoaded = useRef(false);
   const defaultValidUntil = () => {
     const d = new Date();
     d.setDate(d.getDate() + 30);
@@ -153,6 +160,77 @@ export default function QuotationBuilderPage() {
       return Array.isArray(data) ? data : (data.products || []);
     },
   });
+
+  const { data: existingQuotation } = useQuery<any>({
+    queryKey: ["/api/quotations", preselectedQuotationId],
+    queryFn: async () => {
+      const res = await fetch(`/api/quotations/${preselectedQuotationId}`, { credentials: "include" });
+      if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: !!preselectedQuotationId,
+  });
+
+  useEffect(() => {
+    if (existingQuotation && !existingQuotationLoaded.current) {
+      existingQuotationLoaded.current = true;
+      setCustomerId(String(existingQuotation.customerId));
+      setNotes(existingQuotation.notes || "");
+      setDeliveryDays(existingQuotation.deliveryDays || null);
+      if (existingQuotation.validUntil) setValidUntilDate(existingQuotation.validUntil);
+      setSavedQuotationStatus(existingQuotation.status);
+      if (existingQuotation.attachmentData) {
+        setAttachmentFile({ data: existingQuotation.attachmentData, name: existingQuotation.attachmentName || "attachment", mime: existingQuotation.attachmentMime || "application/octet-stream" });
+      }
+      setShowAttachmentToCustomer(existingQuotation.showAttachmentToCustomer || false);
+
+      const existingItems: any[] = Array.isArray(existingQuotation.items) ? existingQuotation.items : [];
+      if (existingItems.length === 0) return;
+
+      const isSummary = existingItems.length === 1 && !existingItems[0].code && !existingItems[0].productType && !existingItems[0].area;
+      if (isSummary) {
+        setQuotationMode("summary");
+        setSummaryDescription(existingItems[0].nameAr || existingItems[0].description || "");
+        setSummaryPriceBeforeVat(parseFloat(existingItems[0].unitPrice || 0));
+        const disc = parseFloat(existingQuotation.discount || "0");
+        setDiscount(disc);
+        setDiscountType("fixed");
+        return;
+      }
+      const loadedItems: LineItem[] = existingItems.map((item: any) => ({
+        id: Date.now().toString() + Math.random().toString(36).slice(2),
+        mode: item.area > 0 ? "area" as ItemMode : "product" as ItemMode,
+        productId: item.productId || null,
+        productType: item.productType || "",
+        woodType: item.woodType || "",
+        doorType: item.doorType || "",
+        description: item.description || item.nameAr || "",
+        area: parseFloat(item.area || 0),
+        pricePerMeter: parseFloat(item.pricePerMeter || 0),
+        adekoProductId: item.productId || null,
+        adekoCode: item.code || "",
+        adekoNameAr: item.nameAr || "",
+        adekoNameEn: item.nameEn || "",
+        qty: parseFloat(item.quantity || 1),
+        total: parseFloat(item.total || item.lineTotal || 0),
+        quantity: parseFloat(item.quantity || 1),
+        unitPrice: parseFloat(item.unitPrice || 0),
+        optionsCost: parseFloat(item.optionsCost || 0),
+        optionDetails: item.optionDetails || {},
+        options: { drawerType: "standard", hingeType: "standard", liftMechanism: "none" },
+        code: item.code || "",
+        nameAr: item.nameAr || item.description || "",
+        nameEn: item.nameEn || "",
+        dimensions: item.dimensions || { w: 0, h: 0, d: 0 },
+        useAdeko: !!(item.code && item.productId),
+        showOptions: false,
+      }));
+      setItems(loadedItems);
+      const disc = parseFloat(existingQuotation.discount || "0");
+      setDiscount(disc);
+      setDiscountType("fixed");
+    }
+  }, [existingQuotation]);
 
   const { data: surveyData } = useQuery<any>({
     queryKey: ["/api/site-surveys", preselectedSurveyId],
@@ -425,37 +503,53 @@ export default function QuotationBuilderPage() {
     return { totalArea, subtotal, discountAmount, afterDiscount, vatAmount, finalPrice };
   }, [items, discount, discountType, quotationMode, summaryPriceBeforeVat]);
 
+  const buildCommonPayload = (status: "draft" | "sent", itemsList: any[]) => ({
+    customerId: parseInt(customerId),
+    items: itemsList,
+    totalArea: String(items.filter(i => i.mode === "area").reduce((s, i) => s + (i.area || 0), 0)),
+    subtotal: String(totals.subtotal),
+    vatRate: "15",
+    vatAmount: String(totals.vatAmount),
+    totalPrice: String(totals.finalPrice),
+    discount: String(totals.discountAmount),
+    finalPrice: String(totals.finalPrice),
+    status,
+    deliveryDays: deliveryDays || null,
+    notes,
+    validUntil: validUntilDate,
+    designFile: completedDesign?.sketchImage || null,
+    attachmentData: attachmentFile?.data || null,
+    attachmentName: attachmentFile?.name || null,
+    attachmentMime: attachmentFile?.mime || null,
+    showAttachmentToCustomer,
+  });
+
   const saveMutation = useMutation({
     mutationFn: async (status: "draft" | "sent") => {
+      const editingId = preselectedQuotationId ? parseInt(preselectedQuotationId) : savedQuotationId;
+
       if (quotationMode === "summary") {
-        const res = await apiRequest("POST", "/api/quotations", {
-          customerId: parseInt(customerId),
-          items: [{
-            description: summaryDescription,
-            nameAr: summaryDescription,
-            nameEn: summaryDescription,
-            quantity: 1,
-            unitPrice: summaryPriceBeforeVat,
-            optionsCost: 0,
-            optionDetails: {},
-            total: summaryPriceBeforeVat,
-          }],
-          totalArea: "0",
-          subtotal: String(totals.subtotal),
-          vatRate: "15",
-          vatAmount: String(totals.vatAmount),
-          totalPrice: String(totals.finalPrice),
-          discount: String(totals.discountAmount),
-          finalPrice: String(totals.finalPrice),
-          status: "draft",
-          deliveryDays: deliveryDays || null,
-          notes,
-          validUntil: validUntilDate,
-          designFile: completedDesign?.sketchImage || null,
-        });
-        const quotation = await res.json();
-        if (status === "sent") {
-          await apiRequest("POST", `/api/pricing/send-to-customer/${quotation.id}`);
+        const summaryItems = [{
+          description: summaryDescription,
+          nameAr: summaryDescription,
+          nameEn: summaryDescription,
+          quantity: 1,
+          unitPrice: summaryPriceBeforeVat,
+          optionsCost: 0,
+          optionDetails: {},
+          total: summaryPriceBeforeVat,
+        }];
+        const payload = buildCommonPayload(status, summaryItems);
+        let quotation: any;
+        if (editingId) {
+          const res = await apiRequest("PATCH", `/api/quotations/${editingId}`, payload);
+          quotation = await res.json();
+        } else {
+          const res = await apiRequest("POST", "/api/quotations", { ...payload, status: "draft" });
+          quotation = await res.json();
+          if (status === "sent") {
+            await apiRequest("POST", `/api/pricing/send-to-customer/${quotation.id}`);
+          }
         }
         return quotation;
       }
@@ -463,21 +557,65 @@ export default function QuotationBuilderPage() {
       const hasAdekoItems = items.some(i => i.useAdeko && i.productId);
       const hasManuItems = items.some(i => !i.useAdeko);
 
+      if (editingId) {
+        const allItems = items.map(i => i.useAdeko ? {
+          productId: i.productId,
+          code: i.code,
+          nameAr: i.nameAr,
+          nameEn: i.nameEn,
+          quantity: i.quantity,
+          unitPrice: i.unitPrice,
+          optionsCost: i.optionsCost,
+          optionDetails: i.optionDetails,
+          total: i.total,
+          dimensions: i.dimensions,
+        } : {
+          productType: i.productType,
+          woodType: i.woodType,
+          doorType: i.doorType,
+          description: i.description,
+          area: i.area,
+          pricePerMeter: i.pricePerMeter,
+          quantity: i.quantity,
+          unitPrice: i.unitPrice,
+          optionsCost: i.optionsCost,
+          optionDetails: i.optionDetails,
+          total: i.total,
+        });
+        const res = await apiRequest("PATCH", `/api/quotations/${editingId}`, buildCommonPayload(status, allItems));
+        return res.json();
+      }
+
       if (hasAdekoItems) {
-        const payload = {
-          customerId: parseInt(customerId),
-          lineItems: items.filter(i => i.useAdeko && i.productId).map(i => ({
-            productId: i.productId,
-            code: i.code,
-            nameAr: i.nameAr,
-            nameEn: i.nameEn,
+        const lineItems: any[] = items.filter(i => i.useAdeko && i.productId).map(i => ({
+          productId: i.productId,
+          code: i.code,
+          nameAr: i.nameAr,
+          nameEn: i.nameEn,
+          quantity: i.quantity,
+          unitPrice: i.unitPrice,
+          optionsCost: i.optionsCost,
+          optionDetails: i.optionDetails,
+          lineTotal: i.total,
+          dimensions: i.dimensions,
+        }));
+        if (hasManuItems) {
+          lineItems.push(...items.filter(i => !i.useAdeko).map(i => ({
+            productId: 0,
+            code: i.productType,
+            nameAr: i.description || t(categoryLabels[i.productType]?.ar || i.productType, categoryLabels[i.productType]?.en || i.productType),
+            nameEn: i.description || categoryLabels[i.productType]?.en || i.productType,
             quantity: i.quantity,
             unitPrice: i.unitPrice,
             optionsCost: i.optionsCost,
             optionDetails: i.optionDetails,
             lineTotal: i.total,
             dimensions: i.dimensions,
-          })),
+          })));
+        }
+        const res = await apiRequest("POST", "/api/pricing/save-quotation", {
+          customerId: parseInt(customerId),
+          lineItems,
           subtotal: totals.subtotal,
           discountAmount: totals.discountAmount,
           vat: totals.vatAmount,
@@ -486,71 +624,44 @@ export default function QuotationBuilderPage() {
           deliveryDays,
           surveyId: preselectedSurveyId ? parseInt(preselectedSurveyId) : undefined,
           validUntil: validUntilDate,
-        };
-
-        if (hasManuItems) {
-          payload.lineItems.push(
-            ...items.filter(i => !i.useAdeko).map(i => ({
-              productId: 0,
-              code: i.productType,
-              nameAr: i.description || t(categoryLabels[i.productType]?.ar || i.productType, categoryLabels[i.productType]?.en || i.productType),
-              nameEn: i.description || categoryLabels[i.productType]?.en || i.productType,
-              quantity: i.quantity,
-              unitPrice: i.unitPrice,
-              optionsCost: i.optionsCost,
-              optionDetails: i.optionDetails,
-              lineTotal: i.total,
-              dimensions: i.dimensions,
-            }))
-          );
-        }
-
-        const res = await apiRequest("POST", "/api/pricing/save-quotation", payload);
+          attachmentData: attachmentFile?.data || null,
+          attachmentName: attachmentFile?.name || null,
+          attachmentMime: attachmentFile?.mime || null,
+          showAttachmentToCustomer,
+        });
         const quotation = await res.json();
-
         if (status === "sent") {
           await apiRequest("POST", `/api/pricing/send-to-customer/${quotation.id}`);
         }
         return quotation;
       } else {
-        const res = await apiRequest("POST", "/api/quotations", {
-          customerId: parseInt(customerId),
-          items: items.map((i) => ({
-            productType: i.productType,
-            woodType: i.woodType,
-            doorType: i.doorType,
-            description: i.description,
-            area: i.area,
-            pricePerMeter: i.pricePerMeter,
-            quantity: i.quantity,
-            unitPrice: i.unitPrice,
-            optionsCost: i.optionsCost,
-            optionDetails: i.optionDetails,
-            total: i.total,
-          })),
-          totalArea: String(items.reduce((s, i) => s + (i.area || 0), 0)),
-          subtotal: String(totals.subtotal),
-          vatRate: "15",
-          vatAmount: String(totals.vatAmount),
-          totalPrice: String(totals.finalPrice),
-          discount: String(totals.discountAmount),
-          finalPrice: String(totals.finalPrice),
-          status,
-          deliveryDays: deliveryDays || null,
-          notes,
-          validUntil: validUntilDate,
-          designFile: completedDesign?.sketchImage || null,
-        });
+        const manualItems = items.map((i) => ({
+          productType: i.productType,
+          woodType: i.woodType,
+          doorType: i.doorType,
+          description: i.description,
+          area: i.area,
+          pricePerMeter: i.pricePerMeter,
+          quantity: i.quantity,
+          unitPrice: i.unitPrice,
+          optionsCost: i.optionsCost,
+          optionDetails: i.optionDetails,
+          total: i.total,
+        }));
+        const res = await apiRequest("POST", "/api/quotations", buildCommonPayload(status, manualItems));
         return res.json();
       }
     },
     onSuccess: (quotation: any, status: "draft" | "sent") => {
       queryClient.invalidateQueries({ queryKey: ["/api/quotations"] });
       queryClient.invalidateQueries({ queryKey: ["/api/quote-requests"] });
+      if (quotation?.id) {
+        queryClient.invalidateQueries({ queryKey: ["/api/quotations", String(quotation.id)] });
+      }
       if (status === "draft") {
         setSavedQuotationId(quotation?.id || null);
-        setSavedQuotationStatus("draft");
-        toast({ title: t("تم حفظ عرض السعر كمسودة", "Quotation saved as draft") });
+        setSavedQuotationStatus(quotation?.status || "draft");
+        toast({ title: preselectedQuotationId ? t("تم حفظ التعديلات", "Changes saved") : t("تم حفظ عرض السعر كمسودة", "Quotation saved as draft") });
         if (pendingSendAfterSave.current) {
           pendingSendAfterSave.current = false;
           const initialAttachments = new Set<number>(
@@ -565,7 +676,7 @@ export default function QuotationBuilderPage() {
       }
     },
     onError: () => {
-      toast({ title: t("حدث خطأ في إنشاء عرض السعر", "Error creating quotation"), variant: "destructive" });
+      toast({ title: t("حدث خطأ في حفظ عرض السعر", "Error saving quotation"), variant: "destructive" });
     },
   });
 
@@ -670,10 +781,14 @@ export default function QuotationBuilderPage() {
         </Button>
         <div>
           <h1 className="text-2xl font-bold" data-testid="text-builder-title">
-            {t("إنشاء عرض سعر", "Create Quotation")}
+            {preselectedQuotationId
+              ? t("تعديل عرض السعر", "Edit Quotation")
+              : t("إنشاء عرض سعر", "Create Quotation")}
           </h1>
           <p className="text-sm text-muted-foreground">
-            {t("أنشئ عرض سعر جديد مع التسعير التلقائي", "Create a new quotation with automatic pricing")}
+            {preselectedQuotationId
+              ? t("تعديل وتحديث بنود عرض السعر", "Modify and update quotation items")
+              : t("أنشئ عرض سعر جديد مع التسعير التلقائي", "Create a new quotation with automatic pricing")}
           </p>
         </div>
       </div>
@@ -1274,6 +1389,59 @@ export default function QuotationBuilderPage() {
                     min={new Date().toISOString().split("T")[0]}
                     data-testid="input-valid-until"
                   />
+                </div>
+                <div className="space-y-2 pt-1 border-t">
+                  <Label className="text-xs flex items-center gap-1.5">
+                    <Paperclip className="w-3.5 h-3.5" />
+                    {t("مرفق عرض السعر (اختياري)", "Quotation Attachment (optional)")}
+                  </Label>
+                  {attachmentFile ? (
+                    <div className="flex items-center gap-2 bg-muted/50 rounded p-2">
+                      <FileText className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                      <span className="text-xs flex-1 truncate">{attachmentFile.name}</span>
+                      <Button
+                        variant="ghost" size="icon" className="h-6 w-6"
+                        onClick={() => setAttachmentFile(null)}
+                        data-testid="button-remove-attachment"
+                      >
+                        <XIcon className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <label className="flex items-center gap-2 border-2 border-dashed rounded-lg p-3 cursor-pointer hover:bg-muted/30 transition-colors" data-testid="label-upload-attachment">
+                      <Upload className="w-4 h-4 text-muted-foreground" />
+                      <span className="text-xs text-muted-foreground">{t("اضغط لرفع ملف PDF أو صورة", "Click to upload PDF or image")}</span>
+                      <input
+                        type="file"
+                        className="hidden"
+                        accept=".pdf,image/*"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          const reader = new FileReader();
+                          reader.onload = (ev) => {
+                            const result = ev.target?.result as string;
+                            setAttachmentFile({ data: result.split(",")[1], name: file.name, mime: file.type });
+                          };
+                          reader.readAsDataURL(file);
+                        }}
+                        data-testid="input-attachment-file"
+                      />
+                    </label>
+                  )}
+                  {attachmentFile && (
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        id="show-attach"
+                        checked={showAttachmentToCustomer}
+                        onCheckedChange={setShowAttachmentToCustomer}
+                        data-testid="switch-show-attachment"
+                      />
+                      <Label htmlFor="show-attach" className="text-xs cursor-pointer">
+                        {t("إظهار المرفق للعميل في البوابة", "Show attachment to customer in portal")}
+                      </Label>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>

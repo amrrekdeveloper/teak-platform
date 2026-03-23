@@ -225,11 +225,11 @@ export default function OrderDetailPage() {
                 const isLast = index === PIPELINE_STEP_KEYS.length - 1;
                 return (
                   <div key={key} className="flex items-center flex-1 min-w-0">
-                    <div className="flex flex-col items-center gap-1 flex-shrink-0">
-                      <div className={`w-7 h-7 rounded-full flex items-center justify-center transition-colors ${isDone ? "bg-green-500 text-white" : isCurrent ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground/50"}`}>
+                    <div className="flex flex-col items-center gap-0.5 flex-shrink-0">
+                      <div className={`w-7 h-7 rounded-full flex items-center justify-center transition-colors ${isDone ? "bg-green-500 text-white" : isCurrent ? "bg-primary text-primary-foreground ring-2 ring-primary/30" : "bg-muted text-muted-foreground/40"}`}>
                         {isDone ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Ico className="w-3.5 h-3.5" />}
                       </div>
-                      <span className={`text-[9px] text-center leading-tight max-w-[48px] truncate ${isCurrent ? "font-semibold text-primary" : isDone ? "text-green-600 dark:text-green-400" : "text-muted-foreground/50"}`}>
+                      <span className={`text-[9px] text-center leading-tight max-w-[54px] ${isCurrent ? "font-bold text-primary" : "text-transparent select-none"}`}>
                         {t(cfg.ar, cfg.en)}
                       </span>
                     </div>
@@ -481,21 +481,34 @@ export default function OrderDetailPage() {
         </SectionCard>
       )}
 
-      <div className="flex gap-2 pb-4">
-        <Button variant="outline" className="flex-1 h-9" onClick={() => navigate("/my-orders")} data-testid="button-detail-back">
-          {lang === "ar" ? <ArrowRight className="w-4 h-4 me-1" /> : <ArrowLeft className="w-4 h-4 me-1" />}
-          {t("العودة للطلبات", "Back to Orders")}
-        </Button>
-        {stage !== "cancelled" && (quotation.assignedTo === user?.id || isManager) && (
+      <div className="flex flex-col gap-2 pb-6">
+        {linkedSurveys.length > 0 && (
           <Button
-            className="flex-1 h-9"
-            onClick={() => navigate(`/quotation-builder?quotationId=${quotation.id}`)}
-            data-testid="button-detail-open-quotation"
+            variant="outline"
+            className="w-full h-10 text-violet-700 border-violet-300 dark:border-violet-700"
+            onClick={() => window.open(`/site-survey/${linkedSurveys[0].id}?print=1`, "_blank")}
+            data-testid="button-detail-print-survey"
           >
-            <FileText className="w-4 h-4 me-1" />
-            {t("عرض السعر التفصيلي", "Detailed Quotation")}
+            <ClipboardList className="w-4 h-4 me-1.5" />
+            {t("طباعة تقرير المسح الميداني", "Print Site Survey Report")}
           </Button>
         )}
+        <div className="flex gap-2">
+          <Button variant="outline" className="flex-1 h-11" onClick={() => navigate("/my-orders")} data-testid="button-detail-back">
+            {lang === "ar" ? <ArrowRight className="w-4 h-4 me-1" /> : <ArrowLeft className="w-4 h-4 me-1" />}
+            {t("العودة", "Back")}
+          </Button>
+          {stage !== "cancelled" && stage !== "rejected" && (quotation.assignedTo === user?.id || isManager) && (
+            <Button
+              className="flex-1 h-11"
+              onClick={() => navigate(`/quotation-builder?quotationId=${quotation.id}`)}
+              data-testid="button-detail-open-quotation"
+            >
+              <FileText className="w-4 h-4 me-1" />
+              {t("عرض السعر", "Quotation")}
+            </Button>
+          )}
+        </div>
       </div>
     </div>
   );

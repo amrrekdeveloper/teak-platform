@@ -1,15 +1,18 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLanguage } from "@/components/language-provider";
 import { useRoute, Link } from "wouter";
 import type { Quotation, Customer } from "@shared/schema";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, ArrowRight, Loader2, Printer } from "lucide-react";
+import { ArrowLeft, ArrowRight, Loader2, Printer, Send, CheckCircle2, Receipt } from "lucide-react";
 import { useState, useEffect } from "react";
 import teakLogo from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
 import { LoadingTransition } from "@/components/loading-transition";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 export default function QuotationViewPage() {
   const { t, isRTL } = useLanguage();
+  const { toast } = useToast();
   const [, params] = useRoute("/quotations/:id/view");
   const id = params?.id;
   const autoPrint = new URLSearchParams(window.location.search).get("print") === "1";
@@ -33,6 +36,21 @@ export default function QuotationViewPage() {
   });
 
   const [showPrintTransition, setShowPrintTransition] = useState(false);
+
+  const sendMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/pricing/send-to-customer/${id}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/quotations", id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/quotations"] });
+      toast({ title: t("تم إرسال العرض للعميل بنجاح", "Quotation sent to customer successfully") });
+    },
+    onError: () => {
+      toast({ title: t("حدث خطأ أثناء الإرسال", "Error sending quotation"), variant: "destructive" });
+    },
+  });
 
   useEffect(() => {
     if (autoPrint && quotation && !quotationLoading) {
@@ -137,7 +155,7 @@ export default function QuotationViewPage() {
         }}
       />
 
-      <div className="flex items-center justify-between mb-4 print:hidden">
+      <div className="flex items-center justify-between mb-4 print:hidden gap-2">
         <div className="flex items-center gap-3">
           <Link href="/quotations">
             <Button variant="ghost" size="icon" data-testid="button-back">
@@ -148,11 +166,58 @@ export default function QuotationViewPage() {
             {t("عرض سعر", "Price Quotation")} #{quotation.quotationNumber}
           </h1>
         </div>
-        <Button onClick={handlePrint} size="sm" data-testid="button-print">
-          <Printer className="w-4 h-4 me-2" />
-          {t("طباعة", "Print")}
-        </Button>
+        <div className="flex items-center gap-2">
+          {quotation.status === "sent" || quotation.status === "approved" ? (
+            <div className="flex items-center gap-1 text-sm text-green-600 dark:text-green-400 font-medium">
+              <CheckCircle2 className="w-4 h-4" />
+              {t("مُرسل", "Sent")}
+            </div>
+          ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => sendMutation.mutate()}
+              disabled={sendMutation.isPending}
+              data-testid="button-send-quotation"
+            >
+              {sendMutation.isPending ? <Loader2 className="w-4 h-4 me-2 animate-spin" /> : <Send className="w-4 h-4 me-2" />}
+              {t("إرسال للعميل", "Send to Customer")}
+            </Button>
+          )}
+          <Button onClick={handlePrint} size="sm" data-testid="button-print">
+            <Printer className="w-4 h-4 me-2" />
+            {t("طباعة", "Print")}
+          </Button>
+        </div>
       </div>
+
+      {/* Payment receipt (screen only) */}
+      {(quotation as any).paymentReceiptData && (
+        <div className="print:hidden mb-4 border rounded-lg p-3 bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-800 space-y-2" data-testid="section-payment-receipt">
+          <div className="flex items-center gap-2 text-green-700 dark:text-green-400 font-semibold text-sm">
+            <Receipt className="w-4 h-4" />
+            {t("وصل الدفع المرفق", "Attached Payment Receipt")}
+          </div>
+          {(quotation as any).paymentReceiptData.startsWith("data:image") ? (
+            <img
+              src={(quotation as any).paymentReceiptData}
+              alt="payment receipt"
+              className="max-h-48 rounded border object-contain w-full"
+              data-testid="img-receipt"
+            />
+          ) : (
+            <a
+              href={(quotation as any).paymentReceiptData}
+              download={(quotation as any).paymentReceiptName || "receipt.pdf"}
+              className="flex items-center gap-2 text-sm text-primary underline"
+              data-testid="link-receipt-download"
+            >
+              <Receipt className="w-4 h-4" />
+              {(quotation as any).paymentReceiptName || t("تحميل الوصل", "Download receipt")}
+            </a>
+          )}
+        </div>
+      )}
 
       <div className="bg-white rounded-lg border shadow-sm print:shadow-none print:border-none overflow-hidden">
         <div

@@ -22,9 +22,9 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { useState } from "react";
-import { Plus, Search, Loader2, FileText, Check, X, UserPlus, Palette, Phone, MapPin, Eye } from "lucide-react";
-import { Link } from "wouter";
+import { useState, useMemo, useRef } from "react";
+import { Plus, Search, Loader2, FileText, Check, X, UserPlus, Palette, Phone, MapPin, Eye, Pencil, Send, Upload, CheckCircle2, Receipt } from "lucide-react";
+import { Link, useLocation } from "wouter";
 
 const statusConfig: Record<string, { ar: string; en: string; color: string }> = {
   requested: { ar: "طلب جديد", en: "New Request", color: "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300" },
@@ -48,12 +48,19 @@ export default function QuotationsPage() {
   const { t } = useLanguage();
   const { toast } = useToast();
   const { user } = useAuth();
+  const [, navigate] = useLocation();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [customerFilter, setCustomerFilter] = useState<string>("all");
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [selectedRequestCustomer, setSelectedRequestCustomer] = useState<Customer | null>(null);
   const [selectedDesignerId, setSelectedDesignerId] = useState("");
   const [productDescription, setProductDescription] = useState("");
+  const [approveDialogOpen, setApproveDialogOpen] = useState(false);
+  const [approveTargetId, setApproveTargetId] = useState<number | null>(null);
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
+  const receiptInputRef = useRef<HTMLInputElement>(null);
 
   const { data: quotations = [], isLoading } = useQuery<Quotation[]>({
     queryKey: ["/api/quotations"],
@@ -98,14 +105,50 @@ export default function QuotationsPage() {
   });
 
   const approveMutation = useMutation({
-    mutationFn: async (id: number) => {
-      await apiRequest("POST", `/api/quotations/${id}/approve`);
+    mutationFn: async ({ id, receiptData, receiptName }: { id: number; receiptData?: string; receiptName?: string }) => {
+      const body: any = {};
+      if (receiptData) { body.paymentReceiptData = receiptData; body.paymentReceiptName = receiptName; }
+      await apiRequest("POST", `/api/quotations/${id}/approve`, body);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/quotations"] });
-      toast({ title: t("تم اعتماد عرض السعر", "Quotation approved") });
+      queryClient.invalidateQueries({ queryKey: ["/api/contracts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/invoices"] });
+      toast({ title: t("تم اعتماد عرض السعر وإنشاء العقد", "Quotation approved and contract created") });
+      setApproveDialogOpen(false);
+      setApproveTargetId(null);
+      setReceiptFile(null);
+      setReceiptPreview(null);
+    },
+    onError: () => {
+      toast({ title: t("حدث خطأ أثناء الاعتماد", "Error during approval"), variant: "destructive" });
     },
   });
+
+  const handleApproveClick = (id: number) => {
+    setApproveTargetId(id);
+    setReceiptFile(null);
+    setReceiptPreview(null);
+    setApproveDialogOpen(true);
+  };
+
+  const handleReceiptFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setReceiptFile(file);
+    const reader = new FileReader();
+    reader.onload = (ev) => setReceiptPreview(ev.target?.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  const handleConfirmApprove = async () => {
+    if (!approveTargetId) return;
+    if (receiptFile && receiptPreview) {
+      approveMutation.mutate({ id: approveTargetId, receiptData: receiptPreview, receiptName: receiptFile.name });
+    } else {
+      approveMutation.mutate({ id: approveTargetId });
+    }
+  };
 
   const rejectMutation = useMutation({
     mutationFn: async (id: number) => {
@@ -121,13 +164,19 @@ export default function QuotationsPage() {
     return customers.find((c) => c.id === customerId)?.fullName || "";
   };
 
+  const quotationCustomerIds = useMemo(() => {
+    const ids = new Set(quotations.map(q => q.customerId));
+    return customers.filter(c => ids.has(c.id));
+  }, [quotations, customers]);
+
   const filtered = quotations.filter((q) => {
     const matchSearch =
       search === "" ||
       getCustomerName(q.customerId).includes(search) ||
       String(q.quotationNumber).includes(search);
     const matchStatus = statusFilter === "all" || q.status === statusFilter;
-    return matchSearch && matchStatus;
+    const matchCustomer = customerFilter === "all" || String(q.customerId) === customerFilter;
+    return matchSearch && matchStatus && matchCustomer;
   });
 
   const canApprove = user?.role === "owner" || user?.role === "assistant";
@@ -230,16 +279,33 @@ export default function QuotationsPage() {
         </Link>
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-3 mb-4">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder={t("بحث...", "Search...")}
-            className="ps-10"
-            data-testid="input-search-quotations"
-          />
+      <div className="flex flex-col gap-3 mb-4">
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={t("بحث...", "Search...")}
+              className="ps-10"
+              data-testid="input-search-quotations"
+            />
+          </div>
+          {quotationCustomerIds.length > 1 && (
+            <Select value={customerFilter} onValueChange={setCustomerFilter}>
+              <SelectTrigger className="w-full sm:w-[200px]" data-testid="select-customer-filter">
+                <SelectValue placeholder={t("كل العملاء", "All Customers")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t("كل العملاء", "All Customers")}</SelectItem>
+                {quotationCustomerIds.map((c) => (
+                  <SelectItem key={c.id} value={String(c.id)}>
+                    {c.fullName}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </div>
         <div className="flex gap-2 overflow-x-auto flex-nowrap pb-1">
           {["all", "requested", "draft", "sent", "approved", "rejected", "expired"].map((status) => (
@@ -293,16 +359,29 @@ export default function QuotationsPage() {
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap justify-end">
                       <span className="text-lg font-bold">
                         {parseFloat(q.finalPrice).toLocaleString()} SAR
                       </span>
+                      {(q.status === "draft" || q.status === "sent") && (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="text-amber-600"
+                          onClick={() => navigate(`/quotation-builder?quotationId=${q.id}`)}
+                          data-testid={`button-edit-${q.id}`}
+                          title={t("تحرير عرض السعر", "Edit Quotation")}
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </Button>
+                      )}
                       <Link href={`/quotations/${q.id}/view`}>
                         <Button
                           size="icon"
                           variant="ghost"
                           className="text-blue-600"
                           data-testid={`button-view-${q.id}`}
+                          title={t("عرض عرض السعر", "View Quotation")}
                         >
                           <Eye className="w-4 h-4" />
                         </Button>
@@ -313,7 +392,7 @@ export default function QuotationsPage() {
                             size="icon"
                             variant="ghost"
                             className="text-green-600"
-                            onClick={() => approveMutation.mutate(q.id)}
+                            onClick={() => handleApproveClick(q.id)}
                             disabled={approveMutation.isPending}
                             data-testid={`button-approve-${q.id}`}
                           >
@@ -339,6 +418,76 @@ export default function QuotationsPage() {
           })}
         </div>
       )}
+
+      {/* Payment Receipt / Approval Dialog */}
+      <Dialog open={approveDialogOpen} onOpenChange={(open) => { setApproveDialogOpen(open); if (!open) { setReceiptFile(null); setReceiptPreview(null); } }}>
+        <DialogContent className="max-w-sm" data-testid="dialog-approve-receipt">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Receipt className="w-5 h-5 text-green-600" />
+              {t("اعتماد عرض السعر", "Approve Quotation")}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              {t("يمكنك إرفاق وصل الدفع قبل الاعتماد (اختياري).", "You may attach a payment receipt before approval (optional).")}
+            </p>
+            <input
+              ref={receiptInputRef}
+              type="file"
+              accept="image/*,application/pdf"
+              className="hidden"
+              onChange={handleReceiptFileChange}
+              data-testid="input-receipt-file"
+            />
+            {receiptPreview ? (
+              <div className="border rounded-md p-2 space-y-2">
+                {receiptFile?.type.startsWith("image/") ? (
+                  <img src={receiptPreview} alt="receipt" className="max-h-40 w-full object-contain rounded" />
+                ) : (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <FileText className="w-4 h-4" />
+                    <span>{receiptFile?.name}</span>
+                  </div>
+                )}
+                <Button size="sm" variant="ghost" className="text-destructive w-full" onClick={() => { setReceiptFile(null); setReceiptPreview(null); }}>
+                  {t("إزالة الوصل", "Remove receipt")}
+                </Button>
+              </div>
+            ) : (
+              <Button
+                variant="outline"
+                className="w-full h-20 flex flex-col gap-1 border-dashed"
+                onClick={() => receiptInputRef.current?.click()}
+                data-testid="button-upload-receipt"
+              >
+                <Upload className="w-5 h-5 text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">{t("رفع وصل الدفع", "Upload payment receipt")}</span>
+              </Button>
+            )}
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setApproveDialogOpen(false)} data-testid="button-cancel-approve">
+              {t("إلغاء", "Cancel")}
+            </Button>
+            <Button
+              className="bg-green-600 hover:bg-green-700 text-white"
+              onClick={handleConfirmApprove}
+              disabled={approveMutation.isPending}
+              data-testid="button-confirm-approve"
+            >
+              {approveMutation.isPending ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <>
+                  <CheckCircle2 className="w-4 h-4 me-1" />
+                  {t("اعتماد", "Approve")}
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={assignDialogOpen} onOpenChange={setAssignDialogOpen}>
         <DialogContent>
