@@ -938,7 +938,7 @@ function MapSection() {
       locationAr: "خميس مشيط - المدينة الصناعية",
       locationEn: "Khamis Mushait - Industrial City",
       mapUrl: "https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3700!2d42.7!3d18.3!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x15fb5b0c08c5b0b7%3A0x0!2zMTjCsDE4JzAwLjAiTiA0MsKwNDInMDAuMCJF!5e0!3m2!1sar!2ssa!4v1700000000000",
-      gMapsLink: "https://maps.app.goo.gl/Y4FHN6vXRgr2qPuv9",
+      gMapsLink: "https://maps.app.goo.gl/QFzJhCpQi54RtjKt5",
     },
     {
       id: "showroom",
