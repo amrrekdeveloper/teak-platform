@@ -184,16 +184,8 @@ function DashboardRoutes() {
         <Route path="/design-studio/:orderId" component={DesignStudioPage} />
         <Route path="/designer-board" component={DesignerBoardPage} />
         <Route path="/my-profile" component={MyProfilePage} />
-        <Route path="/daily-performance">{() => {
-          const { user: authUser } = useAuth();
-          if (!authUser || authUser.role !== "sales") return <NotFound />;
-          return <DailySalesEntryPage />;
-        }}</Route>
-        <Route path="/sales-performance">{() => {
-          const { user: authUser } = useAuth();
-          if (!authUser || (authUser.role !== "owner" && authUser.role !== "assistant")) return <NotFound />;
-          return <SalesPerformancePage />;
-        }}</Route>
+        <Route path="/daily-performance" component={DailySalesEntryPage} />
+        <Route path="/sales-performance" component={SalesPerformancePage} />
         <Route path="/settings/users">{() => {
           const { user: authUser } = useAuth();
           if (authUser && authUser.role !== "owner" && authUser.role !== "it") return <NotFound />;
