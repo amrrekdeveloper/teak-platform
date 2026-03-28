@@ -69,7 +69,7 @@ const menuItems: MenuItem[] = [
   { titleAr: "الإعدادات", titleEn: "Settings", icon: Settings, path: "/settings", roles: ["owner", "it"], group: "admin" },
   { titleAr: "ملفي الشخصي", titleEn: "My Profile", icon: UserCircle, path: "/my-profile", roles: ["owner", "assistant", "sales", "designer", "production", "purchasing", "warehouse", "accountant", "customer_service", "delivery", "installation", "quality", "hr", "it"], group: "admin" },
   { titleAr: "أداء اليوم", titleEn: "Today's Performance", icon: TrendingUp, path: "/daily-performance", roles: ["sales"], group: "main", strictRoles: true },
-  { titleAr: "متابعة الأداء التسويقي", titleEn: "Marketing Performance", icon: TrendingUp, path: "/sales-performance", roles: ["owner", "assistant", "sales"], group: "main" },
+  { titleAr: "متابعة الأداء التسويقي", titleEn: "Marketing Performance", icon: TrendingUp, path: "/sales-performance", roles: ["owner", "assistant"], group: "main" },
 ];
 
 function SidebarContent({

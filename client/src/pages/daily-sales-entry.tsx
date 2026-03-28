@@ -27,16 +27,16 @@ function CounterInput({
   testId: string;
 }) {
   return (
-    <div className="flex flex-col items-center gap-2 p-4 rounded-xl border bg-card">
-      <div className={`w-12 h-12 rounded-full flex items-center justify-center ${color}`}>
-        <Icon className="w-6 h-6" />
+    <div className="flex items-center gap-3 p-3 rounded-xl border bg-card">
+      <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${color}`}>
+        <Icon className="w-5 h-5" />
       </div>
-      <p className="text-xs text-muted-foreground text-center font-medium">{label}</p>
-      <div className="flex items-center gap-3">
+      <p className="flex-1 text-sm font-medium text-foreground">{label}</p>
+      <div className="flex items-center gap-2">
         <button
           type="button"
           onClick={() => onChange(Math.max(0, value - 1))}
-          className="w-8 h-8 rounded-full border flex items-center justify-center text-lg font-bold hover:bg-muted transition-colors"
+          className="w-9 h-9 rounded-full border border-border flex items-center justify-center text-lg font-bold hover:bg-muted transition-colors text-muted-foreground"
           data-testid={`${testId}-dec`}
         >
           −
@@ -46,13 +46,13 @@ function CounterInput({
           min={0}
           value={value}
           onChange={(e) => onChange(Math.max(0, parseInt(e.target.value) || 0))}
-          className="w-14 text-center text-2xl font-bold bg-transparent border-0 focus:outline-none"
+          className="w-12 text-center text-xl font-bold bg-transparent border-0 focus:outline-none"
           data-testid={testId}
         />
         <button
           type="button"
           onClick={() => onChange(value + 1)}
-          className="w-8 h-8 rounded-full border flex items-center justify-center text-lg font-bold hover:bg-muted transition-colors"
+          className="w-9 h-9 rounded-full border border-border flex items-center justify-center text-lg font-bold hover:bg-muted transition-colors text-foreground"
           data-testid={`${testId}-inc`}
         >
           +
@@ -126,7 +126,7 @@ export default function DailySalesEntryPage() {
   }
 
   return (
-    <div className="max-w-lg mx-auto space-y-5">
+    <div className="max-w-lg mx-auto space-y-5 px-1">
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2">
           <TrendingUp className="w-6 h-6 text-primary" />
@@ -145,35 +145,33 @@ export default function DailySalesEntryPage() {
         <CardHeader className="pb-3">
           <CardTitle className="text-base">{t("تسجيل نتائج اليوم", "Record Today's Results")}</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-3 gap-3">
-            <CounterInput
-              value={callsCount}
-              onChange={setCallsCount}
-              label={t("اتصالات", "Calls")}
-              icon={Phone}
-              color="bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400"
-              testId="input-calls-count"
-            />
-            <CounterInput
-              value={whatsappCount}
-              onChange={setWhatsappCount}
-              label={t("واتس آب", "WhatsApp")}
-              icon={MessageCircle}
-              color="bg-green-100 text-green-600 dark:bg-green-900/40 dark:text-green-400"
-              testId="input-whatsapp-count"
-            />
-            <CounterInput
-              value={showroomVisits}
-              onChange={setShowroomVisits}
-              label={t("زيارات المعرض", "Showroom")}
-              icon={Store}
-              color="bg-amber-100 text-amber-600 dark:bg-amber-900/40 dark:text-amber-400"
-              testId="input-showroom-visits"
-            />
-          </div>
+        <CardContent className="space-y-3">
+          <CounterInput
+            value={callsCount}
+            onChange={setCallsCount}
+            label={t("اتصالات", "Calls")}
+            icon={Phone}
+            color="bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400"
+            testId="input-calls-count"
+          />
+          <CounterInput
+            value={whatsappCount}
+            onChange={setWhatsappCount}
+            label={t("واتس آب", "WhatsApp")}
+            icon={MessageCircle}
+            color="bg-green-100 text-green-600 dark:bg-green-900/40 dark:text-green-400"
+            testId="input-whatsapp-count"
+          />
+          <CounterInput
+            value={showroomVisits}
+            onChange={setShowroomVisits}
+            label={t("زيارات المعرض", "Showroom")}
+            icon={Store}
+            color="bg-amber-100 text-amber-600 dark:bg-amber-900/40 dark:text-amber-400"
+            testId="input-showroom-visits"
+          />
 
-          <div className="space-y-1.5">
+          <div className="space-y-1.5 pt-1">
             <label className="text-sm font-medium text-muted-foreground">
               {t("ملاحظات (اختياري)", "Notes (optional)")}
             </label>
@@ -208,16 +206,16 @@ export default function DailySalesEntryPage() {
             <p className="text-sm font-medium text-muted-foreground mb-3">{t("ملخص اليوم المحفوظ", "Saved Summary")}</p>
             <div className="grid grid-cols-3 gap-3 text-center">
               <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950/30">
-                <p className="text-xl font-bold text-blue-600" data-testid="text-saved-calls">{todayLog.callsCount}</p>
-                <p className="text-xs text-muted-foreground">{t("اتصالات", "Calls")}</p>
+                <p className="text-2xl font-bold text-blue-600" data-testid="text-saved-calls">{todayLog.callsCount}</p>
+                <p className="text-xs text-muted-foreground mt-1">{t("اتصالات", "Calls")}</p>
               </div>
               <div className="p-3 rounded-lg bg-green-50 dark:bg-green-950/30">
-                <p className="text-xl font-bold text-green-600" data-testid="text-saved-whatsapp">{todayLog.whatsappCount}</p>
-                <p className="text-xs text-muted-foreground">{t("واتس آب", "WhatsApp")}</p>
+                <p className="text-2xl font-bold text-green-600" data-testid="text-saved-whatsapp">{todayLog.whatsappCount}</p>
+                <p className="text-xs text-muted-foreground mt-1">{t("واتس آب", "WhatsApp")}</p>
               </div>
               <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30">
-                <p className="text-xl font-bold text-amber-600" data-testid="text-saved-showroom">{todayLog.showroomVisits}</p>
-                <p className="text-xs text-muted-foreground">{t("معرض", "Showroom")}</p>
+                <p className="text-2xl font-bold text-amber-600" data-testid="text-saved-showroom">{todayLog.showroomVisits}</p>
+                <p className="text-xs text-muted-foreground mt-1">{t("معرض", "Showroom")}</p>
               </div>
             </div>
           </CardContent>
