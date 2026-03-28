@@ -5,25 +5,20 @@ import { useLanguage } from "@/components/language-provider";
 
 const CONTACTS = [
   {
-    nameAr: "خدمة العملاء",
-    nameEn: "Customer Service",
-    phone: "0558090498",
-    wa: "966558090498",
-    highlight: true,
-  },
-  {
     nameAr: "مهند",
     nameEn: "Mohannad",
     phone: "0557753491",
     wa: "966557753491",
     highlight: false,
+    techSupport: false,
   },
   {
     nameAr: "هادي",
     nameEn: "Hadi",
-    phone: "0553053995",
-    wa: "966553053995",
+    phone: "0544859215",
+    wa: "966544859215",
     highlight: false,
+    techSupport: false,
   },
   {
     nameAr: "تيك",
@@ -31,6 +26,15 @@ const CONTACTS = [
     phone: "0542662889",
     wa: "966542662889",
     highlight: false,
+    techSupport: false,
+  },
+  {
+    nameAr: "الدعم الفني",
+    nameEn: "Tech Support",
+    phone: "+966500748478",
+    wa: "966500748478",
+    highlight: false,
+    techSupport: true,
   },
 ];
 
@@ -59,15 +63,32 @@ function ContactCard({ c, isRTL, t }: {
   isRTL: boolean;
   t: (ar: string, en: string) => string;
 }) {
+  const isTech = c.techSupport;
+  const cardStyle = isTech
+    ? { background: "rgba(59,130,246,0.1)", border: "1px solid rgba(59,130,246,0.35)" }
+    : c.highlight
+      ? { background: "rgba(37,211,102,0.1)", border: "1px solid rgba(37,211,102,0.35)" }
+      : { background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" };
+
+  const avatarBg = isTech
+    ? "linear-gradient(135deg, #1d4ed8, #3b82f6)"
+    : c.highlight
+      ? "linear-gradient(135deg, #128C7E, #25D366)"
+      : "linear-gradient(135deg, #1a6b3c, #25D366)";
+
+  const btnBg = isTech
+    ? "linear-gradient(135deg, #1d4ed8, #3b82f6)"
+    : "linear-gradient(135deg, #1a6b3c, #25D366)";
+
   return (
-    <div
-      className="rounded-2xl overflow-hidden"
-      style={
-        c.highlight
-          ? { background: "rgba(37,211,102,0.1)", border: "1px solid rgba(37,211,102,0.35)" }
-          : { background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }
-      }
-    >
+    <div className="rounded-2xl overflow-hidden" style={cardStyle}>
+      {isTech && (
+        <div className="px-4 pt-2.5 pb-0" style={{ textAlign: isRTL ? "right" : "left" }}>
+          <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#3b82f6" }}>
+            {t("دعم تقنية المعلومات", "IT Support")}
+          </span>
+        </div>
+      )}
       {c.highlight && (
         <div className="px-4 pt-2.5 pb-0" style={{ textAlign: isRTL ? "right" : "left" }}>
           <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#25D366" }}>
@@ -81,11 +102,7 @@ function ContactCard({ c, isRTL, t }: {
       >
         <div
           className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-white text-base flex-shrink-0"
-          style={{
-            background: c.highlight
-              ? "linear-gradient(135deg, #128C7E, #25D366)"
-              : "linear-gradient(135deg, #1a6b3c, #25D366)",
-          }}
+          style={{ background: avatarBg }}
         >
           {t(c.nameAr[0], c.nameEn[0])}
         </div>
@@ -104,11 +121,7 @@ function ContactCard({ c, isRTL, t }: {
           rel="noopener noreferrer"
           data-testid={`link-whatsapp-${c.nameAr}`}
           className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl font-semibold text-xs transition-all hover:opacity-90 active:scale-95"
-          style={{
-            background: "linear-gradient(135deg, #1a6b3c, #25D366)",
-            color: "white",
-            flexDirection: isRTL ? "row" : "row-reverse",
-          }}
+          style={{ background: btnBg, color: "white", flexDirection: isRTL ? "row" : "row-reverse" }}
         >
           <WhatsAppIcon size={14} />
           {t("واتساب", "WhatsApp")}
