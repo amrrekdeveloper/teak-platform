@@ -4778,6 +4778,13 @@ export async function registerRoutes(
     console.warn("Task #35 migration warning (non-fatal):", task35MigrationError instanceof Error ? task35MigrationError.message : String(task35MigrationError));
   }
 
+  // Fix duplicate مهند: deactivate old 'mohnad' account (id=4) in all envs including production
+  try {
+    await db.execute(`UPDATE users SET active = false WHERE username = 'mohnad' AND active = true`);
+  } catch (mohnadFixError) {
+    console.warn("mohnad deactivation (non-fatal):", mohnadFixError instanceof Error ? mohnadFixError.message : String(mohnadFixError));
+  }
+
   app.get("/api/daily-sales-logs/today", requireRole("sales"), async (req, res) => {
     try {
       const userId = req.session.userId!;
