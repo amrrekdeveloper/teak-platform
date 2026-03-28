@@ -96,13 +96,15 @@ export default function SalesPerformancePage() {
 
   const { data: allLogs = [], isLoading: logsLoading } = useQuery<DailySalesLog[]>({
     queryKey: ["/api/daily-sales-logs"],
+    refetchInterval: 30000,
+    staleTime: 0,
   });
 
   const { data: users = [] } = useQuery<User[]>({
     queryKey: ["/api/users"],
   });
 
-  const salesReps = useMemo(() => users.filter((u) => u.role === "sales"), [users]);
+  const salesReps = useMemo(() => users.filter((u) => u.role === "sales" && u.active), [users]);
 
   const filteredLogs = useMemo(() => {
     if (repFilter === "all") return allLogs;

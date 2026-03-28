@@ -4760,9 +4760,19 @@ export async function registerRoutes(
         whatsapp_count INTEGER NOT NULL DEFAULT 0,
         showroom_visits INTEGER NOT NULL DEFAULT 0,
         notes TEXT,
-        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-        UNIQUE(date, sales_rep_id)
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
       )
+    `);
+    await db.execute(`
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.table_constraints
+          WHERE table_name = 'daily_sales_logs'
+          AND constraint_name = 'daily_sales_logs_date_rep_unique'
+        ) THEN
+          ALTER TABLE daily_sales_logs ADD CONSTRAINT daily_sales_logs_date_rep_unique UNIQUE (date, sales_rep_id);
+        END IF;
+      END $$;
     `);
   } catch (task35MigrationError) {
     console.warn("Task #35 migration warning (non-fatal):", task35MigrationError instanceof Error ? task35MigrationError.message : String(task35MigrationError));
