@@ -64,7 +64,7 @@ export default function SettingsPage({ initialTab }: { initialTab?: string }) {
   const { data: users = [], isLoading: loadingUsers } = useQuery<User[]>({ queryKey: ["/api/users"] });
   const { data: logs = [], isLoading: loadingLogs } = useQuery<ActivityLog[]>({
     queryKey: ["/api/activity-logs"],
-    enabled: currentUser?.role === "owner" || currentUser?.role === "it",
+    enabled: currentUser?.role === "owner" || currentUser?.role === "it" || currentUser?.role === "assistant",
   });
 
   const [companyForm, setCompanyForm] = useState<any>(null);

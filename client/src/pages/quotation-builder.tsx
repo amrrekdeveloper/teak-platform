@@ -1679,7 +1679,7 @@ export default function QuotationBuilderPage() {
                     <><Send className="w-4 h-4 me-1.5" />{t("إرسال للعميل", "Send to Customer")}</>
                   )}
                 </Button>
-                {(user?.role === "sales" || user?.role === "owner" || user?.role === "assistant") && (
+                {(user?.role === "sales" || user?.role === "owner" || user?.role === "assistant" || user?.role === "it") && (
                   <Button
                     variant="default"
                     className="w-full bg-green-600 hover:bg-green-700 text-white"

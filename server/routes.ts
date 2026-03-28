@@ -4785,6 +4785,13 @@ export async function registerRoutes(
     console.warn("mohnad deactivation (non-fatal):", mohnadFixError instanceof Error ? mohnadFixError.message : String(mohnadFixError));
   }
 
+  // Fix siham's role: change from assistant → it (she is the IT admin with full access)
+  try {
+    await db.execute(`UPDATE users SET role = 'it' WHERE username = 'siham' AND role = 'assistant'`);
+  } catch (sihamRoleError) {
+    console.warn("siham role fix (non-fatal):", sihamRoleError instanceof Error ? sihamRoleError.message : String(sihamRoleError));
+  }
+
   // Production employee-user data reconciliation migration
   // Runs safely every startup — all statements are idempotent
   try {

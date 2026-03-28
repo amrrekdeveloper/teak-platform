@@ -156,7 +156,7 @@ export function requireRole(...roles: string[]) {
         });
       }
 
-      if (!roles.includes(user.role) && user.role !== "owner") {
+      if (!roles.includes(user.role) && user.role !== "owner" && user.role !== "it") {
         return res.status(403).json({
           message: "ليس لديك صلاحية للوصول لهذا المورد",
           messageEn: "You do not have permission to access this resource",

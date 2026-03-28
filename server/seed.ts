@@ -104,7 +104,7 @@ async function seedRealUsers() {
     { username: "hamdi", fullNameAr: "حمدي", fullNameEn: "Hamdi", role: "production" as const, phone: "0505234567", email: "hamdi@teak.sa" },
     { username: "ismail", fullNameAr: "إسماعيل", fullNameEn: "Ismail", role: "accountant" as const, phone: "0508234567", email: "ismail@teak.sa" },
     { username: "sultan", fullNameAr: "سلطان", fullNameEn: "Sultan", role: "accountant" as const, phone: "0508334567", email: "sultan@teak.sa" },
-    { username: "siham", fullNameAr: "سهام", fullNameEn: "Siham", role: "assistant" as const, phone: "0514234567", email: "siham@teak.sa" },
+    { username: "siham", fullNameAr: "سهام", fullNameEn: "Siham", role: "it" as const, phone: "0514234567", email: "siham@teak.sa" },
     { username: "mohannad", fullNameAr: "مهند", fullNameEn: "Mohannad", role: "sales" as const, phone: "0503334567", email: "mohannad@teak.sa" },
     { username: "hadi", fullNameAr: "هادي", fullNameEn: "Hadi", role: "sales" as const, phone: "0503234567", email: "hadi@teak.sa" },
     { username: "mohsen", fullNameAr: "محسن", fullNameEn: "Mohsen", role: "designer" as const, phone: "0504234567", email: "mohsen@teak.sa" },

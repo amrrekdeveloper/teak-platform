@@ -231,7 +231,7 @@ export default function MyOrdersPage() {
   const { data: appointments = [] } = useQuery<Appointment[]>({ queryKey: ["/api/appointments"] });
   const { data: siteSurveys = [] } = useQuery<SiteSurvey[]>({ queryKey: ["/api/site-surveys"] });
 
-  const isManager = user && ["owner", "assistant"].includes(user.role);
+  const isManager = user && ["owner", "assistant", "it"].includes(user.role);
 
   useEffect(() => {
     const expired = appointments.filter(appt => {

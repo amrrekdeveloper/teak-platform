@@ -163,7 +163,7 @@ export default function SalesPerformancePage() {
     ];
   });
 
-  if (!user || (user.role !== "owner" && user.role !== "assistant")) {
+  if (!user || (user.role !== "owner" && user.role !== "assistant" && user.role !== "it")) {
     return <NotFound />;
   }
 

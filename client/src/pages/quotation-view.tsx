@@ -56,7 +56,7 @@ export default function QuotationViewPage() {
 
   const returnTo = new URLSearchParams(window.location.search).get("returnTo");
 
-  const isManager = user?.role === "owner" || user?.role === "assistant";
+  const isManager = user?.role === "owner" || user?.role === "assistant" || user?.role === "it";
   const canApprove = quotation &&
     (quotation.status === "draft" || quotation.status === "sent") &&
     (isManager || user?.role === "sales");

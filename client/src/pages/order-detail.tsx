@@ -146,7 +146,7 @@ export default function OrderDetailPage() {
     enabled: !!firstSurveyId,
   });
 
-  const isManager = user && ["owner", "assistant"].includes(user.role);
+  const isManager = user && ["owner", "assistant", "it"].includes(user.role);
 
   if (isLoading) {
     return (
