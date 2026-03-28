@@ -4785,6 +4785,65 @@ export async function registerRoutes(
     console.warn("mohnad deactivation (non-fatal):", mohnadFixError instanceof Error ? mohnadFixError.message : String(mohnadFixError));
   }
 
+  // Production employee-user data reconciliation migration
+  // Runs safely every startup — all statements are idempotent
+  try {
+    // 1. Remap employees whose linked user accounts were renamed/recreated
+    await db.execute(`
+      UPDATE employees SET user_id = (SELECT id FROM users WHERE username = 'jabran' LIMIT 1)
+      WHERE employee_number = 'EMP-001'
+        AND EXISTS (SELECT 1 FROM users WHERE username = 'jabran')
+        AND (user_id IS NULL OR user_id NOT IN (SELECT id FROM users WHERE username = 'jabran'))
+    `);
+    await db.execute(`
+      UPDATE employees SET user_id = (SELECT id FROM users WHERE username = 'mohannad' LIMIT 1)
+      WHERE employee_number = 'EMP-004'
+        AND EXISTS (SELECT 1 FROM users WHERE username = 'mohannad')
+        AND (user_id IS NULL OR user_id NOT IN (SELECT id FROM users WHERE username = 'mohannad'))
+    `);
+    await db.execute(`
+      UPDATE employees SET user_id = (SELECT id FROM users WHERE username = 'm.sobri' LIMIT 1)
+      WHERE employee_number = 'EMP-011'
+        AND EXISTS (SELECT 1 FROM users WHERE username = 'm.sobri')
+        AND (user_id IS NULL OR user_id NOT IN (SELECT id FROM users WHERE username = 'm.sobri'))
+    `);
+    await db.execute(`
+      UPDATE employees SET user_id = (SELECT id FROM users WHERE username = 'sedad' LIMIT 1)
+      WHERE employee_number = 'EMP-012'
+        AND EXISTS (SELECT 1 FROM users WHERE username = 'sedad')
+        AND (user_id IS NULL OR user_id NOT IN (SELECT id FROM users WHERE username = 'sedad'))
+    `);
+
+    // 2. Create missing employee records for real users who have no employee entry
+    const missingEmployees = [
+      { username: 'siham',    empNum: 'EMP-013', position: 'مساعد المدير', dept: 'management', salary: '10000', start: '2021-01-01' },
+      { username: 'sultan',   empNum: 'EMP-014', position: 'محاسب',        dept: 'finance',     salary: '7000',  start: '2023-01-01' },
+      { username: 'abdullah', empNum: 'EMP-015', position: 'أمين مستودع',  dept: 'warehouse',   salary: '6000',  start: '2022-01-01' },
+    ];
+    for (const me of missingEmployees) {
+      await db.execute(`
+        INSERT INTO employees (employee_number, user_id, nationality, position, department, monthly_salary, contract_start, status)
+        SELECT '${me.empNum}',
+               (SELECT id FROM users WHERE username = '${me.username}' LIMIT 1),
+               'saudi', '${me.position}', '${me.dept}', ${me.salary}, '${me.start}', 'active'
+        WHERE EXISTS (SELECT 1 FROM users WHERE username = '${me.username}')
+          AND NOT EXISTS (SELECT 1 FROM employees WHERE employee_number = '${me.empNum}')
+          AND NOT EXISTS (SELECT 1 FROM employees WHERE user_id = (SELECT id FROM users WHERE username = '${me.username}' LIMIT 1))
+      `);
+    }
+
+    // 3. Deactivate obsolete accounts that no longer exist in the active seed
+    await db.execute(`
+      UPDATE users SET active = false
+      WHERE username IN ('k.asiri','fatima','mohammed','saddad','quality1','noura','hanan')
+        AND active = true
+    `);
+
+    console.log("Employee-user reconciliation migration completed");
+  } catch (empMigrationError) {
+    console.warn("Employee migration (non-fatal):", empMigrationError instanceof Error ? empMigrationError.message : String(empMigrationError));
+  }
+
   app.get("/api/daily-sales-logs/today", requireRole("sales"), async (req, res) => {
     try {
       const userId = req.session.userId!;
