@@ -100,6 +100,14 @@ export default function SettingsPage({ initialTab }: { initialTab?: string }) {
       setEditUser(null);
       toast({ title: t("تم تحديث المستخدم", "User updated") });
     },
+    onError: async (err: any) => {
+      try {
+        const r = await err.json?.();
+        toast({ title: r?.message || t("حدث خطأ في تحديث المستخدم", "Error updating user"), variant: "destructive" });
+      } catch {
+        toast({ title: t("حدث خطأ في تحديث المستخدم", "Error updating user"), variant: "destructive" });
+      }
+    },
   });
 
   const adminResetPasswordMutation = useMutation({
@@ -128,7 +136,7 @@ export default function SettingsPage({ initialTab }: { initialTab?: string }) {
     }
   }, [settings]);
 
-  const isOwnerOrIT = currentUser?.role === "owner" || currentUser?.role === "it";
+  const isOwnerOrIT = currentUser?.role === "owner" || currentUser?.role === "it" || currentUser?.role === "assistant";
 
   const filteredUsers = users.filter(u => {
     const q = userSearch.toLowerCase();

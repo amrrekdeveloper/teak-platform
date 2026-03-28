@@ -654,7 +654,7 @@ export async function registerRoutes(
     try {
       const allUsers = await storage.getUsers();
       const currentUser = req.session.userId ? await storage.getUser(req.session.userId) : null;
-      const isAdmin = ["owner", "it"].includes(currentUser?.role || "");
+      const isAdmin = ["owner", "it", "assistant"].includes(currentUser?.role || "");
       const visibleUsers = isAdmin ? allUsers : allUsers.filter(u => u.active !== false);
       const safeUsers = visibleUsers.map(({ password, ...u }) => {
         if (isAdmin) return u;
@@ -666,7 +666,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/users", requireRole("owner", "it"), async (req, res) => {
+  app.post("/api/users", requireRole("owner", "it", "assistant"), async (req, res) => {
     try {
       const { hashPassword } = await import("./auth");
       const data = req.body;
@@ -685,7 +685,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/users/:id", requireRole("owner", "it"), async (req, res) => {
+  app.patch("/api/users/:id", requireRole("owner", "it", "assistant"), async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       const data = req.body;
@@ -755,7 +755,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/users/reset-requests", requireRole("owner", "it"), async (req, res) => {
+  app.get("/api/users/reset-requests", requireRole("owner", "it", "assistant"), async (req, res) => {
     try {
       const status = req.query.status as string | undefined;
       const requests = await storage.getPasswordResetRequests(status);
@@ -765,7 +765,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/users/reset-requests/:id/resolve", requireRole("owner", "it"), async (req, res) => {
+  app.patch("/api/users/reset-requests/:id/resolve", requireRole("owner", "it", "assistant"), async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       const { newPassword } = req.body;
