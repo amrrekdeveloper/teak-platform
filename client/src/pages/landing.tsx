@@ -46,30 +46,81 @@ import realProjectImg8 from "@assets/WhatsApp_Image_2026-03-28_at_10.48.02_AM_17
 import realProjectImg9 from "@assets/WhatsApp_Image_2026-03-28_at_10.48.03_AM_1774691415125.jpeg";
 import realProjectImg10 from "@assets/WhatsApp_Image_2026-03-28_at_10.48.46_AM_(1)_1774691415125.jpeg";
 
+import imgKitchenGrayTeak from "@assets/WhatsApp_Image_2026-03-28_at_10.47.58_AM_(1)_1774689872332.jpeg";
+import imgKitchenWarmTeak from "@assets/WhatsApp_Image_2026-03-28_at_10.47.58_AM_(2)_1774689872333.jpeg";
+import imgKitchenLightWood from "@assets/WhatsApp_Image_2026-03-28_at_10.47.58_AM_(3)_1774689872333.jpeg";
+import imgKitchenWhiteGlossy from "@assets/WhatsApp_Image_2026-03-28_at_10.47.58_AM_(4)_1774691363250.jpeg";
+import imgWalkInClosetEmpty from "@assets/WhatsApp_Image_2026-03-28_at_10.47.57_AM_(3)_1774689872331.jpeg";
+import imgDoorChevron from "@assets/WhatsApp_Image_2026-03-28_at_10.47.55_AM_(2)_1774689832749.jpeg";
+import imgDoorDiamond from "@assets/WhatsApp_Image_2026-03-28_at_10.47.55_AM_(6)_1774689832750.jpeg";
+import imgWallGeometric from "@assets/WhatsApp_Image_2026-03-28_at_10.47.53_AM_1774689748826.jpeg";
+import imgStairRailing1 from "@assets/WhatsApp_Image_2026-03-28_at_10.47.53_AM_(2)_1774689748825.jpeg";
+import imgStairRailing2 from "@assets/WhatsApp_Image_2026-03-28_at_10.47.53_AM_(4)_1774689748826.jpeg";
+import imgDoorChevronDouble from "@assets/WhatsApp_Image_2026-03-28_at_10.47.55_AM_(3)_1774689832750.jpeg";
+import imgWallWhiteGeometric from "@assets/WhatsApp_Image_2026-03-28_at_10.47.54_AM_(4)_1774689748827.jpeg";
+import imgWardrobeFullRoom from "@assets/WhatsApp_Image_2026-03-28_at_10.48.02_AM_(1)_1774691415124.jpeg";
+import imgWalkInClosetClothes from "@assets/WhatsApp_Image_2026-03-28_at_10.47.57_AM_(4)_1774689872331.jpeg";
+import imgTeakOvenUnit from "@assets/WhatsApp_Image_2026-03-28_at_10.47.58_AM_1774691363250.jpeg";
+import imgKitchenVelvetChairs from "@assets/WhatsApp_Image_2026-03-28_at_10.47.58_AM_(5)_1774691363250.jpeg";
+import imgKitchenTeakBrochure from "@assets/WhatsApp_Image_2026-03-28_at_10.47.59_AM_(2)_1774691363251.jpeg";
+import imgKitchenGrayCloseup from "@assets/WhatsApp_Image_2026-03-28_at_10.47.59_AM_(3)_1774691363251.jpeg";
+import imgHotelLobbySphereChandelier from "@assets/WhatsApp_Image_2026-03-28_at_10.47.54_AM_(5)_1774689748827.jpeg";
+import imgHotelLobbySofasGoldWall from "@assets/WhatsApp_Image_2026-03-28_at_10.47.57_AM_1774689872332.jpeg";
+import imgCafeGreenChairs1 from "@assets/WhatsApp_Image_2026-03-28_at_10.47.54_AM_(1)_1774689748826.jpeg";
+import imgCafeGreenChairs2 from "@assets/WhatsApp_Image_2026-03-28_at_10.47.54_AM_(2)_1774689748827.jpeg";
+import imgCommercialReception from "@assets/WhatsApp_Image_2026-03-28_at_10.47.54_AM_(3)_1774689748827.jpeg";
+import imgVipOffice from "@assets/WhatsApp_Image_2026-03-28_at_10.47.57_AM_(2)_1774689872331.jpeg";
+import imgSayyarShelf from "@assets/WhatsApp_Image_2026-03-28_at_10.48.01_AM_1774691415123.jpeg";
+import imgSayyarDisplay from "@assets/WhatsApp_Image_2026-03-28_at_10.48.01_AM_(5)_1774691415123.jpeg";
+import imgDoorWithGoldStripes from "@assets/WhatsApp_Image_2026-03-28_at_10.47.53_AM_(1)_1774689748825.jpeg";
+import imgDoorCarvedWood from "@assets/WhatsApp_Image_2026-03-28_at_10.47.53_AM_(3)_1774689748826.jpeg";
+import imgHotelColumn from "@assets/WhatsApp_Image_2026-03-28_at_10.47.54_AM_1774689832748.jpeg";
+import imgCafeWrappedChairs from "@assets/WhatsApp_Image_2026-03-28_at_10.47.55_AM_(1)_1774689832749.jpeg";
+import imgWallWhiteGeometricCloseup from "@assets/WhatsApp_Image_2026-03-28_at_10.47.55_AM_1774689832751.jpeg";
+import imgDoorClassicWhiteGold from "@assets/WhatsApp_Image_2026-03-28_at_10.47.55_AM_(4)_1774689832750.jpeg";
+import imgDoorClassicDarkCarved from "@assets/WhatsApp_Image_2026-03-28_at_10.47.55_AM_(5)_1774689832750.jpeg";
+import imgHotelLobbyWoodColumns from "@assets/WhatsApp_Image_2026-03-28_at_10.47.56_AM_(1)_1774689832751.jpeg";
+import imgDoorNaturalChevronOpen from "@assets/WhatsApp_Image_2026-03-28_at_10.47.56_AM_1774689872330.jpeg";
+import imgHotelLobbyDecorativeShelves from "@assets/WhatsApp_Image_2026-03-28_at_10.47.56_AM_(2)_1774689832751.jpeg";
+import imgCafeBookshelfFairyLights from "@assets/WhatsApp_Image_2026-03-28_at_10.47.57_AM_(1)_1774689872330.jpeg";
+import imgWalkInClosetRobes from "@assets/WhatsApp_Image_2026-03-28_at_10.47.57_AM_(5)_1774689872331.jpeg";
+import imgKitchenGrayTeakDuplicate from "@assets/WhatsApp_Image_2026-03-28_at_10.47.58_AM_(1)_1774691363249.jpeg";
+import imgKitchenWarmTeakDuplicate from "@assets/WhatsApp_Image_2026-03-28_at_10.47.58_AM_(2)_1774691363249.jpeg";
+import imgKitchenLightWoodDuplicate from "@assets/WhatsApp_Image_2026-03-28_at_10.47.58_AM_(3)_1774691363250.jpeg";
+import imgKitchenDarkVelvetIsland from "@assets/WhatsApp_Image_2026-03-28_at_10.47.59_AM_(1)_1774691363251.jpeg";
+import imgKitchenGrayIsland from "@assets/WhatsApp_Image_2026-03-28_at_10.47.59_AM_(4)_1774691363252.jpeg";
+import imgSayyarShowroomExterior from "@assets/WhatsApp_Image_2026-03-28_at_10.48.01_AM_(4)_1774691415123.jpeg";
+import imgSayyarBoxesCloseup from "@assets/WhatsApp_Image_2026-03-28_at_10.48.02_AM_1774691415125.jpeg";
+import imgTvUnitFireplace1 from "@assets/WhatsApp_Image_2026-03-28_at_10.48.02_AM_(2)_1774691415124.jpeg";
+import imgTvUnitFireplace2 from "@assets/WhatsApp_Image_2026-03-28_at_10.48.02_AM_(3)_1774691415124.jpeg";
+import imgTvUnitFireplace3 from "@assets/WhatsApp_Image_2026-03-28_at_10.48.02_AM_(4)_1774691415124.jpeg";
+import imgTvUnitFireplace4 from "@assets/WhatsApp_Image_2026-03-28_at_10.48.03_AM_1774691415125.jpeg";
+import imgAccordionDoorWhite from "@assets/WhatsApp_Image_2026-03-28_at_10.48.46_AM_(1)_1774691415125.jpeg";
+
 const heroSlides = [
   {
-    image: "/images/products/kitchen_modern.jpg",
+    image: imgKitchenGrayTeak,
     titleAr: "مطابخ فاخرة بالسعودية",
     titleEn: "Luxury Kitchens in Saudi Arabia",
     subtitleAr: "تصميم وتركيب مطابخ عصرية في جازان وخميس مشيط وأبها",
     subtitleEn: "Design & installation of modern kitchens in Jazan, Khamis Mushait & Abha",
   },
   {
-    image: "/images/products/kitchen_classic.jpg",
+    image: imgKitchenWarmTeak,
     titleAr: "مطابخ نيو كلاسيك",
     titleEn: "Neo Classic Kitchens",
     subtitleAr: "تفصيل مطابخ بأسعار مميزة ومواد أوروبية عالية الجودة",
     subtitleEn: "Custom kitchens with premium European materials at great prices",
   },
   {
-    image: "/images/products/kitchen_neo_classic.jpg",
+    image: imgKitchenLightWood,
     titleAr: "خزائن مدمجة فاخرة",
     titleEn: "Luxury Built-in Wardrobes",
     subtitleAr: "خزائن غرف نوم وملابس بتصاميم حديثة وجودة استثنائية",
     subtitleEn: "Bedroom & wardrobe closets with modern designs and exceptional quality",
   },
   {
-    image: "/images/products/kitchen_modern2.jpg",
+    image: imgKitchenVelvetChairs,
     titleAr: "أبواب خشب طبيعي وديكور",
     titleEn: "Natural Wood Doors & Decor",
     subtitleAr: "أبواب وديكورات خشبية تُضفي الفخامة على منزلك",
@@ -79,35 +130,35 @@ const heroSlides = [
 
 const productCards = [
   {
-    image: "/images/products/kitchen_main.jpg",
+    image: imgKitchenWhiteGlossy,
     titleAr: "المطابخ",
     titleEn: "Kitchens",
     descAr: "مصنعة من خشب شيبورد الإيطالي واكسسوارات ألمانية",
     descEn: "Made from Italian chipboard with German accessories",
   },
   {
-    image: "/images/products/wardrobe.jpg",
+    image: imgWalkInClosetEmpty,
     titleAr: "الخزائن",
     titleEn: "Wardrobes",
     descAr: "مصنعة من خشب شيبورد الإيطالي واكسسوارات ألمانية",
     descEn: "Made from Italian chipboard with German accessories",
   },
   {
-    image: "/images/products/door_natural.jpg",
+    image: imgDoorChevron,
     titleAr: "أبواب خشب طبيعي",
     titleEn: "Natural Wood Doors",
     descAr: "مصنعة من الخشب السويدي مكسي بقشر الجوز وخشب البلوط",
     descEn: "Made from Swedish wood with walnut and oak veneer",
   },
   {
-    image: "/images/products/door_chipboard.jpg",
+    image: imgDoorDiamond,
     titleAr: "أبواب شيبورد",
     titleEn: "Chipboard Doors",
     descAr: "مصنعة من خشب شيبورد الإيطالي",
     descEn: "Made from Italian chipboard",
   },
   {
-    image: "/images/products/decoration.jpg",
+    image: imgWallGeometric,
     titleAr: "ديكورات خشبية",
     titleEn: "Wood Decorations",
     descAr: "مصنعة من خشب شيبورد الايطالي المقاوم للماء والرطوبة",
@@ -116,31 +167,29 @@ const productCards = [
 ];
 
 const galleryImages = [
-  { src: realProjectImg1, captionAr: "ديكورات خشبية فاخرة لمعرض سيار – تصميم احترافي", captionEn: "Luxury wood decor for Sayyar showroom - Professional design" },
-  { src: realProjectImg2, captionAr: "تصميم داخلي وعرض معرض سيار – أعمالنا المتميزة", captionEn: "Interior design & Sayyar showroom display - Our featured work" },
-  { src: realProjectImg3, captionAr: "تجهيزات وديكورات معرض سيار الفاخرة", captionEn: "Luxury Sayyar showroom fixtures and decorations" },
-  { src: realProjectImg4, captionAr: "خزانة مدمجة فاخرة بتصميم عصري مع إضاءة LED", captionEn: "Luxury built-in wardrobe with modern design and LED lighting" },
-  { src: realProjectImg5, captionAr: "ديكور خشبي للصالة مع وحدة تلفزيون – تفصيل راقٍ", captionEn: "Living room wood decor with TV unit - Refined craftsmanship" },
-  { src: realProjectImg6, captionAr: "وحدة تلفزيون خشبية مع مدفأة كهربائية – ديكور فاخر", captionEn: "Wooden TV unit with electric fireplace - Luxury decor" },
-  { src: realProjectImg7, captionAr: "ديكور ووحدة تلفزيون خشبي بتصميم مبتكر مع إضاءة", captionEn: "Wooden TV unit decor with innovative design and lighting" },
-  { src: realProjectImg8, captionAr: "خزائن عرض خشبية احترافية لمعرض سيار", captionEn: "Professional wooden display cabinets for Sayyar showroom" },
-  { src: realProjectImg9, captionAr: "وحدة تلفزيون وخزانة جدارية بتصميم هندسي فاخر", captionEn: "TV unit and wall wardrobe with premium geometric design" },
-  { src: realProjectImg10, captionAr: "أبواب خشب طبيعي فاخرة – تصميم داخلي راقٍ", captionEn: "Premium natural wood doors - Elegant interior design" },
-  { src: "/images/gallery/gallery_mosque.jpg", captionAr: "ديكورات مسجد وضحي الرياض – حي اليرموك", captionEn: "Wadhi Mosque Decorations - Riyadh, Al Yarmouk" },
-  { src: "/images/gallery/gallery_kitchen_art.jpg", captionAr: "عندما يتحول مطبخك لتحفة فنية", captionEn: "When your kitchen becomes a masterpiece" },
-  { src: "/images/gallery/gallery_wardrobe_luxury.jpg", captionAr: "فخامة التصميم والألوان للخزائن", captionEn: "Luxury design and colors for wardrobes" },
-  { src: "/images/gallery/gallery_sayyar_jeddah.jpg", captionAr: "ديكورات معرض سيار مدينة جدة", captionEn: "Sayyar Showroom Decorations - Jeddah" },
+  { src: imgStairRailing1, captionAr: "درابزين درج فاخر بقضبان ذهبية", captionEn: "Luxury Stair Railing with Gold Bars" },
+  { src: imgStairRailing2, captionAr: "درابزين درج بقضبان ذهبية - زاوية ثانية", captionEn: "Stair Railing with Gold Bars - Second Angle" },
+  { src: imgDoorChevronDouble, captionAr: "باب خشب طبيعي بنقش شيفرون", captionEn: "Natural Wood Door with Chevron Pattern" },
+  { src: imgWallWhiteGeometric, captionAr: "ديكور جداري هندسي أبيض", captionEn: "White Geometric Wall Decoration" },
+  { src: imgWardrobeFullRoom, captionAr: "خزانة مدمجة فاخرة بتصميم عصري مع إضاءة LED", captionEn: "Luxury built-in wardrobe with modern design and LED lighting" },
+  { src: imgWalkInClosetEmpty, captionAr: "غرفة خزائن مشي بإضاءة ذهبية", captionEn: "Walk-in Closet with Golden Lighting" },
+  { src: imgWalkInClosetClothes, captionAr: "غرفة خزائن مشي فاخرة", captionEn: "Luxury Walk-in Closet" },
+  { src: imgTeakOvenUnit, captionAr: "وحدة مطبخ متكاملة - برج الأفران", captionEn: "Integrated Kitchen Unit - Oven Tower" },
+  { src: imgSayyarShelf, captionAr: "ديكورات خشبية فاخرة لمعرض سيار – تصميم احترافي", captionEn: "Luxury wood decor for Sayyar showroom - Professional design" },
+  { src: imgTvUnitFireplace1, captionAr: "ديكور خشبي للصالة مع وحدة تلفزيون – تفصيل راقٍ", captionEn: "Living room wood decor with TV unit - Refined craftsmanship" },
+  { src: imgKitchenTeakBrochure, captionAr: "من معرضنا - خميس مشيط", captionEn: "From Our Showroom - Khamis Mushait" },
+  { src: imgKitchenGrayCloseup, captionAr: "تفاصيل التشطيب الراقي", captionEn: "Refined Finishing Details" },
 ];
 
 const projectCards = [
-  { image: "/images/projects/project_khamis.jpg", titleAr: "تركيب مطبخ بمدينة خميس مشيط", titleEn: "Kitchen Installation - Khamis Mushait" },
-  { image: "/images/projects/project_abha_wardrobe.jpg", titleAr: "تركيب سرير وغرفة خزائن في مدينة أبها", titleEn: "Bed & Wardrobe Room Installation - Abha" },
-  { image: "/images/projects/project_abha_closet.jpg", titleAr: "تركيب خزائن بمدينة أبها", titleEn: "Wardrobe Installation - Abha" },
-  { image: "/images/projects/project_hail_sayyar.jpg", titleAr: "ديكورات معرض سيار بمدينة حائل", titleEn: "Sayyar Showroom Decorations - Hail" },
-  { image: "/images/projects/project_modern_kitchen.jpg", titleAr: "تركيب مطبخ مودرن", titleEn: "Modern Kitchen Installation" },
-  { image: "/images/projects/project_classic_jazan.jpg", titleAr: "تركيب مطبخ نيو كلاسيك بجازان", titleEn: "Neo Classic Kitchen Installation - Jazan" },
-  { image: "/images/projects/project_bahah.jpg", titleAr: "مشروع الباحة", titleEn: "Al Baha Project" },
-  { image: "/images/projects/project_sayyar_decor.jpg", titleAr: "ديكورات معرض سيار", titleEn: "Sayyar Showroom Decorations" },
+  { image: imgHotelLobbySphereChandelier, titleAr: "لوبي فندقي - خميس مشيط", titleEn: "Hotel Lobby - Khamis Mushait" },
+  { image: imgHotelLobbySofasGoldWall, titleAr: "ديكورات فندقية فاخرة", titleEn: "Luxury Hotel Decorations" },
+  { image: imgCafeGreenChairs1, titleAr: "مشروع كافيه تجاري", titleEn: "Commercial Café Project" },
+  { image: imgCafeGreenChairs2, titleAr: "مشروع كافيه - منطقة الاستقبال", titleEn: "Café Project - Reception Area" },
+  { image: imgCommercialReception, titleAr: "مشروع استقبال تجاري", titleEn: "Commercial Reception Project" },
+  { image: imgVipOffice, titleAr: "مكتب VIP فاخر", titleEn: "Luxury VIP Office" },
+  { image: imgSayyarShelf, titleAr: "ديكورات معرض سيار", titleEn: "Sayyar Showroom Decorations" },
+  { image: imgSayyarDisplay, titleAr: "تجهيزات معرض تجاري", titleEn: "Commercial Showroom Fittings" },
 ];
 
 function Navbar() {
