@@ -6,7 +6,7 @@ const PASSWORD_14001400 = "135257277821cf7718862b0b53f8c76c5469267ce5ee2c41c6fd0
 const CORE_USERS = [
   { username: "jabran",   password: PASSWORD_14001400, fullNameAr: "جبران",      fullNameEn: "Jabran",   role: "owner",        email: "jabran@teak.sa",   phone: "0501234567", active: true },
   { username: "khaled",   password: PASSWORD_14001400, fullNameAr: "خالد",       fullNameEn: "Khaled",   role: "assistant",    email: "khaled@teak.sa",   phone: "0502234567", active: true },
-  { username: "siham",    password: PASSWORD_14001400, fullNameAr: "سهام",       fullNameEn: "Siham",    role: "it",           email: "siham@teak.sa",    phone: "0514234567", active: true },
+  { username: "siham",    password: PASSWORD_14001400, fullNameAr: "سهام",       fullNameEn: "Siham",    role: "assistant",    email: "siham@teak.sa",    phone: "0514234567", active: true },
   { username: "mohannad", password: PASSWORD_14001400, fullNameAr: "مهند",       fullNameEn: "Mohannad", role: "sales",        email: "mohannad@teak.sa", phone: "0503334567", active: true },
   { username: "hadi",     password: PASSWORD_14001400, fullNameAr: "هادي",       fullNameEn: "Hadi",     role: "sales",        email: "hadi@teak.sa",     phone: "0503234567", active: true },
   { username: "mohsen",   password: PASSWORD_14001400, fullNameAr: "محسن",       fullNameEn: "Mohsen",   role: "designer",     email: "mohsen@teak.sa",   phone: "0504234567", active: true },

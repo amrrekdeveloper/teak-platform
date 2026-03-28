@@ -2,7 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { eq } from "drizzle-orm";
 import { storage } from "./storage";
-import { setupAuth, requireAuth, requireRole } from "./auth";
+import { setupAuth, requireAuth, requireRole, comparePasswords, hashPassword } from "./auth";
 import { seedDatabase } from "./seed";
 import { db, pool } from "./db";
 import { verifyFirebaseToken } from "./firebase-admin";
@@ -721,7 +721,6 @@ export async function registerRoutes(
         const user = await storage.getUser(userId);
         if (!user) return res.status(404).json({ message: "المستخدم غير موجود" });
 
-        const { comparePasswords, hashPassword } = await import("./auth");
         const valid = await comparePasswords(currentPassword, user.password);
         if (!valid) {
           return res.status(400).json({ message: "كلمة المرور الحالية غير صحيحة", messageEn: "Current password is incorrect" });
