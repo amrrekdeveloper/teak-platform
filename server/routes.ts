@@ -4814,21 +4814,38 @@ export async function registerRoutes(
         AND (user_id IS NULL OR user_id NOT IN (SELECT id FROM users WHERE username = 'sedad'))
     `);
 
-    // 2. Create missing employee records for real users who have no employee entry
-    const missingEmployees = [
-      { username: 'siham',    empNum: 'EMP-013', position: 'مساعد المدير', dept: 'management', salary: '10000', start: '2021-01-01' },
-      { username: 'sultan',   empNum: 'EMP-014', position: 'محاسب',        dept: 'finance',     salary: '7000',  start: '2023-01-01' },
-      { username: 'abdullah', empNum: 'EMP-015', position: 'أمين مستودع',  dept: 'warehouse',   salary: '6000',  start: '2022-01-01' },
+    // 2. Assign missing users to existing unnamed employee slots, or create new records
+    // Strategy A: reassign existing unnamed (no user_id) EMP-013/014/015 slots to real users
+    const userEmpMap = [
+      { username: 'siham',    preferredEmp: 'EMP-013', fallbackEmp: 'EMP-016', position: 'مساعد المدير', dept: 'management', salary: 10000, start: '2021-01-01' },
+      { username: 'sultan',   preferredEmp: 'EMP-014', fallbackEmp: 'EMP-017', position: 'محاسب',        dept: 'finance',    salary: 7000,  start: '2023-01-01' },
+      { username: 'abdullah', preferredEmp: 'EMP-015', fallbackEmp: 'EMP-018', position: 'أمين مستودع', dept: 'warehouse',  salary: 6000,  start: '2022-01-01' },
     ];
-    for (const me of missingEmployees) {
+    for (const me of userEmpMap) {
+      // Skip if user already has an employee record
+      const hasEmp = await db.execute(`
+        SELECT 1 FROM employees WHERE user_id = (SELECT id FROM users WHERE username = '${me.username}' LIMIT 1) LIMIT 1
+      `);
+      if ((hasEmp.rows || []).length > 0) continue;
+      if (!await (async () => { const r = await db.execute(`SELECT 1 FROM users WHERE username = '${me.username}' LIMIT 1`); return (r.rows||[]).length > 0; })()) continue;
+
+      // Strategy A: Update the preferred slot if it has no user yet
+      const updated = await db.execute(`
+        UPDATE employees
+        SET user_id = (SELECT id FROM users WHERE username = '${me.username}' LIMIT 1),
+            position = '${me.position}', department = '${me.dept}',
+            nationality = 'saudi', monthly_salary = ${me.salary}
+        WHERE employee_number = '${me.preferredEmp}' AND user_id IS NULL
+      `);
+      if ((updated.rowCount || 0) > 0) continue;
+
+      // Strategy B: Insert a new record using the fallback number
       await db.execute(`
         INSERT INTO employees (employee_number, user_id, nationality, position, department, monthly_salary, contract_start, status)
-        SELECT '${me.empNum}',
+        SELECT '${me.fallbackEmp}',
                (SELECT id FROM users WHERE username = '${me.username}' LIMIT 1),
                'saudi', '${me.position}', '${me.dept}', ${me.salary}, '${me.start}', 'active'
-        WHERE EXISTS (SELECT 1 FROM users WHERE username = '${me.username}')
-          AND NOT EXISTS (SELECT 1 FROM employees WHERE employee_number = '${me.empNum}')
-          AND NOT EXISTS (SELECT 1 FROM employees WHERE user_id = (SELECT id FROM users WHERE username = '${me.username}' LIMIT 1))
+        WHERE NOT EXISTS (SELECT 1 FROM employees WHERE employee_number = '${me.fallbackEmp}')
       `);
     }
 
