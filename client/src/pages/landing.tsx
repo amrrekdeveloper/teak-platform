@@ -25,40 +25,55 @@ import {
   Sparkles,
   Hammer,
   Palette,
+  CheckCircle2,
+  Truck,
+  PenTool,
+  Globe2,
+  HeartHandshake,
 } from "lucide-react";
 import { SiWhatsapp } from "react-icons/si";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import teakLogo from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
+import realProjectImg1 from "@assets/WhatsApp_Image_2026-03-28_at_10.48.01_AM_1774691415123.jpeg";
+import realProjectImg2 from "@assets/WhatsApp_Image_2026-03-28_at_10.48.01_AM_(4)_1774691415123.jpeg";
+import realProjectImg3 from "@assets/WhatsApp_Image_2026-03-28_at_10.48.01_AM_(5)_1774691415123.jpeg";
+import realProjectImg4 from "@assets/WhatsApp_Image_2026-03-28_at_10.48.02_AM_(1)_1774691415124.jpeg";
+import realProjectImg5 from "@assets/WhatsApp_Image_2026-03-28_at_10.48.02_AM_(2)_1774691415124.jpeg";
+import realProjectImg6 from "@assets/WhatsApp_Image_2026-03-28_at_10.48.02_AM_(3)_1774691415124.jpeg";
+import realProjectImg7 from "@assets/WhatsApp_Image_2026-03-28_at_10.48.02_AM_(4)_1774691415124.jpeg";
+import realProjectImg8 from "@assets/WhatsApp_Image_2026-03-28_at_10.48.02_AM_1774691415125.jpeg";
+import realProjectImg9 from "@assets/WhatsApp_Image_2026-03-28_at_10.48.03_AM_1774691415125.jpeg";
+import realProjectImg10 from "@assets/WhatsApp_Image_2026-03-28_at_10.48.46_AM_(1)_1774691415125.jpeg";
 
 const heroSlides = [
   {
     image: "/images/products/kitchen_modern.jpg",
-    titleAr: "مطابخ عصرية",
-    titleEn: "Modern Kitchens",
-    subtitleAr: "الابداع في بساطة التصاميم",
-    subtitleEn: "Creativity in the simplicity of design",
+    titleAr: "مطابخ فاخرة بالسعودية",
+    titleEn: "Luxury Kitchens in Saudi Arabia",
+    subtitleAr: "تصميم وتركيب مطابخ عصرية في جازان وخميس مشيط وأبها",
+    subtitleEn: "Design & installation of modern kitchens in Jazan, Khamis Mushait & Abha",
   },
   {
     image: "/images/products/kitchen_classic.jpg",
-    titleAr: "نيو كلاسيك",
-    titleEn: "Neo Classic",
-    subtitleAr: "المفهوم العصري للمطابخ الكلاسيكية",
-    subtitleEn: "The modern concept of classic kitchens",
+    titleAr: "مطابخ نيو كلاسيك",
+    titleEn: "Neo Classic Kitchens",
+    subtitleAr: "تفصيل مطابخ بأسعار مميزة ومواد أوروبية عالية الجودة",
+    subtitleEn: "Custom kitchens with premium European materials at great prices",
   },
   {
     image: "/images/products/kitchen_neo_classic.jpg",
-    titleAr: "نيو كلاسيك",
-    titleEn: "Neo Classic",
-    subtitleAr: "نوستلجيا الماضي الجميل بطريقة حديثة",
-    subtitleEn: "Nostalgia of the beautiful past in a modern way",
+    titleAr: "خزائن مدمجة فاخرة",
+    titleEn: "Luxury Built-in Wardrobes",
+    subtitleAr: "خزائن غرف نوم وملابس بتصاميم حديثة وجودة استثنائية",
+    subtitleEn: "Bedroom & wardrobe closets with modern designs and exceptional quality",
   },
   {
     image: "/images/products/kitchen_modern2.jpg",
-    titleAr: "مطابخ مودرن",
-    titleEn: "Modern Kitchens",
-    subtitleAr: "تصاميم مبتكرة تواكب العصر",
-    subtitleEn: "Innovative designs keeping up with modern times",
+    titleAr: "أبواب خشب طبيعي وديكور",
+    titleEn: "Natural Wood Doors & Decor",
+    subtitleAr: "أبواب وديكورات خشبية تُضفي الفخامة على منزلك",
+    subtitleEn: "Wood doors & decorations that add luxury to your home",
   },
 ];
 
@@ -101,13 +116,19 @@ const productCards = [
 ];
 
 const galleryImages = [
+  { src: realProjectImg1, captionAr: "ديكورات خشبية فاخرة لمعرض سيار – تصميم احترافي", captionEn: "Luxury wood decor for Sayyar showroom - Professional design" },
+  { src: realProjectImg2, captionAr: "تصميم داخلي وعرض معرض سيار – أعمالنا المتميزة", captionEn: "Interior design & Sayyar showroom display - Our featured work" },
+  { src: realProjectImg3, captionAr: "تجهيزات وديكورات معرض سيار الفاخرة", captionEn: "Luxury Sayyar showroom fixtures and decorations" },
+  { src: realProjectImg4, captionAr: "خزانة مدمجة فاخرة بتصميم عصري مع إضاءة LED", captionEn: "Luxury built-in wardrobe with modern design and LED lighting" },
+  { src: realProjectImg5, captionAr: "ديكور خشبي للصالة مع وحدة تلفزيون – تفصيل راقٍ", captionEn: "Living room wood decor with TV unit - Refined craftsmanship" },
+  { src: realProjectImg6, captionAr: "وحدة تلفزيون خشبية مع مدفأة كهربائية – ديكور فاخر", captionEn: "Wooden TV unit with electric fireplace - Luxury decor" },
+  { src: realProjectImg7, captionAr: "ديكور ووحدة تلفزيون خشبي بتصميم مبتكر مع إضاءة", captionEn: "Wooden TV unit decor with innovative design and lighting" },
+  { src: realProjectImg8, captionAr: "خزائن عرض خشبية احترافية لمعرض سيار", captionEn: "Professional wooden display cabinets for Sayyar showroom" },
+  { src: realProjectImg9, captionAr: "وحدة تلفزيون وخزانة جدارية بتصميم هندسي فاخر", captionEn: "TV unit and wall wardrobe with premium geometric design" },
+  { src: realProjectImg10, captionAr: "أبواب خشب طبيعي فاخرة – تصميم داخلي راقٍ", captionEn: "Premium natural wood doors - Elegant interior design" },
   { src: "/images/gallery/gallery_mosque.jpg", captionAr: "ديكورات مسجد وضحي الرياض – حي اليرموك", captionEn: "Wadhi Mosque Decorations - Riyadh, Al Yarmouk" },
   { src: "/images/gallery/gallery_kitchen_art.jpg", captionAr: "عندما يتحول مطبخك لتحفة فنية", captionEn: "When your kitchen becomes a masterpiece" },
-  { src: "/images/gallery/gallery_design1.jpg", captionAr: "من تصميمنا", captionEn: "Our Design" },
-  { src: "/images/gallery/gallery_design2.jpg", captionAr: "من تصميمنا", captionEn: "Our Design" },
   { src: "/images/gallery/gallery_wardrobe_luxury.jpg", captionAr: "فخامة التصميم والألوان للخزائن", captionEn: "Luxury design and colors for wardrobes" },
-  { src: "/images/gallery/gallery_design3.jpg", captionAr: "من تصميمنا", captionEn: "Our Design" },
-  { src: "/images/gallery/gallery_design4.jpg", captionAr: "من تصميمنا", captionEn: "Our Design" },
   { src: "/images/gallery/gallery_sayyar_jeddah.jpg", captionAr: "ديكورات معرض سيار مدينة جدة", captionEn: "Sayyar Showroom Decorations - Jeddah" },
 ];
 
@@ -467,7 +488,7 @@ function AboutSection() {
             {t("مصنع تيك للصناعات الخشبية", "Teak Wood Products Factory")}
           </h2>
           <p className="text-primary text-lg font-semibold mb-6">
-            {t("مطابخ - خزائن - أبواب - ديكورات", "Kitchens - Wardrobes - Doors - Decorations")}
+            {t("مطابخ فاخرة – خزائن مدمجة – أبواب خشب طبيعي – ديكور داخلي", "Luxury Kitchens – Built-in Wardrobes – Natural Wood Doors – Interior Decor")}
           </p>
         </motion.div>
 
@@ -482,8 +503,8 @@ function AboutSection() {
             <CardContent className="p-6 sm:p-10">
               <p className="text-base sm:text-lg leading-relaxed text-muted-foreground" data-testid="text-about-content">
                 {t(
-                  "تأسـس مـصـنــع تيـك للصناعـات الخشـبية تحـت إشـراف أفضـل الكفـاءات الفنيـة والإداريـة صاحبـة الدراسة الأكاديمية والخبرة العملية لتلبية احتياجات المجتمع السعودي في القطاعين الحكومي والخاص للمساهمة الفعالة في النهضة العمرانية التي تشهدها المملكة العربية السعودية لينافس المؤسسات والشركات والمصانع والهيئات الرائدة في مجال الصناعات الخشبية.",
-                  "Teak Wood Products Factory was established under the supervision of the finest technical and administrative professionals with academic qualifications and practical experience to meet the needs of Saudi society in both government and private sectors, contributing effectively to the urban development witnessed by the Kingdom of Saudi Arabia, competing with leading institutions, companies, factories and organizations in the wood products industry."
+                  "مصنع تيك للصناعات الخشبية — المتخصص في تصنيع وتركيب المطابخ الفاخرة والخزائن المدمجة وأبواب الخشب الطبيعي والديكورات الداخلية في المملكة العربية السعودية. نخدم مدن جازان وخميس مشيط وأبها وحائل والرياض وغيرها. تأسسنا على يد كفاءات فنية وإدارية تجمع بين الخبرة العملية والتميز الأكاديمي، ملتزمين بتقديم مطابخ عصرية ونيو كلاسيك، وخزائن تفصيل، وأبواب خشب سويدي — بأسعار تنافسية وجودة أوروبية لا مثيل لها.",
+                  "Teak Wood Products Factory specializes in manufacturing and installing luxury kitchens, built-in wardrobes, natural wood doors, and interior decorations across Saudi Arabia. We serve Jazan, Khamis Mushait, Abha, Hail, Riyadh, and beyond. Founded by expert professionals combining practical experience and academic excellence, we offer modern and neo-classic kitchens, custom wardrobes, and Swedish wood doors — at competitive prices with unmatched European quality."
                 )}
               </p>
             </CardContent>
@@ -709,6 +730,126 @@ function ProductsSection() {
             <Button variant="outline" size="lg" className="group gap-2">
               {t("عرض جميع المنتجات", "View All Products")}
               <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform rtl:rotate-180 rtl:group-hover:-translate-x-1" />
+            </Button>
+          </a>
+        </motion.div>
+      </div>
+    </section>
+  );
+}
+
+function WhyTeakSection() {
+  const { t } = useLanguage();
+
+  const reasons = [
+    {
+      icon: <Shield className="w-7 h-7" />,
+      titleAr: "ضمان 5 سنوات",
+      titleEn: "5-Year Warranty",
+      descAr: "نضمن جودة منتجاتنا لمدة 5 سنوات كاملة — راحة بال حقيقية لك ولعائلتك",
+      descEn: "We guarantee our product quality for 5 full years — real peace of mind for you and your family",
+    },
+    {
+      icon: <Truck className="w-7 h-7" />,
+      titleAr: "تركيب مجاني",
+      titleEn: "Free Installation",
+      descAr: "توصيل وتركيب مجاني في جازان وخميس مشيط وأبها وجميع مدن المنطقة",
+      descEn: "Free delivery & installation in Jazan, Khamis Mushait, Abha, and all regional cities",
+    },
+    {
+      icon: <PenTool className="w-7 h-7" />,
+      titleAr: "تصميم مجاني",
+      titleEn: "Free Design",
+      descAr: "فريق تصميم محترف يرسم لك مطبخك أو خزانتك مجاناً قبل البدء بالتنفيذ",
+      descEn: "A professional design team draws your kitchen or wardrobe for free before execution begins",
+    },
+    {
+      icon: <Globe2 className="w-7 h-7" />,
+      titleAr: "مواد أوروبية",
+      titleEn: "European Materials",
+      descAr: "خشب شيبورد إيطالي واكسسوارات ألمانية وخشب سويدي — جودة لا تتنازل عنها",
+      descEn: "Italian chipboard, German accessories, and Swedish wood — uncompromising quality",
+    },
+    {
+      icon: <HeartHandshake className="w-7 h-7" />,
+      titleAr: "خدمة ما بعد البيع",
+      titleEn: "After-Sales Service",
+      descAr: "نحن معك حتى بعد التسليم — فريق دعم متاح لأي استفسار أو صيانة",
+      descEn: "We're with you even after delivery — a support team available for any inquiry or maintenance",
+    },
+    {
+      icon: <MapPin className="w-7 h-7" />,
+      titleAr: "فروع في 5 مدن",
+      titleEn: "Branches in 5 Cities",
+      descAr: "نتواجد في جازان وخميس مشيط وأبها وحائل والرياض لخدمتك أينما كنت",
+      descEn: "Present in Jazan, Khamis Mushait, Abha, Hail, and Riyadh to serve you wherever you are",
+    },
+  ];
+
+  return (
+    <section className="py-20 sm:py-28 bg-card/50" data-testid="section-why-teak">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6">
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.6 }}
+          className="text-center mb-12"
+        >
+          <span className="inline-block px-4 py-1.5 text-xs font-medium text-primary bg-primary/10 rounded-full border border-primary/20 mb-4">
+            {t("لماذا تيك؟", "Why Teak?")}
+          </span>
+          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black mb-4" data-testid="text-why-teak-heading">
+            {t("لماذا تختار مصنع تيك؟", "Why Choose Teak Factory?")}
+          </h2>
+          <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
+            {t(
+              "6 أسباب تجعلنا الخيار الأول لتفصيل مطابخ وخزائن وأبواب فاخرة في السعودية",
+              "6 reasons that make us the first choice for custom kitchens, wardrobes, and luxury doors in Saudi Arabia"
+            )}
+          </p>
+        </motion.div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          {reasons.map((reason, i) => (
+            <motion.div
+              key={i}
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.5, delay: i * 0.08 }}
+              data-testid={`card-why-teak-${i}`}
+            >
+              <Card className="h-full hover:border-primary/40 hover:shadow-md transition-all duration-300">
+                <CardContent className="p-6 flex flex-col gap-4">
+                  <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center text-primary shrink-0">
+                    {reason.icon}
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold mb-2" data-testid={`text-why-teak-title-${i}`}>
+                      {t(reason.titleAr, reason.titleEn)}
+                    </h3>
+                    <p className="text-sm text-muted-foreground leading-relaxed">
+                      {t(reason.descAr, reason.descEn)}
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          ))}
+        </div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.5, delay: 0.5 }}
+          className="text-center mt-10"
+        >
+          <a href="/request-quote" data-testid="link-why-teak-quote">
+            <Button size="lg" className="min-w-[220px] text-base font-bold gap-2">
+              <CheckCircle2 className="w-5 h-5" />
+              {t("احصل على عرض سعر مجاني", "Get a Free Quote")}
             </Button>
           </a>
         </motion.div>
@@ -1278,6 +1419,7 @@ export default function LandingPage() {
       <AboutSection />
       <CEOSection />
       <ProductsSection />
+      <WhyTeakSection />
       <GallerySection />
       <ProjectsSection />
       <StatsSection />
