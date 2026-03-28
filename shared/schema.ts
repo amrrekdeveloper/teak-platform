@@ -997,6 +997,25 @@ export const insertPasswordResetRequestSchema = createInsertSchema(passwordReset
 });
 export type InsertPasswordResetRequest = z.infer<typeof insertPasswordResetRequestSchema>;
 
+// ─── Task #35: Daily Marketing Performance Tracking ──────────────────────────
+export const dailySalesLogs = pgTable("daily_sales_logs", {
+  id: serial("id").primaryKey(),
+  date: text("date").notNull(),
+  salesRepId: integer("sales_rep_id").references(() => users.id).notNull(),
+  callsCount: integer("calls_count").notNull().default(0),
+  whatsappCount: integer("whatsapp_count").notNull().default(0),
+  showroomVisits: integer("showroom_visits").notNull().default(0),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertDailySalesLogSchema = createInsertSchema(dailySalesLogs).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertDailySalesLog = z.infer<typeof insertDailySalesLogSchema>;
+export type DailySalesLog = typeof dailySalesLogs.$inferSelect;
+
 export const surveyDesignFiles = pgTable("survey_design_files", {
   id: serial("id").primaryKey(),
   surveyId: integer("survey_id"),

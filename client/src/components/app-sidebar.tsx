@@ -29,6 +29,7 @@ import {
   UserCircle,
   ChevronLeft,
   ChevronRight,
+  TrendingUp,
   type LucideIcon,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
@@ -66,6 +67,8 @@ const menuItems: MenuItem[] = [
   { titleAr: "الموظفين", titleEn: "Employees", icon: UserCog, path: "/employees", roles: ["owner", "assistant", "hr"], group: "admin" },
   { titleAr: "الإعدادات", titleEn: "Settings", icon: Settings, path: "/settings", roles: ["owner", "it"], group: "admin" },
   { titleAr: "ملفي الشخصي", titleEn: "My Profile", icon: UserCircle, path: "/my-profile", roles: ["owner", "assistant", "sales", "designer", "production", "purchasing", "warehouse", "accountant", "customer_service", "delivery", "installation", "quality", "hr", "it"], group: "admin" },
+  { titleAr: "أداء اليوم", titleEn: "Today's Performance", icon: TrendingUp, path: "/daily-performance", roles: ["sales"], group: "main" },
+  { titleAr: "متابعة الأداء التسويقي", titleEn: "Marketing Performance", icon: TrendingUp, path: "/sales-performance", roles: ["owner", "assistant", "sales"], group: "main" },
 ];
 
 function SidebarContent({

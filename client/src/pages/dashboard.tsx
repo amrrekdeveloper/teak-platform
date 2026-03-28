@@ -12,7 +12,7 @@ import {
   CheckCircle2, ArrowLeft, ArrowRight, ClipboardList, Sparkles,
   CalendarCheck, CalendarDays, Palette, MessageSquare,
   ClipboardCheck, Calendar, BarChart3, Receipt, ShoppingCart,
-  UserCircle, MapPin, Star,
+  UserCircle, MapPin, Star, Phone, MessageCircle, Store,
 } from "lucide-react";
 
 import teakLogo from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
@@ -600,6 +600,22 @@ function SalesDashboard({ quotations, customers, inspections, stats, t, lang, Ar
         <QuickLinkCard href="/quotations" icon={FileText} color="bg-amber-500/10" iconColor="text-amber-500" value={myPending} label={t("عروض معلقة", "Pending Quotes")} ArrowIcon={ArrowIcon} testId="quick-pending-quotes" />
         <QuickLinkCard href="/my-calendar" icon={Calendar} color="bg-green-500/10" iconColor="text-green-500" value={todayInspections.length} label={t("مواعيد اليوم", "Today's Appts")} ArrowIcon={ArrowIcon} testId="quick-calendar" />
       </div>
+
+      {/* Daily Performance Quick Link */}
+      <Link href="/daily-performance">
+        <Card className="cursor-pointer hover:shadow-md transition-shadow border-primary/20 bg-primary/5" data-testid="card-daily-performance-link">
+          <CardContent className="p-4 flex items-center gap-4">
+            <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+              <TrendingUp className="w-5 h-5 text-primary" />
+            </div>
+            <div className="flex-1">
+              <p className="font-semibold text-sm">{t("تسجيل أداء اليوم", "Log Today's Performance")}</p>
+              <p className="text-xs text-muted-foreground">{t("اتصالات · واتس آب · زيارات المعرض", "Calls · WhatsApp · Showroom visits")}</p>
+            </div>
+            <ArrowIcon className="w-4 h-4 text-muted-foreground shrink-0" />
+          </CardContent>
+        </Card>
+      </Link>
     </div>
   );
 }

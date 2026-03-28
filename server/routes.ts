@@ -4749,6 +4749,69 @@ export async function registerRoutes(
     }
   });
 
+  // ── Task #35: Daily Sales Logs ───────────────────────────────────────────
+  try {
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS daily_sales_logs (
+        id SERIAL PRIMARY KEY,
+        date TEXT NOT NULL,
+        sales_rep_id INTEGER NOT NULL REFERENCES users(id),
+        calls_count INTEGER NOT NULL DEFAULT 0,
+        whatsapp_count INTEGER NOT NULL DEFAULT 0,
+        showroom_visits INTEGER NOT NULL DEFAULT 0,
+        notes TEXT,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        UNIQUE(date, sales_rep_id)
+      )
+    `);
+  } catch (task35MigrationError) {
+    console.warn("Task #35 migration warning (non-fatal):", task35MigrationError instanceof Error ? task35MigrationError.message : String(task35MigrationError));
+  }
+
+  app.get("/api/daily-sales-logs/today", requireRole("sales"), async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const today = new Date().toISOString().split("T")[0];
+      const log = await storage.getDailySalesLog(today, userId);
+      res.json(log || null);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  app.post("/api/daily-sales-logs", requireRole("sales"), async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const { date, callsCount, whatsappCount, showroomVisits, notes } = req.body;
+      if (!date) return res.status(400).json({ message: "التاريخ مطلوب" });
+      const log = await storage.upsertDailySalesLog({
+        date,
+        salesRepId: userId,
+        callsCount: callsCount ?? 0,
+        whatsappCount: whatsappCount ?? 0,
+        showroomVisits: showroomVisits ?? 0,
+        notes: notes || null,
+      });
+      res.json(log);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  app.get("/api/daily-sales-logs", requireRole("owner", "assistant"), async (req, res) => {
+    try {
+      const { salesRepId, startDate, endDate } = req.query;
+      const filters: { salesRepId?: number; startDate?: string; endDate?: string } = {};
+      if (salesRepId) filters.salesRepId = parseInt(salesRepId as string);
+      if (startDate) filters.startDate = startDate as string;
+      if (endDate) filters.endDate = endDate as string;
+      const logs = await storage.getDailySalesLogs(filters);
+      res.json(logs);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
   app.get("/api/finance/ready-to-invoice", requireRole("owner", "assistant", "accountant"), async (req, res) => {
     try {
       const allContracts = await storage.getContracts();

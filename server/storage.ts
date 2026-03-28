@@ -32,6 +32,7 @@ import {
   appointments, type Appointment, type InsertAppointment,
   siteSurveys, type SiteSurvey, type InsertSiteSurvey,
   passwordResetRequests, type PasswordResetRequest, type InsertPasswordResetRequest,
+  dailySalesLogs, type DailySalesLog, type InsertDailySalesLog,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -195,6 +196,11 @@ export interface IStorage {
   createPaymentSchedule(ps: InsertPaymentSchedule): Promise<PaymentSchedule>;
   updatePaymentSchedule(id: number, data: Partial<InsertPaymentSchedule>): Promise<PaymentSchedule | undefined>;
   getPaymentSchedulesByCustomer(customerId: number): Promise<PaymentSchedule[]>;
+
+  // Daily Sales Logs (Task #35)
+  getDailySalesLog(date: string, salesRepId: number): Promise<DailySalesLog | undefined>;
+  getDailySalesLogs(filters?: { salesRepId?: number; startDate?: string; endDate?: string }): Promise<DailySalesLog[]>;
+  upsertDailySalesLog(data: InsertDailySalesLog): Promise<DailySalesLog>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -840,6 +846,35 @@ export class DatabaseStorage implements IStorage {
 
   async getPaymentSchedulesByCustomer(customerId: number): Promise<PaymentSchedule[]> {
     return db.select().from(paymentSchedules).where(eq(paymentSchedules.customerId, customerId)).orderBy(paymentSchedules.installmentNumber);
+  }
+
+  async getDailySalesLog(date: string, salesRepId: number): Promise<DailySalesLog | undefined> {
+    const [log] = await db.select().from(dailySalesLogs)
+      .where(and(eq(dailySalesLogs.date, date), eq(dailySalesLogs.salesRepId, salesRepId)));
+    return log;
+  }
+
+  async getDailySalesLogs(filters?: { salesRepId?: number; startDate?: string; endDate?: string }): Promise<DailySalesLog[]> {
+    const conditions = [];
+    if (filters?.salesRepId) conditions.push(eq(dailySalesLogs.salesRepId, filters.salesRepId));
+    if (filters?.startDate) conditions.push(gte(dailySalesLogs.date, filters.startDate));
+    if (filters?.endDate) conditions.push(lte(dailySalesLogs.date, filters.endDate));
+    return conditions.length
+      ? db.select().from(dailySalesLogs).where(and(...conditions)).orderBy(desc(dailySalesLogs.date))
+      : db.select().from(dailySalesLogs).orderBy(desc(dailySalesLogs.date));
+  }
+
+  async upsertDailySalesLog(data: InsertDailySalesLog): Promise<DailySalesLog> {
+    const existing = await this.getDailySalesLog(data.date, data.salesRepId);
+    if (existing) {
+      const [updated] = await db.update(dailySalesLogs)
+        .set({ callsCount: data.callsCount, whatsappCount: data.whatsappCount, showroomVisits: data.showroomVisits, notes: data.notes })
+        .where(eq(dailySalesLogs.id, existing.id))
+        .returning();
+      return updated;
+    }
+    const [created] = await db.insert(dailySalesLogs).values(data).returning();
+    return created;
   }
 }
 

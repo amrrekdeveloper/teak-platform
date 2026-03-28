@@ -48,6 +48,8 @@ import SiteSurveyPage from "@/pages/site-survey";
 import Scene3DPage from "@/pages/scene-3d";
 import FinanceDashboardPage from "@/pages/finance-dashboard";
 import MyProfilePage from "@/pages/my-profile";
+import DailySalesEntryPage from "@/pages/daily-sales-entry";
+import SalesPerformancePage from "@/pages/sales-performance";
 import AppLayout from "@/components/app-layout";
 import NotFound from "@/pages/not-found";
 import teakLogo from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
@@ -182,6 +184,16 @@ function DashboardRoutes() {
         <Route path="/design-studio/:orderId" component={DesignStudioPage} />
         <Route path="/designer-board" component={DesignerBoardPage} />
         <Route path="/my-profile" component={MyProfilePage} />
+        <Route path="/daily-performance">{() => {
+          const { user: authUser } = useAuth();
+          if (!authUser || authUser.role !== "sales") return <NotFound />;
+          return <DailySalesEntryPage />;
+        }}</Route>
+        <Route path="/sales-performance">{() => {
+          const { user: authUser } = useAuth();
+          if (!authUser || (authUser.role !== "owner" && authUser.role !== "assistant")) return <NotFound />;
+          return <SalesPerformancePage />;
+        }}</Route>
         <Route path="/settings/users">{() => {
           const { user: authUser } = useAuth();
           if (authUser && authUser.role !== "owner" && authUser.role !== "it") return <NotFound />;
