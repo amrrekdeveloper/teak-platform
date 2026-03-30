@@ -5088,8 +5088,9 @@ export async function registerRoutes(
 
   // Get visits (rep: own; manager: all or filtered by repId)
   app.get("/api/map/visits", requireAuth, async (req, res) => {
-    const user = (req as any).user;
     try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user) return res.status(401).json({ message: "غير مصرح" });
       if (["owner", "assistant", "it"].includes(user.role)) {
         const { repId } = req.query;
         let result;
@@ -5121,13 +5122,14 @@ export async function registerRoutes(
 
   // Create visit
   app.post("/api/map/visits", requireAuth, async (req, res) => {
-    const user = (req as any).user;
-    if (!["sales", "owner", "assistant", "it"].includes(user.role)) {
-      return res.status(403).json({ message: "غير مصرح" });
-    }
-    const { lat, lng, address, city, district, buildingStatus, notes, quotationId } = req.body;
-    if (!lat || !lng || !buildingStatus) return res.status(400).json({ message: "lat, lng, buildingStatus مطلوبة" });
     try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user) return res.status(401).json({ message: "غير مصرح" });
+      if (!["sales", "owner", "assistant", "it"].includes(user.role)) {
+        return res.status(403).json({ message: "غير مصرح" });
+      }
+      const { lat, lng, address, city, district, buildingStatus, notes, quotationId } = req.body;
+      if (!lat || !lng || !buildingStatus) return res.status(400).json({ message: "lat, lng, buildingStatus مطلوبة" });
       const result = await pool.query(
         `INSERT INTO building_visits (rep_id, lat, lng, address, city, district, building_status, notes, quotation_id, visited_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW()) RETURNING *`,
@@ -5141,10 +5143,11 @@ export async function registerRoutes(
 
   // Update visit
   app.patch("/api/map/visits/:id", requireAuth, async (req, res) => {
-    const user = (req as any).user;
     const { id } = req.params;
     const { buildingStatus, notes } = req.body;
     try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user) return res.status(401).json({ message: "غير مصرح" });
       const existing = await pool.query(`SELECT * FROM building_visits WHERE id = $1`, [id]);
       if (existing.rows.length === 0) return res.status(404).json({ message: "غير موجود" });
       if (!["owner", "assistant", "it"].includes(user.role) && existing.rows[0].rep_id !== user.id) {
@@ -5162,9 +5165,10 @@ export async function registerRoutes(
 
   // Delete visit
   app.delete("/api/map/visits/:id", requireAuth, async (req, res) => {
-    const user = (req as any).user;
     const { id } = req.params;
     try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user) return res.status(401).json({ message: "غير مصرح" });
       const existing = await pool.query(`SELECT * FROM building_visits WHERE id = $1`, [id]);
       if (existing.rows.length === 0) return res.status(404).json({ message: "غير موجود" });
       if (!["owner", "assistant", "it"].includes(user.role) && existing.rows[0].rep_id !== user.id) {
@@ -5207,8 +5211,9 @@ export async function registerRoutes(
 
   // Get zones
   app.get("/api/map/zones", requireAuth, async (req, res) => {
-    const user = (req as any).user;
     try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user) return res.status(401).json({ message: "غير مصرح" });
       let result;
       if (["owner", "assistant", "it"].includes(user.role)) {
         result = await pool.query(
@@ -5225,13 +5230,14 @@ export async function registerRoutes(
 
   // Create zone
   app.post("/api/map/zones", requireAuth, async (req, res) => {
-    const user = (req as any).user;
-    if (!["sales", "owner", "assistant", "it"].includes(user.role)) {
-      return res.status(403).json({ message: "غير مصرح" });
-    }
-    const { name, polygon, targetCount } = req.body;
-    if (!name || !polygon) return res.status(400).json({ message: "name و polygon مطلوبان" });
     try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user) return res.status(401).json({ message: "غير مصرح" });
+      if (!["sales", "owner", "assistant", "it"].includes(user.role)) {
+        return res.status(403).json({ message: "غير مصرح" });
+      }
+      const { name, polygon, targetCount } = req.body;
+      if (!name || !polygon) return res.status(400).json({ message: "name و polygon مطلوبان" });
       const result = await pool.query(
         `INSERT INTO marketing_zones (rep_id, name, polygon, target_count) VALUES ($1, $2, $3, $4) RETURNING *`,
         [user.id, name, JSON.stringify(polygon), targetCount || 0]
@@ -5244,9 +5250,10 @@ export async function registerRoutes(
 
   // Delete zone
   app.delete("/api/map/zones/:id", requireAuth, async (req, res) => {
-    const user = (req as any).user;
     const { id } = req.params;
     try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user) return res.status(401).json({ message: "غير مصرح" });
       const existing = await pool.query(`SELECT * FROM marketing_zones WHERE id = $1`, [id]);
       if (existing.rows.length === 0) return res.status(404).json({ message: "غير موجود" });
       if (!["owner", "assistant", "it"].includes(user.role) && existing.rows[0].rep_id !== user.id) {

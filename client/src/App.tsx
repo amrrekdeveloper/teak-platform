@@ -54,9 +54,28 @@ import MyMapPage from "@/pages/my-map";
 import SalesMapPage from "@/pages/sales-map";
 import AppLayout from "@/components/app-layout";
 import NotFound from "@/pages/not-found";
+
 import teakLogo from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
 import FloatingContact from "@/components/floating-contact";
 import { useLocation } from "wouter";
+
+function GuardedMyMapPage() {
+  const { user: authUser } = useAuth();
+  if (!authUser || !["sales", "owner", "assistant", "it"].includes(authUser.role)) return <NotFound />;
+  return <MyMapPage />;
+}
+
+function GuardedSalesMapPage() {
+  const { user: authUser } = useAuth();
+  if (!authUser || !["owner", "assistant", "it"].includes(authUser.role)) return <NotFound />;
+  return <SalesMapPage />;
+}
+
+function GuardedSettingsUsersPage() {
+  const { user: authUser } = useAuth();
+  if (authUser && authUser.role !== "owner" && authUser.role !== "it") return <NotFound />;
+  return <SettingsPage initialTab="users" />;
+}
 
 function SplashScreen({ onFinish }: { onFinish: () => void }) {
   const [progress, setProgress] = useState(0);
@@ -188,21 +207,9 @@ function DashboardRoutes() {
         <Route path="/my-profile" component={MyProfilePage} />
         <Route path="/daily-performance" component={DailySalesEntryPage} />
         <Route path="/sales-performance" component={SalesPerformancePage} />
-        <Route path="/my-map">{() => {
-          const { user: authUser } = useAuth();
-          if (!authUser || !["sales", "owner", "assistant", "it"].includes(authUser.role)) return <NotFound />;
-          return <MyMapPage />;
-        }}</Route>
-        <Route path="/sales-map">{() => {
-          const { user: authUser } = useAuth();
-          if (!authUser || !["owner", "assistant", "it"].includes(authUser.role)) return <NotFound />;
-          return <SalesMapPage />;
-        }}</Route>
-        <Route path="/settings/users">{() => {
-          const { user: authUser } = useAuth();
-          if (authUser && authUser.role !== "owner" && authUser.role !== "it") return <NotFound />;
-          return <SettingsPage initialTab="users" />;
-        }}</Route>
+        <Route path="/my-map" component={GuardedMyMapPage} />
+        <Route path="/sales-map" component={GuardedSalesMapPage} />
+        <Route path="/settings/users" component={GuardedSettingsUsersPage} />
         <Route path="/settings/products" component={SettingsProductsPage} />
         <Route path="/settings" component={SettingsPage} />
         <Route component={NotFound} />
