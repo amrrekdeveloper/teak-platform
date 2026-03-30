@@ -6,20 +6,23 @@ import { useRoute, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLanguage } from "@/components/language-provider";
 import { useAuth } from "@/hooks/use-auth";
-import { queryClient } from "@/lib/queryClient";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import {
   Loader2, ArrowRight, ArrowLeft, User, Phone, MapPin, Calendar,
   Clock, FileText, Package, Truck, CheckCircle2, Ban, AlertCircle,
   CalendarCheck, CalendarX, Ruler, Box, ChevronLeft, ChevronRight,
   ClipboardList, Banknote, Home, Zap, ThumbsDown, type LucideIcon,
-  Paperclip, Download, Eye, Upload, Palette, X,
+  Paperclip, Download, Eye, Upload, Palette, X, MessageSquare, CreditCard, ReceiptText,
 } from "lucide-react";
 
 type PipelineStage = "new" | "appointment_scheduled" | "survey_done" | "quote_draft" | "quote_sent" | "quote_approved" | "in_production" | "delivered" | "rejected" | "cancelled";
@@ -184,6 +187,75 @@ export default function OrderDetailPage() {
       toast({ title: t("فشل رفع الملف", "Upload failed"), variant: "destructive" });
     },
   });
+
+  const [modifyDialog, setModifyDialog] = useState(false);
+  const [approveDialog, setApproveDialog] = useState(false);
+  const [modifyNotes, setModifyNotes] = useState("");
+  const [receiptAmount, setReceiptAmount] = useState("");
+  const [receiptMethod, setReceiptMethod] = useState("bank_transfer");
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const receiptFileRef = useRef<HTMLInputElement>(null);
+
+  const requestModificationsMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("PATCH", `/api/quotations/${orderId}`, {
+        notes: `[تعديلات مطلوبة]: ${modifyNotes}`,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/quotations", orderId] });
+      setModifyDialog(false);
+      setModifyNotes("");
+      toast({ title: t("تم إرسال طلب التعديلات للمصمم", "Modification request sent to designer") });
+    },
+    onError: () => { toast({ title: t("حدث خطأ", "Error occurred"), variant: "destructive" }); },
+  });
+
+  const approveWithReceiptMutation = useMutation({
+    mutationFn: async ({ base64, name }: { base64: string; name: string }) => {
+      const res = await apiRequest("POST", `/api/quotations/${orderId}/approve`, {
+        paymentReceiptData: base64,
+        paymentReceiptName: name,
+        paymentAmount: receiptAmount,
+        paymentMethod: receiptMethod,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/quotations", orderId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/quotations"] });
+      setApproveDialog(false);
+      setReceiptFile(null);
+      setReceiptAmount("");
+      if (receiptFileRef.current) receiptFileRef.current.value = "";
+      toast({ title: t("تم رفع الإيصال واعتماد الطلب بنجاح", "Receipt uploaded and order approved") });
+    },
+    onError: () => { toast({ title: t("حدث خطأ في الاعتماد", "Approval error"), variant: "destructive" }); },
+  });
+
+  const confirmPaymentMutation = useMutation({
+    mutationFn: async (paymentId: number) => {
+      const res = await apiRequest("PATCH", `/api/payments/${paymentId}/confirm`, {});
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/contracts", linkedContractId, "payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/quotations"] });
+      toast({ title: t("تم تأكيد الدفعة وإرسال الطلب للإنتاج", "Payment confirmed and order sent to production") });
+    },
+    onError: () => { toast({ title: t("حدث خطأ في تأكيد الدفعة", "Payment confirmation error"), variant: "destructive" }); },
+  });
+
+  function handleApproveWithReceipt() {
+    if (!receiptFile) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const base64 = e.target?.result as string;
+      approveWithReceiptMutation.mutate({ base64, name: receiptFile.name });
+    };
+    reader.readAsDataURL(receiptFile);
+  }
 
   if (isLoading) {
     return (
@@ -662,7 +734,7 @@ export default function OrderDetailPage() {
 
       {isSalesRep && stage === "survey_done" && (
         <Card className={`border-2 ${surveyDesignFiles.length > 0 ? "border-green-300 dark:border-green-700 bg-green-50/30 dark:bg-green-950/20" : "border-violet-200 dark:border-violet-800 bg-violet-50/30 dark:bg-violet-950/20"}`} data-testid="card-design-status">
-          <CardContent className="p-4">
+          <CardContent className="p-4 space-y-3">
             <div className="flex items-start gap-3">
               {surveyDesignFiles.length > 0 ? (
                 <>
@@ -690,6 +762,27 @@ export default function OrderDetailPage() {
                 </>
               )}
             </div>
+            {surveyDesignFiles.length > 0 && (
+              <div className="grid grid-cols-2 gap-2 pt-1 border-t border-green-200 dark:border-green-800">
+                <Button
+                  variant="outline"
+                  className="text-xs h-9 border-amber-300 text-amber-700 dark:border-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30"
+                  onClick={() => setModifyDialog(true)}
+                  data-testid="button-request-modifications"
+                >
+                  <MessageSquare className="w-3.5 h-3.5 me-1" />
+                  {t("طلب تعديلات", "Request Changes")}
+                </Button>
+                <Button
+                  className="text-xs h-9 bg-green-600 hover:bg-green-700 text-white"
+                  onClick={() => setApproveDialog(true)}
+                  data-testid="button-approve-design-upload-receipt"
+                >
+                  <ReceiptText className="w-3.5 h-3.5 me-1" />
+                  {t("وافق العميل - رفع إيصال", "Client Approved - Upload Receipt")}
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
@@ -733,23 +826,51 @@ export default function OrderDetailPage() {
       {orderPayments.length > 0 && (
         <SectionCard title={t("سجل الدفعات", "Payment History")} icon={Banknote}>
           <div className="space-y-2">
-            {orderPayments.map((payment) => (
-              <div key={payment.id} className="flex items-center justify-between py-2 border-b last:border-0">
-                <div>
-                  <p className="text-xs font-medium">{payment.paymentType || t("دفعة", "Payment")}</p>
-                  <p className="text-[11px] text-muted-foreground">{formatDate(payment.paymentDate || payment.createdAt)}</p>
-                  {payment.notes && <p className="text-[11px] text-muted-foreground mt-0.5">{payment.notes}</p>}
+            {orderPayments.map((payment: any) => (
+              <div key={payment.id} className="space-y-2">
+                <div className={`flex items-center justify-between py-2 border-b last:border-0 ${payment.status === "pending" ? "opacity-80" : ""}`}>
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-xs font-medium">{payment.paymentType || t("دفعة", "Payment")}</p>
+                      {payment.status === "pending" && (
+                        <Badge variant="outline" className="text-[9px] px-1.5 py-0 border-amber-300 text-amber-700 dark:text-amber-400">
+                          {t("بانتظار التأكيد", "Pending")}
+                        </Badge>
+                      )}
+                      {payment.status === "confirmed" && (
+                        <Badge variant="outline" className="text-[9px] px-1.5 py-0 border-green-300 text-green-700 dark:text-green-400">
+                          {t("مؤكدة", "Confirmed")}
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">{formatDate(payment.paymentDate || payment.createdAt)}</p>
+                    {payment.notes && <p className="text-[11px] text-muted-foreground mt-0.5">{payment.notes}</p>}
+                  </div>
+                  <div className="text-end">
+                    <p className="text-xs font-bold text-green-700 dark:text-green-400">{formatMoney(payment.amount)}</p>
+                    {payment.method && <p className="text-[10px] text-muted-foreground">{payment.method}</p>}
+                  </div>
                 </div>
-                <div className="text-end">
-                  <p className="text-xs font-bold text-green-700 dark:text-green-400">{formatMoney(payment.amount)}</p>
-                  {payment.method && <p className="text-[10px] text-muted-foreground">{payment.method}</p>}
-                </div>
+                {payment.status === "pending" && (isManager || user?.role === "accountant") && (
+                  <Button
+                    size="sm"
+                    className="w-full h-8 text-xs bg-green-600 hover:bg-green-700 text-white"
+                    onClick={() => confirmPaymentMutation.mutate(payment.id)}
+                    disabled={confirmPaymentMutation.isPending}
+                    data-testid={`button-confirm-payment-${payment.id}`}
+                  >
+                    {confirmPaymentMutation.isPending
+                      ? <Loader2 className="w-3 h-3 me-1 animate-spin" />
+                      : <CheckCircle2 className="w-3 h-3 me-1" />}
+                    {t("تأكيد الدفعة وإرسال للإنتاج", "Confirm Payment & Send to Production")}
+                  </Button>
+                )}
               </div>
             ))}
             <div className="pt-2 flex justify-between text-xs font-semibold">
               <span>{t("إجمالي المدفوع", "Total Paid")}</span>
               <span className="text-green-700 dark:text-green-400">
-                {formatMoney(orderPayments.reduce((s, p) => s + Number(p.amount || 0), 0))}
+                {formatMoney(orderPayments.reduce((s: number, p: any) => s + Number(p.amount || 0), 0))}
               </span>
             </div>
           </div>
@@ -843,5 +964,135 @@ export default function OrderDetailPage() {
         </div>
       </div>
     </div>
+
+    <Dialog open={modifyDialog} onOpenChange={setModifyDialog}>
+      <DialogContent className="max-w-sm" data-testid="dialog-request-modifications">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <MessageSquare className="w-4 h-4 text-amber-600" />
+            {t("طلب تعديلات من المصمم", "Request Modifications from Designer")}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 py-2">
+          <p className="text-xs text-muted-foreground">
+            {t("اكتب ملاحظاتك وسيتم إرسالها للمصمم لمراجعة التصميم", "Write your notes and they will be sent to the designer for review")}
+          </p>
+          <Textarea
+            value={modifyNotes}
+            onChange={(e) => setModifyNotes(e.target.value)}
+            placeholder={t("مثال: تغيير لون المطبخ، تعديل أبعاد الدولاب...", "e.g. Change kitchen color, adjust cabinet dimensions...")}
+            className="min-h-[100px] text-sm"
+            data-testid="textarea-modify-notes"
+          />
+        </div>
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={() => setModifyDialog(false)} data-testid="button-cancel-modify">
+            {t("إلغاء", "Cancel")}
+          </Button>
+          <Button
+            className="bg-amber-600 hover:bg-amber-700 text-white"
+            disabled={!modifyNotes.trim() || requestModificationsMutation.isPending}
+            onClick={() => requestModificationsMutation.mutate()}
+            data-testid="button-submit-modify-notes"
+          >
+            {requestModificationsMutation.isPending
+              ? <Loader2 className="w-4 h-4 me-1 animate-spin" />
+              : <MessageSquare className="w-4 h-4 me-1" />}
+            {t("إرسال للمصمم", "Send to Designer")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <Dialog open={approveDialog} onOpenChange={setApproveDialog}>
+      <DialogContent className="max-w-sm" data-testid="dialog-approve-upload-receipt">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <ReceiptText className="w-4 h-4 text-green-600" />
+            {t("موافقة العميل - رفع إيصال الدفع", "Client Approval - Upload Payment Receipt")}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 py-2">
+          <p className="text-xs text-muted-foreground">
+            {t("ارفع صورة إيصال الدفع لإرسال الطلب للمحاسب وإعداده للإنتاج", "Upload payment receipt to send order to accountant for confirmation and production")}
+          </p>
+          <div className="space-y-1">
+            <Label className="text-xs">{t("مبلغ الدفعة (ر.س)", "Payment Amount (SAR)")}</Label>
+            <Input
+              type="number"
+              value={receiptAmount}
+              onChange={(e) => setReceiptAmount(e.target.value)}
+              placeholder="0.00"
+              className="h-9 text-sm"
+              data-testid="input-receipt-amount"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">{t("طريقة الدفع", "Payment Method")}</Label>
+            <Select value={receiptMethod} onValueChange={setReceiptMethod}>
+              <SelectTrigger className="h-9 text-sm" data-testid="select-receipt-method">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="bank_transfer">{t("تحويل بنكي", "Bank Transfer")}</SelectItem>
+                <SelectItem value="cash">{t("نقدي", "Cash")}</SelectItem>
+                <SelectItem value="pos">{t("نقطة بيع", "POS")}</SelectItem>
+                <SelectItem value="check">{t("شيك", "Check")}</SelectItem>
+                <SelectItem value="other">{t("أخرى", "Other")}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">{t("صورة الإيصال", "Receipt Image")}</Label>
+            {receiptFile ? (
+              <div className="flex items-center gap-2 rounded-lg border bg-muted/50 px-3 py-2 text-xs">
+                <FileText className="w-3.5 h-3.5 text-primary shrink-0" />
+                <span className="flex-1 truncate font-medium">{receiptFile.name}</span>
+                <Button
+                  variant="ghost" size="icon" className="h-5 w-5 shrink-0"
+                  onClick={() => { setReceiptFile(null); if (receiptFileRef.current) receiptFileRef.current.value = ""; }}
+                  data-testid="button-clear-receipt-file"
+                >
+                  <X className="w-3 h-3" />
+                </Button>
+              </div>
+            ) : (
+              <Button
+                variant="outline" className="w-full h-9 text-xs"
+                onClick={() => receiptFileRef.current?.click()}
+                data-testid="button-choose-receipt-file"
+              >
+                <Upload className="w-3.5 h-3.5 me-1" />
+                {t("اختيار صورة الإيصال", "Choose Receipt Image")}
+              </Button>
+            )}
+            <input
+              ref={receiptFileRef}
+              type="file"
+              className="hidden"
+              accept="image/*,application/pdf"
+              onChange={(e) => setReceiptFile(e.target.files?.[0] || null)}
+              data-testid="input-receipt-file"
+            />
+          </div>
+        </div>
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={() => setApproveDialog(false)} data-testid="button-cancel-approve">
+            {t("إلغاء", "Cancel")}
+          </Button>
+          <Button
+            className="bg-green-600 hover:bg-green-700 text-white"
+            disabled={!receiptFile || approveWithReceiptMutation.isPending}
+            onClick={handleApproveWithReceipt}
+            data-testid="button-submit-approve-receipt"
+          >
+            {approveWithReceiptMutation.isPending
+              ? <Loader2 className="w-4 h-4 me-1 animate-spin" />
+              : <CreditCard className="w-4 h-4 me-1" />}
+            {t("رفع الإيصال واعتماد الطلب", "Upload Receipt & Approve Order")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

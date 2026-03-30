@@ -471,6 +471,21 @@ export default function SiteSurveyPage() {
     },
   });
 
+  const sendToDesignerMutation = useMutation({
+    mutationFn: async (quotationId: number) => {
+      const res = await apiRequest("PATCH", `/api/quotations/${quotationId}`, { orderStage: "survey_done" });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/quotations"] });
+      toast({ title: t("تم إرسال الطلب للمصمم بنجاح", "Request sent to designer successfully") });
+      navigate(returnTo);
+    },
+    onError: () => {
+      navigate(returnTo);
+    },
+  });
+
   function handleSaveMeasurements() {
     const data: any = {
       appointmentId,
@@ -2260,10 +2275,20 @@ export default function SiteSurveyPage() {
         {showResults ? (
           <Button
             className="bg-green-600 hover:bg-green-700 text-white"
-            onClick={() => navigate(returnTo)}
+            disabled={sendToDesignerMutation.isPending}
+            onClick={() => {
+              const qid = appointment?.quotationId;
+              if (qid) {
+                sendToDesignerMutation.mutate(qid);
+              } else {
+                navigate(returnTo);
+              }
+            }}
             data-testid="button-send-to-designer"
           >
-            <CheckCircle2 className="w-4 h-4 me-1" />
+            {sendToDesignerMutation.isPending
+              ? <Loader2 className="w-4 h-4 me-1 animate-spin" />
+              : <CheckCircle2 className="w-4 h-4 me-1" />}
             {t("إرسال للمصمم", "Send to Designer")}
           </Button>
         ) : step === 1 && subStep === "walls" ? (
