@@ -3781,6 +3781,7 @@ export async function registerRoutes(
     const user = await storage.getUser(userId);
     if (!user) return { allowed: false };
     if (user.role === "owner" || user.role === "assistant" || user.role === "it") return { allowed: true, survey: surveyRow };
+    if (user.role === "designer") return { allowed: true, survey: surveyRow };
     if (user.role === "sales" && surveyRow.createdBy === user.id) return { allowed: true, survey: surveyRow };
     return { allowed: false };
   }

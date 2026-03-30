@@ -320,6 +320,7 @@ export default function OrderDetailPage() {
   const currentStepIndex = PIPELINE_STEP_KEYS.indexOf(stage);
 
   return (
+    <>
     <div className="space-y-4 max-w-2xl mx-auto" data-testid="page-order-detail">
       <div className="flex items-center gap-3">
         <Button variant="ghost" size="sm" className="h-8 px-2 gap-1" onClick={() => navigate("/my-orders")} data-testid="button-back-to-orders">
@@ -662,6 +663,19 @@ export default function OrderDetailPage() {
       {isDesigner && stage === "survey_done" && firstSurveyId && (
         <SectionCard title={t("رفع ملفات التصميم", "Upload Design Files")} icon={Palette}>
           <div className="space-y-3">
+            {quotation?.notes?.includes("[تعديلات مطلوبة]") && (
+              <div className="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50/50 dark:bg-amber-950/20 px-3 py-2 flex items-start gap-2">
+                <MessageSquare className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">
+                    {t("تعديلات مطلوبة من المندوب", "Modifications Requested by Sales Rep")}
+                  </p>
+                  <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5 whitespace-pre-wrap">
+                    {quotation.notes.replace("[تعديلات مطلوبة]: ", "")}
+                  </p>
+                </div>
+              </div>
+            )}
             <p className="text-xs text-muted-foreground">
               {t("ارفع ملفات التصميم والمخططات لمراجعة المندوب والعميل", "Upload design files and plans for the rep and customer to review")}
             </p>
@@ -826,12 +840,12 @@ export default function OrderDetailPage() {
       {orderPayments.length > 0 && (
         <SectionCard title={t("سجل الدفعات", "Payment History")} icon={Banknote}>
           <div className="space-y-2">
-            {orderPayments.map((payment: any) => (
+            {orderPayments.map((payment) => (
               <div key={payment.id} className="space-y-2">
                 <div className={`flex items-center justify-between py-2 border-b last:border-0 ${payment.status === "pending" ? "opacity-80" : ""}`}>
                   <div>
                     <div className="flex items-center gap-1.5">
-                      <p className="text-xs font-medium">{payment.paymentType || t("دفعة", "Payment")}</p>
+                      <p className="text-xs font-medium">{payment.paymentStage || t("دفعة", "Payment")}</p>
                       {payment.status === "pending" && (
                         <Badge variant="outline" className="text-[9px] px-1.5 py-0 border-amber-300 text-amber-700 dark:text-amber-400">
                           {t("بانتظار التأكيد", "Pending")}
@@ -870,7 +884,7 @@ export default function OrderDetailPage() {
             <div className="pt-2 flex justify-between text-xs font-semibold">
               <span>{t("إجمالي المدفوع", "Total Paid")}</span>
               <span className="text-green-700 dark:text-green-400">
-                {formatMoney(orderPayments.reduce((s: number, p: any) => s + Number(p.amount || 0), 0))}
+                {formatMoney(orderPayments.reduce((s, p) => s + Number(p.amount ?? 0), 0))}
               </span>
             </div>
           </div>
@@ -1094,5 +1108,6 @@ export default function OrderDetailPage() {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    </>
   );
 }
