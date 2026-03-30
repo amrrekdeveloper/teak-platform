@@ -309,6 +309,7 @@ export default function SiteSurveyPage() {
   const [printingPdf, setPrintingPdf] = useState(false);
   const [designFilesLoaded, setDesignFilesLoaded] = useState(false);
   const [pendingFileLabel, setPendingFileLabel] = useState("");
+  const [showResults, setShowResults] = useState(false);
 
   useEffect(() => {
     if (existingSurvey && existingSurvey.id && !surveyInitializedRef.current) {
@@ -462,8 +463,8 @@ export default function SiteSurveyPage() {
       const newId = saved?.id || existingSurvey?.id || null;
       if (newId) savedSurveyIdRef.current = newId;
       setSavedSurveyId(newId);
-      toast({ title: t("تم حفظ المقاسات بنجاح", "Measurements saved successfully"), description: t("يمكنك استكمال النموذج لاحقاً", "You can complete the form later") });
-      navigate(returnTo);
+      toast({ title: t("تم حفظ المقاسات بنجاح", "Measurements saved successfully") });
+      setShowResults(true);
     },
     onError: () => {
       toast({ title: t("حدث خطأ في الحفظ", "Save failed"), variant: "destructive" });
@@ -990,31 +991,132 @@ export default function SiteSurveyPage() {
       </div>
 
       <div className="flex items-center gap-1 overflow-x-auto pb-2 scrollbar-hide">
-        {([1, 2, 3] as WizardStep[]).map((s) => {
-          const StepIcon = stepLabels[s].icon;
-          const isActive = step === s;
-          const isPast = step > s;
-          return (
+        {!showResults ? (
+          <button
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap bg-primary text-primary-foreground flex-shrink-0"
+            data-testid="button-step-1"
+          >
+            <Ruler className="w-3.5 h-3.5" />
+            {t("الأماكن والجدران", "Spaces & Walls")}
+          </button>
+        ) : (
+          <>
             <button
-              key={s}
-              onClick={() => navigateToStep(s as WizardStep)}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition-all flex-shrink-0 ${
-                isActive
-                  ? "bg-primary text-primary-foreground"
-                  : isPast
-                  ? "bg-primary/10 text-primary"
-                  : "bg-muted text-muted-foreground"
-              }`}
-              data-testid={`button-step-${s}`}
+              onClick={() => setShowResults(false)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap bg-primary/10 text-primary flex-shrink-0 transition-all"
+              data-testid="button-step-1-done"
             >
-              {isPast ? <CheckCircle2 className="w-3.5 h-3.5" /> : <StepIcon className="w-3.5 h-3.5" />}
-              {t(stepLabels[s].ar, stepLabels[s].en)}
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              {t("الأماكن والجدران", "Spaces & Walls")}
             </button>
-          );
-        })}
+            {lang === "ar" ? <ChevronRight className="w-3 h-3 text-muted-foreground shrink-0" /> : <ChevronLeft className="w-3 h-3 text-muted-foreground shrink-0" />}
+            <button
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap bg-primary text-primary-foreground flex-shrink-0"
+              data-testid="button-step-results"
+            >
+              <Map className="w-3.5 h-3.5" />
+              {t("النتائج", "Results")}
+            </button>
+          </>
+        )}
       </div>
 
-      {step === 1 && (() => {
+      {showResults && (
+        <div className="space-y-4" data-testid="section-survey-results">
+          <div className="rounded-xl border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950/30 p-4 flex items-start gap-3">
+            <CheckCircle2 className="w-6 h-6 text-green-600 shrink-0 mt-0.5" />
+            <div>
+              <h2 className="font-bold text-green-800 dark:text-green-300">
+                {t("تم حفظ المقاسات بنجاح", "Measurements Saved Successfully")}
+              </h2>
+              <p className="text-sm text-green-700 dark:text-green-400 mt-0.5">
+                {t("سيتولى المصمم دراسة المقاسات وإرسال التصميم المناسب", "The designer will review and create the design for you")}
+              </p>
+            </div>
+          </div>
+
+          <Card>
+            <CardContent className="p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <Ruler className="w-4 h-4 text-primary" />
+                <h3 className="font-semibold text-sm">{t("ملخص المقاسات", "Measurements Summary")}</h3>
+                <Badge variant="secondary" className="ms-auto text-xs">{spaces.length} {t("مكان", spaces.length === 1 ? "space" : "spaces")}</Badge>
+              </div>
+              {spaces.map((space, idx) => {
+                const wallLetters = ["A", "B", "C", "D"];
+                return (
+                  <div key={space.id} className="border rounded-lg overflow-hidden">
+                    <div className="flex items-center gap-2 bg-muted/50 px-3 py-2 border-b">
+                      <Building2 className="w-3.5 h-3.5 text-primary shrink-0" />
+                      <span className="font-medium text-sm">{idx + 1}. {space.name || t("مكان", "Space")}</span>
+                      {space.length && space.width && (
+                        <Badge variant="outline" className="text-xs ms-auto shrink-0">
+                          {space.length} × {space.width}{space.height ? ` × ${space.height}` : ""} م
+                        </Badge>
+                      )}
+                    </div>
+                    {space.walls.length > 0 ? (
+                      <div className="p-3 overflow-x-auto">
+                        <table className="w-full text-xs min-w-[280px]">
+                          <thead>
+                            <tr className="border-b text-muted-foreground">
+                              <th className="text-start pb-1.5 font-medium pe-3">{t("الجدار", "Wall")}</th>
+                              <th className="text-start pb-1.5 font-medium pe-3">{t("الطول", "Length")}</th>
+                              <th className="text-start pb-1.5 font-medium pe-3">{t("الارتفاع", "Height")}</th>
+                              <th className="text-start pb-1.5 font-medium">{t("العناصر", "Items")}</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {space.walls.map((wall, wi) => (
+                              <tr key={wall.id} className="border-b last:border-0">
+                                <td className="py-1.5 font-mono font-bold text-primary pe-3">{wallLetters[wi] || String(wi + 1)}</td>
+                                <td className="py-1.5 pe-3">{wall.length ? `${wall.length} م` : "—"}</td>
+                                <td className="py-1.5 pe-3">{wall.wallHeight || space.height ? `${wall.wallHeight || space.height} م` : "—"}</td>
+                                <td className="py-1.5 text-muted-foreground">
+                                  {wall.items.length > 0
+                                    ? wall.items.map(i => ({ door: t("باب", "Door"), window: t("نافذة", "Window"), outlet: t("مقبس", "Outlet"), drain: t("بالوعة", "Drain"), obstacle: t("عائق", "Obstacle") }[i.type] || i.type)).join("، ")
+                                    : "—"}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground text-center py-3">{t("لم تُضف جدران", "No walls added")}</p>
+                    )}
+                  </div>
+                );
+              })}
+            </CardContent>
+          </Card>
+
+          {(savedSurveyId || existingSurvey?.id) && (
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                variant="outline"
+                className="h-14 flex-col gap-1.5 border-violet-300 text-violet-700 dark:border-violet-700 dark:text-violet-400"
+                onClick={() => navigate(`/scene-3d?surveyId=${savedSurveyId || existingSurvey?.id}`)}
+                data-testid="button-results-view-3d"
+              >
+                <Box className="w-5 h-5" />
+                <span className="text-xs font-medium">{t("عرض ثلاثي الأبعاد", "3D View")}</span>
+              </Button>
+              <Button
+                variant="outline"
+                className="h-14 flex-col gap-1.5 border-blue-300 text-blue-700 dark:border-blue-700 dark:text-blue-400"
+                onClick={() => navigate(`/scene-3d?surveyId=${savedSurveyId || existingSurvey?.id}&tab=2d`)}
+                data-testid="button-results-view-2d"
+              >
+                <Map className="w-5 h-5" />
+                <span className="text-xs font-medium">{t("مخطط ثنائي الأبعاد", "2D Floor Plan")}</span>
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {!showResults && step === 1 && (() => {
         const editSpace = spaces.find((s) => s.id === activeWallSpaceId) || spaces[0];
         const editSpaceIndex = spaces.findIndex((s) => s.id === editSpace?.id);
         const otherSpaces = spaces.filter((s) => s.id !== editSpace?.id);
@@ -1499,7 +1601,7 @@ export default function SiteSurveyPage() {
         );
       })()}
 
-      {step === 2 && (
+      {false && step === 2 && (
         <div className="space-y-3" data-testid="section-products">
           {/* ── مسار اختيار: منتجات أو مخطط يدوي ── */}
           {selectedProducts.length === 0 && (
@@ -2015,7 +2117,7 @@ export default function SiteSurveyPage() {
         </div>
       )}
 
-      {step === 3 && (
+      {false && step === 3 && (
         <Card>
           <CardContent className="p-4 space-y-4" data-testid="section-notes-photos">
             <h3 className="font-semibold text-sm flex items-center gap-2">
@@ -2081,23 +2183,34 @@ export default function SiteSurveyPage() {
       <div className="fixed bottom-0 start-0 end-0 md:start-16 bg-card border-t border-border z-40" style={{ paddingBottom: "max(12px, env(safe-area-inset-bottom))" }}>
         <div className="px-3 pt-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            onClick={() => {
-              if (step === 1 && subStep === "walls") {
-                setSubStep("info");
-              } else if (step > 1) {
-                setStep((step - 1) as WizardStep);
-                if (step - 1 === 1) setSubStep("walls");
-              }
-            }}
-            disabled={step === 1 && subStep === "info"}
-            data-testid="button-prev-step"
-          >
-            {lang === "ar" ? <ChevronRight className="w-4 h-4 me-1" /> : <ChevronLeft className="w-4 h-4 me-1" />}
-            {t("السابق", "Previous")}
-          </Button>
-          {(savedSurveyId || existingSurvey?.id) && (
+          {showResults ? (
+            <Button
+              variant="outline"
+              onClick={() => setShowResults(false)}
+              data-testid="button-results-back-edit"
+            >
+              {lang === "ar" ? <ChevronRight className="w-4 h-4 me-1" /> : <ChevronLeft className="w-4 h-4 me-1" />}
+              {t("تعديل المقاسات", "Edit Measurements")}
+            </Button>
+          ) : (
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (step === 1 && subStep === "walls") {
+                  setSubStep("info");
+                } else if (step > 1) {
+                  setStep((step - 1) as WizardStep);
+                  if (step - 1 === 1) setSubStep("walls");
+                }
+              }}
+              disabled={step === 1 && subStep === "info"}
+              data-testid="button-prev-step"
+            >
+              {lang === "ar" ? <ChevronRight className="w-4 h-4 me-1" /> : <ChevronLeft className="w-4 h-4 me-1" />}
+              {t("السابق", "Previous")}
+            </Button>
+          )}
+          {(savedSurveyId || existingSurvey?.id) && !showResults && (
             <Button
               variant="outline"
               size="sm"
@@ -2109,7 +2222,7 @@ export default function SiteSurveyPage() {
               <span className="hidden sm:inline ms-1">{t("3D", "3D")}</span>
             </Button>
           )}
-          {step === 3 && (
+          {showResults && (
             <Button
               variant="outline"
               size="sm"
@@ -2117,22 +2230,18 @@ export default function SiteSurveyPage() {
               onClick={handlePrintSurveyReport}
               disabled={printingPdf}
               title={t("تصدير تقرير الزيارة PDF", "Export Survey Report PDF")}
-              data-testid="button-print-survey"
+              data-testid="button-print-survey-results"
             >
               {printingPdf ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Printer className="w-3.5 h-3.5" />}
-              <span className="hidden sm:inline ms-1">{t("تقرير PDF", "PDF Report")}</span>
+              <span className="hidden sm:inline ms-1">{t("PDF", "PDF")}</span>
             </Button>
           )}
         </div>
 
         <div className="flex flex-col items-center gap-0.5">
           <div className="flex items-center gap-1">
-            {([1, 2, 3] as WizardStep[]).map((s) => (
-              <div
-                key={s}
-                className={`w-2 h-2 rounded-full transition-colors ${step === s ? "bg-primary" : step > s ? "bg-primary/40" : "bg-muted-foreground/30"}`}
-              />
-            ))}
+            <div className={`w-2 h-2 rounded-full transition-colors ${!showResults ? "bg-primary" : "bg-primary/40"}`} />
+            <div className={`w-2 h-2 rounded-full transition-colors ${showResults ? "bg-primary" : "bg-muted-foreground/30"}`} />
           </div>
           {autoSavePending && (
             <div className="flex items-center gap-1 text-[10px] text-muted-foreground" data-testid="autosave-pending-footer">
@@ -2148,40 +2257,27 @@ export default function SiteSurveyPage() {
           )}
         </div>
 
-        {step === 3 ? (
+        {showResults ? (
           <Button
-            onClick={handleSave}
-            disabled={saveMutation.isPending || autoSavePending}
-            data-testid="button-save-survey"
+            className="bg-green-600 hover:bg-green-700 text-white"
+            onClick={() => navigate(returnTo)}
+            data-testid="button-send-to-designer"
           >
-            {saveMutation.isPending ? <Loader2 className="w-4 h-4 me-1 animate-spin" /> : <Save className="w-4 h-4 me-1" />}
-            {t("حفظ النموذج", "Save Survey")}
+            <CheckCircle2 className="w-4 h-4 me-1" />
+            {t("إرسال للمصمم", "Send to Designer")}
           </Button>
         ) : step === 1 && subStep === "walls" ? (
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-9 text-sm text-green-700 border-green-400 dark:border-green-700 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-950/30"
-              onClick={handleSaveMeasurements}
-              disabled={saveMeasurementsMutation.isPending}
-              data-testid="button-save-measurements"
-            >
-              {saveMeasurementsMutation.isPending
-                ? <Loader2 className="w-4 h-4 animate-spin me-1" />
-                : <Save className="w-4 h-4 me-1" />}
-              <span className="hidden sm:inline">{t("حفظ المقاسات", "Save Measurements")}</span>
-              <span className="sm:hidden">{t("حفظ", "Save")}</span>
-            </Button>
-            <Button
-              onClick={() => navigateToStep((step + 1) as WizardStep)}
-              data-testid="button-next-step"
-            >
-              <span className="hidden sm:inline">{t("التالي: المنتجات", "Next: Products")}</span>
-              <span className="sm:hidden">{t("المنتجات", "Products")}</span>
-              {lang === "ar" ? <ChevronLeft className="w-4 h-4 ms-1" /> : <ChevronRight className="w-4 h-4 ms-1" />}
-            </Button>
-          </div>
+          <Button
+            onClick={handleSaveMeasurements}
+            disabled={saveMeasurementsMutation.isPending}
+            data-testid="button-save-measurements"
+          >
+            {saveMeasurementsMutation.isPending
+              ? <Loader2 className="w-4 h-4 animate-spin me-1" />
+              : <Save className="w-4 h-4 me-1" />}
+            <span className="hidden sm:inline">{t("حفظ المقاسات", "Save Measurements")}</span>
+            <span className="sm:hidden">{t("حفظ", "Save")}</span>
+          </Button>
         ) : (
           <Button
             onClick={() => navigateToStep((step + 1) as WizardStep)}

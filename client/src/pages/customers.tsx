@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLanguage } from "@/components/language-provider";
+import { useAuth } from "@/hooks/use-auth";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Customer } from "@shared/schema";
@@ -28,6 +29,7 @@ import { Link } from "wouter";
 
 export default function CustomersPage() {
   const { t } = useLanguage();
+  const { user } = useAuth();
   const { toast } = useToast();
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -80,7 +82,7 @@ export default function CustomersPage() {
             {t(`${customers.length} عميل مسجل`, `${customers.length} registered customers`)}
           </p>
         </div>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        {user?.role !== "sales" && <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
             <Button data-testid="button-add-customer">
               <Plus className="w-4 h-4 me-2" />
@@ -189,7 +191,7 @@ export default function CustomersPage() {
               </Button>
             </form>
           </DialogContent>
-        </Dialog>
+        </Dialog>}
       </div>
 
       <div className="mb-4">

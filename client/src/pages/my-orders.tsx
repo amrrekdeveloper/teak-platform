@@ -192,8 +192,9 @@ export default function MyOrdersPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [showClaimTransition, setShowClaimTransition] = useState(false);
   const [newOrderDialog, setNewOrderDialog] = useState(false);
-  const [newOrderForm, setNewOrderForm] = useState({ fullName: "", phone: "", productDescription: "", notes: "", city: "" });
+  const [newOrderForm, setNewOrderForm] = useState({ fullName: "", phone: "", productDescription: "", notes: "", city: "", district: "", buildingStatus: "" });
   const [showNewOrderTransition, setShowNewOrderTransition] = useState(false);
+  const [gpsLoading, setGpsLoading] = useState(false);
   const [appointmentDialog, setAppointmentDialog] = useState<EnrichedOrder | null>(null);
   const [editingApptId, setEditingApptId] = useState<number | null>(null);
   const [rescheduleReason, setRescheduleReason] = useState("");
@@ -219,6 +220,39 @@ export default function MyOrdersPage() {
   const [apptDuration, setApptDuration] = useState("60");
 
   const perPage = 15;
+
+  function handleGpsLocation() {
+    if (!navigator.geolocation) {
+      toast({ title: t("الجهاز لا يدعم GPS", "Device doesn't support GPS"), variant: "destructive" });
+      return;
+    }
+    setGpsLoading(true);
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        try {
+          const { latitude, longitude } = pos.coords;
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json&accept-language=ar`,
+            { headers: { "User-Agent": "TeakApp/1.0" } }
+          );
+          const data = await res.json();
+          const district = data.address?.suburb || data.address?.neighbourhood || data.address?.quarter || data.address?.residential || "";
+          const city = data.address?.city || data.address?.town || data.address?.county || data.address?.state_district || "";
+          setNewOrderForm(f => ({ ...f, district, city: city || f.city }));
+          toast({ title: t("تم تحديد الموقع", "Location detected"), description: district || city || t("تم الحصول على الموقع", "Location obtained") });
+        } catch {
+          toast({ title: t("تعذر تحديد الموقع", "Could not detect location"), variant: "destructive" });
+        } finally {
+          setGpsLoading(false);
+        }
+      },
+      () => {
+        toast({ title: t("رُفض الوصول للموقع", "Location access denied"), variant: "destructive" });
+        setGpsLoading(false);
+      },
+      { timeout: 10000 }
+    );
+  }
 
   const { data: quotations = [], isLoading } = useQuery<Quotation[]>({
     queryKey: ["/api/quotations"],
@@ -267,14 +301,14 @@ export default function MyOrdersPage() {
     },
   });
 
-  type NewOrderData = { fullName: string; phone: string; productDescription: string; notes: string; city: string };
+  type NewOrderData = { fullName: string; phone: string; productDescription: string; notes: string; city: string; district: string; buildingStatus: string };
   const createOrderMutation = useMutation({
     mutationFn: async (data: NewOrderData) => apiRequest("POST", "/api/orders/create-direct", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/quotations"] });
       queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
       setNewOrderDialog(false);
-      setNewOrderForm({ fullName: "", phone: "", productDescription: "", notes: "", city: "" });
+      setNewOrderForm({ fullName: "", phone: "", productDescription: "", notes: "", city: "", district: "", buildingStatus: "" });
       setShowNewOrderTransition(true);
     },
     onError: (error: unknown) => {
@@ -1507,7 +1541,7 @@ export default function MyOrdersPage() {
       })()}
 
       {newOrderDialog && (
-        <Dialog open onOpenChange={() => { setNewOrderDialog(false); setNewOrderForm({ fullName: "", phone: "", productDescription: "", notes: "", city: "" }); }}>
+        <Dialog open onOpenChange={() => { setNewOrderDialog(false); setNewOrderForm({ fullName: "", phone: "", productDescription: "", notes: "", city: "", district: "", buildingStatus: "" }); }}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
               <DialogTitle>{t("طلب جديد", "New Order")}</DialogTitle>
@@ -1556,6 +1590,43 @@ export default function MyOrdersPage() {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>{t("حالة البناء", "Building Status")}</Label>
+                <Select value={newOrderForm.buildingStatus || "none"} onValueChange={(v) => setNewOrderForm({ ...newOrderForm, buildingStatus: v === "none" ? "" : v })}>
+                  <SelectTrigger data-testid="select-my-order-building-status">
+                    <SelectValue placeholder={t("اختر حالة البناء (اختياري)", "Select building status (optional)")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">{t("— غير محددة —", "— Not specified —")}</SelectItem>
+                    <SelectItem value="ready">{t("جاهز / مكتمل", "Ready / Completed")}</SelectItem>
+                    <SelectItem value="under_construction">{t("قيد الإنشاء", "Under Construction")}</SelectItem>
+                    <SelectItem value="under_renovation">{t("قيد التجديد", "Under Renovation")}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>{t("الحي", "District")}</Label>
+                <div className="flex gap-2">
+                  <Input
+                    value={newOrderForm.district}
+                    onChange={(e) => setNewOrderForm({ ...newOrderForm, district: e.target.value })}
+                    placeholder={t("اسم الحي", "District name")}
+                    data-testid="input-my-order-district"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={handleGpsLocation}
+                    disabled={gpsLoading}
+                    title={t("تحديد الموقع تلقائياً", "Auto-detect location")}
+                    data-testid="button-gps-location"
+                  >
+                    {gpsLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <MapPin className="w-4 h-4" />}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">{t("اضغط على أيقونة الموقع لتحديد الحي تلقائياً", "Press the location icon to auto-detect district")}</p>
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="my-order-product">{t("وصف المنتج / الخدمة", "Product / Service Description")}</Label>

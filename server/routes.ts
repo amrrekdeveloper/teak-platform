@@ -1532,7 +1532,7 @@ export async function registerRoutes(
 
   app.post("/api/orders/create-direct", requireRole("owner", "assistant", "sales"), async (req, res) => {
     try {
-      const { fullName, phone, productDescription, notes, city } = req.body;
+      const { fullName, phone, productDescription, notes, city, district, buildingStatus } = req.body;
       if (!fullName || !phone || !productDescription) {
         return res.status(400).json({
           message: "الاسم ورقم الجوال ووصف المنتج مطلوبة",
@@ -1558,6 +1558,9 @@ export async function registerRoutes(
           phone: normalizedPhone,
           source: "walk_in",
           notes: notes || "",
+          city: city || null,
+          district: district || null,
+          buildingStatus: buildingStatus || null,
         });
       }
 
@@ -1581,6 +1584,8 @@ export async function registerRoutes(
         notes: [
           `المنتج: ${productDescription}`,
           notes ? `ملاحظات: ${notes}` : "",
+          district ? `الحي: ${district}` : "",
+          buildingStatus === "ready" ? "حالة البناء: جاهز" : buildingStatus === "under_construction" ? "حالة البناء: قيد الإنشاء" : buildingStatus === "under_renovation" ? "حالة البناء: قيد التجديد" : "",
         ].filter(Boolean).join(" | "),
       });
 
