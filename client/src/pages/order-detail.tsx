@@ -247,6 +247,20 @@ export default function OrderDetailPage() {
     onError: () => { toast({ title: t("حدث خطأ في تأكيد الدفعة", "Payment confirmation error"), variant: "destructive" }); },
   });
 
+  const notifyRepMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("PATCH", `/api/quotations/${orderId}`, {
+        notes: `[التصميم جاهز]: تم رفع ${surveyDesignFiles.length} ملف — يرجى مراجعة التصاميم والتواصل مع العميل`,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/quotations", orderId] });
+      toast({ title: t("تم إشعار المندوب بجاهزية التصميم", "Sales rep notified — design is ready") });
+    },
+    onError: () => { toast({ title: t("حدث خطأ", "Error occurred"), variant: "destructive" }); },
+  });
+
   function handleApproveWithReceipt() {
     if (!receiptFile) return;
     const reader = new FileReader();
@@ -742,6 +756,20 @@ export default function OrderDetailPage() {
                 {t("رفع الملف", "Upload")}
               </Button>
             </div>
+            {surveyDesignFiles.length > 0 && (
+              <Button
+                variant="outline"
+                className="w-full h-9 text-xs border-violet-300 text-violet-700 dark:border-violet-700 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-950/30"
+                onClick={() => notifyRepMutation.mutate()}
+                disabled={notifyRepMutation.isPending}
+                data-testid="button-notify-sales-rep"
+              >
+                {notifyRepMutation.isPending
+                  ? <Loader2 className="w-3.5 h-3.5 me-1 animate-spin" />
+                  : <CheckCircle2 className="w-3.5 h-3.5 me-1" />}
+                {t("إرسال للمندوب — التصميم جاهز للمراجعة", "Notify Rep — Design Ready for Review")}
+              </Button>
+            )}
           </div>
         </SectionCard>
       )}

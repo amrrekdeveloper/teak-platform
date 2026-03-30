@@ -310,6 +310,7 @@ export default function SiteSurveyPage() {
   const [designFilesLoaded, setDesignFilesLoaded] = useState(false);
   const [pendingFileLabel, setPendingFileLabel] = useState("");
   const [showResults, setShowResults] = useState(false);
+  const [inlineViewTab, setInlineViewTab] = useState<"3d" | "2d">("3d");
 
   useEffect(() => {
     if (existingSurvey && existingSurvey.id && !surveyInitializedRef.current) {
@@ -473,7 +474,10 @@ export default function SiteSurveyPage() {
 
   const sendToDesignerMutation = useMutation({
     mutationFn: async (quotationId: number) => {
-      const res = await apiRequest("PATCH", `/api/quotations/${quotationId}`, { orderStage: "survey_done" });
+      const res = await apiRequest("PATCH", `/api/quotations/${quotationId}`, {
+        orderStage: "survey_done",
+        notes: `[جاهز للتصميم]: تم رفع المقاسات بتاريخ ${new Date().toLocaleDateString("ar-SA")} — بانتظار التصميم`,
+      });
       return res.json();
     },
     onSuccess: () => {
@@ -1106,28 +1110,47 @@ export default function SiteSurveyPage() {
             </CardContent>
           </Card>
 
-          {(savedSurveyId || existingSurvey?.id) && (
-            <div className="grid grid-cols-2 gap-2">
-              <Button
-                variant="outline"
-                className="h-14 flex-col gap-1.5 border-violet-300 text-violet-700 dark:border-violet-700 dark:text-violet-400"
-                onClick={() => navigate(`/scene-3d?surveyId=${savedSurveyId || existingSurvey?.id}`)}
-                data-testid="button-results-view-3d"
-              >
-                <Box className="w-5 h-5" />
-                <span className="text-xs font-medium">{t("عرض ثلاثي الأبعاد", "3D View")}</span>
-              </Button>
-              <Button
-                variant="outline"
-                className="h-14 flex-col gap-1.5 border-blue-300 text-blue-700 dark:border-blue-700 dark:text-blue-400"
-                onClick={() => navigate(`/scene-3d?surveyId=${savedSurveyId || existingSurvey?.id}&tab=2d`)}
-                data-testid="button-results-view-2d"
-              >
-                <Map className="w-5 h-5" />
-                <span className="text-xs font-medium">{t("مخطط ثنائي الأبعاد", "2D Floor Plan")}</span>
-              </Button>
-            </div>
-          )}
+          {(savedSurveyId || existingSurvey?.id) && (() => {
+            const sid = savedSurveyId || existingSurvey?.id;
+            return (
+              <Card className="overflow-hidden border-violet-200 dark:border-violet-800">
+                <div className="flex border-b bg-muted/30">
+                  <button
+                    className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-medium transition-colors ${inlineViewTab === "3d" ? "bg-background text-foreground border-b-2 border-primary" : "text-muted-foreground hover:text-foreground"}`}
+                    onClick={() => setInlineViewTab("3d")}
+                    data-testid="tab-inline-3d"
+                  >
+                    <Box className="w-3.5 h-3.5" />
+                    {t("عرض ثلاثي الأبعاد", "3D View")}
+                  </button>
+                  <button
+                    className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-medium transition-colors ${inlineViewTab === "2d" ? "bg-background text-foreground border-b-2 border-primary" : "text-muted-foreground hover:text-foreground"}`}
+                    onClick={() => setInlineViewTab("2d")}
+                    data-testid="tab-inline-2d"
+                  >
+                    <Map className="w-3.5 h-3.5" />
+                    {t("مخطط ثنائي الأبعاد", "2D Floor Plan")}
+                  </button>
+                  <button
+                    className="px-3 py-2.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    onClick={() => navigate(`/scene-3d?surveyId=${sid}${inlineViewTab === "2d" ? "&tab=2d" : ""}`)}
+                    data-testid="button-open-fullscreen"
+                    title={t("فتح ملء الشاشة", "Open fullscreen")}
+                  >
+                    ⛶
+                  </button>
+                </div>
+                <iframe
+                  key={`${sid}-${inlineViewTab}`}
+                  src={`/scene-3d?surveyId=${sid}${inlineViewTab === "2d" ? "&tab=2d" : ""}&embed=1`}
+                  className="w-full border-0"
+                  style={{ height: "380px" }}
+                  title={inlineViewTab === "3d" ? t("عرض ثلاثي الأبعاد", "3D View") : t("مخطط ثنائي الأبعاد", "2D Floor Plan")}
+                  data-testid={`iframe-inline-view-${inlineViewTab}`}
+                />
+              </Card>
+            );
+          })()}
         </div>
       )}
 

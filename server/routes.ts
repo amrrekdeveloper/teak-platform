@@ -1101,6 +1101,13 @@ export async function registerRoutes(
           ((q.status === "open" || q.status === "draft" || q.status === "requested") && !q.assignedTo)
         );
         res.json(await checkAndExpire(filtered));
+      } else if (user?.role === "designer") {
+        const all = await storage.getQuotations();
+        const filtered = all.filter((q: any) =>
+          q.orderStage === "survey_done" ||
+          q.assignedTo === userId
+        );
+        res.json(await checkAndExpire(filtered));
       } else {
         const all = await storage.getQuotations();
         const filtered = all.filter((q: any) => q.assignedTo === userId);
@@ -1119,6 +1126,11 @@ export async function registerRoutes(
       if (requestingUser?.role === "sales" &&
           Number(quotation.assignedTo) !== Number(req.session.userId) &&
           Number(quotation.createdBy) !== Number(req.session.userId)) {
+        return res.status(403).json({ message: "غير مصرح لك بالاطلاع على هذا الطلب", messageEn: "You are not authorized to view this order" });
+      }
+      if (requestingUser?.role === "designer" &&
+          quotation.orderStage !== "survey_done" &&
+          Number(quotation.assignedTo) !== Number(req.session.userId)) {
         return res.status(403).json({ message: "غير مصرح لك بالاطلاع على هذا الطلب", messageEn: "You are not authorized to view this order" });
       }
       res.json(quotation);
