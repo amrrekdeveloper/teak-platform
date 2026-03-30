@@ -5158,12 +5158,16 @@ export async function registerRoutes(
           SELECT COALESCE(u.full_name_ar, u.username) as full_name, u.id as rep_id,
             COUNT(bv.id) as visit_count,
             COUNT(CASE WHEN bv.building_status = 'interested' THEN 1 END) as interested_count,
-            COUNT(CASE WHEN bv.building_status = 'follow_up' THEN 1 END) as follow_up_count
+            COUNT(CASE WHEN bv.building_status = 'follow_up' THEN 1 END) as follow_up_count,
+            CASE WHEN COUNT(bv.id) > 0
+              THEN ROUND(COUNT(CASE WHEN bv.building_status = 'interested' THEN 1 END)::numeric / COUNT(bv.id) * 100, 1)
+              ELSE 0
+            END as conversion_rate
           FROM users u
           LEFT JOIN building_visits bv ON bv.rep_id = u.id
           WHERE u.role = 'sales'
           GROUP BY u.id, u.full_name_ar, u.username
-          ORDER BY visit_count DESC
+          ORDER BY conversion_rate DESC, visit_count DESC
         `),
       ]);
       res.json({
