@@ -798,7 +798,7 @@ export default function MyMapPage() {
                     </p>
                   </div>
                   <button
-                    onClick={e => { e.stopPropagation(); setVisitForm({ open: true, lat: parseFloat(v.lat), lng: parseFloat(v.lng), address: v.address || "", city: v.city || "", district: v.district || "", buildingStatus: v.building_status, notes: v.notes || "", editingId: v.id }); setViewMode("map"); }}
+                    onClick={e => { e.stopPropagation(); setVisitForm({ open: true, lat: parseFloat(v.lat), lng: parseFloat(v.lng), address: v.address || "", city: v.city || "", district: v.district || "", buildingStatus: v.building_status, notes: v.notes || "", editingId: v.id, quotationId: v.quotation_id }); setViewMode("map"); }}
                     className="text-muted-foreground hover:text-foreground p-1 rounded"
                     data-testid={`button-edit-visit-${v.id}`}
                   >

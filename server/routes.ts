@@ -4996,52 +4996,6 @@ export async function registerRoutes(
 
   // ─── Task #40: Marketing Map System ─────────────────────────────────────────
 
-  // DB migration for map tables
-  try {
-    await pool.query(`
-      DO $$ BEGIN
-        CREATE TYPE building_visit_status AS ENUM ('interested', 'under_construction', 'not_suitable', 'follow_up');
-      EXCEPTION WHEN duplicate_object THEN NULL;
-      END $$;
-    `);
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS building_visits (
-        id SERIAL PRIMARY KEY,
-        rep_id INTEGER NOT NULL REFERENCES users(id),
-        lat DECIMAL(10,7) NOT NULL,
-        lng DECIMAL(10,7) NOT NULL,
-        address TEXT,
-        city TEXT,
-        district TEXT,
-        building_status building_visit_status NOT NULL DEFAULT 'follow_up',
-        notes TEXT,
-        quotation_id INTEGER REFERENCES quotations(id),
-        visited_at TIMESTAMP NOT NULL DEFAULT NOW(),
-        created_at TIMESTAMP NOT NULL DEFAULT NOW()
-      );
-    `);
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS marketing_zones (
-        id SERIAL PRIMARY KEY,
-        rep_id INTEGER NOT NULL REFERENCES users(id),
-        name TEXT NOT NULL,
-        polygon JSONB NOT NULL DEFAULT '[]',
-        target_count INTEGER DEFAULT 0,
-        created_at TIMESTAMP NOT NULL DEFAULT NOW()
-      );
-    `);
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS osm_buildings_cache (
-        id SERIAL PRIMARY KEY,
-        bbox TEXT NOT NULL UNIQUE,
-        buildings JSONB NOT NULL,
-        fetched_at TIMESTAMP NOT NULL DEFAULT NOW()
-      );
-    `);
-  } catch (mapMigrationError) {
-    console.warn("Map migration warning (non-fatal):", mapMigrationError instanceof Error ? mapMigrationError.message : String(mapMigrationError));
-  }
-
   // Get OSM buildings (Overpass API with 7-day cache)
   app.get("/api/map/buildings", requireAuth, async (req, res) => {
     const { bbox } = req.query;

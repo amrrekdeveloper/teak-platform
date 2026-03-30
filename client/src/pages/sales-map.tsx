@@ -205,14 +205,17 @@ export default function SalesMapPage() {
     if (!layer || !map) return;
     layer.clearLayers();
 
-    const filteredRepColor = repIdFilter !== "all" ? repColorMap[parseInt(repIdFilter)] : undefined;
+    const filteredRepId = repIdFilter !== "all" ? parseInt(repIdFilter) : null;
 
     data.forEach(cluster => {
       const lat = parseFloat(cluster.cluster_lat);
       const lng = parseFloat(cluster.cluster_lng);
       if (isNaN(lat) || isNaN(lng)) return;
 
-      const icon = createClusterIcon(cluster, filteredRepColor);
+      // Always color by rep: if filtering use filter rep color, else use most-recent-visit rep color
+      const primaryRepId = filteredRepId ?? (cluster.visit_history[0]?.rep_id ?? 0);
+      const repColor = primaryRepId ? repColorMap[primaryRepId] : undefined;
+      const icon = createClusterIcon(cluster, repColor);
       const marker = L.marker([lat, lng], { icon });
       marker.bindPopup(buildPopupHtml(cluster), { maxWidth: 270 });
       marker.addTo(layer);
