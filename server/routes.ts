@@ -1113,10 +1113,18 @@ export async function registerRoutes(
           ((q.status === "open" || q.status === "draft" || q.status === "requested") && !q.assignedTo)
         );
         res.json(await checkAndExpire(filtered));
-      } else if (user?.role === "designer") {
+      } else if (user?.role === "designer" || user?.role === "it") {
         const all = await storage.getQuotations();
         const filtered = all.filter((q: any) =>
           q.orderStage === "survey_done" ||
+          q.assignedTo === userId
+        );
+        res.json(await checkAndExpire(filtered));
+      } else if (user?.role === "accountant") {
+        const all = await storage.getQuotations();
+        const filtered = all.filter((q: any) =>
+          q.orderStage === "quote_approved" ||
+          q.orderStage === "in_production" ||
           q.assignedTo === userId
         );
         res.json(await checkAndExpire(filtered));
@@ -1140,8 +1148,13 @@ export async function registerRoutes(
           Number(quotation.createdBy) !== Number(req.session.userId)) {
         return res.status(403).json({ message: "غير مصرح لك بالاطلاع على هذا الطلب", messageEn: "You are not authorized to view this order" });
       }
-      if (requestingUser?.role === "designer" &&
+      if ((requestingUser?.role === "designer" || requestingUser?.role === "it") &&
           quotation.orderStage !== "survey_done" &&
+          Number(quotation.assignedTo) !== Number(req.session.userId)) {
+        return res.status(403).json({ message: "غير مصرح لك بالاطلاع على هذا الطلب", messageEn: "You are not authorized to view this order" });
+      }
+      if (requestingUser?.role === "accountant" &&
+          !["quote_approved", "in_production", "delivered"].includes(quotation.orderStage || "") &&
           Number(quotation.assignedTo) !== Number(req.session.userId)) {
         return res.status(403).json({ message: "غير مصرح لك بالاطلاع على هذا الطلب", messageEn: "You are not authorized to view this order" });
       }
@@ -1219,7 +1232,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/quotations/:id", requireRole("owner", "assistant", "sales", "designer"), async (req, res) => {
+  app.patch("/api/quotations/:id", requireRole("owner", "assistant", "sales"), async (req, res) => {
     try {
       const userId = req.session.userId!;
       const currentUser = await storage.getUser(userId);
@@ -1258,6 +1271,23 @@ export async function registerRoutes(
       delete data.createdAt;
       const updated = await storage.updateQuotation(parseInt(req.params.id), data);
       if (!updated) return res.status(404).json({ message: "عرض السعر غير موجود" });
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  app.post("/api/quotations/:id/designer-notify", requireRole("designer", "it"), async (req, res) => {
+    try {
+      const quotationId = parseInt(req.params.id);
+      const quotation = await storage.getQuotation(quotationId);
+      if (!quotation) return res.status(404).json({ message: "الطلب غير موجود" });
+      if (quotation.orderStage !== "survey_done") {
+        return res.status(403).json({ message: "لا يمكن إرسال الإشعار إلا لطلبات في مرحلة المسح الميداني" });
+      }
+      const updated = await storage.updateQuotation(quotationId, {
+        notes: req.body.notes || "[التصميم جاهز]: يرجى مراجعة ملفات التصميم والتواصل مع العميل",
+      });
       res.json(updated);
     } catch (error) {
       res.status(500).json({ message: "حدث خطأ" });

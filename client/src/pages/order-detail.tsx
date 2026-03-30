@@ -249,7 +249,7 @@ export default function OrderDetailPage() {
 
   const notifyRepMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("PATCH", `/api/quotations/${orderId}`, {
+      const res = await apiRequest("POST", `/api/quotations/${orderId}/designer-notify`, {
         notes: `[التصميم جاهز]: تم رفع ${surveyDesignFiles.length} ملف — يرجى مراجعة التصاميم والتواصل مع العميل`,
       });
       return res.json();
