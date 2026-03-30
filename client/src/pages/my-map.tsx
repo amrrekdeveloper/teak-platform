@@ -37,6 +37,13 @@ import {
 
 type VisitStatus = "interested" | "under_construction" | "not_suitable" | "follow_up";
 
+interface QuotationSummary {
+  id: number;
+  quotationNumber: string | null;
+  customerName: string | null;
+  status: string;
+}
+
 interface BuildingVisit {
   id: number;
   rep_id: number;
@@ -166,6 +173,7 @@ export default function MyMapPage() {
     buildingStatus: VisitStatus;
     notes: string;
     editingId: number | null;
+    quotationId: number | null;
   }>({
     open: false,
     lat: null,
@@ -176,6 +184,7 @@ export default function MyMapPage() {
     buildingStatus: "follow_up",
     notes: "",
     editingId: null,
+    quotationId: null,
   });
   const [listFilter, setListFilter] = useState<VisitStatus | "all">("all");
   const [drawingMode, setDrawingMode] = useState(false);
@@ -206,8 +215,21 @@ export default function MyMapPage() {
     queryKey: ["/api/map/zones"],
   });
 
+  const { data: rawQuotations = [] } = useQuery<any[]>({
+    queryKey: ["/api/quotations"],
+  });
+  const activeQuotations: QuotationSummary[] = rawQuotations
+    .filter(q => !["cancelled", "rejected", "delivered"].includes(q.status))
+    .map(q => ({
+      id: q.id,
+      quotationNumber: q.quotationNumber ? String(q.quotationNumber) : String(q.id),
+      customerName: q.customerName || null,
+      status: q.status,
+    }))
+    .slice(0, 30);
+
   type CreateVisitPayload = { lat: number; lng: number; address: string; city: string; district: string; buildingStatus: VisitStatus; notes: string; quotationId?: number | null };
-  type UpdateVisitPayload = { buildingStatus: VisitStatus; notes: string };
+  type UpdateVisitPayload = { buildingStatus: VisitStatus; notes: string; quotationId?: number | null };
 
   const createVisitMutation = useMutation({
     mutationFn: async (data: CreateVisitPayload) => {
@@ -279,7 +301,7 @@ export default function MyMapPage() {
   function closeVisitForm() {
     setVisitForm({
       open: false, lat: null, lng: null, address: "", city: "", district: "",
-      buildingStatus: "follow_up", notes: "", editingId: null,
+      buildingStatus: "follow_up", notes: "", editingId: null, quotationId: null,
     });
     if (clickMarkerRef.current) {
       clickMarkerRef.current.remove();
@@ -526,6 +548,7 @@ export default function MyMapPage() {
       buildingStatus: visit.building_status,
       notes: visit.notes || "",
       editingId: visit.id,
+      quotationId: visit.quotation_id,
     });
   };
 
@@ -550,7 +573,7 @@ export default function MyMapPage() {
     if (visitForm.editingId) {
       updateVisitMutation.mutate({
         id: visitForm.editingId,
-        data: { buildingStatus: visitForm.buildingStatus, notes: visitForm.notes },
+        data: { buildingStatus: visitForm.buildingStatus, notes: visitForm.notes, quotationId: visitForm.quotationId },
       });
     } else {
       createVisitMutation.mutate({
@@ -561,6 +584,7 @@ export default function MyMapPage() {
         district: visitForm.district,
         buildingStatus: visitForm.buildingStatus,
         notes: visitForm.notes,
+        quotationId: visitForm.quotationId,
       });
     }
   }
@@ -873,6 +897,29 @@ export default function MyMapPage() {
                 })}
               </div>
             </div>
+
+            {/* Link to Order */}
+            {activeQuotations.length > 0 && (
+              <div className="mb-3">
+                <Label className="text-xs mb-1.5 block">{t("ربط بطلب (اختياري)", "Link to Order (optional)")}</Label>
+                <Select
+                  value={visitForm.quotationId ? String(visitForm.quotationId) : "none"}
+                  onValueChange={v => setVisitForm(f => ({ ...f, quotationId: v === "none" ? null : parseInt(v) }))}
+                >
+                  <SelectTrigger className="h-8 text-xs" data-testid="select-visit-quotation">
+                    <SelectValue placeholder={t("— بدون طلب —", "— No order —")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">{t("— بدون ربط —", "— No link —")}</SelectItem>
+                    {activeQuotations.map(q => (
+                      <SelectItem key={q.id} value={String(q.id)}>
+                        #{q.quotationNumber} {q.customerName ? `— ${q.customerName}` : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             {/* Notes */}
             <div className="mb-4">

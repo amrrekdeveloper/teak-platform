@@ -5150,7 +5150,7 @@ export async function registerRoutes(
   // Update visit
   app.patch("/api/map/visits/:id", requireAuth, async (req, res) => {
     const { id } = req.params;
-    const { buildingStatus, notes } = req.body;
+    const { buildingStatus, notes, quotationId } = req.body;
     try {
       const user = await storage.getUser(req.session.userId!);
       if (!user) return res.status(401).json({ message: "غير مصرح" });
@@ -5159,9 +5159,16 @@ export async function registerRoutes(
       if (!["owner", "assistant", "it"].includes(user.role) && existing.rows[0].rep_id !== user.id) {
         return res.status(403).json({ message: "غير مصرح" });
       }
+      const setClauses: string[] = [];
+      const params: (string | number | null)[] = [];
+      if (buildingStatus) { setClauses.push(`building_status = $${params.push(buildingStatus)}`); }
+      if (notes !== undefined) { setClauses.push(`notes = $${params.push(notes || null)}`); }
+      if ("quotationId" in req.body) { setClauses.push(`quotation_id = $${params.push(quotationId ?? null)}`); }
+      if (setClauses.length === 0) return res.json(existing.rows[0]);
+      params.push(parseInt(id));
       const result = await pool.query(
-        `UPDATE building_visits SET building_status = COALESCE($1, building_status), notes = COALESCE($2, notes) WHERE id = $3 RETURNING *`,
-        [buildingStatus || null, notes !== undefined ? notes : null, id]
+        `UPDATE building_visits SET ${setClauses.join(", ")} WHERE id = $${params.length} RETURNING *`,
+        params
       );
       res.json(result.rows[0]);
     } catch (error) {
@@ -5274,7 +5281,7 @@ export async function registerRoutes(
 
   // Manager overview: aggregate visits per location cluster with visit history
   app.get("/api/map/manager-overview", requireRole("owner", "assistant", "it"), async (req, res) => {
-    const { city, dateFrom, dateTo } = req.query;
+    const { city, dateFrom, dateTo, repId } = req.query;
     try {
       const conditions: string[] = [];
       const params: (string | number)[] = [];
@@ -5290,6 +5297,10 @@ export async function registerRoutes(
       if (dateTo) {
         params.push(dateTo as string);
         conditions.push(`bv.visited_at < ($${params.length}::date + interval '1 day')`);
+      }
+      if (repId && repId !== "all") {
+        params.push(parseInt(repId as string));
+        conditions.push(`bv.rep_id = $${params.length}`);
       }
 
       const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";

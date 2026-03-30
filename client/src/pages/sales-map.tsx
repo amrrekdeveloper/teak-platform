@@ -27,7 +27,21 @@ import {
   Loader2,
   CalendarDays,
   X,
+  UserCircle,
 } from "lucide-react";
+
+interface UserRecord {
+  id: number;
+  username: string;
+  full_name_ar: string | null;
+  full_name_en: string | null;
+  role: string;
+}
+
+const REP_COLORS = [
+  "#e11d48", "#d97706", "#16a34a", "#2563eb", "#7c3aed",
+  "#db2777", "#0891b2", "#059669", "#dc2626", "#9333ea",
+];
 
 type VisitStatus = "interested" | "under_construction" | "not_suitable" | "follow_up";
 
@@ -83,16 +97,16 @@ function getDominantStatus(cluster: BuildingCluster): VisitStatus {
   return (Object.entries(counts).sort(([, a], [, b]) => b - a)[0][0] as VisitStatus);
 }
 
-function createClusterIcon(cluster: BuildingCluster) {
+function createClusterIcon(cluster: BuildingCluster, repColor?: string) {
   const total = parseInt(cluster.total_visits) || 1;
   const dominant = getDominantStatus(cluster);
   const cfg = STATUS_CONFIG[dominant];
   const size = Math.min(14 + total * 4, 40);
-  const interested = parseInt(cluster.interested_count) || 0;
-  const rate = Math.round((interested / total) * 100);
+  const bgColor = repColor ?? cfg.fillColor;
+  const borderColor = repColor ?? cfg.color;
   const html = `<div style="
     width:${size}px;height:${size}px;border-radius:50%;
-    background:${cfg.fillColor};border:2.5px solid ${cfg.color};
+    background:${bgColor};border:2.5px solid ${borderColor};
     box-shadow:0 2px 8px rgba(0,0,0,0.4);
     display:flex;align-items:center;justify-content:center;
     color:white;font-size:${size > 24 ? 11 : 9}px;font-weight:700;
@@ -106,9 +120,17 @@ export default function SalesMapPage() {
   const { user } = useAuth();
 
   const [cityFilter, setCityFilter] = useState<string>("all");
+  const [repIdFilter, setRepIdFilter] = useState<string>("all");
   const [dateFrom, setDateFrom] = useState<string>("");
   const [dateTo, setDateTo] = useState<string>("");
   const [showStats, setShowStats] = useState(true);
+
+  const { data: allUsers = [] } = useQuery<UserRecord[]>({
+    queryKey: ["/api/users"],
+  });
+  const salesReps = allUsers.filter(u => u.role === "sales");
+  const repColorMap: Record<number, string> = {};
+  salesReps.forEach((rep, i) => { repColorMap[rep.id] = REP_COLORS[i % REP_COLORS.length]; });
 
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -118,6 +140,7 @@ export default function SalesMapPage() {
   if (cityFilter !== "all") overviewParams.set("city", cityFilter);
   if (dateFrom) overviewParams.set("dateFrom", dateFrom);
   if (dateTo) overviewParams.set("dateTo", dateTo);
+  if (repIdFilter !== "all") overviewParams.set("repId", repIdFilter);
   const overviewUrl = `/api/map/manager-overview${overviewParams.toString() ? "?" + overviewParams.toString() : ""}`;
 
   const { data: overview, isLoading } = useQuery<ManagerOverviewResponse>({
@@ -182,12 +205,14 @@ export default function SalesMapPage() {
     if (!layer || !map) return;
     layer.clearLayers();
 
+    const filteredRepColor = repIdFilter !== "all" ? repColorMap[parseInt(repIdFilter)] : undefined;
+
     data.forEach(cluster => {
       const lat = parseFloat(cluster.cluster_lat);
       const lng = parseFloat(cluster.cluster_lng);
       if (isNaN(lat) || isNaN(lng)) return;
 
-      const icon = createClusterIcon(cluster);
+      const icon = createClusterIcon(cluster, filteredRepColor);
       const marker = L.marker([lat, lng], { icon });
       marker.bindPopup(buildPopupHtml(cluster), { maxWidth: 270 });
       marker.addTo(layer);
@@ -236,7 +261,7 @@ export default function SalesMapPage() {
 
   useEffect(() => {
     renderClusters(clusters);
-  }, [clusters, lang]);
+  }, [clusters, lang, repIdFilter]);
 
   const statusCounts: Record<VisitStatus, number> = {
     interested: clusters.reduce((s, c) => s + parseInt(c.interested_count), 0),
@@ -245,7 +270,7 @@ export default function SalesMapPage() {
     under_construction: clusters.reduce((s, c) => s + parseInt(c.under_construction_count), 0),
   };
 
-  const hasFilters = cityFilter !== "all" || dateFrom || dateTo;
+  const hasFilters = cityFilter !== "all" || repIdFilter !== "all" || dateFrom || dateTo;
 
   return (
     <div className="-m-4 md:-m-6 flex flex-col" style={{ height: "calc(100dvh - 56px)" }}>
@@ -265,6 +290,24 @@ export default function SalesMapPage() {
             <SelectItem value="all">{t("كل المدن", "All Cities")}</SelectItem>
             {cities.map(city => (
               <SelectItem key={city} value={city}>{city}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        {/* Rep filter */}
+        <Select value={repIdFilter} onValueChange={setRepIdFilter}>
+          <SelectTrigger className="w-36 h-8 text-xs" data-testid="select-rep-filter">
+            <SelectValue placeholder={t("كل المناديب", "All Reps")} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t("كل المناديب", "All Reps")}</SelectItem>
+            {salesReps.map((rep, i) => (
+              <SelectItem key={rep.id} value={String(rep.id)}>
+                <div className="flex items-center gap-2">
+                  <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: REP_COLORS[i % REP_COLORS.length] }} />
+                  <span>{rep.full_name_ar || rep.username}</span>
+                </div>
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -291,7 +334,7 @@ export default function SalesMapPage() {
           />
           {hasFilters && (
             <button
-              onClick={() => { setCityFilter("all"); setDateFrom(""); setDateTo(""); }}
+              onClick={() => { setCityFilter("all"); setRepIdFilter("all"); setDateFrom(""); setDateTo(""); }}
               className="h-8 w-8 flex items-center justify-center rounded-md hover:bg-muted text-muted-foreground"
               data-testid="button-clear-filters"
               title={t("مسح الفلاتر", "Clear filters")}
@@ -345,16 +388,24 @@ export default function SalesMapPage() {
               const visitCount = parseInt(rep.visit_count);
               const intCount = parseInt(rep.interested_count);
               const rate = visitCount > 0 ? Math.round((intCount / visitCount) * 100) : 0;
+              const repColor = repColorMap[rep.rep_id] ?? REP_COLORS[i % REP_COLORS.length];
+              const isActive = repIdFilter === String(rep.rep_id);
               return (
-                <div key={rep.rep_id} className="flex items-center gap-2 min-w-[130px] bg-muted/50 rounded-xl px-3 py-2">
-                  <Users className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                <button
+                  key={rep.rep_id}
+                  onClick={() => setRepIdFilter(isActive ? "all" : String(rep.rep_id))}
+                  className={`flex items-center gap-2 min-w-[130px] rounded-xl px-3 py-2 transition-colors ${isActive ? "ring-2" : "bg-muted/50 hover:bg-muted"}`}
+                  style={isActive ? { ringColor: repColor, background: repColor + "18" } : {}}
+                  data-testid={`button-rep-filter-${rep.rep_id}`}
+                >
+                  <div className="w-3.5 h-3.5 rounded-full shrink-0" style={{ background: repColor }} />
                   <div className="min-w-0">
                     <p className="text-xs font-medium truncate">{rep.full_name}</p>
                     <p className="text-[10px] text-muted-foreground">
                       {visitCount} {t("زيارة", "visits")} · <span className="text-green-600">{rate}%</span>
                     </p>
                   </div>
-                </div>
+                </button>
               );
             })}
           </div>

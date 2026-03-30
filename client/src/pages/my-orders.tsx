@@ -68,6 +68,18 @@ interface EnrichedOrder extends Quotation {
 
 type WorkOrderWithContract = WorkOrder & { _contract: Contract | undefined };
 
+interface FieldVisit {
+  id: number;
+  rep_id: number;
+  address: string | null;
+  city: string | null;
+  district: string | null;
+  building_status: string;
+  notes: string | null;
+  quotation_id: number | null;
+  created_at: string;
+}
+
 function getLastActivityDate(order: EnrichedOrder): Date {
   const candidates = [
     order.updatedAt,
@@ -205,6 +217,7 @@ export default function MyOrdersPage() {
   const [approveDialog, setApproveDialog] = useState<EnrichedOrder | null>(null);
   const [approveReceiptFile, setApproveReceiptFile] = useState<File | null>(null);
   const [approveReceiptPreview, setApproveReceiptPreview] = useState<string | null>(null);
+  const [linkVisitDialog, setLinkVisitDialog] = useState<EnrichedOrder | null>(null);
 
   const _today = new Date();
   const _currentYear = _today.getFullYear();
@@ -338,6 +351,22 @@ export default function MyOrdersPage() {
       const msg = error instanceof Error ? error.message : "";
       toast({ title: msg || t("فشل إلغاء الطلب", "Failed to cancel order"), variant: "destructive" });
     },
+  });
+
+  const { data: repFieldVisits = [] } = useQuery<FieldVisit[]>({
+    queryKey: ["/api/map/visits"],
+    enabled: !!linkVisitDialog,
+  });
+
+  const linkVisitMutation = useMutation({
+    mutationFn: async ({ visitId, quotationId }: { visitId: number; quotationId: number }) =>
+      apiRequest("PATCH", `/api/map/visits/${visitId}`, { quotationId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/map/visits"] });
+      setLinkVisitDialog(null);
+      toast({ title: t("تم ربط الزيارة بالطلب", "Visit linked to order") });
+    },
+    onError: () => toast({ title: t("فشل ربط الزيارة", "Failed to link visit"), variant: "destructive" }),
   });
 
   type AppointmentPayload = { title: string; appointmentDate: string; startTime: string; endTime: string; customerId: number | null; quotationId: number; assignedTo: number; notes: string };
@@ -983,6 +1012,17 @@ export default function MyOrdersPage() {
                                         {approveOrderMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
                                       </Button>
                                     )}
+                                    {!isCancelled && !isDelivered && user?.role === "sales" && isMine && (
+                                      <Button
+                                        variant="ghost" size="sm"
+                                        className="h-7 w-7 p-0 text-teal-600 hover:text-teal-700 hover:bg-teal-50 dark:hover:bg-teal-950/30"
+                                        onClick={() => setLinkVisitDialog(order)}
+                                        title={t("ربط بزيارة ميدانية", "Link to Field Visit")}
+                                        data-testid={`button-link-visit-${order.id}`}
+                                      >
+                                        <MapPin className="w-3.5 h-3.5" />
+                                      </Button>
+                                    )}
                                     {canCancel && (
                                       <Button
                                         variant="ghost" size="sm"
@@ -1260,6 +1300,80 @@ export default function MyOrdersPage() {
         </Dialog>
       )}
 
+
+      {linkVisitDialog && (
+        <Dialog open onOpenChange={() => setLinkVisitDialog(null)}>
+          <DialogContent className="sm:max-w-md" data-testid="dialog-link-visit">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <MapPin className="w-4 h-4 text-teal-600" />
+                {t("ربط زيارة ميدانية بالطلب", "Link Field Visit to Order")}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="py-2">
+              <p className="text-xs text-muted-foreground mb-3">
+                {t(`اختر زيارة غير مرتبطة لربطها بالطلب #${linkVisitDialog.quotationNumber || linkVisitDialog.id}`,
+                  `Choose an unlinked visit to connect to Order #${linkVisitDialog.quotationNumber || linkVisitDialog.id}`)}
+              </p>
+              {(() => {
+                const unlinked = repFieldVisits.filter(v => !v.quotation_id);
+                if (unlinked.length === 0) {
+                  return (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <MapPin className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                      <p className="text-sm">{t("لا توجد زيارات غير مرتبطة", "No unlinked visits found")}</p>
+                      <p className="text-xs mt-1">{t("سجّل زيارة من خريطتي أولاً", "Record a visit from My Map first")}</p>
+                    </div>
+                  );
+                }
+                const STATUS_LABELS: Record<string, { ar: string; en: string; color: string }> = {
+                  interested: { ar: "مهتم", en: "Interested", color: "text-green-600" },
+                  under_construction: { ar: "تحت الإنشاء", en: "Under Construction", color: "text-yellow-600" },
+                  not_suitable: { ar: "غير مناسب", en: "Not Suitable", color: "text-red-600" },
+                  follow_up: { ar: "متابعة", en: "Follow Up", color: "text-blue-600" },
+                };
+                return (
+                  <div className="space-y-2 max-h-72 overflow-y-auto">
+                    {unlinked.map(v => {
+                      const cfg = STATUS_LABELS[v.building_status] ?? STATUS_LABELS.follow_up;
+                      return (
+                        <button
+                          key={v.id}
+                          onClick={() => linkVisitMutation.mutate({ visitId: v.id, quotationId: linkVisitDialog.id })}
+                          disabled={linkVisitMutation.isPending}
+                          className="w-full flex items-start gap-3 p-3 rounded-lg border hover:bg-muted/50 text-start transition-colors"
+                          data-testid={`button-select-visit-${v.id}`}
+                        >
+                          <div className={`mt-0.5 shrink-0 ${cfg.color}`}>
+                            <MapPin className="w-4 h-4" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium truncate">{v.address || t("عنوان غير محدد", "Address unspecified")}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {[v.district, v.city].filter(Boolean).join("، ")}
+                              {" · "}
+                              <span className={cfg.color}>{t(cfg.ar, cfg.en)}</span>
+                            </p>
+                            <p className="text-[10px] text-muted-foreground mt-0.5">
+                              {new Date(v.created_at).toLocaleDateString(lang === "ar" ? "ar-SA" : "en-US")}
+                            </p>
+                          </div>
+                          {linkVisitMutation.isPending && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground shrink-0 mt-1" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setLinkVisitDialog(null)} data-testid="button-link-visit-close">
+                {t("إغلاق", "Close")}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {approveDialog && (
         <Dialog open onOpenChange={() => { setApproveDialog(null); setApproveReceiptFile(null); setApproveReceiptPreview(null); }}>
