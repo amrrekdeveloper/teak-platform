@@ -439,6 +439,10 @@ export default function MyOrdersPage() {
       if (repFilter === "all") return enrichedOrders.filter(o => o.assignedTo === user.id || o.createdBy === user.id);
       return enrichedOrders.filter(o => o.assignedTo === parseInt(repFilter));
     }
+    // Designer & accountant: server already returns only relevant orders — trust the server filter
+    if (["designer", "accountant"].includes(user.role)) {
+      return enrichedOrders;
+    }
     return enrichedOrders.filter(o => {
       const claimableStatuses = ["requested", "open", "draft"];
       const isUnassignedAndClaimable = !o.assignedTo && claimableStatuses.includes(o.status ?? "");

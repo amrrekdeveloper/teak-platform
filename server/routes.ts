@@ -1285,9 +1285,26 @@ export async function registerRoutes(
       if (quotation.orderStage !== "survey_done") {
         return res.status(403).json({ message: "لا يمكن إرسال الإشعار إلا لطلبات في مرحلة المسح الميداني" });
       }
-      const updated = await storage.updateQuotation(quotationId, {
-        notes: req.body.notes || "[التصميم جاهز]: يرجى مراجعة ملفات التصميم والتواصل مع العميل",
-      });
+      const notesText = req.body.notes || "[التصميم جاهز]: يرجى مراجعة ملفات التصميم والتواصل مع العميل";
+      const updated = await storage.updateQuotation(quotationId, { notes: notesText });
+      // Notify assigned sales rep (and creator if different)
+      const recipientIds = new Set<number>();
+      if (quotation.assignedTo) recipientIds.add(Number(quotation.assignedTo));
+      if (quotation.createdBy) recipientIds.add(Number(quotation.createdBy));
+      for (const recipientId of recipientIds) {
+        try {
+          await storage.createNotification({
+            userId: recipientId,
+            titleAr: "التصميم جاهز",
+            titleEn: "Design Ready",
+            messageAr: `تم رفع ملفات التصميم للطلب رقم ${quotationId} — يرجى المراجعة والتواصل مع العميل`,
+            messageEn: `Design files uploaded for order #${quotationId} — please review and contact the client`,
+            type: "action",
+            relatedEntity: "quotation",
+            relatedId: quotationId,
+          });
+        } catch (_) { /* non-fatal: notification failure should not block the response */ }
+      }
       res.json(updated);
     } catch (error) {
       res.status(500).json({ message: "حدث خطأ" });
