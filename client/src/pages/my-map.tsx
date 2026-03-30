@@ -179,6 +179,9 @@ export default function MyMapPage() {
   const drawingLayerRef = useRef<L.LayerGroup | null>(null);
   const clickMarkerRef = useRef<L.Marker | null>(null);
   const buildingFetchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const drawingModeRef = useRef(false);
+  const drawingPointsRef = useRef<[number, number][]>([]);
+  const onMarkerClickRef = useRef<((visit: BuildingVisit) => void) | null>(null);
 
   const { data: visits = [], isLoading: visitsLoading } = useQuery<BuildingVisit[]>({
     queryKey: ["/api/map/visits"],
@@ -189,10 +192,13 @@ export default function MyMapPage() {
     queryKey: ["/api/map/zones"],
   });
 
+  type CreateVisitPayload = { lat: number; lng: number; address: string; city: string; district: string; buildingStatus: VisitStatus; notes: string; quotationId?: number | null };
+  type UpdateVisitPayload = { buildingStatus: VisitStatus; notes: string };
+
   const createVisitMutation = useMutation({
-    mutationFn: async (data: any) => {
+    mutationFn: async (data: CreateVisitPayload) => {
       const res = await apiRequest("POST", "/api/map/visits", data);
-      return res.json();
+      return res.json() as Promise<BuildingVisit>;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/map/visits"] });
@@ -205,9 +211,9 @@ export default function MyMapPage() {
   });
 
   const updateVisitMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: any }) => {
+    mutationFn: async ({ id, data }: { id: number; data: UpdateVisitPayload }) => {
       const res = await apiRequest("PATCH", `/api/map/visits/${id}`, data);
-      return res.json();
+      return res.json() as Promise<BuildingVisit>;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/map/visits"] });
@@ -231,10 +237,12 @@ export default function MyMapPage() {
     },
   });
 
+  type CreateZonePayload = { name: string; polygon: [number, number][]; targetCount: number };
+
   const createZoneMutation = useMutation({
-    mutationFn: async (data: any) => {
+    mutationFn: async (data: CreateZonePayload) => {
       const res = await apiRequest("POST", "/api/map/zones", data);
-      return res.json();
+      return res.json() as Promise<MarketingZone>;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/map/zones"] });
@@ -342,12 +350,12 @@ export default function MyMapPage() {
           ${v.address ? `<p style="font-size:11px;color:#666;margin:0 0 4px">${v.address.slice(0, 80)}</p>` : ""}
           ${v.notes ? `<p style="font-size:12px;margin:0 0 6px">${v.notes}</p>` : ""}
           <p style="font-size:10px;color:#999;margin:0">${new Date(v.visited_at).toLocaleDateString(lang === "ar" ? "ar-SA" : "en-GB")}</p>
-          <button onclick="window.openEditVisit(${v.id})" style="margin-top:8px;padding:3px 10px;background:#3b82f6;color:white;border:none;border-radius:4px;cursor:pointer;font-size:11px">
-            ${lang === "ar" ? "تعديل" : "Edit"}
-          </button>
         </div>
       `;
       marker.bindPopup(popupContent, { maxWidth: 220 });
+      marker.on("popupopen", () => {
+        if (onMarkerClickRef.current) onMarkerClickRef.current(v);
+      });
       marker.addTo(layer);
     });
   }
@@ -395,30 +403,11 @@ export default function MyMapPage() {
 
     mapRef.current = map;
 
-    // Global edit handler for popup button
-    (window as any).openEditVisit = (id: number) => {
-      const visit = (window as any).__mapVisits?.find((v: BuildingVisit) => v.id === id);
-      if (!visit) return;
-      map.closePopup();
-      setVisitForm({
-        open: true,
-        lat: parseFloat(visit.lat),
-        lng: parseFloat(visit.lng),
-        address: visit.address || "",
-        city: visit.city || "",
-        district: visit.district || "",
-        buildingStatus: visit.building_status,
-        notes: visit.notes || "",
-        editingId: id,
-      });
-    };
-
     map.on("click", (e) => {
-      if ((map as any)._drawingMode) {
+      if (drawingModeRef.current) {
         const latlng: [number, number] = [e.latlng.lat, e.latlng.lng];
-        const currentPoints: [number, number][] = (map as any)._drawingPoints || [];
-        const newPoints = [...currentPoints, latlng];
-        (map as any)._drawingPoints = newPoints;
+        const newPoints = [...drawingPointsRef.current, latlng];
+        drawingPointsRef.current = newPoints;
 
         drawingLayerRef.current?.clearLayers();
         newPoints.forEach((pt, i) => {
@@ -433,7 +422,7 @@ export default function MyMapPage() {
           L.polyline(newPoints, { color: "#7c3aed", weight: 2 })
             .addTo(drawingLayerRef.current!);
         }
-        setDrawingPoints(newPoints);
+        setDrawingPoints([...newPoints]);
         return;
       }
 
@@ -465,7 +454,6 @@ export default function MyMapPage() {
     });
 
     return () => {
-      (window as any).openEditVisit = undefined;
       map.remove();
       mapRef.current = null;
       visitLayerRef.current = null;
@@ -476,11 +464,11 @@ export default function MyMapPage() {
     };
   }, []);
 
-  // Sync drawing mode to map
+  // Sync drawing mode to refs (used by Leaflet click handler)
   useEffect(() => {
+    drawingModeRef.current = drawingMode;
+    drawingPointsRef.current = drawingPoints;
     if (!mapRef.current) return;
-    (mapRef.current as any)._drawingMode = drawingMode;
-    (mapRef.current as any)._drawingPoints = drawingPoints;
     if (drawingMode) {
       mapRef.current.doubleClickZoom.disable();
       mapRef.current.getContainer().style.cursor = "crosshair";
@@ -490,9 +478,23 @@ export default function MyMapPage() {
     }
   }, [drawingMode, drawingPoints]);
 
+  // Keep marker click callback in sync so the handler always has latest visits + form setter
+  onMarkerClickRef.current = (visit: BuildingVisit) => {
+    setVisitForm({
+      open: true,
+      lat: parseFloat(visit.lat),
+      lng: parseFloat(visit.lng),
+      address: visit.address || "",
+      city: visit.city || "",
+      district: visit.district || "",
+      buildingStatus: visit.building_status,
+      notes: visit.notes || "",
+      editingId: visit.id,
+    });
+  };
+
   // Render visits when data changes
   useEffect(() => {
-    (window as any).__mapVisits = visits;
     renderVisits(visits);
   }, [visits, lang]);
 
@@ -502,20 +504,22 @@ export default function MyMapPage() {
   }, [zones]);
 
   function handleSaveVisit() {
-    if (!visitForm.buildingStatus) return;
-    const data = {
-      lat: visitForm.lat,
-      lng: visitForm.lng,
-      address: visitForm.address,
-      city: visitForm.city,
-      district: visitForm.district,
-      buildingStatus: visitForm.buildingStatus,
-      notes: visitForm.notes,
-    };
+    if (!visitForm.buildingStatus || !visitForm.lat || !visitForm.lng) return;
     if (visitForm.editingId) {
-      updateVisitMutation.mutate({ id: visitForm.editingId, data: { buildingStatus: visitForm.buildingStatus, notes: visitForm.notes } });
+      updateVisitMutation.mutate({
+        id: visitForm.editingId,
+        data: { buildingStatus: visitForm.buildingStatus, notes: visitForm.notes },
+      });
     } else {
-      createVisitMutation.mutate(data);
+      createVisitMutation.mutate({
+        lat: visitForm.lat,
+        lng: visitForm.lng,
+        address: visitForm.address,
+        city: visitForm.city,
+        district: visitForm.district,
+        buildingStatus: visitForm.buildingStatus,
+        notes: visitForm.notes,
+      });
     }
   }
 

@@ -1084,3 +1084,11 @@ export const insertMarketingZoneSchema = createInsertSchema(marketingZones).omit
 });
 export type InsertMarketingZone = z.infer<typeof insertMarketingZoneSchema>;
 export type MarketingZone = typeof marketingZones.$inferSelect;
+
+export const osmBuildingsCache = pgTable("osm_buildings_cache", {
+  id: serial("id").primaryKey(),
+  bbox: text("bbox").notNull().unique(),
+  buildings: jsonb("buildings").notNull().$default(() => []),
+  fetchedAt: timestamp("fetched_at").notNull().defaultNow(),
+});
+export type OsmBuildingsCache = typeof osmBuildingsCache.$inferSelect;

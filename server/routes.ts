@@ -5259,6 +5259,75 @@ export async function registerRoutes(
     }
   });
 
+  // Manager overview: aggregate visits per location cluster with visit history
+  app.get("/api/map/manager-overview", requireRole("owner", "assistant", "it"), async (req, res) => {
+    const { city, dateFrom, dateTo } = req.query;
+    try {
+      const conditions: string[] = [];
+      const params: (string | number)[] = [];
+
+      if (city && city !== "all") {
+        params.push(city as string);
+        conditions.push(`bv.city = $${params.length}`);
+      }
+      if (dateFrom) {
+        params.push(dateFrom as string);
+        conditions.push(`bv.visited_at >= $${params.length}::date`);
+      }
+      if (dateTo) {
+        params.push(dateTo as string);
+        conditions.push(`bv.visited_at < ($${params.length}::date + interval '1 day')`);
+      }
+
+      const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+
+      // Group nearby visits (round lat/lng to 4 decimals ≈ 11m precision)
+      const clusterQuery = `
+        SELECT
+          ROUND(bv.lat::numeric, 4) AS cluster_lat,
+          ROUND(bv.lng::numeric, 4) AS cluster_lng,
+          MAX(bv.address) AS address,
+          MAX(bv.city) AS city,
+          MAX(bv.district) AS district,
+          COUNT(bv.id) AS total_visits,
+          COUNT(DISTINCT bv.rep_id) AS rep_count,
+          COUNT(CASE WHEN bv.building_status = 'interested' THEN 1 END) AS interested_count,
+          COUNT(CASE WHEN bv.building_status = 'follow_up' THEN 1 END) AS follow_up_count,
+          COUNT(CASE WHEN bv.building_status = 'not_suitable' THEN 1 END) AS not_suitable_count,
+          COUNT(CASE WHEN bv.building_status = 'under_construction' THEN 1 END) AS under_construction_count,
+          json_agg(json_build_object(
+            'id', bv.id,
+            'rep_name', COALESCE(u.full_name_ar, u.username),
+            'rep_id', bv.rep_id,
+            'building_status', bv.building_status,
+            'notes', bv.notes,
+            'visited_at', bv.visited_at
+          ) ORDER BY bv.visited_at DESC) AS visit_history
+        FROM building_visits bv
+        JOIN users u ON u.id = bv.rep_id
+        ${where}
+        GROUP BY ROUND(bv.lat::numeric, 4), ROUND(bv.lng::numeric, 4)
+        ORDER BY total_visits DESC
+        LIMIT 500
+      `;
+
+      const citiesQuery = `SELECT DISTINCT city FROM building_visits WHERE city IS NOT NULL AND city != '' ORDER BY city`;
+
+      const [clusterResult, citiesResult] = await Promise.all([
+        pool.query(clusterQuery, params),
+        pool.query(citiesQuery),
+      ]);
+
+      res.json({
+        clusters: clusterResult.rows,
+        cities: citiesResult.rows.map((r: { city: string }) => r.city),
+      });
+    } catch (error) {
+      console.error("Manager overview error:", error);
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
   app.get("/api/finance/ready-to-invoice", requireRole("owner", "assistant", "accountant"), async (req, res) => {
     try {
       const allContracts = await storage.getContracts();
