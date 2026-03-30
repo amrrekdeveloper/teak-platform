@@ -154,7 +154,7 @@ export default function OrderDetailPage() {
   const { toast } = useToast();
   const isManager = user && ["owner", "assistant", "it"].includes(user.role);
   const isDesigner = user?.role === "designer" || user?.role === "it";
-  const isSalesRep = user?.role === "sales_rep";
+  const isSalesRep = user?.role === "sales";
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadLabel, setUploadLabel] = useState("");
