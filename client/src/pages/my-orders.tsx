@@ -236,10 +236,17 @@ export default function MyOrdersPage() {
             { headers: { "User-Agent": "TeakApp/1.0" } }
           );
           const data = await res.json();
-          const district = data.address?.suburb || data.address?.neighbourhood || data.address?.quarter || data.address?.residential || "";
-          const city = data.address?.city || data.address?.town || data.address?.county || data.address?.state_district || "";
-          setNewOrderForm(f => ({ ...f, district, city: city || f.city }));
-          toast({ title: t("تم تحديد الموقع", "Location detected"), description: district || city || t("تم الحصول على الموقع", "Location obtained") });
+          const addr = data.address || {};
+          const district =
+            addr.suburb || addr.neighbourhood || addr.quarter || addr.residential ||
+            addr.city_district || addr.town_district || addr.county ||
+            addr.village || addr.hamlet || addr.municipality || addr.locality || "";
+          // Only update district — city is chosen from a fixed dropdown, don't overwrite
+          setNewOrderForm(f => ({ ...f, district: district || f.district }));
+          toast({
+            title: t("تم تحديد الموقع", "Location detected"),
+            description: district || t("تم الحصول على الموقع — أدخل الحي يدوياً", "Location obtained — enter district manually"),
+          });
         } catch {
           toast({ title: t("تعذر تحديد الموقع", "Could not detect location"), variant: "destructive" });
         } finally {
