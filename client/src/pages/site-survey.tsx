@@ -125,6 +125,8 @@ interface WallItem {
   heightFromFloor: string;
   specs: string;
   notes: string;
+  drainPlacement?: "wall" | "floor";
+  distanceFromWall?: string;
 }
 
 interface WallData {
@@ -661,7 +663,12 @@ export default function SiteSurveyPage() {
               const label = { door: "Door", window: "Window", outlet: "Outlet", drain: "Drain", obstacle: "Obstacle" }[it.type] || it.type;
               const dims = (it.width && it.height) ? ` (${it.width}×${it.height}m)` : it.width ? ` (${it.width}m)` : "";
               const dist = it.distanceFromFirst ? ` @${it.distanceFromFirst}m` : "";
-              return `${label}${dims}${dist}`;
+              const drainExtra = it.type === "drain"
+                ? ((it.drainPlacement ?? "wall") === "floor"
+                    ? ` [Floor${it.distanceFromWall ? `, ${it.distanceFromWall}m from wall` : ""}]`
+                    : `${it.heightFromFloor ? ` [Wall, ${it.heightFromFloor}m from floor]` : " [Wall]"}`)
+                : "";
+              return `${label}${dims}${dist}${drainExtra}`;
             }).join("; ") || "-";
             return [letter, w.length || "—", w.wallHeight || space.height || "—", itemsSummary];
           });
@@ -817,7 +824,10 @@ export default function SiteSurveyPage() {
           if (w.id !== wallId) return w;
           return {
             ...w,
-            items: [...w.items, { type, width: "", height: "", distanceFromFirst: "", heightFromFloor: "", specs: "", notes: "" }],
+            items: [...w.items, {
+              type, width: "", height: "", distanceFromFirst: "", heightFromFloor: "", specs: "", notes: "",
+              ...(type === "drain" ? { drainPlacement: "wall" as const, distanceFromWall: "" } : {}),
+            }],
           };
         }),
       };
@@ -1497,13 +1507,14 @@ export default function SiteSurveyPage() {
                                 {activeWall.items.map((item, itemIndex) => {
                                   const ItemIcon = wallItemIcons[item.type] || X;
                                   const isDoorOrWindow = item.type === "door" || item.type === "window";
-                                  const isOutletOrDrain = item.type === "outlet" || item.type === "drain";
+                                  const isOutlet = item.type === "outlet";
                                   const distFromSecond = isDoorOrWindow && wallLen > 0
                                     ? (wallLen - (parseFloat(item.distanceFromFirst) || 0) - (parseFloat(item.width) || 0)).toFixed(2)
                                     : null;
-                                  const heightFromCeiling = isOutletOrDrain && spaceHeight > 0
+                                  const heightFromCeiling = isOutlet && spaceHeight > 0
                                     ? (spaceHeight - (parseFloat(item.heightFromFloor) || 0)).toFixed(2)
                                     : null;
+                                  const drainIsWall = (item.drainPlacement ?? "wall") === "wall";
                                   const itemColor = wallItemColors[item.type] || wallItemColors.obstacle;
                                   return (
                                     <div key={itemIndex} className={`p-2.5 rounded-lg border space-y-2 ${itemColor.bg} ${itemColor.border}`}>
@@ -1537,7 +1548,23 @@ export default function SiteSurveyPage() {
                                           {t("بُعد عن الحرف الثاني", "From Second Edge")}: <span className="font-semibold text-foreground">{distFromSecond} م</span>
                                         </p>
                                       )}
-                                      {isOutletOrDrain && (
+                                      {item.type === "window" && (
+                                        <div className="grid grid-cols-2 gap-1.5 pt-0.5">
+                                          <div>
+                                            <Label className="text-[10px] text-muted-foreground">{t("ارتفاع عن الأرضية م", "From Floor (m)")}</Label>
+                                            <Input type="number" step="0.01" value={item.heightFromFloor} onChange={(e) => updateWallItem(editSpace.id, activeWall.id, itemIndex, "heightFromFloor", e.target.value)} className="h-7 text-xs" data-testid={`input-window-height-from-floor-${itemIndex}`} />
+                                          </div>
+                                          {spaceHeight > 0 && item.heightFromFloor && (
+                                            <div className="flex flex-col justify-end pb-1">
+                                              <p className="text-[10px] text-muted-foreground">{t("الحافة العليا عن الأرضية", "Top edge from floor")}</p>
+                                              <p className="text-xs font-semibold text-foreground">
+                                                {(parseFloat(item.heightFromFloor) + parseFloat(item.height || "0")).toFixed(2)} م
+                                              </p>
+                                            </div>
+                                          )}
+                                        </div>
+                                      )}
+                                      {isOutlet && (
                                         <div className="grid grid-cols-2 gap-1.5">
                                           <div>
                                             <Label className="text-[10px] text-muted-foreground">{t("ارتفاع عن الأرضية م", "From Floor (m)")}</Label>
@@ -1549,12 +1576,12 @@ export default function SiteSurveyPage() {
                                           </div>
                                         </div>
                                       )}
-                                      {isOutletOrDrain && heightFromCeiling !== null && (
+                                      {isOutlet && heightFromCeiling !== null && (
                                         <p className="text-[10px] text-muted-foreground">
                                           {t("مسافة من السقف", "From Ceiling")}: <span className="font-semibold text-foreground">{heightFromCeiling} م</span>
                                         </p>
                                       )}
-                                      {item.type === "outlet" && (
+                                      {isOutlet && (
                                         <div>
                                           <Label className="text-[10px] text-muted-foreground mb-1 block">{t("نوع مخرج الكهرباء", "Outlet Type")}</Label>
                                           <div className="flex flex-wrap gap-1">
@@ -1575,9 +1602,74 @@ export default function SiteSurveyPage() {
                                         </div>
                                       )}
                                       {item.type === "drain" && (
-                                        <div>
-                                          <Label className="text-[10px] text-muted-foreground">{t("مواصفات", "Specs")}</Label>
-                                          <Input value={item.specs} onChange={(e) => updateWallItem(editSpace.id, activeWall.id, itemIndex, "specs", e.target.value)} placeholder={t("مثال: فتحة تصريف مياه", "e.g. drain opening")} className="h-7 text-xs" />
+                                        <div className="space-y-2">
+                                          {/* Drain placement toggle */}
+                                          <div>
+                                            <Label className="text-[10px] text-muted-foreground mb-1 block">{t("نوع التركيب", "Installation Type")}</Label>
+                                            <div className="flex gap-1.5">
+                                              <button
+                                                type="button"
+                                                onClick={() => updateWallItem(editSpace.id, activeWall.id, itemIndex, "drainPlacement", "wall")}
+                                                className={`flex-1 text-[11px] py-1 px-2 rounded-md border font-medium transition-colors ${drainIsWall ? "bg-teal-600 text-white border-teal-600" : "bg-background text-muted-foreground border-border hover:border-teal-400"}`}
+                                                data-testid={`button-drain-wall-${itemIndex}`}
+                                              >
+                                                🧱 {t("جدارية", "Wall Drain")}
+                                              </button>
+                                              <button
+                                                type="button"
+                                                onClick={() => updateWallItem(editSpace.id, activeWall.id, itemIndex, "drainPlacement", "floor")}
+                                                className={`flex-1 text-[11px] py-1 px-2 rounded-md border font-medium transition-colors ${!drainIsWall ? "bg-teal-600 text-white border-teal-600" : "bg-background text-muted-foreground border-border hover:border-teal-400"}`}
+                                                data-testid={`button-drain-floor-${itemIndex}`}
+                                              >
+                                                🔵 {t("أرضية", "Floor Drain")}
+                                              </button>
+                                            </div>
+                                          </div>
+
+                                          {/* Wall drain fields */}
+                                          {drainIsWall && (
+                                            <>
+                                              <div className="grid grid-cols-3 gap-1.5">
+                                                <div>
+                                                  <Label className="text-[10px] text-muted-foreground">{t("ارتفاع عن الأرضية م", "From Floor (m)")}</Label>
+                                                  <Input type="number" step="0.01" value={item.heightFromFloor} onChange={(e) => updateWallItem(editSpace.id, activeWall.id, itemIndex, "heightFromFloor", e.target.value)} className="h-7 text-xs" data-testid={`input-drain-height-floor-${itemIndex}`} />
+                                                </div>
+                                                <div>
+                                                  <Label className="text-[10px] text-muted-foreground">{t("العرض م", "W (m)")}</Label>
+                                                  <Input type="number" step="0.01" value={item.width} onChange={(e) => updateWallItem(editSpace.id, activeWall.id, itemIndex, "width", e.target.value)} className="h-7 text-xs" data-testid={`input-drain-width-${itemIndex}`} />
+                                                </div>
+                                                <div>
+                                                  <Label className="text-[10px] text-muted-foreground">{t("الارتفاع م", "H (m)")}</Label>
+                                                  <Input type="number" step="0.01" value={item.height} onChange={(e) => updateWallItem(editSpace.id, activeWall.id, itemIndex, "height", e.target.value)} className="h-7 text-xs" data-testid={`input-drain-height-dim-${itemIndex}`} />
+                                                </div>
+                                              </div>
+                                              {spaceHeight > 0 && item.heightFromFloor && (
+                                                <p className="text-[10px] text-muted-foreground">
+                                                  {t("مسافة من السقف", "From Ceiling")}: <span className="font-semibold text-foreground">{(spaceHeight - (parseFloat(item.heightFromFloor) || 0)).toFixed(2)} م</span>
+                                                </p>
+                                              )}
+                                            </>
+                                          )}
+
+                                          {/* Floor drain fields */}
+                                          {!drainIsWall && (
+                                            <div className="grid grid-cols-2 gap-1.5">
+                                              <div>
+                                                <Label className="text-[10px] text-muted-foreground">{t("البُعد عن الجدار م", "Dist. from Wall (m)")}</Label>
+                                                <Input type="number" step="0.01" value={item.distanceFromWall ?? ""} onChange={(e) => updateWallItem(editSpace.id, activeWall.id, itemIndex, "distanceFromWall", e.target.value)} className="h-7 text-xs" data-testid={`input-drain-dist-wall-${itemIndex}`} />
+                                              </div>
+                                              <div>
+                                                <Label className="text-[10px] text-muted-foreground">{t("بُعد عن الحرف الأول م", "From Edge (m)")}</Label>
+                                                <Input type="number" step="0.01" value={item.distanceFromFirst} onChange={(e) => updateWallItem(editSpace.id, activeWall.id, itemIndex, "distanceFromFirst", e.target.value)} className="h-7 text-xs" data-testid={`input-drain-dist-first-${itemIndex}`} />
+                                              </div>
+                                            </div>
+                                          )}
+
+                                          {/* Additional specs */}
+                                          <div>
+                                            <Label className="text-[10px] text-muted-foreground">{t("مواصفات إضافية", "Additional Specs")}</Label>
+                                            <Input value={item.specs} onChange={(e) => updateWallItem(editSpace.id, activeWall.id, itemIndex, "specs", e.target.value)} placeholder={t("مثال: فتحة تصريف مياه PVC", "e.g. PVC drain pipe")} className="h-7 text-xs" data-testid={`input-drain-specs-${itemIndex}`} />
+                                          </div>
                                         </div>
                                       )}
                                       {item.type === "obstacle" && (

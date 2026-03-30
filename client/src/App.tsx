@@ -229,6 +229,7 @@ function Router() {
       <Route path="/portal/login" component={CustomerPortalLogin} />
       <Route path="/portal" component={CustomerPortal} />
       <Route path="/view-3d" component={Scene3DPage} />
+      <Route path="/scene-3d" component={Scene3DPage} />
       <Route path="/dashboard" nest component={DashboardRoutes} />
       <Route component={NotFound} />
     </Switch>
