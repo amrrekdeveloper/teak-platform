@@ -24,14 +24,26 @@ const surveyFileStorage = multer.diskStorage({
   },
 });
 
+const ALLOWED_SURVEY_FILE_TYPES = [
+  "application/pdf",
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  "image/bmp",
+  "image/tiff",
+];
+const ALLOWED_SURVEY_EXTENSIONS = [".pdf", ".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".tiff", ".tif", ".dwg", ".dxf", ".skp"];
 const surveyFileUpload = multer({
   storage: surveyFileStorage,
   limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
-    if (file.mimetype === "application/pdf" || file.originalname.toLowerCase().endsWith(".pdf")) {
+    const ext = "." + (file.originalname.split(".").pop() || "").toLowerCase();
+    if (ALLOWED_SURVEY_FILE_TYPES.includes(file.mimetype) || ALLOWED_SURVEY_EXTENSIONS.includes(ext)) {
       cb(null, true);
     } else {
-      cb(new Error("Only PDF files are allowed"));
+      cb(new Error("Only PDF, image, or design files are allowed"));
     }
   },
 });
@@ -1207,7 +1219,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/quotations/:id", requireRole("owner", "assistant", "sales"), async (req, res) => {
+  app.patch("/api/quotations/:id", requireRole("owner", "assistant", "sales", "designer"), async (req, res) => {
     try {
       const userId = req.session.userId!;
       const currentUser = await storage.getUser(userId);
