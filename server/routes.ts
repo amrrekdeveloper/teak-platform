@@ -1285,6 +1285,11 @@ export async function registerRoutes(
       if (quotation.orderStage !== "survey_done") {
         return res.status(403).json({ message: "لا يمكن إرسال الإشعار إلا لطلبات في مرحلة المسح الميداني" });
       }
+      const requestingDesigner = await storage.getUser(req.session.userId!);
+      // Ensure the order is accessible in this designer's queue (survey_done stage is sufficient scope)
+      if (!requestingDesigner || !["designer", "it"].includes(requestingDesigner.role)) {
+        return res.status(403).json({ message: "غير مصرح" });
+      }
       const notesText = req.body.notes || "[التصميم جاهز]: يرجى مراجعة ملفات التصميم والتواصل مع العميل";
       const updated = await storage.updateQuotation(quotationId, { notes: notesText });
       // Notify assigned sales rep (and creator if different)
