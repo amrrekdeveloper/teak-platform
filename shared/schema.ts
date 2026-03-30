@@ -1038,3 +1038,49 @@ export const insertSurveyDesignFileSchema = createInsertSchema(surveyDesignFiles
 export type InsertSurveyDesignFile = z.infer<typeof insertSurveyDesignFileSchema>;
 export type SurveyDesignFile = typeof surveyDesignFiles.$inferSelect;
 export type PasswordResetRequest = typeof passwordResetRequests.$inferSelect;
+
+// ─── Task #40: Marketing Map System ──────────────────────────────────────────
+export const buildingVisitStatusEnum = pgEnum("building_visit_status", [
+  "interested",
+  "under_construction",
+  "not_suitable",
+  "follow_up",
+]);
+
+export const buildingVisits = pgTable("building_visits", {
+  id: serial("id").primaryKey(),
+  repId: integer("rep_id").references(() => users.id).notNull(),
+  lat: decimal("lat", { precision: 10, scale: 7 }).notNull(),
+  lng: decimal("lng", { precision: 10, scale: 7 }).notNull(),
+  address: text("address"),
+  city: text("city"),
+  district: text("district"),
+  buildingStatus: buildingVisitStatusEnum("building_status").notNull().default("follow_up"),
+  notes: text("notes"),
+  quotationId: integer("quotation_id").references(() => quotations.id),
+  visitedAt: timestamp("visited_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertBuildingVisitSchema = createInsertSchema(buildingVisits).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertBuildingVisit = z.infer<typeof insertBuildingVisitSchema>;
+export type BuildingVisit = typeof buildingVisits.$inferSelect;
+
+export const marketingZones = pgTable("marketing_zones", {
+  id: serial("id").primaryKey(),
+  repId: integer("rep_id").references(() => users.id).notNull(),
+  name: text("name").notNull(),
+  polygon: jsonb("polygon").notNull().$default(() => []),
+  targetCount: integer("target_count").default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertMarketingZoneSchema = createInsertSchema(marketingZones).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertMarketingZone = z.infer<typeof insertMarketingZoneSchema>;
+export type MarketingZone = typeof marketingZones.$inferSelect;

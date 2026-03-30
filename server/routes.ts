@@ -4994,6 +4994,271 @@ export async function registerRoutes(
     }
   });
 
+  // ─── Task #40: Marketing Map System ─────────────────────────────────────────
+
+  // DB migration for map tables
+  try {
+    await pool.query(`
+      DO $$ BEGIN
+        CREATE TYPE building_visit_status AS ENUM ('interested', 'under_construction', 'not_suitable', 'follow_up');
+      EXCEPTION WHEN duplicate_object THEN NULL;
+      END $$;
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS building_visits (
+        id SERIAL PRIMARY KEY,
+        rep_id INTEGER NOT NULL REFERENCES users(id),
+        lat DECIMAL(10,7) NOT NULL,
+        lng DECIMAL(10,7) NOT NULL,
+        address TEXT,
+        city TEXT,
+        district TEXT,
+        building_status building_visit_status NOT NULL DEFAULT 'follow_up',
+        notes TEXT,
+        quotation_id INTEGER REFERENCES quotations(id),
+        visited_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS marketing_zones (
+        id SERIAL PRIMARY KEY,
+        rep_id INTEGER NOT NULL REFERENCES users(id),
+        name TEXT NOT NULL,
+        polygon JSONB NOT NULL DEFAULT '[]',
+        target_count INTEGER DEFAULT 0,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS osm_buildings_cache (
+        id SERIAL PRIMARY KEY,
+        bbox TEXT NOT NULL UNIQUE,
+        buildings JSONB NOT NULL,
+        fetched_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+    `);
+  } catch (mapMigrationError) {
+    console.warn("Map migration warning (non-fatal):", mapMigrationError instanceof Error ? mapMigrationError.message : String(mapMigrationError));
+  }
+
+  // Get OSM buildings (Overpass API with 7-day cache)
+  app.get("/api/map/buildings", requireAuth, async (req, res) => {
+    const { bbox } = req.query;
+    if (!bbox) return res.status(400).json({ message: "bbox required" });
+    const parts = (bbox as string).split(",").map(Number);
+    if (parts.length !== 4 || parts.some(isNaN)) return res.status(400).json({ message: "invalid bbox" });
+    const [south, west, north, east] = parts;
+    if ((north - south) > 0.025 || (east - west) > 0.025) return res.json([]);
+    const bboxKey = `${south.toFixed(4)},${west.toFixed(4)},${north.toFixed(4)},${east.toFixed(4)}`;
+    try {
+      const cached = await pool.query(
+        `SELECT buildings FROM osm_buildings_cache WHERE bbox = $1 AND fetched_at > NOW() - INTERVAL '7 days'`,
+        [bboxKey]
+      );
+      if (cached.rows.length > 0) return res.json(cached.rows[0].buildings);
+      const overpassQuery = `[out:json][timeout:30];(way["building"](${south},${west},${north},${east}););out center;`;
+      const response = await fetch("https://overpass-api.de/api/interpreter", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: `data=${encodeURIComponent(overpassQuery)}`,
+      });
+      if (!response.ok) throw new Error(`Overpass error: ${response.status}`);
+      const data = await response.json() as any;
+      const buildings = (data.elements || [])
+        .filter((e: any) => e.center || (e.lat && e.lon))
+        .slice(0, 400)
+        .map((e: any) => ({
+          id: e.id,
+          lat: e.center?.lat ?? e.lat,
+          lon: e.center?.lon ?? e.lon,
+          name: e.tags?.["name:ar"] || e.tags?.name || null,
+          type: e.tags?.building || "yes",
+        }));
+      await pool.query(
+        `INSERT INTO osm_buildings_cache (bbox, buildings) VALUES ($1, $2) ON CONFLICT (bbox) DO UPDATE SET buildings = $2, fetched_at = NOW()`,
+        [bboxKey, JSON.stringify(buildings)]
+      );
+      res.json(buildings);
+    } catch (error) {
+      console.warn("Overpass API error (non-fatal):", error instanceof Error ? error.message : error);
+      res.json([]);
+    }
+  });
+
+  // Get visits (rep: own; manager: all or filtered by repId)
+  app.get("/api/map/visits", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    try {
+      if (["owner", "assistant", "it"].includes(user.role)) {
+        const { repId } = req.query;
+        let result;
+        if (repId && repId !== "all") {
+          result = await pool.query(
+            `SELECT bv.*, COALESCE(u.full_name_ar, u.username) as rep_name, u.id as rep_user_id FROM building_visits bv
+             JOIN users u ON u.id = bv.rep_id WHERE bv.rep_id = $1 ORDER BY bv.visited_at DESC`,
+            [parseInt(repId as string)]
+          );
+        } else {
+          result = await pool.query(
+            `SELECT bv.*, COALESCE(u.full_name_ar, u.username) as rep_name, u.id as rep_user_id FROM building_visits bv
+             JOIN users u ON u.id = bv.rep_id ORDER BY bv.visited_at DESC`
+          );
+        }
+        return res.json(result.rows);
+      } else {
+        const result = await pool.query(
+          `SELECT bv.*, COALESCE(u.full_name_ar, u.username) as rep_name, u.id as rep_user_id FROM building_visits bv
+           JOIN users u ON u.id = bv.rep_id WHERE bv.rep_id = $1 ORDER BY bv.visited_at DESC`,
+          [user.id]
+        );
+        return res.json(result.rows);
+      }
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  // Create visit
+  app.post("/api/map/visits", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    if (!["sales", "owner", "assistant", "it"].includes(user.role)) {
+      return res.status(403).json({ message: "غير مصرح" });
+    }
+    const { lat, lng, address, city, district, buildingStatus, notes, quotationId } = req.body;
+    if (!lat || !lng || !buildingStatus) return res.status(400).json({ message: "lat, lng, buildingStatus مطلوبة" });
+    try {
+      const result = await pool.query(
+        `INSERT INTO building_visits (rep_id, lat, lng, address, city, district, building_status, notes, quotation_id, visited_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW()) RETURNING *`,
+        [user.id, lat, lng, address || null, city || null, district || null, buildingStatus, notes || null, quotationId || null]
+      );
+      res.status(201).json(result.rows[0]);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  // Update visit
+  app.patch("/api/map/visits/:id", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    const { id } = req.params;
+    const { buildingStatus, notes } = req.body;
+    try {
+      const existing = await pool.query(`SELECT * FROM building_visits WHERE id = $1`, [id]);
+      if (existing.rows.length === 0) return res.status(404).json({ message: "غير موجود" });
+      if (!["owner", "assistant", "it"].includes(user.role) && existing.rows[0].rep_id !== user.id) {
+        return res.status(403).json({ message: "غير مصرح" });
+      }
+      const result = await pool.query(
+        `UPDATE building_visits SET building_status = COALESCE($1, building_status), notes = COALESCE($2, notes) WHERE id = $3 RETURNING *`,
+        [buildingStatus || null, notes !== undefined ? notes : null, id]
+      );
+      res.json(result.rows[0]);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  // Delete visit
+  app.delete("/api/map/visits/:id", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    const { id } = req.params;
+    try {
+      const existing = await pool.query(`SELECT * FROM building_visits WHERE id = $1`, [id]);
+      if (existing.rows.length === 0) return res.status(404).json({ message: "غير موجود" });
+      if (!["owner", "assistant", "it"].includes(user.role) && existing.rows[0].rep_id !== user.id) {
+        return res.status(403).json({ message: "غير مصرح" });
+      }
+      await pool.query(`DELETE FROM building_visits WHERE id = $1`, [id]);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  // Get map stats (manager)
+  app.get("/api/map/stats", requireRole("owner", "assistant", "it"), async (req, res) => {
+    try {
+      const [totalRes, statusRes, repRes] = await Promise.all([
+        pool.query(`SELECT COUNT(*) as count FROM building_visits`),
+        pool.query(`SELECT building_status, COUNT(*) as count FROM building_visits GROUP BY building_status`),
+        pool.query(`
+          SELECT COALESCE(u.full_name_ar, u.username) as full_name, u.id as rep_id,
+            COUNT(bv.id) as visit_count,
+            COUNT(CASE WHEN bv.building_status = 'interested' THEN 1 END) as interested_count,
+            COUNT(CASE WHEN bv.building_status = 'follow_up' THEN 1 END) as follow_up_count
+          FROM users u
+          LEFT JOIN building_visits bv ON bv.rep_id = u.id
+          WHERE u.role = 'sales'
+          GROUP BY u.id, u.full_name_ar, u.username
+          ORDER BY visit_count DESC
+        `),
+      ]);
+      res.json({
+        totalVisits: parseInt(totalRes.rows[0].count),
+        byStatus: statusRes.rows,
+        byRep: repRes.rows,
+      });
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  // Get zones
+  app.get("/api/map/zones", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    try {
+      let result;
+      if (["owner", "assistant", "it"].includes(user.role)) {
+        result = await pool.query(
+          `SELECT mz.*, COALESCE(u.full_name_ar, u.username) as rep_name FROM marketing_zones mz JOIN users u ON u.id = mz.rep_id ORDER BY mz.created_at DESC`
+        );
+      } else {
+        result = await pool.query(`SELECT * FROM marketing_zones WHERE rep_id = $1 ORDER BY created_at DESC`, [user.id]);
+      }
+      res.json(result.rows);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  // Create zone
+  app.post("/api/map/zones", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    if (!["sales", "owner", "assistant", "it"].includes(user.role)) {
+      return res.status(403).json({ message: "غير مصرح" });
+    }
+    const { name, polygon, targetCount } = req.body;
+    if (!name || !polygon) return res.status(400).json({ message: "name و polygon مطلوبان" });
+    try {
+      const result = await pool.query(
+        `INSERT INTO marketing_zones (rep_id, name, polygon, target_count) VALUES ($1, $2, $3, $4) RETURNING *`,
+        [user.id, name, JSON.stringify(polygon), targetCount || 0]
+      );
+      res.status(201).json(result.rows[0]);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  // Delete zone
+  app.delete("/api/map/zones/:id", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    const { id } = req.params;
+    try {
+      const existing = await pool.query(`SELECT * FROM marketing_zones WHERE id = $1`, [id]);
+      if (existing.rows.length === 0) return res.status(404).json({ message: "غير موجود" });
+      if (!["owner", "assistant", "it"].includes(user.role) && existing.rows[0].rep_id !== user.id) {
+        return res.status(403).json({ message: "غير مصرح" });
+      }
+      await pool.query(`DELETE FROM marketing_zones WHERE id = $1`, [id]);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
   app.get("/api/finance/ready-to-invoice", requireRole("owner", "assistant", "accountant"), async (req, res) => {
     try {
       const allContracts = await storage.getContracts();

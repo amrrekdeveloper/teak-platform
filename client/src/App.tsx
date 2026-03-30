@@ -50,6 +50,8 @@ import FinanceDashboardPage from "@/pages/finance-dashboard";
 import MyProfilePage from "@/pages/my-profile";
 import DailySalesEntryPage from "@/pages/daily-sales-entry";
 import SalesPerformancePage from "@/pages/sales-performance";
+import MyMapPage from "@/pages/my-map";
+import SalesMapPage from "@/pages/sales-map";
 import AppLayout from "@/components/app-layout";
 import NotFound from "@/pages/not-found";
 import teakLogo from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
@@ -186,6 +188,8 @@ function DashboardRoutes() {
         <Route path="/my-profile" component={MyProfilePage} />
         <Route path="/daily-performance" component={DailySalesEntryPage} />
         <Route path="/sales-performance" component={SalesPerformancePage} />
+        <Route path="/my-map" component={MyMapPage} />
+        <Route path="/sales-map" component={SalesMapPage} />
         <Route path="/settings/users">{() => {
           const { user: authUser } = useAuth();
           if (authUser && authUser.role !== "owner" && authUser.role !== "it") return <NotFound />;
