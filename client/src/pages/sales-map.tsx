@@ -80,6 +80,29 @@ interface MapStats {
   byRep: { full_name: string; rep_id: number; visit_count: string; interested_count: string; follow_up_count: string }[];
 }
 
+interface SalesZone {
+  id: number;
+  rep_id: number;
+  name: string;
+  polygon: [number, number][];
+  target_count: number;
+  rep_name: string;
+  created_at: string;
+}
+
+/** Ray-casting point-in-polygon (2D). polygon is array of [lat, lng] pairs. */
+function pointInPolygon(lat: number, lng: number, polygon: [number, number][]): boolean {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i][0], yi = polygon[i][1];
+    const xj = polygon[j][0], yj = polygon[j][1];
+    if (((yi > lng) !== (yj > lng)) && (lat < (xj - xi) * (lng - yi) / (yj - yi) + xi)) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
 const STATUS_CONFIG: Record<VisitStatus, { ar: string; en: string; color: string; fillColor: string }> = {
   interested: { ar: "مهتم", en: "Interested", color: "#16a34a", fillColor: "#22c55e" },
   under_construction: { ar: "قيد الإنشاء", en: "Under Construction", color: "#ca8a04", fillColor: "#eab308" },
@@ -152,6 +175,10 @@ export default function SalesMapPage() {
     queryKey: ["/api/map/stats"],
   });
 
+  const { data: zones = [] } = useQuery<SalesZone[]>({
+    queryKey: ["/api/map/zones"],
+  });
+
   const clusters = overview?.clusters ?? [];
   const cities = overview?.cities ?? [];
 
@@ -159,6 +186,18 @@ export default function SalesMapPage() {
   const totalInterested = clusters.reduce((sum, c) => sum + parseInt(c.interested_count), 0);
   const conversionRate = totalVisits > 0 ? Math.round((totalInterested / totalVisits) * 100) : 0;
   const totalBuildings = clusters.length;
+
+  // Zone coverage: for each zone, count clusters whose lat/lng fall inside the polygon
+  const zoneCoverage = zones
+    .filter(z => Array.isArray(z.polygon) && z.polygon.length >= 3)
+    .map(z => {
+      const visitedInZone = clusters.filter(c =>
+        pointInPolygon(parseFloat(c.cluster_lat), parseFloat(c.cluster_lng), z.polygon)
+      ).length;
+      const target = z.target_count > 0 ? z.target_count : null;
+      const pct = target ? Math.min(100, Math.round((visitedInZone / target) * 100)) : null;
+      return { id: z.id, name: z.name, repName: z.rep_name, visitedInZone, target, pct };
+    });
 
   function buildPopupHtml(cluster: BuildingCluster): string {
     const total = parseInt(cluster.total_visits);
@@ -382,6 +421,37 @@ export default function SalesMapPage() {
                 );
               })}
             </div>
+
+            {/* Divider */}
+            <div className="w-px bg-border self-stretch mx-1" />
+
+            {/* Zone coverage */}
+            {zoneCoverage.length > 0 && (
+              <>
+                {zoneCoverage.map(z => (
+                  <div key={z.id} className="flex flex-col gap-1 min-w-[100px] bg-muted/50 rounded-xl px-3 py-2">
+                    <p className="text-xs font-medium truncate" title={z.name}>{z.name}</p>
+                    <p className="text-[10px] text-muted-foreground truncate">{z.repName}</p>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                        <div
+                          className="h-full rounded-full transition-all"
+                          style={{ width: `${z.pct ?? 0}%`, background: z.pct !== null && z.pct >= 80 ? "#16a34a" : z.pct !== null && z.pct >= 40 ? "#d97706" : "#3b82f6" }}
+                        />
+                      </div>
+                      <span className="text-[10px] font-semibold whitespace-nowrap" data-testid={`text-zone-coverage-${z.id}`}>
+                        {z.pct !== null ? `${z.pct}%` : `${z.visitedInZone}`}
+                      </span>
+                    </div>
+                    {z.target !== null && (
+                      <p className="text-[10px] text-muted-foreground">
+                        {z.visitedInZone}/{z.target} {t("مبنى", "bldgs")}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </>
+            )}
 
             {/* Divider */}
             <div className="w-px bg-border self-stretch mx-1" />

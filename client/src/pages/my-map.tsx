@@ -3,6 +3,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import type { Quotation } from "@shared/schema";
 import { useAuth } from "@/hooks/use-auth";
 import { useLanguage } from "@/components/language-provider";
 import { useToast } from "@/hooks/use-toast";
@@ -17,6 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import type { LucideIcon } from "lucide-react";
 import {
   Map as MapIcon,
   List,
@@ -78,7 +80,7 @@ interface MarketingZone {
   created_at: string;
 }
 
-const STATUS_CONFIG: Record<VisitStatus, { ar: string; en: string; color: string; fillColor: string; icon: any }> = {
+const STATUS_CONFIG: Record<VisitStatus, { ar: string; en: string; color: string; fillColor: string; icon: LucideIcon }> = {
   interested: {
     ar: "مهتم",
     en: "Interested",
@@ -215,16 +217,16 @@ export default function MyMapPage() {
     queryKey: ["/api/map/zones"],
   });
 
-  const { data: rawQuotations = [] } = useQuery<any[]>({
+  const { data: rawQuotations = [] } = useQuery<Quotation[]>({
     queryKey: ["/api/quotations"],
   });
   const activeQuotations: QuotationSummary[] = rawQuotations
-    .filter(q => !["cancelled", "rejected", "delivered"].includes(q.status))
+    .filter(q => !["cancelled", "rejected", "delivered"].includes(q.status ?? ""))
     .map(q => ({
       id: q.id,
       quotationNumber: q.quotationNumber ? String(q.quotationNumber) : String(q.id),
-      customerName: q.customerName || null,
-      status: q.status,
+      customerName: null,
+      status: q.status ?? "",
     }))
     .slice(0, 30);
 
