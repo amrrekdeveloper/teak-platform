@@ -5057,7 +5057,7 @@ export async function registerRoutes(
         [bboxKey]
       );
       if (cached.rows.length > 0) return res.json(cached.rows[0].buildings);
-      const overpassQuery = `[out:json][timeout:30];(way["building"](${south},${west},${north},${east}););out center;`;
+      const overpassQuery = `[out:json][timeout:30];(way["building"](${south},${west},${north},${east}););out geom tags;`;
       const response = await fetch("https://overpass-api.de/api/interpreter", {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -5066,15 +5066,21 @@ export async function registerRoutes(
       if (!response.ok) throw new Error(`Overpass error: ${response.status}`);
       const data = await response.json() as any;
       const buildings = (data.elements || [])
-        .filter((e: any) => e.center || (e.lat && e.lon))
-        .slice(0, 400)
-        .map((e: any) => ({
-          id: e.id,
-          lat: e.center?.lat ?? e.lat,
-          lon: e.center?.lon ?? e.lon,
-          name: e.tags?.["name:ar"] || e.tags?.name || null,
-          type: e.tags?.building || "yes",
-        }));
+        .filter((e: any) => Array.isArray(e.geometry) && e.geometry.length >= 3)
+        .slice(0, 300)
+        .map((e: any) => {
+          const geo: { lat: number; lon: number }[] = e.geometry;
+          const avgLat = geo.reduce((s: number, p: { lat: number; lon: number }) => s + p.lat, 0) / geo.length;
+          const avgLon = geo.reduce((s: number, p: { lat: number; lon: number }) => s + p.lon, 0) / geo.length;
+          return {
+            id: e.id,
+            lat: avgLat,
+            lon: avgLon,
+            polygon: geo.map((p: { lat: number; lon: number }) => [p.lat, p.lon] as [number, number]),
+            name: e.tags?.["name:ar"] || e.tags?.name || null,
+            type: e.tags?.building || "yes",
+          };
+        });
       await pool.query(
         `INSERT INTO osm_buildings_cache (bbox, buildings) VALUES ($1, $2) ON CONFLICT (bbox) DO UPDATE SET buildings = $2, fetched_at = NOW()`,
         [bboxKey, JSON.stringify(buildings)]

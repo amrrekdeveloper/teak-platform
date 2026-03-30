@@ -61,7 +61,7 @@ import { useLocation } from "wouter";
 
 function GuardedMyMapPage() {
   const { user: authUser } = useAuth();
-  if (!authUser || !["sales", "owner", "assistant", "it"].includes(authUser.role)) return <NotFound />;
+  if (!authUser || authUser.role !== "sales") return <NotFound />;
   return <MyMapPage />;
 }
 

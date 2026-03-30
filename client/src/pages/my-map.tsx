@@ -57,6 +57,7 @@ interface OsmBuilding {
   id: number;
   lat: number;
   lon: number;
+  polygon?: [number, number][];
   name: string | null;
   type: string;
 }
@@ -105,6 +106,18 @@ const REP_COLORS = [
   "#e11d48", "#d97706", "#16a34a", "#2563eb", "#7c3aed",
   "#db2777", "#0891b2", "#059669", "#dc2626", "#9333ea",
 ];
+
+function pointInPolygon(lat: number, lng: number, polygon: [number, number][]): boolean {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i][1], yi = polygon[i][0];
+    const xj = polygon[j][1], yj = polygon[j][0];
+    const intersect = ((yi > lat) !== (yj > lat)) &&
+      (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
 
 function createVisitIcon(status: VisitStatus, isOwn = true) {
   const cfg = STATUS_CONFIG[status];
@@ -182,6 +195,7 @@ export default function MyMapPage() {
   const drawingModeRef = useRef(false);
   const drawingPointsRef = useRef<[number, number][]>([]);
   const onMarkerClickRef = useRef<((visit: BuildingVisit) => void) | null>(null);
+  const openVisitAtRef = useRef<((lat: number, lng: number) => void) | null>(null);
 
   const { data: visits = [], isLoading: visitsLoading } = useQuery<BuildingVisit[]>({
     queryKey: ["/api/map/visits"],
@@ -318,11 +332,33 @@ export default function MyMapPage() {
       if (!res.ok) return;
       const buildings: OsmBuilding[] = await res.json();
       layer.clearLayers();
-      buildings.forEach(b => {
-        const icon = createBuildingIcon();
-        L.marker([b.lat, b.lon], { icon, zIndexOffset: -100 })
-          .bindTooltip(b.name || t("مبنى", "Building"), { permanent: false, direction: "top" })
-          .addTo(layer);
+      buildings.forEach(bldg => {
+        const tooltip = bldg.name || t("مبنى — انقر لتسجيل زيارة", "Building — click to record visit");
+        const handleClick = () => {
+          if (clickMarkerRef.current) {
+            clickMarkerRef.current.remove();
+            clickMarkerRef.current = null;
+          }
+          if (openVisitAtRef.current) openVisitAtRef.current(bldg.lat, bldg.lon);
+        };
+        if (bldg.polygon && bldg.polygon.length >= 3) {
+          const poly = L.polygon(bldg.polygon as L.LatLngExpression[], {
+            color: "#64748b",
+            fillColor: "#e2e8f0",
+            fillOpacity: 0.55,
+            weight: 1.5,
+            interactive: true,
+          });
+          poly.bindTooltip(tooltip, { sticky: true, direction: "top" });
+          poly.on("click", handleClick);
+          poly.addTo(layer);
+        } else {
+          const icon = createBuildingIcon();
+          const m = L.marker([bldg.lat, bldg.lon], { icon, zIndexOffset: -100 });
+          m.bindTooltip(tooltip, { direction: "top" });
+          m.on("click", handleClick);
+          m.addTo(layer);
+        }
       });
     } catch {
       // Ignore
@@ -493,6 +529,12 @@ export default function MyMapPage() {
     });
   };
 
+  // Keep building-click callback in sync (opens visit form at building center)
+  openVisitAtRef.current = (lat: number, lng: number) => {
+    setVisitForm(f => ({ ...f, open: true, lat, lng, address: "", city: "", district: "", editingId: null }));
+    reverseGeocode(lat, lng);
+  };
+
   // Render visits when data changes
   useEffect(() => {
     renderVisits(visits);
@@ -633,16 +675,31 @@ export default function MyMapPage() {
 
           {/* Zones list button */}
           {zones.length > 0 && !drawingMode && (
-            <div className="absolute top-3 start-3 mt-11 z-[1000] bg-card border border-border shadow rounded-lg p-2 max-w-[200px]">
-              <p className="text-xs font-medium text-muted-foreground mb-1.5">{t("مناطقي", "My Zones")}</p>
-              {zones.slice(0, 3).map(z => (
-                <div key={z.id} className="flex items-center justify-between gap-2 py-0.5">
-                  <span className="text-xs truncate">{z.name}</span>
-                  <button onClick={() => deleteZoneMutation.mutate(z.id)} className="text-muted-foreground hover:text-destructive shrink-0">
-                    <Trash2 className="w-3 h-3" />
-                  </button>
-                </div>
-              ))}
+            <div className="absolute top-3 start-3 mt-11 z-[1000] bg-card border border-border shadow rounded-lg p-2 max-w-[220px]">
+              <p className="text-xs font-semibold text-muted-foreground mb-1.5">{t("مناطقي", "My Zones")}</p>
+              {zones.slice(0, 4).map(z => {
+                const visitsInZone = Array.isArray(z.polygon) && z.polygon.length >= 3
+                  ? visits.filter(v => {
+                      const vLat = parseFloat(v.lat);
+                      const vLng = parseFloat(v.lng);
+                      return !isNaN(vLat) && !isNaN(vLng) && pointInPolygon(vLat, vLng, z.polygon);
+                    })
+                  : [];
+                const coverage = visits.length > 0 ? Math.round((visitsInZone.length / visits.length) * 100) : 0;
+                return (
+                  <div key={z.id} className="flex items-center justify-between gap-2 py-0.5">
+                    <div className="min-w-0 flex-1">
+                      <span className="text-xs truncate block">{z.name}</span>
+                      <span className="text-[10px] text-violet-600 font-medium">
+                        {visitsInZone.length} {t("زيارة", "visits")} · {coverage}% {t("تغطية", "coverage")}
+                      </span>
+                    </div>
+                    <button onClick={() => deleteZoneMutation.mutate(z.id)} className="text-muted-foreground hover:text-destructive shrink-0 ms-1">
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           )}
 

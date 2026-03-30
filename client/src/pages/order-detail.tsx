@@ -23,6 +23,7 @@ import {
   CalendarCheck, CalendarX, Ruler, Box, ChevronLeft, ChevronRight,
   ClipboardList, Banknote, Home, Zap, ThumbsDown, type LucideIcon,
   Paperclip, Download, Eye, Upload, Palette, X, MessageSquare, CreditCard, ReceiptText,
+  Building2, Navigation,
 } from "lucide-react";
 
 type PipelineStage = "new" | "appointment_scheduled" | "survey_done" | "quote_draft" | "quote_sent" | "quote_approved" | "in_production" | "delivered" | "rejected" | "cancelled";
@@ -154,10 +155,24 @@ export default function OrderDetailPage() {
     enabled: !!firstSurveyId,
   });
 
+  interface BuildingVisit {
+    id: number; rep_id: number; lat: string; lng: string;
+    address: string | null; city: string | null; district: string | null;
+    building_status: "interested" | "under_construction" | "not_suitable" | "follow_up";
+    notes: string | null; quotation_id: number | null; visited_at: string;
+  }
+
   const { toast } = useToast();
   const isManager = user && ["owner", "assistant", "it"].includes(user.role);
   const isDesigner = user?.role === "designer" || user?.role === "it";
   const isSalesRep = user?.role === "sales";
+
+  const { data: allVisits = [] } = useQuery<BuildingVisit[]>({
+    queryKey: ["/api/map/visits"],
+    enabled: !!user && (isSalesRep || !!isManager),
+  });
+
+  const linkedVisits = allVisits.filter(v => v.quotation_id === orderId);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadLabel, setUploadLabel] = useState("");
@@ -862,6 +877,57 @@ export default function OrderDetailPage() {
               {t("عرض أمر العمل", "View Work Order")}
             </Button>
           </div>
+        </SectionCard>
+      )}
+
+      {(isSalesRep || isManager) && (linkedVisits.length > 0 || isSalesRep) && (
+        <SectionCard title={t("الزيارات الميدانية المرتبطة", "Linked Field Visits")} icon={Building2}>
+          {linkedVisits.length === 0 ? (
+            <div className="text-center py-3">
+              <p className="text-xs text-muted-foreground mb-2">{t("لا توجد زيارات ميدانية مرتبطة بهذا الطلب", "No field visits linked to this order")}</p>
+              {isSalesRep && (
+                <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={() => navigate("/dashboard/my-map")} data-testid="button-go-to-map">
+                  <Navigation className="w-3 h-3" />
+                  {t("اذهب للخريطة لتسجيل زيارة", "Go to Map to Record Visit")}
+                </Button>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {linkedVisits.map(v => {
+                const STATUS_LABELS: Record<string, { ar: string; en: string; color: string }> = {
+                  interested: { ar: "مهتم", en: "Interested", color: "text-green-600" },
+                  follow_up: { ar: "متابعة", en: "Follow Up", color: "text-blue-600" },
+                  not_suitable: { ar: "غير مناسب", en: "Not Suitable", color: "text-red-600" },
+                  under_construction: { ar: "قيد الإنشاء", en: "Under Construction", color: "text-yellow-600" },
+                };
+                const cfg = STATUS_LABELS[v.building_status] ?? { ar: v.building_status, en: v.building_status, color: "text-muted-foreground" };
+                return (
+                  <div key={v.id} className="flex items-start gap-2 p-2 bg-muted/40 rounded-lg border border-border">
+                    <Building2 className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`text-xs font-semibold ${cfg.color}`}>{lang === "ar" ? cfg.ar : cfg.en}</span>
+                        {v.city && <span className="text-[10px] text-muted-foreground">{v.city}</span>}
+                        {v.district && <span className="text-[10px] text-muted-foreground">· {v.district}</span>}
+                      </div>
+                      {v.address && <p className="text-[11px] text-muted-foreground mt-0.5 truncate">{v.address}</p>}
+                      {v.notes && <p className="text-xs mt-0.5">{v.notes}</p>}
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        {new Date(v.visited_at).toLocaleDateString(lang === "ar" ? "ar-SA" : "en-GB", { year: "numeric", month: "short", day: "numeric" })}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+              {isSalesRep && (
+                <Button variant="outline" size="sm" className="w-full h-7 text-xs gap-1 mt-1" onClick={() => navigate("/dashboard/my-map")} data-testid="button-add-more-visits">
+                  <Navigation className="w-3 h-3" />
+                  {t("إضافة زيارة أخرى", "Add Another Visit")}
+                </Button>
+              )}
+            </div>
+          )}
         </SectionCard>
       )}
 
