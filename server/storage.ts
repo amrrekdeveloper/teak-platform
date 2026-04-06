@@ -25,6 +25,8 @@ import {
   notifications, type Notification, type InsertNotification,
   activityLog, type ActivityLog, type InsertActivityLog,
   employees, type Employee, type InsertEmployee,
+  jobTitles, type JobTitle, type InsertJobTitle,
+  hrAuditLog, type HrAuditLog, type InsertHrAuditLog,
   designAssignments, type DesignAssignment, type InsertDesignAssignment,
   warranties, type Warranty, type InsertWarranty,
   adekoProducts, type AdekoProduct, type InsertAdekoProduct,
@@ -145,6 +147,14 @@ export interface IStorage {
   getEmployee(id: number): Promise<Employee | undefined>;
   createEmployee(employee: InsertEmployee): Promise<Employee>;
   updateEmployee(id: number, data: Partial<InsertEmployee>): Promise<Employee | undefined>;
+
+  getJobTitles(): Promise<JobTitle[]>;
+  createJobTitle(jt: InsertJobTitle): Promise<JobTitle>;
+  updateJobTitle(id: number, data: Partial<InsertJobTitle>): Promise<JobTitle | undefined>;
+  deleteJobTitle(id: number): Promise<void>;
+
+  getHrAuditLogs(employeeId?: number): Promise<HrAuditLog[]>;
+  createHrAuditLog(log: InsertHrAuditLog): Promise<HrAuditLog>;
 
   getDesignAssignments(): Promise<DesignAssignment[]>;
   getDesignAssignmentsByDesigner(designerId: number): Promise<DesignAssignment[]>;
@@ -636,6 +646,36 @@ export class DatabaseStorage implements IStorage {
   async updateEmployee(id: number, data: Partial<InsertEmployee>): Promise<Employee | undefined> {
     const [updated] = await db.update(employees).set(data).where(eq(employees.id, id)).returning();
     return updated;
+  }
+
+  async getJobTitles(): Promise<JobTitle[]> {
+    return db.select().from(jobTitles).orderBy(jobTitles.nameAr);
+  }
+
+  async createJobTitle(jt: InsertJobTitle): Promise<JobTitle> {
+    const [created] = await db.insert(jobTitles).values(jt).returning();
+    return created;
+  }
+
+  async updateJobTitle(id: number, data: Partial<InsertJobTitle>): Promise<JobTitle | undefined> {
+    const [updated] = await db.update(jobTitles).set(data).where(eq(jobTitles.id, id)).returning();
+    return updated;
+  }
+
+  async deleteJobTitle(id: number): Promise<void> {
+    await db.delete(jobTitles).where(eq(jobTitles.id, id));
+  }
+
+  async getHrAuditLogs(employeeId?: number): Promise<HrAuditLog[]> {
+    if (employeeId !== undefined) {
+      return db.select().from(hrAuditLog).where(eq(hrAuditLog.employeeId, employeeId)).orderBy(desc(hrAuditLog.createdAt));
+    }
+    return db.select().from(hrAuditLog).orderBy(desc(hrAuditLog.createdAt)).limit(200);
+  }
+
+  async createHrAuditLog(log: InsertHrAuditLog): Promise<HrAuditLog> {
+    const [created] = await db.insert(hrAuditLog).values(log).returning();
+    return created;
   }
 
   async getDesignAssignments(): Promise<DesignAssignment[]> {

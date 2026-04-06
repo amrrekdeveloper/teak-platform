@@ -75,6 +75,13 @@ export const departmentEnum = pgEnum("department", [
   "customer_service",
 ]);
 
+export const contractTypeEnum = pgEnum("contract_type", [
+  "fixed",
+  "open",
+  "temporary",
+  "training",
+]);
+
 export const employees = pgTable("employees", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").references(() => users.id),
@@ -89,6 +96,12 @@ export const employees = pgTable("employees", {
   contractEnd: date("contract_end"),
   status: employeeStatusEnum("status").notNull().default("active"),
   fingerprintLocation: text("fingerprint_location"),
+  contractType: contractTypeEnum("contract_type"),
+  insuranceExpiry: date("insurance_expiry"),
+  fingerScanLocation: text("finger_scan_location"),
+  phone: text("phone"),
+  email: text("email"),
+  documents: jsonb("documents").$default(() => []),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -98,6 +111,39 @@ export const insertEmployeeSchema = createInsertSchema(employees).omit({
 });
 export type InsertEmployee = z.infer<typeof insertEmployeeSchema>;
 export type Employee = typeof employees.$inferSelect;
+
+export const jobTitles = pgTable("job_titles", {
+  id: serial("id").primaryKey(),
+  nameAr: text("name_ar").notNull(),
+  nameEn: text("name_en").notNull(),
+  department: departmentEnum("department"),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertJobTitleSchema = createInsertSchema(jobTitles).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertJobTitle = z.infer<typeof insertJobTitleSchema>;
+export type JobTitle = typeof jobTitles.$inferSelect;
+
+export const hrAuditLog = pgTable("hr_audit_log", {
+  id: serial("id").primaryKey(),
+  performedBy: integer("performed_by").references(() => users.id),
+  targetUserId: integer("target_user_id").references(() => users.id),
+  employeeId: integer("employee_id").references(() => employees.id),
+  action: text("action").notNull(),
+  details: text("details"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertHrAuditLogSchema = createInsertSchema(hrAuditLog).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertHrAuditLog = z.infer<typeof insertHrAuditLogSchema>;
+export type HrAuditLog = typeof hrAuditLog.$inferSelect;
 
 export const customerSourceEnum = pgEnum("customer_source", [
   "website",

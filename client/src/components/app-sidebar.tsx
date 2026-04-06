@@ -65,7 +65,7 @@ const menuItems: MenuItem[] = [
   { titleAr: "التوصيل", titleEn: "Deliveries", icon: Truck, path: "/deliveries", roles: ["owner", "assistant", "it", "delivery"], group: "services" },
   { titleAr: "التركيب والصيانة", titleEn: "Installation & Maintenance", icon: Wrench, path: "/installations", roles: ["owner", "assistant", "it", "installation"], group: "services" },
   { titleAr: "الجودة", titleEn: "Quality", icon: Shield, path: "/quality", roles: ["owner", "assistant", "it", "quality"], group: "services" },
-  { titleAr: "الموظفين", titleEn: "Employees", icon: UserCog, path: "/employees", roles: ["owner", "assistant", "it", "hr"], group: "admin" },
+  { titleAr: "الموارد البشرية", titleEn: "Human Resources", icon: UserCog, path: "/employees", roles: ["owner", "it", "hr"], group: "hr" },
   { titleAr: "الإعدادات", titleEn: "Settings", icon: Settings, path: "/settings", roles: ["owner", "it"], group: "admin" },
   { titleAr: "ملفي الشخصي", titleEn: "My Profile", icon: UserCircle, path: "/my-profile", roles: ["owner", "assistant", "sales", "designer", "production", "purchasing", "warehouse", "accountant", "customer_service", "delivery", "installation", "quality", "hr", "it"], group: "admin" },
   { titleAr: "أداء اليوم", titleEn: "Today's Performance", icon: TrendingUp, path: "/daily-performance", roles: ["sales"], group: "main", strictRoles: true },

@@ -2545,7 +2545,7 @@ export async function registerRoutes(
 
   // ==================== EMPLOYEES ====================
 
-  app.get("/api/employees", requireRole("owner", "assistant", "hr"), async (_req, res) => {
+  app.get("/api/employees", requireRole("owner", "assistant", "hr", "it"), async (_req, res) => {
     try {
       const list = await storage.getEmployees();
       res.json(list);
@@ -2564,7 +2564,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/employees", requireRole("owner", "assistant", "hr"), async (req, res) => {
+  app.post("/api/employees", requireRole("owner", "assistant", "hr", "it"), async (req, res) => {
     try {
       const { insertEmployeeSchema } = await import("@shared/schema");
       const parsed = insertEmployeeSchema.parse(req.body);
@@ -2577,13 +2577,171 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/employees/:id", requireRole("owner", "assistant", "hr"), async (req, res) => {
+  app.patch("/api/employees/:id", requireRole("owner", "assistant", "hr", "it"), async (req, res) => {
     try {
       const updated = await storage.updateEmployee(parseInt(req.params.id), req.body);
       if (!updated) return res.status(404).json({ message: "الموظف غير موجود", messageEn: "Employee not found" });
       res.json(updated);
     } catch (error) {
       res.status(500).json({ message: "حدث خطأ في تحديث الموظف", messageEn: "Error updating employee" });
+    }
+  });
+
+  // ==================== HR: EMPLOYEE DOCUMENTS ====================
+
+  const HR_DOCS_DIR = path.join(process.cwd(), "uploads", "hr-documents");
+  fs.mkdirSync(HR_DOCS_DIR, { recursive: true });
+
+  const hrDocStorage = multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, HR_DOCS_DIR),
+    filename: (_req, file, cb) => {
+      const safeBase = file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_");
+      cb(null, `${Date.now()}_${safeBase}`);
+    },
+  });
+
+  const hrDocUpload = multer({
+    storage: hrDocStorage,
+    limits: { fileSize: 10 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+      const allowed = ["application/pdf", "image/jpeg", "image/jpg", "image/png"];
+      if (allowed.includes(file.mimetype)) cb(null, true);
+      else cb(new Error("Only PDF, JPEG, and PNG files are allowed"));
+    },
+  });
+
+  app.post("/api/employees/:id/documents", requireRole("owner", "assistant", "hr"), hrDocUpload.single("file"), async (req: any, res) => {
+    try {
+      const empId = parseInt(req.params.id);
+      const emp = await storage.getEmployee(empId);
+      if (!emp) return res.status(404).json({ message: "الموظف غير موجود" });
+      if (!req.file) return res.status(400).json({ message: "لم يتم رفع أي ملف" });
+
+      const docs = (emp.documents as any[] || []);
+      const newDoc = {
+        id: Date.now(),
+        name: req.body.name || req.file.originalname,
+        url: `/uploads/hr-documents/${req.file.filename}`,
+        mime: req.file.mimetype,
+        uploadedAt: new Date().toISOString(),
+      };
+      docs.push(newDoc);
+      const updated = await storage.updateEmployee(empId, { documents: docs } as any);
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ في رفع المستند" });
+    }
+  });
+
+  app.delete("/api/employees/:id/documents/:docId", requireRole("owner", "assistant", "hr"), async (req, res) => {
+    try {
+      const empId = parseInt(req.params.id);
+      const docId = parseInt(req.params.docId);
+      const emp = await storage.getEmployee(empId);
+      if (!emp) return res.status(404).json({ message: "الموظف غير موجود" });
+      const docs = (emp.documents as any[] || []).filter((d: any) => d.id !== docId);
+      const updated = await storage.updateEmployee(empId, { documents: docs } as any);
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ في حذف المستند" });
+    }
+  });
+
+  app.get("/uploads/hr-documents/:filename", requireAuth, (req, res) => {
+    const filename = req.params.filename.replace(/[^a-zA-Z0-9._-]/g, "");
+    const filePath = path.join(HR_DOCS_DIR, filename);
+    if (!fs.existsSync(filePath)) return res.status(404).json({ message: "الملف غير موجود" });
+    res.sendFile(filePath);
+  });
+
+  // ==================== JOB TITLES ====================
+
+  app.get("/api/job-titles", requireRole("owner", "assistant", "hr", "it"), async (_req, res) => {
+    try { res.json(await storage.getJobTitles()); }
+    catch (error) { res.status(500).json({ message: "حدث خطأ" }); }
+  });
+
+  app.post("/api/job-titles", requireRole("owner", "hr", "it"), async (req, res) => {
+    try {
+      const { insertJobTitleSchema } = await import("@shared/schema");
+      const parsed = insertJobTitleSchema.parse(req.body);
+      res.status(201).json(await storage.createJobTitle(parsed));
+    } catch (error: any) {
+      if (error?.name === "ZodError") return res.status(400).json({ message: "بيانات غير صالحة", errors: error.errors });
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  app.patch("/api/job-titles/:id", requireRole("owner", "hr", "it"), async (req, res) => {
+    try {
+      const updated = await storage.updateJobTitle(parseInt(req.params.id), req.body);
+      if (!updated) return res.status(404).json({ message: "المسمى غير موجود" });
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  app.delete("/api/job-titles/:id", requireRole("owner", "hr", "it"), async (req, res) => {
+    try {
+      await storage.deleteJobTitle(parseInt(req.params.id));
+      res.json({ ok: true });
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  // ==================== HR AUDIT LOG ====================
+
+  app.get("/api/hr-audit-log", requireRole("owner", "it"), async (req, res) => {
+    try {
+      const employeeId = req.query.employeeId ? parseInt(req.query.employeeId as string) : undefined;
+      res.json(await storage.getHrAuditLogs(employeeId));
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  // ==================== HR: ACCOUNT MANAGEMENT ====================
+
+  app.post("/api/hr/reset-password", requireRole("owner", "hr", "it"), async (req: any, res) => {
+    try {
+      const { userId, newPassword, employeeId } = req.body;
+      if (!userId || !newPassword) return res.status(400).json({ message: "بيانات ناقصة" });
+      const targetUser = await storage.getUser(parseInt(userId));
+      if (!targetUser) return res.status(404).json({ message: "المستخدم غير موجود" });
+      const hashed = await hashPassword(newPassword);
+      await storage.updateUser(parseInt(userId), { password: hashed });
+      await storage.createHrAuditLog({
+        performedBy: req.user?.id || null,
+        targetUserId: parseInt(userId),
+        employeeId: employeeId ? parseInt(employeeId) : null,
+        action: "reset_password",
+        details: `تم إعادة تعيين كلمة المرور للمستخدم @${targetUser.username}`,
+      });
+      res.json({ ok: true });
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ في إعادة تعيين كلمة المرور" });
+    }
+  });
+
+  app.post("/api/hr/toggle-account", requireRole("owner", "hr", "it"), async (req: any, res) => {
+    try {
+      const { userId, active, employeeId } = req.body;
+      if (userId === undefined || active === undefined) return res.status(400).json({ message: "بيانات ناقصة" });
+      const targetUser = await storage.getUser(parseInt(userId));
+      if (!targetUser) return res.status(404).json({ message: "المستخدم غير موجود" });
+      await storage.updateUser(parseInt(userId), { active: Boolean(active) });
+      await storage.createHrAuditLog({
+        performedBy: req.user?.id || null,
+        targetUserId: parseInt(userId),
+        employeeId: employeeId ? parseInt(employeeId) : null,
+        action: active ? "enable_account" : "disable_account",
+        details: `${active ? "تفعيل" : "تعطيل"} حساب المستخدم @${targetUser.username}`,
+      });
+      res.json({ ok: true });
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ" });
     }
   });
 
@@ -5039,6 +5197,82 @@ export async function registerRoutes(
     console.log("Employee-user reconciliation migration completed");
   } catch (empMigrationError) {
     console.warn("Employee migration (non-fatal):", empMigrationError instanceof Error ? empMigrationError.message : String(empMigrationError));
+  }
+
+  // HR Module: Add new columns to employees and create new tables
+  try {
+    await db.execute(`
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'contract_type') THEN
+          CREATE TYPE contract_type AS ENUM ('fixed', 'open', 'temporary', 'training');
+        END IF;
+      END $$;
+    `);
+    await db.execute(`
+      ALTER TABLE employees ADD COLUMN IF NOT EXISTS contract_type contract_type;
+      ALTER TABLE employees ADD COLUMN IF NOT EXISTS insurance_expiry DATE;
+      ALTER TABLE employees ADD COLUMN IF NOT EXISTS finger_scan_location TEXT;
+      ALTER TABLE employees ADD COLUMN IF NOT EXISTS phone TEXT;
+      ALTER TABLE employees ADD COLUMN IF NOT EXISTS email TEXT;
+      ALTER TABLE employees ADD COLUMN IF NOT EXISTS documents JSONB DEFAULT '[]';
+    `);
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS job_titles (
+        id SERIAL PRIMARY KEY,
+        name_ar TEXT NOT NULL,
+        name_en TEXT NOT NULL,
+        department TEXT,
+        active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+    `);
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS hr_audit_log (
+        id SERIAL PRIMARY KEY,
+        performed_by INTEGER REFERENCES users(id),
+        target_user_id INTEGER REFERENCES users(id),
+        employee_id INTEGER REFERENCES employees(id),
+        action TEXT NOT NULL,
+        details TEXT,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+    `);
+    console.log("HR module migration completed");
+
+    // Insurance expiry notifications: notify hr/owner users about employees expiring in <= 30 days
+    try {
+      const today = new Date();
+      const in30 = new Date(today); in30.setDate(today.getDate() + 30);
+      const todayStr = today.toISOString().split("T")[0];
+      const in30Str = in30.toISOString().split("T")[0];
+      const expiring = await pool.query(
+        `SELECT id, employee_number, insurance_expiry FROM employees WHERE insurance_expiry IS NOT NULL AND insurance_expiry >= $1 AND insurance_expiry <= $2 AND status = 'active'`,
+        [todayStr, in30Str]
+      );
+      if (expiring.rows.length > 0) {
+        const hrUsers = (await storage.getUsers()).filter(u => ["owner", "hr"].includes(u.role) && u.active);
+        for (const emp of expiring.rows) {
+          const daysLeft = Math.ceil((new Date(emp.insurance_expiry).getTime() - today.getTime()) / (1000 * 3600 * 24));
+          for (const u of hrUsers) {
+            await storage.createNotification({
+              userId: u.id,
+              titleAr: "تنبيه: انتهاء التأمين الصحي",
+              titleEn: "Health Insurance Expiry Alert",
+              messageAr: `الموظف رقم ${emp.employee_number} - ينتهي التأمين الصحي خلال ${daysLeft} يوم`,
+              messageEn: `Employee #${emp.employee_number} - health insurance expires in ${daysLeft} day(s)`,
+              type: "warning",
+              relatedEntity: "employee",
+              relatedId: emp.id,
+              isRead: false,
+            } as any).catch(() => {});
+          }
+        }
+      }
+    } catch (notifError) {
+      console.warn("Insurance expiry notification (non-fatal):", notifError instanceof Error ? notifError.message : String(notifError));
+    }
+  } catch (hrMigrationError) {
+    console.warn("HR migration (non-fatal):", hrMigrationError instanceof Error ? hrMigrationError.message : String(hrMigrationError));
   }
 
   app.get("/api/daily-sales-logs/today", requireRole("sales"), async (req, res) => {
