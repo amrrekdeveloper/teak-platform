@@ -180,12 +180,14 @@ export default function QuotationsPage() {
   });
 
   const isManager = user?.role === "owner" || user?.role === "assistant";
+  const isSalesRep = user?.role === "sales";
   const canApproveQuotation = (q: Quotation) => {
     if (isManager) return q.status === "draft" || q.status === "sent";
-    if (user?.role === "sales") return (q.status === "draft" || q.status === "sent") && (Number(q.assignedTo) === Number(user.id) || Number(q.createdBy) === Number(user.id));
+    if (isSalesRep) return (q.status === "draft" || q.status === "sent") && (Number(q.assignedTo) === Number(user.id) || Number(q.createdBy) === Number(user.id));
     return false;
   };
   const canAssign = user?.role === "owner" || user?.role === "assistant" || user?.role === "sales";
+  const canAssignDesigner = user?.role === "owner" || user?.role === "assistant";
 
   const handleOpenAssignDialog = (customer: Customer) => {
     setSelectedRequestCustomer(customer);
@@ -243,15 +245,17 @@ export default function QuotationsPage() {
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleOpenAssignDialog(req)}
-                        data-testid={`button-assign-designer-${req.id}`}
-                      >
-                        <UserPlus className="w-3 h-3 me-1" />
-                        {t("تحويل لمصمم", "Assign Designer")}
-                      </Button>
+                      {canAssignDesigner && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleOpenAssignDialog(req)}
+                          data-testid={`button-assign-designer-${req.id}`}
+                        >
+                          <UserPlus className="w-3 h-3 me-1" />
+                          {t("تحويل لمصمم", "Assign Designer")}
+                        </Button>
+                      )}
                       <Link href={`/quotations/new?customerId=${req.id}`}>
                         <Button size="sm" data-testid={`button-create-quote-${req.id}`}>
                           <Plus className="w-3 h-3 me-1" />

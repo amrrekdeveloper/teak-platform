@@ -3858,7 +3858,14 @@ export async function registerRoutes(
     if (!user) return { allowed: false };
     if (user.role === "owner" || user.role === "assistant" || user.role === "it") return { allowed: true, survey: surveyRow };
     if (user.role === "designer") return { allowed: true, survey: surveyRow };
-    if (user.role === "sales" && surveyRow.createdBy === user.id) return { allowed: true, survey: surveyRow };
+    if (user.role === "sales") {
+      if (surveyRow.createdBy === user.id) return { allowed: true, survey: surveyRow };
+      // Also allow if the sales rep is assigned to the linked quotation
+      if (surveyRow.quotationId) {
+        const quotation = await storage.getQuotation(surveyRow.quotationId);
+        if (quotation && quotation.assignedTo === user.id) return { allowed: true, survey: surveyRow };
+      }
+    }
     return { allowed: false };
   }
 

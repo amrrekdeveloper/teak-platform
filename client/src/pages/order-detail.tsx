@@ -790,37 +790,94 @@ export default function OrderDetailPage() {
       )}
 
       {isSalesRep && stage === "survey_done" && (
-        <Card className={`border-2 ${surveyDesignFiles.length > 0 ? "border-green-300 dark:border-green-700 bg-green-50/30 dark:bg-green-950/20" : "border-violet-200 dark:border-violet-800 bg-violet-50/30 dark:bg-violet-950/20"}`} data-testid="card-design-status">
-          <CardContent className="p-4 space-y-3">
-            <div className="flex items-start gap-3">
-              {surveyDesignFiles.length > 0 ? (
-                <>
-                  <CheckCircle2 className="w-6 h-6 text-green-600 shrink-0 mt-0.5" />
-                  <div>
-                    <h3 className="font-semibold text-green-800 dark:text-green-300 text-sm">
-                      {t("التصميم جاهز للمراجعة", "Design Ready for Review")}
-                    </h3>
-                    <p className="text-xs text-green-700 dark:text-green-400 mt-0.5">
-                      {t(`رفع المصمم ${surveyDesignFiles.length} ملف — راجع المرفقات أعلاه وأبلغ العميل`, `Designer uploaded ${surveyDesignFiles.length} file(s) — review attachments above and notify the customer`)}
-                    </p>
+        <SectionCard title={t("ملف التصميم", "Design File")} icon={Palette}>
+          <div className="space-y-3">
+            {surveyDesignFiles.length > 0 ? (
+              <div className="flex items-start gap-3 rounded-lg border border-green-200 dark:border-green-800 bg-green-50/50 dark:bg-green-950/20 p-3">
+                <CheckCircle2 className="w-5 h-5 text-green-600 shrink-0 mt-0.5" />
+                <div>
+                  <h3 className="font-semibold text-green-800 dark:text-green-300 text-sm">
+                    {t("ملف التصميم جاهز", "Design File Ready")}
+                  </h3>
+                  <p className="text-xs text-green-700 dark:text-green-400 mt-0.5">
+                    {t(`تم رفع ${surveyDesignFiles.length} ملف — راجع المرفقات وأبلغ العميل`, `${surveyDesignFiles.length} file(s) uploaded — review attachments and notify the customer`)}
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-start gap-3 rounded-lg border border-violet-200 dark:border-violet-800 bg-violet-50/30 dark:bg-violet-950/20 p-3">
+                <Upload className="w-5 h-5 text-violet-500 shrink-0 mt-0.5" />
+                <div>
+                  <h3 className="font-semibold text-violet-700 dark:text-violet-400 text-sm">
+                    {t("إرفاق ملف التصميم", "Attach Design File")}
+                  </h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {t("ارفع ملف التصميم الخارجي (PDF أو صورة) لإرفاقه بالطلب", "Upload an external design file (PDF or image) to attach to this order")}
+                  </p>
+                </div>
+              </div>
+            )}
+            {firstSurveyId && (
+              <div className="space-y-2">
+                <div className="space-y-2">
+                  <Label className="text-xs">{t("تسمية الملف (اختياري)", "File label (optional)")}</Label>
+                  <Input
+                    value={uploadLabel}
+                    onChange={(e) => setUploadLabel(e.target.value)}
+                    placeholder={t("مثال: مخطط التصميم النهائي", "e.g. Final design plan")}
+                    className="h-9 text-sm"
+                    data-testid="input-sales-design-label"
+                  />
+                </div>
+                {selectedFile && (
+                  <div className="flex items-center gap-2 rounded-lg border bg-muted/50 px-3 py-2 text-xs">
+                    <FileText className="w-3.5 h-3.5 text-primary shrink-0" />
+                    <span className="flex-1 truncate font-medium">{selectedFile.name}</span>
+                    <span className="text-muted-foreground shrink-0">{Math.round(selectedFile.size / 1024)} KB</span>
+                    <Button
+                      variant="ghost" size="icon"
+                      className="h-5 w-5 shrink-0"
+                      onClick={() => { setSelectedFile(null); if (fileInputRef.current) fileInputRef.current.value = ""; }}
+                      data-testid="button-clear-sales-design-file"
+                    >
+                      <X className="w-3 h-3" />
+                    </Button>
                   </div>
-                </>
-              ) : (
-                <>
-                  <Clock className="w-6 h-6 text-violet-500 shrink-0 mt-0.5 animate-pulse" />
-                  <div>
-                    <h3 className="font-semibold text-violet-700 dark:text-violet-400 text-sm">
-                      {t("في انتظار التصميم", "Awaiting Design")}
-                    </h3>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {t("تم رفع المقاسات بنجاح — سيقوم المصمم بمراجعتها وإرسال التصميم قريباً", "Measurements uploaded — the designer will review them and send the design soon")}
-                    </p>
-                  </div>
-                </>
-              )}
-            </div>
+                )}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  className="hidden"
+                  accept="image/*,application/pdf"
+                  onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+                  data-testid="input-sales-design-file-upload"
+                />
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => fileInputRef.current?.click()}
+                    data-testid="button-choose-sales-design-file"
+                  >
+                    <Paperclip className="w-4 h-4 me-1" />
+                    {t("اختيار ملف", "Choose File")}
+                  </Button>
+                  <Button
+                    className="flex-1"
+                    disabled={!selectedFile || uploadDesignMutation.isPending}
+                    onClick={() => selectedFile && uploadDesignMutation.mutate({ file: selectedFile, label: uploadLabel })}
+                    data-testid="button-upload-sales-design-file"
+                  >
+                    {uploadDesignMutation.isPending
+                      ? <Loader2 className="w-4 h-4 me-1 animate-spin" />
+                      : <Upload className="w-4 h-4 me-1" />}
+                    {t("رفع الملف", "Upload")}
+                  </Button>
+                </div>
+              </div>
+            )}
             {surveyDesignFiles.length > 0 && (
-              <div className="grid grid-cols-2 gap-2 pt-1 border-t border-green-200 dark:border-green-800">
+              <div className="grid grid-cols-2 gap-2 pt-1 border-t">
                 <Button
                   variant="outline"
                   className="text-xs h-9 border-amber-300 text-amber-700 dark:border-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30"
@@ -840,8 +897,8 @@ export default function OrderDetailPage() {
                 </Button>
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </SectionCard>
       )}
 
       {linkedWorkOrder && (
@@ -1022,24 +1079,14 @@ export default function OrderDetailPage() {
             }
             if (stage === "survey_done" && !hasItems) {
               if (isSalesRep) {
-                return surveyDesignFiles.length > 0 ? (
-                  <Button
-                    className="flex-1 h-11 bg-green-600 hover:bg-green-700 text-white"
-                    onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-                    data-testid="button-detail-design-ready"
-                  >
-                    <CheckCircle2 className="w-4 h-4 me-1" />
-                    {t("التصميم جاهز", "Design Ready")}
-                  </Button>
-                ) : (
+                return (
                   <Button
                     className="flex-1 h-11"
-                    disabled
-                    variant="outline"
-                    data-testid="button-detail-awaiting-design"
+                    onClick={() => navigate(`/quotation-builder?quotationId=${quotation.id}`)}
+                    data-testid="button-detail-create-quotation-sales"
                   >
-                    <Clock className="w-4 h-4 me-1 animate-pulse" />
-                    {t("في انتظار التصميم", "Awaiting Design")}
+                    <FileText className="w-4 h-4 me-1" />
+                    {t("إنشاء عرض سعر", "Create Quotation")}
                   </Button>
                 );
               }
