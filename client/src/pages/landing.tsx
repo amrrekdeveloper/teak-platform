@@ -30,6 +30,7 @@ import {
   PenTool,
   Globe2,
   HeartHandshake,
+  Lock,
 } from "lucide-react";
 import { SiWhatsapp } from "react-icons/si";
 import { Button } from "@/components/ui/button";
@@ -309,15 +310,6 @@ function Navbar() {
             >
               {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </Button>
-            <a href="/login" data-testid="link-login">
-              <Button
-                size="sm"
-                variant={isOnHero ? "secondary" : "outline"}
-                className={`hidden lg:inline-flex ${isOnHero ? "bg-white/15 backdrop-blur-sm text-white border-white/20 hover:bg-white/25" : ""}`}
-              >
-                {t("تسجيل الدخول", "Sign In")}
-              </Button>
-            </a>
             <Button
               size="icon"
               variant="ghost"
@@ -383,14 +375,6 @@ function Navbar() {
                 data-testid="link-customer-portal-mobile"
               >
                 {t("بوابة العملاء", "Customer Portal")}
-              </a>
-              <a
-                href="/login"
-                onClick={() => setMobileOpen(false)}
-                className="px-4 py-3 text-sm font-medium rounded-md bg-primary text-primary-foreground text-center"
-                data-testid="link-login-mobile"
-              >
-                {t("تسجيل الدخول", "Sign In")}
               </a>
             </div>
           </motion.div>
@@ -1420,13 +1404,21 @@ function Footer() {
           </div>
         </div>
 
-        <div className="pt-8 border-t border-border text-center">
+        <div className="pt-8 border-t border-border flex flex-col sm:flex-row items-center justify-between gap-3">
           <p className="text-xs text-muted-foreground" data-testid="text-copyright">
             {t(
               `© ${new Date().getFullYear()} مصنع تيك للصناعات الخشبية. جميع الحقوق محفوظة.`,
               `© ${new Date().getFullYear()} Teak Wood Products Factory. All rights reserved.`
             )}
           </p>
+          <a
+            href="/login"
+            className="flex items-center gap-1.5 text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+            data-testid="link-staff-login"
+          >
+            <Lock className="w-3 h-3" />
+            {t("دخول الموظفين", "Staff Login")}
+          </a>
         </div>
       </div>
     </footer>
