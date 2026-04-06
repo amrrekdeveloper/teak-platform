@@ -38,6 +38,7 @@ import {
 export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
+  getUserByPhone(phone: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   getUsers(): Promise<User[]>;
   updateUser(id: number, data: Partial<InsertUser>): Promise<User | undefined>;
@@ -212,6 +213,12 @@ export class DatabaseStorage implements IStorage {
   async getUserByUsername(username: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.username, username));
     return user;
+  }
+
+  async getUserByPhone(phone: string): Promise<User | undefined> {
+    const normalized = phone.replace(/^(\+966|00966|966)/, "0");
+    const allUsers = await db.select().from(users);
+    return allUsers.find(u => u.phone && u.phone.replace(/^(\+966|00966|966)/, "0") === normalized);
   }
 
   async createUser(user: InsertUser): Promise<User> {

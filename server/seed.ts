@@ -101,17 +101,18 @@ async function seedRealUsers() {
     { username: "jabran", fullNameAr: "جبران", fullNameEn: "Jabran", role: "owner" as const, phone: "0501234567", email: "jabran@teak.sa" },
     { username: "khaled", fullNameAr: "خالد", fullNameEn: "Khaled", role: "assistant" as const, phone: "0502234567", email: "khaled@teak.sa" },
     { username: "abdullah", fullNameAr: "عبدالله", fullNameEn: "Abdullah", role: "warehouse" as const, phone: "0507134567", email: "abdullah@teak.sa" },
-    { username: "hamdi", fullNameAr: "حمدي", fullNameEn: "Hamdi", role: "production" as const, phone: "0505234567", email: "hamdi@teak.sa" },
-    { username: "ismail", fullNameAr: "إسماعيل", fullNameEn: "Ismail", role: "accountant" as const, phone: "0508234567", email: "ismail@teak.sa" },
-    { username: "sultan", fullNameAr: "سلطان", fullNameEn: "Sultan", role: "accountant" as const, phone: "0508334567", email: "sultan@teak.sa" },
-    { username: "siham", fullNameAr: "سهام", fullNameEn: "Siham", role: "it" as const, phone: "0514234567", email: "siham@teak.sa" },
-    { username: "mohannad", fullNameAr: "مهند", fullNameEn: "Mohannad", role: "sales" as const, phone: "0503334567", email: "mohannad@teak.sa" },
-    { username: "hadi", fullNameAr: "هادي", fullNameEn: "Hadi", role: "sales" as const, phone: "0503234567", email: "hadi@teak.sa" },
-    { username: "mohsen", fullNameAr: "محسن", fullNameEn: "Mohsen", role: "designer" as const, phone: "0504234567", email: "mohsen@teak.sa" },
-    { username: "bassam", fullNameAr: "بسام", fullNameEn: "Bassam", role: "warehouse" as const, phone: "0507234567", email: "bassam@teak.sa" },
-    { username: "ayman", fullNameAr: "أيمن", fullNameEn: "Ayman", role: "purchasing" as const, phone: "0506234567", email: "ayman@teak.sa" },
-    { username: "sedad", fullNameAr: "سداد", fullNameEn: "Sedad", role: "installation" as const, phone: "0511234567", email: "sedad@teak.sa" },
-    { username: "m.sobri", fullNameAr: "محمد صبري", fullNameEn: "M. Sobri", role: "delivery" as const, phone: "0510234567", email: "m.sobri@teak.sa" },
+    { username: "hamdi", fullNameAr: "حمدي", fullNameEn: "Hamdi", role: "production" as const, phone: "0564733894", email: "hamdi@teak.sa" },
+    { username: "ismail", fullNameAr: "إسماعيل", fullNameEn: "Ismail", role: "accountant" as const, phone: "0533628466", email: "ismail@teak.sa" },
+    { username: "sultan", fullNameAr: "سلطان", fullNameEn: "Sultan", role: "accountant" as const, phone: "0558227020", email: "sultan@teak.sa" },
+    { username: "siham", fullNameAr: "سهام", fullNameEn: "Siham", role: "owner" as const, phone: "0504550704", email: "siham@teak.sa" },
+    { username: "mohannad", fullNameAr: "مهند", fullNameEn: "Mohannad", role: "sales" as const, phone: "0557753491", email: "mohannad@teak.sa" },
+    { username: "hadi", fullNameAr: "هادي", fullNameEn: "Hadi", role: "sales" as const, phone: "0544859215", email: "hadi@teak.sa" },
+    { username: "mohsen", fullNameAr: "محسن", fullNameEn: "Mohsen", role: "designer" as const, phone: "0560282911", email: "mohsen@teak.sa" },
+    { username: "bassam", fullNameAr: "بسام", fullNameEn: "Bassam", role: "warehouse" as const, phone: "0599788551", email: "bassam@teak.sa" },
+    { username: "ayman", fullNameAr: "لبيب", fullNameEn: "Labib", role: "purchasing" as const, phone: "0502426242", email: "ayman@teak.sa" },
+    { username: "sedad", fullNameAr: "سادات", fullNameEn: "Sadat", role: "installation" as const, phone: "0553158216", email: "sedad@teak.sa" },
+    { username: "m.sobri", fullNameAr: "عائض", fullNameEn: "Aydh", role: "delivery" as const, phone: "0557580888", email: "m.sobri@teak.sa" },
+    { username: "noura", fullNameAr: "أيمن", fullNameEn: "Ayman", role: "hr" as const, phone: "0566626916", email: "ayman.hr@teak.sa" },
   ];
 
   const realPassword = await hashPassword("14001400");
@@ -123,7 +124,7 @@ async function seedRealUsers() {
       await db.insert(users).values({ ...u, password: realPassword, active: true });
       seeded++;
     } else {
-      await db.update(users).set({ fullNameAr: u.fullNameAr, fullNameEn: u.fullNameEn, role: u.role, phone: u.phone, email: u.email }).where(eq(users.username, u.username));
+      await db.update(users).set({ fullNameAr: u.fullNameAr, fullNameEn: u.fullNameEn, role: u.role, phone: u.phone, email: u.email, active: true }).where(eq(users.username, u.username));
       updated++;
     }
   }

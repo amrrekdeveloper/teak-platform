@@ -88,6 +88,7 @@ export const employees = pgTable("employees", {
   contractStart: date("contract_start").notNull(),
   contractEnd: date("contract_end"),
   status: employeeStatusEnum("status").notNull().default("active"),
+  fingerprintLocation: text("fingerprint_location"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

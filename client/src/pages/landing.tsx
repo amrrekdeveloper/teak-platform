@@ -1341,6 +1341,7 @@ function Footer() {
     { href: "/request-quote", labelAr: "طلب عرض سعر", labelEn: "Request Quote" },
     { href: "/track-order", labelAr: "تتبع طلبك", labelEn: "Track Order" },
     { href: "/portal/login", labelAr: "بوابة العملاء", labelEn: "Customer Portal" },
+    { href: "/employee-login", labelAr: "دخول الموظفين", labelEn: "Employee Login" },
   ];
 
   return (

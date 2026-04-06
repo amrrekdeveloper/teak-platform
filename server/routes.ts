@@ -183,6 +183,60 @@ export async function registerRoutes(
 ): Promise<Server> {
   setupAuth(app);
 
+  // Employee OTP auth: check phone exists in users table
+  app.post("/api/employee-auth/check-phone", async (req: Request, res: Response) => {
+    try {
+      const { phone } = req.body;
+      if (!phone) {
+        return res.status(400).json({ message: "رقم الجوال مطلوب", messageEn: "Phone number is required" });
+      }
+      const user = await storage.getUserByPhone(phone);
+      if (!user) {
+        return res.status(404).json({ message: "رقم الجوال غير مسجل في النظام", messageEn: "Phone number not registered in system" });
+      }
+      if (!user.active) {
+        return res.status(403).json({ message: "الحساب معطل. يرجى التواصل مع المسؤول", messageEn: "Account is disabled" });
+      }
+      if (user.role === "customer") {
+        return res.status(403).json({ message: "رقم الجوال غير مسجل كموظف", messageEn: "Phone number not registered as employee" });
+      }
+      return res.json({ success: true, message: "تم التحقق من رقم الجوال. سيتم إرسال رمز التحقق.", messageEn: "Phone verified. OTP will be sent." });
+    } catch (error) {
+      console.error("check-phone error:", error);
+      return res.status(500).json({ message: "حدث خطأ", messageEn: "An error occurred" });
+    }
+  });
+
+  // Employee OTP auth: verify Firebase ID token and start session
+  app.post("/api/employee-auth/verify-otp", async (req: Request, res: Response) => {
+    try {
+      const { idToken } = req.body;
+      if (!idToken) {
+        return res.status(400).json({ message: "رمز التحقق مطلوب", messageEn: "ID token is required" });
+      }
+      const decoded = await verifyFirebaseToken(idToken);
+      if (!decoded) {
+        return res.status(401).json({ message: "رمز التحقق غير صالح", messageEn: "Invalid ID token" });
+      }
+      const user = await storage.getUserByPhone(decoded.phone);
+      if (!user) {
+        return res.status(404).json({ message: "رقم الجوال غير مسجل في النظام", messageEn: "Phone number not registered in system" });
+      }
+      if (!user.active) {
+        return res.status(403).json({ message: "الحساب معطل", messageEn: "Account is disabled" });
+      }
+      if (user.role === "customer") {
+        return res.status(403).json({ message: "رقم الجوال غير مسجل كموظف", messageEn: "Phone number not registered as employee" });
+      }
+      req.session.userId = user.id;
+      const { password: _, ...safeUser } = user;
+      return res.json(safeUser);
+    } catch (error) {
+      console.error("verify-otp error:", error);
+      return res.status(500).json({ message: "حدث خطأ", messageEn: "An error occurred" });
+    }
+  });
+
   // Authenticated endpoint to serve uploaded survey design files from disk.
   // Verifies the requesting user has access to the survey that owns the file.
   app.get("/api/uploads/survey-files/:filename", requireAuth, async (req, res) => {
@@ -4948,9 +5002,39 @@ export async function registerRoutes(
     // 3. Deactivate obsolete accounts that no longer exist in the active seed
     await db.execute(`
       UPDATE users SET active = false
-      WHERE username IN ('k.asiri','fatima','mohammed','saddad','quality1','noura','hanan')
+      WHERE username IN ('k.asiri','fatima','mohammed','saddad','quality1','hanan')
         AND active = true
     `);
+
+    // 4. Ensure fingerprint_location column exists on employees table
+    await db.execute(`
+      ALTER TABLE employees ADD COLUMN IF NOT EXISTS fingerprint_location TEXT
+    `);
+
+    // 5. Authoritatively set fingerprint_location for all 12 known employees
+    // Uses username as stable key; overwrites any incorrect existing value
+    const fingerprintBackfill = [
+      { username: 'siham',    location: 'مصنع' },
+      { username: 'ayman',    location: 'مصنع' },
+      { username: 'hamdi',    location: 'مصنع' },
+      { username: 'ismail',   location: 'مصنع' },
+      { username: 'sultan',   location: 'مصنع' },
+      { username: 'mohannad', location: 'معرض' },
+      { username: 'hadi',     location: 'معرض' },
+      { username: 'mohsen',   location: 'مصنع' },
+      { username: 'bassam',   location: 'مصنع' },
+      { username: 'sedad',    location: 'مصنع' },
+      { username: 'm.sobri',  location: 'مصنع' },
+      { username: 'noura',    location: 'مصنع' },
+    ];
+    for (const fp of fingerprintBackfill) {
+      await db.execute(`
+        UPDATE employees
+        SET fingerprint_location = '${fp.location}'
+        WHERE user_id = (SELECT id FROM users WHERE username = '${fp.username}' LIMIT 1)
+          AND fingerprint_location IS DISTINCT FROM '${fp.location}'
+      `);
+    }
 
     console.log("Employee-user reconciliation migration completed");
   } catch (empMigrationError) {
