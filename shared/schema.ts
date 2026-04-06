@@ -102,6 +102,7 @@ export const employees = pgTable("employees", {
   phone: text("phone"),
   email: text("email"),
   documents: jsonb("documents").$default(() => []),
+  attendanceEnabled: boolean("attendance_enabled").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -144,6 +145,28 @@ export const insertHrAuditLogSchema = createInsertSchema(hrAuditLog).omit({
 });
 export type InsertHrAuditLog = z.infer<typeof insertHrAuditLogSchema>;
 export type HrAuditLog = typeof hrAuditLog.$inferSelect;
+
+export const assetStatusEnum = pgEnum("asset_status", ["active", "returned"]);
+
+export const employeeAssets = pgTable("employee_assets", {
+  id: serial("id").primaryKey(),
+  employeeId: integer("employee_id").references(() => employees.id).notNull(),
+  assetType: text("asset_type").notNull(),
+  description: text("description").notNull(),
+  serialNumber: text("serial_number"),
+  status: assetStatusEnum("status").notNull().default("active"),
+  assignedAt: date("assigned_at").notNull(),
+  returnedAt: date("returned_at"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertEmployeeAssetSchema = createInsertSchema(employeeAssets).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertEmployeeAsset = z.infer<typeof insertEmployeeAssetSchema>;
+export type EmployeeAsset = typeof employeeAssets.$inferSelect;
 
 export const customerSourceEnum = pgEnum("customer_source", [
   "website",

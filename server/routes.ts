@@ -2745,6 +2745,39 @@ export async function registerRoutes(
     }
   });
 
+  // ==================== EMPLOYEE ASSETS (عُهد) ====================
+
+  app.get("/api/employees/:id/assets", requireRole("owner", "assistant", "hr"), async (req, res) => {
+    try {
+      const assets = await storage.getEmployeeAssets(parseInt(req.params.id));
+      res.json(assets);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ في جلب العُهد", messageEn: "Error fetching assets" });
+    }
+  });
+
+  app.post("/api/employees/:id/assets", requireRole("owner", "assistant", "hr"), async (req, res) => {
+    try {
+      const { insertEmployeeAssetSchema } = await import("@shared/schema");
+      const parsed = insertEmployeeAssetSchema.parse({ ...req.body, employeeId: parseInt(req.params.id) });
+      const asset = await storage.createEmployeeAsset(parsed);
+      res.status(201).json(asset);
+    } catch (error: any) {
+      if (error?.name === "ZodError") return res.status(400).json({ message: "بيانات غير صالحة", messageEn: "Invalid data", errors: error.errors });
+      res.status(500).json({ message: "حدث خطأ في إضافة العُهدة", messageEn: "Error creating asset" });
+    }
+  });
+
+  app.patch("/api/employee-assets/:id", requireRole("owner", "assistant", "hr"), async (req, res) => {
+    try {
+      const updated = await storage.updateEmployeeAsset(parseInt(req.params.id), req.body);
+      if (!updated) return res.status(404).json({ message: "العُهدة غير موجودة", messageEn: "Asset not found" });
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ في تحديث العُهدة", messageEn: "Error updating asset" });
+    }
+  });
+
   // ==================== DELIVERIES ====================
 
   app.get("/api/deliveries", requireRole("owner", "assistant", "delivery", "production"), async (_req, res) => {
@@ -5167,6 +5200,34 @@ export async function registerRoutes(
     // 4. Ensure fingerprint_location column exists on employees table
     await db.execute(`
       ALTER TABLE employees ADD COLUMN IF NOT EXISTS fingerprint_location TEXT
+    `);
+
+    // 4b. Add attendance_enabled column to employees if missing
+    await db.execute(`
+      ALTER TABLE employees ADD COLUMN IF NOT EXISTS attendance_enabled BOOLEAN NOT NULL DEFAULT TRUE
+    `);
+
+    // 4c. Create employee_assets table if missing
+    await db.execute(`
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'asset_status') THEN
+          CREATE TYPE asset_status AS ENUM ('active', 'returned');
+        END IF;
+      END $$;
+    `);
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS employee_assets (
+        id SERIAL PRIMARY KEY,
+        employee_id INTEGER NOT NULL REFERENCES employees(id),
+        asset_type TEXT NOT NULL,
+        description TEXT NOT NULL,
+        serial_number TEXT,
+        status asset_status NOT NULL DEFAULT 'active',
+        assigned_at DATE NOT NULL,
+        returned_at DATE,
+        notes TEXT,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+      )
     `);
 
     // 5. Authoritatively set fingerprint_location for all 12 known employees

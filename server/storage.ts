@@ -27,6 +27,7 @@ import {
   employees, type Employee, type InsertEmployee,
   jobTitles, type JobTitle, type InsertJobTitle,
   hrAuditLog, type HrAuditLog, type InsertHrAuditLog,
+  employeeAssets, type EmployeeAsset, type InsertEmployeeAsset,
   designAssignments, type DesignAssignment, type InsertDesignAssignment,
   warranties, type Warranty, type InsertWarranty,
   adekoProducts, type AdekoProduct, type InsertAdekoProduct,
@@ -155,6 +156,10 @@ export interface IStorage {
 
   getHrAuditLogs(employeeId?: number): Promise<HrAuditLog[]>;
   createHrAuditLog(log: InsertHrAuditLog): Promise<HrAuditLog>;
+
+  getEmployeeAssets(employeeId: number): Promise<EmployeeAsset[]>;
+  createEmployeeAsset(asset: InsertEmployeeAsset): Promise<EmployeeAsset>;
+  updateEmployeeAsset(id: number, data: Partial<InsertEmployeeAsset>): Promise<EmployeeAsset | undefined>;
 
   getDesignAssignments(): Promise<DesignAssignment[]>;
   getDesignAssignmentsByDesigner(designerId: number): Promise<DesignAssignment[]>;
@@ -677,6 +682,21 @@ export class DatabaseStorage implements IStorage {
     const [created] = await db.insert(hrAuditLog).values(log).returning();
     return created;
   }
+
+  async getEmployeeAssets(employeeId: number): Promise<EmployeeAsset[]> {
+    return db.select().from(employeeAssets).where(eq(employeeAssets.employeeId, employeeId)).orderBy(desc(employeeAssets.createdAt));
+  }
+
+  async createEmployeeAsset(asset: InsertEmployeeAsset): Promise<EmployeeAsset> {
+    const [created] = await db.insert(employeeAssets).values(asset).returning();
+    return created;
+  }
+
+  async updateEmployeeAsset(id: number, data: Partial<InsertEmployeeAsset>): Promise<EmployeeAsset | undefined> {
+    const [updated] = await db.update(employeeAssets).set(data).where(eq(employeeAssets.id, id)).returning();
+    return updated;
+  }
+
 
   async getDesignAssignments(): Promise<DesignAssignment[]> {
     return db.select().from(designAssignments).orderBy(desc(designAssignments.createdAt));
