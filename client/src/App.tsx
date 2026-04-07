@@ -223,7 +223,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={LandingPage} />
-      <Route path="/login" component={LoginPage} />
+      <Route path="/login">{() => { window.location.replace("/employee-login"); return null; }}</Route>
       <Route path="/products" component={ProductsPage} />
       <Route path="/request-quote" component={RequestQuotePage} />
       <Route path="/track-order" component={TrackOrderPage} />

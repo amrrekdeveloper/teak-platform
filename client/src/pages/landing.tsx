@@ -1413,7 +1413,7 @@ function Footer() {
             )}
           </p>
           <a
-            href="/login"
+            href="/employee-login"
             className="flex items-center gap-1.5 text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors"
             data-testid="link-staff-login"
           >

@@ -98,8 +98,8 @@ async function seedAdekoProducts() {
 
 async function seedRealUsers() {
   const realUsers = [
-    { username: "jabran", fullNameAr: "جبران", fullNameEn: "Jabran", role: "owner" as const, phone: "0501234567", email: "jabran@teak.sa" },
-    { username: "khaled", fullNameAr: "خالد", fullNameEn: "Khaled", role: "assistant" as const, phone: "0502234567", email: "khaled@teak.sa" },
+    { username: "jabran", fullNameAr: "جبران الشهراني", fullNameEn: "Jabran Al-Shahrani", role: "owner" as const, phone: "0554262889", email: "jabran@teak.sa" },
+    { username: "khaled", fullNameAr: "خالد محمد العسيري", fullNameEn: "Khalid M. Al-Asiri", role: "owner" as const, phone: "0559408886", email: "khaled@teak.sa" },
     { username: "abdullah", fullNameAr: "عبدالله", fullNameEn: "Abdullah", role: "warehouse" as const, phone: "0507134567", email: "abdullah@teak.sa" },
     { username: "hamdi", fullNameAr: "حمدي", fullNameEn: "Hamdi", role: "production" as const, phone: "0564733894", email: "hamdi@teak.sa" },
     { username: "ismail", fullNameAr: "إسماعيل", fullNameEn: "Ismail", role: "accountant" as const, phone: "0533628466", email: "ismail@teak.sa" },

@@ -354,17 +354,10 @@ export default function EmployeeLoginPage() {
 
         <div id="emp-recaptcha-container" data-testid="emp-recaptcha-container"></div>
 
-        <div className="text-center space-y-2">
-          <button
-            onClick={() => window.location.href = "/login"}
-            className="text-xs text-muted-foreground hover:text-primary transition-colors block w-full"
-            data-testid="link-employee-password-login"
-          >
-            {t("الدخول بكلمة المرور", "Sign in with Password")}
-          </button>
+        <div className="text-center">
           <button
             onClick={() => window.location.href = "/"}
-            className="text-xs text-muted-foreground hover:text-primary transition-colors block w-full"
+            className="text-xs text-muted-foreground hover:text-primary transition-colors"
             data-testid="link-employee-home"
           >
             {t("العودة للموقع الرئيسي", "Back to Main Site")}
