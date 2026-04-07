@@ -7,11 +7,24 @@ import { useToast } from "@/hooks/use-toast";
 import { auth, RecaptchaVerifier, signInWithPhoneNumber, type ConfirmationResult } from "@/lib/firebase";
 import { LoadingTransition } from "@/components/loading-transition";
 import teakLogo from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
+import { useQuery } from "@tanstack/react-query";
 
 export default function EmployeeLoginPage() {
   const { t, lang } = useLanguage();
   const { toast } = useToast();
   const isRTL = lang === "ar";
+
+  const { data: existingUser, isLoading: checkingSession } = useQuery<{ id: number } | null>({
+    queryKey: ["/api/auth/me"],
+    retry: false,
+    staleTime: 0,
+  });
+
+  useEffect(() => {
+    if (existingUser && existingUser.id) {
+      window.location.replace("/dashboard");
+    }
+  }, [existingUser]);
 
   const [step, setStep] = useState<"phone" | "otp">("phone");
   const [phone, setPhone] = useState("");
@@ -188,6 +201,14 @@ export default function EmployeeLoginPage() {
   }, []);
 
   const maskedPhone = phone ? `${phone.substring(0, 4)}****${phone.substring(8)}` : "";
+
+  if (checkingSession) {
+    return (
+      <div className="min-h-[100dvh] flex items-center justify-center">
+        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   return (
     <div
