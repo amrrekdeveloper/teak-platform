@@ -7,6 +7,10 @@ import { seedProductionDatabase } from "./db-seed";
 const app = express();
 const httpServer = createServer(app);
 
+// Trust Replit's reverse proxy so that req.secure = true in production
+// Without this, express-session won't set cookies when secure: true
+app.set("trust proxy", 1);
+
 declare module "http" {
   interface IncomingMessage {
     rawBody: unknown;
