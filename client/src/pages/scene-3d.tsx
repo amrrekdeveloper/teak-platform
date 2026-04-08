@@ -2812,12 +2812,29 @@ export default function Scene3DPage() {
     onError: () => { toast({ title: t("خطأ في الحفظ", "Save error"), variant: "destructive" }); },
   });
 
+  /* ── Shared helper: build a stable letter-based wallId ──
+     ALWAYS use the letter form so getWallIndex() can parse it reliably.
+     Never use the DB wall UUID — it doesn't end in A/B/C/D. */
+  const WALL_LETTERS_CONST = ["A","B","C","D"] as const;
+  const makeWallId = useCallback((wallIndex: number) =>
+    `${activeSpace?.id ?? "space"}-wall-${WALL_LETTERS_CONST[wallIndex] ?? "A"}`,
+  [activeSpace]);
+
+  /* ── Get room dimensions in cm for wall index (0,2=length  1,3=width) ── */
+  const wallLenCmByIdx = useCallback((wallIndex: number): number => {
+    const rd = surveyForSpace?.roomDimensions || {};
+    const rl = parseFloat(rd.length || activeSpace?.length || "400");
+    const rw = parseFloat(rd.width  || activeSpace?.width  || "300");
+    const rlc = rl <= 30 ? rl * 100 : rl;
+    const rwc = rw <= 30 ? rw * 100 : rw;
+    return (wallIndex === 0 || wallIndex === 2) ? rlc : rwc;
+  }, [surveyForSpace, activeSpace]);
+
   /* ── Wall click placement handler ── */
   const handleWallPlace = useCallback((wallIndex: number, xOffsetCm: number) => {
     if (!placingProduct || !activeSpace) return;
-    const wallLetters = ["A","B","C","D"];
-    const wallId = activeSpace.walls?.find((_w: any, i: number) => i === wallIndex)?.id
-                ?? `${activeSpace.id}-wall-${wallLetters[wallIndex]}`;
+    /* Always use letter-based wallId so getWallIndex() can parse it */
+    const wallId = makeWallId(wallIndex);
     const newProd = {
       productId: placingProduct.id,
       code: placingProduct.code,
@@ -2842,7 +2859,35 @@ export default function Scene3DPage() {
     setLocalProducts([...base, newProd]);
     setDesignSaved(false);
     toast({ title: t("تم إضافة الخزانة", "Cabinet added"), description: placingProduct.code });
-  }, [placingProduct, activeSpace, localProducts, selectedProducts, t, toast]);
+  }, [placingProduct, activeSpace, localProducts, selectedProducts, makeWallId, t, toast]);
+
+  /* ── Move an existing local product to a different wall ── */
+  const handleLocalMove = useCallback((globalIndex: number, newWallIndex: number) => {
+    if (!activeSpace) return;
+    const base = localProducts !== null ? localProducts : [...selectedProducts];
+    const newWallId = makeWallId(newWallIndex);
+    const wallLen = wallLenCmByIdx(newWallIndex);
+    const p = base[globalIndex];
+    if (!p) return;
+    const pW = parseFloat(p.designW || p.dimensions?.w || "60");
+    /* Place at next available position on target wall (same tier: base vs upper) */
+    const isUpper = isWallUnit(p);
+    const usedOnTarget = base.reduce((acc: number, bp: any, bi: number) => {
+      if (bi === globalIndex) return acc;
+      const bLetter = (bp.wallId || "").slice(-1).toUpperCase();
+      const bIdx = WALL_LETTER_IDX[bLetter] ?? 0;
+      if (bIdx !== newWallIndex) return acc;
+      if (isWallUnit(bp) !== isUpper) return acc;
+      return acc + parseFloat(bp.designW || bp.dimensions?.w || "60") + 5;
+    }, 10);
+    const newXOffset = Math.min(usedOnTarget + pW / 2, wallLen - pW / 2 - 10);
+    const updated = [...base];
+    updated[globalIndex] = { ...p, wallId: newWallId, _manualXOffset: newXOffset };
+    setLocalHistory(h => [...h, base]);
+    setLocalProducts(updated);
+    setDesignSaved(false);
+    toast({ title: t("تم نقل الخزانة", "Cabinet moved") });
+  }, [activeSpace, localProducts, selectedProducts, makeWallId, wallLenCmByIdx, t, toast]);
 
   /* ── Undo last placement ── */
   const handleUndo = useCallback(() => {
@@ -3084,24 +3129,25 @@ export default function Scene3DPage() {
                 <span className="font-semibold">{t("وضع التثبيت","Placing")}:</span>
                 <span className="font-mono bg-white/20 px-1.5 py-0.5 rounded">{placingProduct.code}</span>
                 <span className="opacity-70 hidden sm:inline">{t("— اختر الجدار:","— Pick wall:")}</span>
-                {/* Wall A/B/C/D quick-place buttons */}
-                {(activeSpace?.walls || []).map((wall: any, wallIdx: number) => {
-                  const letter = ["A","B","C","D"][wallIdx] || String(wallIdx);
-                  const wallLen = parseFloat(wallIdx === 0 || wallIdx === 2
-                    ? (activeSpace?.length || "400") : (activeSpace?.width || "300"));
-                  const wallLenCm = wallLen <= 30 ? wallLen * 100 : wallLen;
-                  /* Compute next auto-offset on this wall */
-                  const onThisWall = activeSpaceProducts.filter((p: any) => {
-                    const wl = p.wallId || "";
-                    return wl === wall.id || wl.endsWith(`-wall-${letter}`);
-                  });
-                  const usedCm = onThisWall.reduce((acc: number, p: any) =>
-                    acc + parseFloat(p.designW || p.dimensions?.w || "60") + 5, 10);
+                {/* Wall A/B/C/D quick-place buttons — always 4 walls */}
+                {([0,1,2,3] as const).map((wallIdx) => {
+                  const letter = WALL_LETTERS_CONST[wallIdx];
+                  const wallLenCm = wallLenCmByIdx(wallIdx);
                   const pW = parseFloat(placingProduct.designW?.toString() || "60");
+                  const isUpper = isWallUnit(placingProduct);
+                  /* Count only same-tier cabinets on this wall */
+                  const usedCm = activeSpaceProducts.reduce((acc: number, p: any) => {
+                    const pLetter = (p.wallId || "").slice(-1).toUpperCase();
+                    if (pLetter !== letter) return acc;
+                    if (isWallUnit(p) !== isUpper) return acc;
+                    return acc + parseFloat(p.designW || p.dimensions?.w || "60") + 5;
+                  }, 10);
                   const fits = usedCm + pW <= wallLenCm - 5;
+                  /* Label wall C (index 2) as "أمامك" hint since camera faces it */
+                  const hint = wallIdx === 2 ? " ◀" : "";
                   return (
                     <button
-                      key={wall.id || wallIdx}
+                      key={wallIdx}
                       onClick={() => handleWallPlace(wallIdx, usedCm + pW / 2)}
                       disabled={!fits}
                       className={`px-3 py-1 rounded-md text-xs font-bold border transition-all ${
@@ -3110,9 +3156,9 @@ export default function Scene3DPage() {
                           : "bg-white/20 text-white/40 border-white/20 cursor-not-allowed"
                       }`}
                       title={fits ? t(`وضع على الجدار ${letter}`, `Place on Wall ${letter}`)
-                                  : t(`لا توجد مساحة كافية في الجدار ${letter}`, `Not enough space on Wall ${letter}`)}
+                                  : t(`الجدار ${letter} ممتلئ`, `Wall ${letter} is full`)}
                     >
-                      {t(`الجدار ${letter}`, `Wall ${letter}`)}
+                      {t(`جدار ${letter}`, `Wall ${letter}`)}{hint}
                     </button>
                   );
                 })}
@@ -3250,7 +3296,7 @@ export default function Scene3DPage() {
                           </div>
                           {isSelected && (
                             <div className="flex flex-col gap-0.5 shrink-0">
-                              {/* Delete: local design mode OR customer portal */}
+                              {/* Delete */}
                               {(localProducts !== null) ? (
                                 <Button
                                   variant="ghost" size="icon" className="h-6 w-6 text-destructive"
@@ -3279,6 +3325,32 @@ export default function Scene3DPage() {
                                   <RefreshCw className="h-3 w-3" />
                                 </Button>
                               )}
+                            </div>
+                          )}
+                          {/* Move-to-wall row — shown below card when selected in design mode */}
+                          {isSelected && localProducts !== null && (
+                            <div className="mt-1.5 pt-1.5 border-t flex items-center gap-1 flex-wrap" onClick={(e) => e.stopPropagation()}>
+                              <span className="text-[9px] text-muted-foreground shrink-0">{t("نقل إلى:","Move to:")}</span>
+                              {([0,1,2,3] as const).map((wi) => {
+                                const letter = WALL_LETTERS_CONST[wi];
+                                const curLetter = (p.wallId || "").slice(-1).toUpperCase();
+                                const isCurrent = curLetter === letter;
+                                return (
+                                  <button
+                                    key={wi}
+                                    onClick={() => handleLocalMove(i, wi)}
+                                    disabled={isCurrent}
+                                    className={`text-[9px] px-1.5 py-0.5 rounded border font-bold transition-all ${
+                                      isCurrent
+                                        ? "bg-primary text-primary-foreground border-primary cursor-default"
+                                        : "border-border hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950"
+                                    }`}
+                                    title={isCurrent ? t("الجدار الحالي", "Current wall") : t(`انقل إلى جدار ${letter}`, `Move to wall ${letter}`)}
+                                  >
+                                    {letter}
+                                  </button>
+                                );
+                              })}
                             </div>
                           )}
                         </div>
