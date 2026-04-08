@@ -316,7 +316,6 @@ export default function SiteSurveyPage() {
   const [designFilesLoaded, setDesignFilesLoaded] = useState(false);
   const [pendingFileLabel, setPendingFileLabel] = useState("");
   const [showResults, setShowResults] = useState(false);
-  const [inlineViewTab, setInlineViewTab] = useState<"3d" | "2d">("3d");
 
   useEffect(() => {
     if (existingSurvey && existingSurvey.id && !surveyInitializedRef.current) {
@@ -691,7 +690,7 @@ export default function SiteSurveyPage() {
         const head = [["#", "Code", "Description", "Qty", "Wall"]];
         const body = selectedProducts.map((p, pi) => {
           const space = spaces.find(s => s.id === p.spaceId);
-          return [String(pi + 1), p.code || "—", p.name || p.nameAr || "—", String(p.quantity || 1), space?.name || "—"];
+          return [String(pi + 1), p.code || "—", p.description || p.groupName || "—", String(p.quantity || 1), space?.name || "—"];
         });
         autoTable(doc, { startY: y, head, body, theme: "grid", styles: { fontSize: 7, cellPadding: 2 }, headStyles: { fillColor: [26, 54, 93], textColor: 255, fontStyle: "bold" }, alternateRowStyles: { fillColor: [248, 250, 252] }, margin: { left: margin, right: margin } });
       }
