@@ -1572,8 +1572,6 @@ function Scene3D({
         fadeDistance={22} fadeStrength={2} infiniteGrid
       />
 
-      <KitchenIsland L={scaledL} W={scaledW} cabinetColor={CABINET_WOOD_COLOR} />
-
       <ContactShadows
         position={[0, 0.001, 0]}
         width={Math.max(scaledL, scaledW) * 1.5}
