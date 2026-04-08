@@ -569,10 +569,6 @@ export async function registerRoutes(
           messageEn: "Name and phone are required",
         });
       }
-      const namePattern = /^[\u0600-\u06FF\u0750-\u077Fa-zA-Z\s\-']+$/;
-      if (!namePattern.test(fullName)) {
-        return res.status(400).json({ message: "الاسم يجب أن يحتوي على حروف فقط", messageEn: "Name must contain letters only" });
-      }
       const normalizedPhone = phone.replace(/\D/g, "");
       if (!/^05\d{8}$/.test(normalizedPhone)) {
         return res.status(400).json({ message: "رقم جوال غير صحيح", messageEn: "Invalid phone number" });
@@ -1668,10 +1664,6 @@ export async function registerRoutes(
           message: "الاسم ورقم الجوال ووصف المنتج مطلوبة",
           messageEn: "Name, phone, and product description are required",
         });
-      }
-      const namePattern = /^[\u0600-\u06FF\u0750-\u077Fa-zA-Z\s\-']+$/;
-      if (!namePattern.test(fullName)) {
-        return res.status(400).json({ message: "الاسم يجب أن يحتوي على حروف فقط", messageEn: "Name must contain letters only" });
       }
       const normalizedPhone = phone.replace(/\D/g, "");
       if (!/^05\d{8}$/.test(normalizedPhone)) {
