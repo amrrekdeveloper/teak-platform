@@ -152,17 +152,6 @@ function DayLighting() {
         position={[8, 12, 6]}
         intensity={1.4}
         color="#FFFBF2"
-        castShadow
-        shadow-mapSize-width={2048}
-        shadow-mapSize-height={2048}
-        shadow-camera-near={0.1}
-        shadow-camera-far={30}
-        shadow-camera-left={-10}
-        shadow-camera-right={10}
-        shadow-camera-top={10}
-        shadow-camera-bottom={-10}
-        shadow-radius={6}
-        shadow-bias={-0.0005}
       />
       {/* Sky fill — cool blue bounce from opposite side */}
       <directionalLight position={[-6, 8, -5]} intensity={0.45} color="#CADDFF" />
@@ -213,11 +202,7 @@ function NightLighting({ roomL, roomW, roomH }: { roomL: number; roomW: number; 
           penumbra={spotPenumbra}
           intensity={i === 0 ? spotIntensity : spotIntensity * 0.75}
           color={warmColor}
-          castShadow={i === 0}
           distance={spotDist}
-          shadow-mapSize-width={1024}
-          shadow-mapSize-height={1024}
-          shadow-radius={8}
         />
       ))}
       {/* Soft fill from under-cabinet area — simulates LED strip */}
@@ -233,8 +218,8 @@ function NightLighting({ roomL, roomW, roomH }: { roomL: number; roomW: number; 
   );
 }
 
-function DownlightFixture({ pos, H, spotIntensity, castShadow }: {
-  pos: [number, number, number]; H: number; spotIntensity: number; castShadow: boolean; isNight?: boolean;
+function DownlightFixture({ pos, H, spotIntensity, isNight }: {
+  pos: [number, number, number]; H: number; spotIntensity: number; isNight?: boolean;
 }) {
   const [x, y, z] = pos;
   return (
@@ -258,7 +243,6 @@ function DownlightFixture({ pos, H, spotIntensity, castShadow }: {
           angle={Math.PI / 5}
           penumbra={0.7}
           distance={H * 1.5}
-          castShadow={false}
         >
           <object3D attach="target" position={[0, -H, 0]} />
         </spotLight>
@@ -293,7 +277,6 @@ function CeilingDownlights({ L, W, H, isNight }: { L: number; W: number; H: numb
           pos={pos}
           H={H}
           spotIntensity={i < MAX_SPOTLIGHTS ? spotIntensity : 0}
-          castShadow={false}
           isNight={isNight}
         />
       ))}
@@ -337,11 +320,11 @@ function KitchenIsland({ L, W, cabinetColor }: { L: number; W: number; cabinetCo
 
   return (
     <group position={[0, 0, 0]}>
-      <mesh position={[0, IH / 2, W * 0.12]} castShadow receiveShadow>
+      <mesh position={[0, IH / 2, W * 0.12]}>
         <boxGeometry args={[IW, IH, ID]} />
         <meshStandardMaterial color={cabinetColor} roughness={0.8} metalness={0.05} />
       </mesh>
-      <mesh position={[0, IH + countertopH / 2, W * 0.12]} castShadow>
+      <mesh position={[0, IH + countertopH / 2, W * 0.12]}>
         <boxGeometry args={[IW + 0.06, countertopH, ID + 0.06]} />
         <meshStandardMaterial color="#2D2D2D" roughness={0.15} metalness={0.2} />
       </mesh>
@@ -354,7 +337,7 @@ function CeilingWithCornice({ L, W, H }: { L: number; W: number; H: number }) {
   return (
     <group>
       {/* Ceiling faces DOWN (-Y) so orbit camera above can see into the room */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, H, 0]} receiveShadow>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, H, 0]}>
         <planeGeometry args={[L, W]} />
         <meshStandardMaterial color="#F5F3EF" roughness={0.96} metalness={0} side={THREE.DoubleSide} />
       </mesh>
@@ -487,7 +470,7 @@ function FloorMesh({ L, W, floorType }: { L: number; W: number; floorType: Floor
   const metalness = floorType === "marble" ? 0.12 : 0.0;
 
   return (
-    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.001, 0]} receiveShadow>
+    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.001, 0]}>
       <planeGeometry args={[L, W]} />
       <meshStandardMaterial map={texture} roughness={roughness} metalness={metalness} />
     </mesh>
@@ -554,7 +537,7 @@ function Backsplash({ L, W, wallIndices }: { L: number; W: number; wallIndices: 
           wi === 2 ? [0, Math.PI, 0] :
                      [0, Math.PI / 2, 0];
         return (
-          <mesh key={wi} position={pos} rotation={rot} receiveShadow>
+          <mesh key={wi} position={pos} rotation={rot}>
             <planeGeometry args={[len, bsH]} />
             <meshStandardMaterial map={bsTexture} roughness={0.3} metalness={0.1} />
           </mesh>
@@ -613,7 +596,7 @@ function WallPanel({
   }, [wallLen, wallH, items]);
 
   return (
-    <mesh geometry={geometry} receiveShadow>
+    <mesh geometry={geometry}>
       <meshStandardMaterial
         color={wallColor} roughness={0.88} metalness={0}
         transparent={transparent} opacity={transparent ? 0.12 : 1}
@@ -997,16 +980,16 @@ function CabinetFront({ W, H, D, frameColor, panelColor, drawerCount, isGlass }:
     return (
       <group position={[0, 0, z]}>
         {/* Outer frame */}
-        <mesh position={[0, H / 2 - rl / 2, FD / 2]} castShadow>
+        <mesh position={[0, H / 2 - rl / 2, FD / 2]}>
           <boxGeometry args={[W, rl, FD]} />{frameMat}
         </mesh>
-        <mesh position={[0, -H / 2 + rl / 2, FD / 2]} castShadow>
+        <mesh position={[0, -H / 2 + rl / 2, FD / 2]}>
           <boxGeometry args={[W, rl, FD]} />{frameMat}
         </mesh>
-        <mesh position={[-W / 2 + st / 2, 0, FD / 2]} castShadow>
+        <mesh position={[-W / 2 + st / 2, 0, FD / 2]}>
           <boxGeometry args={[st, H, FD]} />{frameMat}
         </mesh>
-        <mesh position={[W / 2 - st / 2, 0, FD / 2]} castShadow>
+        <mesh position={[W / 2 - st / 2, 0, FD / 2]}>
           <boxGeometry args={[st, H, FD]} />{frameMat}
         </mesh>
         {/* Individual drawer fronts */}
@@ -1014,11 +997,11 @@ function CabinetFront({ W, H, D, frameColor, panelColor, drawerCount, isGlass }:
           const yCenter = H / 2 - rl - di * (dH + rl) - dH / 2;
           return (
             <group key={di}>
-              <mesh position={[0, yCenter, PD / 2]} castShadow>
+              <mesh position={[0, yCenter, PD / 2]}>
                 <boxGeometry args={[panelW - 0.002, dH - 0.004, PD]} />{panelMat}
               </mesh>
               {/* Drawer handle - horizontal bar */}
-              <mesh position={[0, yCenter, FD + 0.01]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+              <mesh position={[0, yCenter, FD + 0.01]} rotation={[Math.PI / 2, 0, 0]}>
                 <cylinderGeometry args={[0.006, 0.006, W * 0.45, 8]} />
                 <meshStandardMaterial color="#2A2A2A" roughness={0.25} metalness={0.85} />
               </mesh>
@@ -1036,24 +1019,24 @@ function CabinetFront({ W, H, D, frameColor, panelColor, drawerCount, isGlass }:
   return (
     <group position={[0, 0, z]}>
       {/* Top rail */}
-      <mesh position={[0, H / 2 - rl / 2, FD / 2]} castShadow>
+      <mesh position={[0, H / 2 - rl / 2, FD / 2]}>
         <boxGeometry args={[W, rl, FD]} />{frameMat}
       </mesh>
       {/* Bottom rail */}
-      <mesh position={[0, -H / 2 + rl / 2, FD / 2]} castShadow>
+      <mesh position={[0, -H / 2 + rl / 2, FD / 2]}>
         <boxGeometry args={[W, rl, FD]} />{frameMat}
       </mesh>
       {/* Left stile */}
-      <mesh position={[-W / 2 + st / 2, 0, FD / 2]} castShadow>
+      <mesh position={[-W / 2 + st / 2, 0, FD / 2]}>
         <boxGeometry args={[st, H, FD]} />{frameMat}
       </mesh>
       {/* Right stile */}
-      <mesh position={[W / 2 - st / 2, 0, FD / 2]} castShadow>
+      <mesh position={[W / 2 - st / 2, 0, FD / 2]}>
         <boxGeometry args={[st, H, FD]} />{frameMat}
       </mesh>
       {/* Center divider for double-door */}
       {numDoors === 2 && (
-        <mesh position={[0, 0, FD / 2]} castShadow>
+        <mesh position={[0, 0, FD / 2]}>
           <boxGeometry args={[st, H, FD]} />{frameMat}
         </mesh>
       )}
@@ -1070,7 +1053,7 @@ function CabinetFront({ W, H, D, frameColor, panelColor, drawerCount, isGlass }:
             />
           </mesh>
         ) : (
-          <mesh key={di} position={[px, 0, PD / 2]} castShadow>
+          <mesh key={di} position={[px, 0, PD / 2]}>
             <boxGeometry args={[doorW, panelH, PD]} />{panelMat}
           </mesh>
         );
@@ -1146,7 +1129,7 @@ function Cabinet({
       onClick={(e) => { e.stopPropagation(); onSelect(index); }}
     >
       {/* Cabinet carcass with oak wood texture */}
-      <mesh castShadow receiveShadow>
+      <mesh>
         <boxGeometry args={[W, H, D]} />
         <meshStandardMaterial
           map={hasConflict ? undefined : woodTexture}
@@ -1163,7 +1146,7 @@ function Cabinet({
         </mesh>
       )}
 
-      <mesh position={[0, 0, D / 2 + frameThick / 2]} castShadow>
+      <mesh position={[0, 0, D / 2 + frameThick / 2]}>
         <boxGeometry args={[W - 0.008, H - 0.008, frameThick]} />
         <meshStandardMaterial color={frameColor} roughness={0.65} metalness={0.12} />
       </mesh>
@@ -1181,12 +1164,12 @@ function Cabinet({
       {isBaseUnit(product) && (
         <>
           {/* Granite countertop */}
-          <mesh position={[0, H / 2 + 0.018, -0.005]} castShadow receiveShadow>
+          <mesh position={[0, H / 2 + 0.018, -0.005]}>
             <boxGeometry args={[W + 0.02, 0.035, D + 0.025]} />
             <meshStandardMaterial map={graniteTexture} roughness={0.2} metalness={0.06} color="#C8C4BE" />
           </mesh>
           {/* Kickplate 10cm strip at bottom front */}
-          <mesh position={[0, -H / 2 + 0.05, D / 2 - 0.01]} castShadow>
+          <mesh position={[0, -H / 2 + 0.05, D / 2 - 0.01]}>
             <boxGeometry args={[W, 0.1, 0.025]} />
             <meshStandardMaterial color="#1C1C1C" roughness={0.8} metalness={0.1} />
           </mesh>
@@ -1195,7 +1178,7 @@ function Cabinet({
 
       {isWallUnit(product) && (
         /* Mounting rail — aluminium bar at top-back of wall cabinet */
-        <mesh position={[0, H / 2 - 0.022, -D / 2 + 0.012]} castShadow>
+        <mesh position={[0, H / 2 - 0.022, -D / 2 + 0.012]}>
           <boxGeometry args={[W - 0.04, 0.038, 0.018]} />
           <meshStandardMaterial color="#B8C0CC" roughness={0.25} metalness={0.65} />
         </mesh>
@@ -2978,7 +2961,7 @@ export default function Scene3DPage() {
               </div>
             )}
             {surveyForSpace && (
-              <Canvas key={key} shadows gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: lightMode === "day" ? 1.2 : 0.8 }}>
+              <Canvas key={key} gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: lightMode === "day" ? 1.2 : 0.8 }}>
                 <XR store={xrStore}>
                   <Suspense fallback={null}>
                     <Scene3D
