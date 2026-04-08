@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useSearch } from "wouter";
 import { useLanguage } from "@/components/language-provider";
 import { Canvas } from "@react-three/fiber";
-import { OrbitControls, PerspectiveCamera, Text } from "@react-three/drei";
+import { OrbitControls, PerspectiveCamera, Text, Environment, ContactShadows, SoftShadows, Grid } from "@react-three/drei";
 import * as THREE from "three";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -225,6 +225,154 @@ function NightLighting({ roomL, roomW, roomH }: { roomL: number; roomW: number; 
         </mesh>
       ))}
     </>
+  );
+}
+
+function DownlightFixture({ pos, H, spotIntensity, castShadow }: {
+  pos: [number, number, number]; H: number; spotIntensity: number; castShadow: boolean; isNight?: boolean;
+}) {
+  const [x, y, z] = pos;
+  return (
+    <group position={[x, y, z]}>
+      {/* Glowing disc */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]}>
+        <circleGeometry args={[0.06, 16]} />
+        <meshStandardMaterial color="#FFFDE7" emissive="#FFE082" emissiveIntensity={spotIntensity > 8 ? 3 : 1.5} />
+      </mesh>
+      {/* Metallic ring frame */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.001, 0]}>
+        <ringGeometry args={[0.06, 0.075, 16]} />
+        <meshStandardMaterial color="#D0D0D0" roughness={0.3} metalness={0.7} />
+      </mesh>
+      {/* SpotLight pointing straight down via target below fixture */}
+      <spotLight
+        position={[0, 0, 0]}
+        intensity={spotIntensity}
+        color="#FFF5E0"
+        angle={Math.PI / 5}
+        penumbra={0.7}
+        distance={H * 1.5}
+        castShadow={castShadow}
+        shadow-mapSize-width={512}
+        shadow-mapSize-height={512}
+        shadow-bias={-0.001}
+      >
+        {/* Attach the spotlight target directly below in local space */}
+        <object3D attach="target" position={[0, -H, 0]} />
+      </spotLight>
+    </group>
+  );
+}
+
+function CeilingDownlights({ L, W, H, isNight }: { L: number; W: number; H: number; isNight?: boolean }) {
+  const cols = Math.max(2, Math.round(L / 1.2));
+  const rows = Math.max(2, Math.round(W / 1.2));
+  const lights: [number, number, number][] = [];
+
+  for (let c = 0; c < cols; c++) {
+    for (let r = 0; r < rows; r++) {
+      const x = -L / 2 + (L / (cols - 1 || 1)) * c;
+      const z = -W / 2 + (W / (rows - 1 || 1)) * r;
+      lights.push([x, H - 0.02, z]);
+    }
+  }
+
+  const spotIntensity = isNight ? 14 : 4;
+
+  return (
+    <group>
+      {lights.map((pos, i) => (
+        <DownlightFixture
+          key={i}
+          pos={pos}
+          H={H}
+          spotIntensity={spotIntensity}
+          castShadow={i < 4}
+          isNight={isNight}
+        />
+      ))}
+    </group>
+  );
+}
+
+function CoveLighting({ L, W, H }: { L: number; W: number; H: number }) {
+  const coveH = H - 0.05;
+  const warmColor = "#FFE8C0";
+  return (
+    <>
+      <rectAreaLight position={[0, coveH, -W / 2 + 0.1]} width={L} height={0.1}
+        intensity={3} color={warmColor} rotation={[Math.PI / 2, 0, 0]} />
+      <rectAreaLight position={[0, coveH, W / 2 - 0.1]} width={L} height={0.1}
+        intensity={3} color={warmColor} rotation={[-Math.PI / 2, 0, 0]} />
+      <rectAreaLight position={[-L / 2 + 0.1, coveH, 0]} width={W} height={0.1}
+        intensity={3} color={warmColor} rotation={[Math.PI / 2, 0, Math.PI / 2]} />
+      <rectAreaLight position={[L / 2 - 0.1, coveH, 0]} width={W} height={0.1}
+        intensity={3} color={warmColor} rotation={[Math.PI / 2, 0, -Math.PI / 2]} />
+      <mesh position={[0, coveH, -W / 2 + 0.02]}>
+        <boxGeometry args={[L, 0.02, 0.04]} />
+        <meshStandardMaterial color={warmColor} emissive={warmColor} emissiveIntensity={1.5} />
+      </mesh>
+      <mesh position={[0, coveH, W / 2 - 0.02]}>
+        <boxGeometry args={[L, 0.02, 0.04]} />
+        <meshStandardMaterial color={warmColor} emissive={warmColor} emissiveIntensity={1.5} />
+      </mesh>
+      <mesh position={[-L / 2 + 0.02, coveH, 0]}>
+        <boxGeometry args={[0.04, 0.02, W]} />
+        <meshStandardMaterial color={warmColor} emissive={warmColor} emissiveIntensity={1.5} />
+      </mesh>
+      <mesh position={[L / 2 - 0.02, coveH, 0]}>
+        <boxGeometry args={[0.04, 0.02, W]} />
+        <meshStandardMaterial color={warmColor} emissive={warmColor} emissiveIntensity={1.5} />
+      </mesh>
+    </>
+  );
+}
+
+function KitchenIsland({ L, W, cabinetColor }: { L: number; W: number; cabinetColor: string }) {
+  if (L < 3.5 || W < 3.5) return null;
+
+  const IW = 1.2, ID = 0.7, IH = 0.9;
+  const countertopH = 0.04;
+
+  return (
+    <group position={[0, 0, 0]}>
+      <mesh position={[0, IH / 2, W * 0.12]} castShadow receiveShadow>
+        <boxGeometry args={[IW, IH, ID]} />
+        <meshStandardMaterial color={cabinetColor} roughness={0.8} metalness={0.05} />
+      </mesh>
+      <mesh position={[0, IH + countertopH / 2, W * 0.12]} castShadow>
+        <boxGeometry args={[IW + 0.06, countertopH, ID + 0.06]} />
+        <meshStandardMaterial color="#2D2D2D" roughness={0.15} metalness={0.2} />
+      </mesh>
+    </group>
+  );
+}
+
+function CeilingWithCornice({ L, W, H }: { L: number; W: number; H: number }) {
+  const CROWN = 0.08;
+  return (
+    <group>
+      <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, H, 0]} receiveShadow>
+        <planeGeometry args={[L, W]} />
+        <meshStandardMaterial color="#F5F3EF" roughness={0.96} metalness={0} />
+      </mesh>
+      <mesh position={[0, H - CROWN / 2, -W / 2]}>
+        <boxGeometry args={[L + CROWN * 2, CROWN, CROWN]} />
+        <meshStandardMaterial color="#F0EDE8" roughness={0.9} />
+      </mesh>
+      <mesh position={[L / 2, H - CROWN / 2, 0]}>
+        <boxGeometry args={[CROWN, CROWN, W]} />
+        <meshStandardMaterial color="#F0EDE8" roughness={0.9} />
+      </mesh>
+      <mesh position={[0, H - CROWN / 2, W / 2]}>
+        <boxGeometry args={[L + CROWN * 2, CROWN, CROWN]} />
+        <meshStandardMaterial color="#F0EDE8" roughness={0.9} />
+      </mesh>
+      <mesh position={[-L / 2, H - CROWN / 2, 0]}>
+        <boxGeometry args={[CROWN, CROWN, W]} />
+        <meshStandardMaterial color="#F0EDE8" roughness={0.9} />
+      </mesh>
+    </group>
   );
 }
 
@@ -520,6 +668,92 @@ function WallReveal({ items, wallLen, wallH }: { items: any[]; wallLen: number; 
   );
 }
 
+function WindowElement({ cx, iy, iw, ih, FRAME_W }: { cx: number; iy: number; iw: number; ih: number; FRAME_W: number }) {
+  const windowOutdoor = useMemo(() => {
+    const c = document.createElement("canvas");
+    c.width = 512; c.height = 512;
+    const ctx = c.getContext("2d")!;
+    const sky = ctx.createLinearGradient(0, 0, 0, 300);
+    sky.addColorStop(0, "#2B6CB0");
+    sky.addColorStop(0.6, "#90CDF4");
+    sky.addColorStop(1, "#EBF8FF");
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, 512, 300);
+    const haze = ctx.createLinearGradient(0, 275, 0, 320);
+    haze.addColorStop(0, "rgba(255,255,255,0)");
+    haze.addColorStop(0.5, "rgba(240,250,255,0.8)");
+    haze.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = haze;
+    ctx.fillRect(0, 275, 512, 45);
+    const gnd = ctx.createLinearGradient(0, 310, 0, 512);
+    gnd.addColorStop(0, "#C6DDA0");
+    gnd.addColorStop(1, "#6B9E3A");
+    ctx.fillStyle = gnd;
+    ctx.fillRect(0, 310, 512, 202);
+    [[55, 305, 52], [150, 295, 62], [270, 300, 48], [390, 308, 58], [465, 295, 44]].forEach(([x, y, r]) => {
+      const g = ctx.createRadialGradient(x, y, 4, x, y - 18, r);
+      g.addColorStop(0, "#4A7C2A");
+      g.addColorStop(1, "rgba(40,90,15,0)");
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.ellipse(x, y, r, r * 1.25, 0, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    return new THREE.CanvasTexture(c);
+  }, []);
+
+  return (
+    <group position={[cx, iy + ih / 2, 0.006]}>
+      {/* Outdoor scene canvas texture */}
+      <mesh position={[0, 0, -0.22]}>
+        <planeGeometry args={[iw * 1.05, ih * 1.05]} />
+        <meshBasicMaterial map={windowOutdoor} />
+      </mesh>
+      {/* RectAreaLight simulating daylight from outside */}
+      <rectAreaLight
+        position={[0, 0, -0.15]}
+        width={iw * 0.9}
+        height={ih * 0.9}
+        intensity={8}
+        color="#C8DCFF"
+        rotation={[0, Math.PI, 0]}
+      />
+      {/* Window glass */}
+      <mesh position={[0, 0, 0.002]}>
+        <planeGeometry args={[iw - 0.05, ih - 0.05]} />
+        <meshStandardMaterial
+          color="#C8E8FF"
+          transparent
+          opacity={0.22}
+          roughness={0.04}
+          metalness={0.12}
+        />
+      </mesh>
+      {/* Window frame (white aluminium) */}
+      {([-ih / 2, ih / 2] as number[]).map((fy, fi) => (
+        <mesh key={fi} position={[0, fy, 0.016]}>
+          <boxGeometry args={[iw + 0.08, FRAME_W, FRAME_W * 0.8]} />
+          <meshStandardMaterial color="#F0F0EE" roughness={0.35} metalness={0.08} />
+        </mesh>
+      ))}
+      {([-iw / 2, iw / 2] as number[]).map((fx, fi) => (
+        <mesh key={fi + 2} position={[fx, 0, 0.016]}>
+          <boxGeometry args={[FRAME_W, ih + 0.08, FRAME_W * 0.8]} />
+          <meshStandardMaterial color="#F0F0EE" roughness={0.35} metalness={0.08} />
+        </mesh>
+      ))}
+      <mesh position={[0, 0, 0.016]}>
+        <boxGeometry args={[iw + 0.02, FRAME_W * 0.7, FRAME_W * 0.7]} />
+        <meshStandardMaterial color="#E8E8E6" roughness={0.35} metalness={0.08} />
+      </mesh>
+      <mesh position={[0, -ih / 2 - 0.035, 0.06]}>
+        <boxGeometry args={[iw + 0.12, 0.04, 0.12]} />
+        <meshStandardMaterial color="#F5F5F3" roughness={0.3} metalness={0.06} />
+      </mesh>
+    </group>
+  );
+}
+
 /** Renders door frames, window glass, door swing arc, drain & outlet markers on one wall. */
 function WallElements({ items, wallLen, wallH }: { items: any[]; wallLen: number; wallH: number }) {
   const hw = wallLen / 2;
@@ -576,74 +810,7 @@ function WallElements({ items, wallLen, wallH }: { items: any[]; wallLen: number
         if (item.type === "window") {
           const iy = parseItemMeasure(item.heightFromFloor, 90);
           return (
-            <group key={i} position={[cx, iy + ih / 2, 0.006]}>
-              {/* ── Outdoor scene behind window ─────────────── */}
-              {/* Sky — gradient from deep sky to horizon */}
-              <mesh position={[0, ih * 0.22, -0.22]}>
-                <planeGeometry args={[iw * 1.05, ih * 0.6]} />
-                <meshBasicMaterial color="#87CEEB" />
-              </mesh>
-              {/* Upper sky (deeper blue) */}
-              <mesh position={[0, ih * 0.42, -0.21]}>
-                <planeGeometry args={[iw * 1.05, ih * 0.2]} />
-                <meshBasicMaterial color="#5DA8D4" />
-              </mesh>
-              {/* Ground/horizon pale */}
-              <mesh position={[0, -ih * 0.32, -0.22]}>
-                <planeGeometry args={[iw * 1.05, ih * 0.2]} />
-                <meshBasicMaterial color="#D4E8C2" />
-              </mesh>
-              {/* Tree canopy — dark green middle */}
-              <mesh position={[0, -ih * 0.04, -0.20]}>
-                <planeGeometry args={[iw * 1.05, ih * 0.55]} />
-                <meshBasicMaterial color="#3A7A3A" />
-              </mesh>
-              {/* Tree highlights — lighter green patches */}
-              <mesh position={[-iw * 0.2, ih * 0.03, -0.19]}>
-                <planeGeometry args={[iw * 0.45, ih * 0.38]} />
-                <meshBasicMaterial color="#4F9A4F" />
-              </mesh>
-              <mesh position={[iw * 0.25, -ih * 0.01, -0.19]}>
-                <planeGeometry args={[iw * 0.38, ih * 0.32]} />
-                <meshBasicMaterial color="#56A656" />
-              </mesh>
-              {/* ── Window glass ─────────────────────────────── */}
-              <mesh position={[0, 0, 0.002]}>
-                <planeGeometry args={[iw - 0.05, ih - 0.05]} />
-                <meshStandardMaterial
-                  color="#C8E8FF"
-                  transparent
-                  opacity={0.22}
-                  roughness={0.04}
-                  metalness={0.12}
-                />
-              </mesh>
-              {/* ── Window frame (white aluminium) ──────────── */}
-              {/* Top/bottom bars */}
-              {([-ih / 2, ih / 2] as number[]).map((fy, fi) => (
-                <mesh key={fi} position={[0, fy, 0.016]}>
-                  <boxGeometry args={[iw + 0.08, FRAME_W, FRAME_W * 0.8]} />
-                  <meshStandardMaterial color="#F0F0EE" roughness={0.35} metalness={0.08} />
-                </mesh>
-              ))}
-              {/* Left/right bars */}
-              {([-iw / 2, iw / 2] as number[]).map((fx, fi) => (
-                <mesh key={fi + 2} position={[fx, 0, 0.016]}>
-                  <boxGeometry args={[FRAME_W, ih + 0.08, FRAME_W * 0.8]} />
-                  <meshStandardMaterial color="#F0F0EE" roughness={0.35} metalness={0.08} />
-                </mesh>
-              ))}
-              {/* Centre divider bar (horizontal) */}
-              <mesh position={[0, 0, 0.016]}>
-                <boxGeometry args={[iw + 0.02, FRAME_W * 0.7, FRAME_W * 0.7]} />
-                <meshStandardMaterial color="#E8E8E6" roughness={0.35} metalness={0.08} />
-              </mesh>
-              {/* Window sill (protruding white ledge) */}
-              <mesh position={[0, -ih / 2 - 0.035, 0.06]}>
-                <boxGeometry args={[iw + 0.12, 0.04, 0.12]} />
-                <meshStandardMaterial color="#F5F5F3" roughness={0.3} metalness={0.06} />
-              </mesh>
-            </group>
+            <WindowElement key={i} cx={cx} iy={iy} iw={iw} ih={ih} FRAME_W={FRAME_W} />
           );
         }
 
@@ -692,11 +859,7 @@ function Room({
   return (
     <group>
       <FloorMesh L={L} W={W} floorType={floorType} />
-      {/* Ceiling — slightly warm off-white with crown moulding suggestion */}
-      <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, H, 0]} receiveShadow>
-        <planeGeometry args={[L, W]} />
-        <meshStandardMaterial color="#F8F6F2" roughness={0.95} metalness={0.0} />
-      </mesh>
+      <CeilingWithCornice L={L} W={W} H={H} />
 
       {/* Wall A — back, wallIndex=0, at z=-W/2 */}
       <group position={[0, 0, -W / 2]}>
@@ -737,9 +900,16 @@ function isDrawerUnit(product: any): boolean {
   return code.includes("DD") || code.includes("2DP") || code.includes("3DP") || code.includes("4DP") || code.includes("DR-");
 }
 
+/** Detects if a product has glass-front doors */
+function isGlassCabinet(product: any): boolean {
+  const code = (product.code || "").toUpperCase();
+  const name = (product.nameAr || product.nameEn || "").toLowerCase();
+  return code.includes("GL") || code.includes("GLS") || name.includes("زجاج") || name.includes("glass");
+}
+
 /** Professional cabinet door front with stile/rail frame + recessed center panel */
-function CabinetFront({ W, H, D, frameColor, panelColor, drawerCount }: {
-  W: number; H: number; D: number; frameColor: string; panelColor: string; drawerCount?: number;
+function CabinetFront({ W, H, D, frameColor, panelColor, drawerCount, isGlass }: {
+  W: number; H: number; D: number; frameColor: string; panelColor: string; drawerCount?: number; isGlass?: boolean;
 }) {
   const st = Math.min(0.042, W * 0.08);   // stile width (vertical frame members)
   const rl = Math.min(0.048, H * 0.07);   // rail height (horizontal frame members)
@@ -820,10 +990,19 @@ function CabinetFront({ W, H, D, frameColor, panelColor, drawerCount }: {
           <boxGeometry args={[st, H, FD]} />{frameMat}
         </mesh>
       )}
-      {/* Center panel(s) — recessed */}
+      {/* Center panel(s) — recessed or glass */}
       {Array.from({ length: numDoors }).map((_, di) => {
         const px = numDoors === 2 ? (di === 0 ? -doorW / 2 - st / 4 : doorW / 2 + st / 4) : 0;
-        return (
+        return isGlass ? (
+          <mesh key={di} position={[px, 0, D / 2 + 0.003]}>
+            <planeGeometry args={[doorW, panelH]} />
+            <meshStandardMaterial
+              color="#C8E8FF" transparent opacity={0.25}
+              roughness={0.04} metalness={0.1}
+              envMapIntensity={1.5}
+            />
+          </mesh>
+        ) : (
           <mesh key={di} position={[px, 0, PD / 2]} castShadow>
             <boxGeometry args={[doorW, panelH, PD]} />{panelMat}
           </mesh>
@@ -929,6 +1108,7 @@ function Cabinet({
         frameColor={isSelected ? "#C8A030" : "#2C1A0E"}
         panelColor={isSelected ? "#D4B870" : isWallUnit(product) ? "#DED0B8" : "#C8A878"}
         drawerCount={isDrawerUnit(product) ? 3 : undefined}
+        isGlass={isGlassCabinet(product)}
       />
 
       {isBaseUnit(product) && (
@@ -1096,9 +1276,16 @@ function Scene3D({
     )
   );
 
+  const scaledL = L * SCALE;
+  const scaledW = W * SCALE;
+  const scaledH = H * SCALE;
+
   return (
     <>
-      <PerspectiveCamera makeDefault position={[0, H * SCALE * 1.6, W * SCALE * 2.2]} fov={55} />
+      <SoftShadows size={30} samples={16} focus={0} />
+      <color attach="background" args={[lightMode === "day" ? "#D6E8F5" : "#0f0c29"]} />
+
+      <PerspectiveCamera makeDefault position={[0, scaledH * 1.6, scaledW * 2.2]} fov={55} />
       <OrbitControls enableDamping dampingFactor={0.05} minDistance={1} maxDistance={25} />
 
       {lightMode === "day" ? (
@@ -1107,11 +1294,33 @@ function Scene3D({
         <NightLighting roomL={L} roomW={W} roomH={H} />
       )}
 
+      <CoveLighting L={scaledL} W={scaledW} H={scaledH} />
+      <Environment preset="apartment" environmentIntensity={0.6} />
+
       <Room
         length={L} width={W} height={H}
         floorType={floorType}
         wallsWithBase={wallsWithBase}
         wallItems={wallItemsByIndex}
+      />
+
+      <CeilingDownlights L={scaledL} W={scaledW} H={scaledH} isNight={lightMode === "night"} />
+
+      <Grid
+        position={[0, 0.001, 0]}
+        args={[Math.max(scaledL, scaledW) * 5, Math.max(scaledL, scaledW) * 5]}
+        cellSize={0.5} cellThickness={0.4} cellColor="#BFC5CC"
+        sectionSize={2.5} sectionThickness={0.8} sectionColor="#8E9BAA"
+        fadeDistance={22} fadeStrength={2} infiniteGrid
+      />
+
+      <KitchenIsland L={scaledL} W={scaledW} cabinetColor={CABINET_WOOD_COLOR} />
+
+      <ContactShadows
+        position={[0, 0.001, 0]}
+        width={Math.max(scaledL, scaledW) * 1.5}
+        height={Math.max(scaledL, scaledW) * 1.5}
+        far={2.5} blur={3} opacity={0.5} color="#101020"
       />
 
       {productsWithPos.map((p: any, i: number) => (
@@ -2426,7 +2635,7 @@ export default function Scene3DPage() {
               </div>
             )}
             {surveyForSpace && (
-              <Canvas key={key} shadows gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: lightMode === "day" ? 1.0 : 0.7 }}>
+              <Canvas key={key} shadows="soft" gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: lightMode === "day" ? 1.2 : 0.8 }}>
                 <Suspense fallback={null}>
                   <Scene3D
                     survey={localProducts !== null
