@@ -352,9 +352,10 @@ function CeilingWithCornice({ L, W, H }: { L: number; W: number; H: number }) {
   const CROWN = 0.08;
   return (
     <group>
-      <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, H, 0]} receiveShadow>
+      {/* Ceiling faces DOWN (-Y) so orbit camera above can see into the room */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, H, 0]} receiveShadow>
         <planeGeometry args={[L, W]} />
-        <meshStandardMaterial color="#F5F3EF" roughness={0.96} metalness={0} />
+        <meshStandardMaterial color="#F5F3EF" roughness={0.96} metalness={0} side={THREE.DoubleSide} />
       </mesh>
       <mesh position={[0, H - CROWN / 2, -W / 2]}>
         <boxGeometry args={[L + CROWN * 2, CROWN, CROWN]} />
@@ -593,10 +594,10 @@ function WallPanel({
 
     for (const item of items) {
       if (item.type !== "door" && item.type !== "window") continue;
-      const dist = parseItemMeasure(item.distanceFromFirst, 0);
-      const iw   = parseItemMeasure(item.width,  item.type === "door" ? 90  : 120);
-      const ih   = parseItemMeasure(item.height, item.type === "door" ? 210 : 120);
-      const iy   = item.type === "door" ? 0 : parseItemMeasure(item.heightFromFloor, 90);
+      const dist = parseItemMeasure(item.distanceFromFirst, 0)  * SCALE;
+      const iw   = parseItemMeasure(item.width,  item.type === "door" ? 90  : 120) * SCALE;
+      const ih   = parseItemMeasure(item.height, item.type === "door" ? 210 : 120) * SCALE;
+      const iy   = item.type === "door" ? 0 : parseItemMeasure(item.heightFromFloor, 90) * SCALE;
 
       const hx = -hw + dist;
       const hole = new THREE.Path();
@@ -628,12 +629,12 @@ function WallReveal({ items, wallLen, wallH }: { items: any[]; wallLen: number; 
     <group>
       {items.map((item: any, i: number) => {
         if (item.type !== "door" && item.type !== "window") return null;
-        const dist  = parseItemMeasure(item.distanceFromFirst, 0);
-        const iw    = parseItemMeasure(item.width,  item.type === "door" ? 90  : 120);
-        const ih    = parseItemMeasure(item.height, item.type === "door" ? 210 : 120);
+        const dist  = parseItemMeasure(item.distanceFromFirst, 0)  * SCALE;
+        const iw    = parseItemMeasure(item.width,  item.type === "door" ? 90  : 120) * SCALE;
+        const ih    = parseItemMeasure(item.height, item.type === "door" ? 210 : 120) * SCALE;
         const startX = -hw + dist;
         const cx     = startX + iw / 2;
-        const iy     = item.type === "door" ? 0 : parseItemMeasure(item.heightFromFloor, 90);
+        const iy     = item.type === "door" ? 0 : parseItemMeasure(item.heightFromFloor, 90) * SCALE;
         const D      = WALL_DEPTH_3D;
         const mat    = <meshStandardMaterial color={REVEAL_COLOR} roughness={0.78} />;
 
@@ -854,9 +855,9 @@ function WallElements({ items, wallLen, wallH }: { items: any[]; wallLen: number
   return (
     <group>
       {items.map((item: any, i: number) => {
-        const dist = parseItemMeasure(item.distanceFromFirst, 0);
-        const iw   = parseItemMeasure(item.width,  item.type === "door" ? 90  : 120);
-        const ih   = parseItemMeasure(item.height, item.type === "door" ? 210 : 120);
+        const dist = parseItemMeasure(item.distanceFromFirst, 0) * SCALE;
+        const iw   = parseItemMeasure(item.width,  item.type === "door" ? 90  : 120) * SCALE;
+        const ih   = parseItemMeasure(item.height, item.type === "door" ? 210 : 120) * SCALE;
         const startX = -hw + dist;
         const cx     = startX + iw / 2;
         const FRAME_COLOR = "#2C1A0E";
@@ -869,7 +870,7 @@ function WallElements({ items, wallLen, wallH }: { items: any[]; wallLen: number
         }
 
         if (item.type === "window") {
-          const iy = parseItemMeasure(item.heightFromFloor, 90);
+          const iy = parseItemMeasure(item.heightFromFloor, 90) * SCALE;
           return (
             <WindowElement key={i} cx={cx} iy={iy} iw={iw} ih={ih} FRAME_W={FRAME_W} />
           );
@@ -885,7 +886,7 @@ function WallElements({ items, wallLen, wallH }: { items: any[]; wallLen: number
         }
 
         if (item.type === "outlet") {
-          const iy = parseItemMeasure(item.heightFromFloor, 40);
+          const iy = parseItemMeasure(item.heightFromFloor, 40) * SCALE;
           return (
             <mesh key={i} position={[cx, iy, 0.01]}>
               <planeGeometry args={[0.1, 0.1]} />
@@ -1409,7 +1410,8 @@ function Scene3D({
       <SoftShadows size={25} samples={10} focus={0} />
       <color attach="background" args={[lightMode === "day" ? "#D6E8F5" : "#0f0c29"]} />
 
-      <PerspectiveCamera makeDefault position={[0, scaledH * 1.6, scaledW * 2.2]} fov={55} />
+      {/* Camera: outside room (z > W/2), just below ceiling height — sees the interior clearly */}
+      <PerspectiveCamera makeDefault position={[scaledL * 0.35, scaledH * 0.75, scaledW * 3.5]} fov={55} />
       <OrbitControls enableDamping dampingFactor={0.05} minDistance={1} maxDistance={25} enabled={!isWalking} />
       {isWalking && (
         <>
