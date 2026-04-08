@@ -51,6 +51,7 @@ import {
   Grid3X3,
   Plug,
   Droplets,
+  ShowerHead,
   Box,
   FileText,
   Calendar,
@@ -118,7 +119,7 @@ const LIFT_MECHANISMS = [
 ];
 
 interface WallItem {
-  type: "door" | "window" | "outlet" | "drain" | "obstacle";
+  type: "door" | "window" | "outlet" | "drain" | "water_supply" | "obstacle";
   width: string;
   height: string;
   distanceFromFirst: string;
@@ -235,6 +236,7 @@ const wallItemIcons: Record<string, typeof DoorOpen> = {
   window: Grid3X3,
   outlet: Plug,
   drain: Droplets,
+  water_supply: ShowerHead,
   obstacle: X,
 };
 
@@ -243,15 +245,17 @@ const wallItemLabels: Record<string, { ar: string; en: string }> = {
   window: { ar: "نافذة", en: "Window" },
   outlet: { ar: "مخرج كهرباء", en: "Outlet" },
   drain: { ar: "فتحة صرف", en: "Drain" },
+  water_supply: { ar: "تغذية مياه", en: "Water Supply" },
   obstacle: { ar: "عائق", en: "Obstacle" },
 };
 
 const wallItemColors: Record<string, { bg: string; border: string; icon: string; label: string; btnBg: string; btnBorder: string; btnText: string }> = {
-  door:     { bg: "bg-amber-50",   border: "border-amber-200",  icon: "text-amber-700",  label: "text-amber-900",  btnBg: "bg-amber-50 hover:bg-amber-100",   btnBorder: "border-amber-300",  btnText: "text-amber-800" },
-  window:   { bg: "bg-sky-50",     border: "border-sky-200",    icon: "text-sky-600",    label: "text-sky-900",    btnBg: "bg-sky-50 hover:bg-sky-100",       btnBorder: "border-sky-300",    btnText: "text-sky-800" },
-  outlet:   { bg: "bg-yellow-50",  border: "border-yellow-300", icon: "text-yellow-600", label: "text-yellow-900", btnBg: "bg-yellow-50 hover:bg-yellow-100", btnBorder: "border-yellow-400", btnText: "text-yellow-800" },
-  drain:    { bg: "bg-teal-50",    border: "border-teal-200",   icon: "text-teal-600",   label: "text-teal-900",   btnBg: "bg-teal-50 hover:bg-teal-100",     btnBorder: "border-teal-300",   btnText: "text-teal-800" },
-  obstacle: { bg: "bg-purple-50",  border: "border-purple-200", icon: "text-purple-600", label: "text-purple-900", btnBg: "bg-purple-50 hover:bg-purple-100", btnBorder: "border-purple-300", btnText: "text-purple-800" },
+  door:         { bg: "bg-amber-50",   border: "border-amber-200",  icon: "text-amber-700",  label: "text-amber-900",  btnBg: "bg-amber-50 hover:bg-amber-100",   btnBorder: "border-amber-300",  btnText: "text-amber-800" },
+  window:       { bg: "bg-sky-50",     border: "border-sky-200",    icon: "text-sky-600",    label: "text-sky-900",    btnBg: "bg-sky-50 hover:bg-sky-100",       btnBorder: "border-sky-300",    btnText: "text-sky-800" },
+  outlet:       { bg: "bg-yellow-50",  border: "border-yellow-300", icon: "text-yellow-600", label: "text-yellow-900", btnBg: "bg-yellow-50 hover:bg-yellow-100", btnBorder: "border-yellow-400", btnText: "text-yellow-800" },
+  drain:        { bg: "bg-teal-50",    border: "border-teal-200",   icon: "text-teal-600",   label: "text-teal-900",   btnBg: "bg-teal-50 hover:bg-teal-100",     btnBorder: "border-teal-300",   btnText: "text-teal-800" },
+  water_supply: { bg: "bg-blue-50",    border: "border-blue-200",   icon: "text-blue-600",   label: "text-blue-900",   btnBg: "bg-blue-50 hover:bg-blue-100",     btnBorder: "border-blue-300",   btnText: "text-blue-800" },
+  obstacle:     { bg: "bg-purple-50",  border: "border-purple-200", icon: "text-purple-600", label: "text-purple-900", btnBg: "bg-purple-50 hover:bg-purple-100", btnBorder: "border-purple-300", btnText: "text-purple-800" },
 };
 
 export default function SiteSurveyPage() {
@@ -660,7 +664,7 @@ export default function SiteSurveyPage() {
           const body = space.walls.map((w, wi) => {
             const letter = wallLetters[wi] || String(wi + 1);
             const itemsSummary = w.items.map(it => {
-              const label = { door: "Door", window: "Window", outlet: "Outlet", drain: "Drain", obstacle: "Obstacle" }[it.type] || it.type;
+              const label = { door: "Door", window: "Window", outlet: "Outlet", drain: "Drain", water_supply: "Water Supply", obstacle: "Obstacle" }[it.type] || it.type;
               const dims = (it.width && it.height) ? ` (${it.width}×${it.height}m)` : it.width ? ` (${it.width}m)` : "";
               const dist = it.distanceFromFirst ? ` @${it.distanceFromFirst}m` : "";
               const drainExtra = it.type === "drain"
@@ -1103,7 +1107,7 @@ export default function SiteSurveyPage() {
                                 <td className="py-1.5 pe-3">{wall.wallHeight || space.height ? `${wall.wallHeight || space.height} م` : "—"}</td>
                                 <td className="py-1.5 text-muted-foreground">
                                   {wall.items.length > 0
-                                    ? wall.items.map(i => ({ door: t("باب", "Door"), window: t("نافذة", "Window"), outlet: t("مقبس", "Outlet"), drain: t("بالوعة", "Drain"), obstacle: t("عائق", "Obstacle") }[i.type] || i.type)).join("، ")
+                                    ? wall.items.map(i => ({ door: t("باب", "Door"), window: t("نافذة", "Window"), outlet: t("مقبس", "Outlet"), drain: t("فتحة صرف", "Drain"), water_supply: t("تغذية مياه", "Water Supply"), obstacle: t("عائق", "Obstacle") }[i.type] || i.type)).join("، ")
                                     : "—"}
                                 </td>
                               </tr>
@@ -1124,39 +1128,27 @@ export default function SiteSurveyPage() {
             const sid = savedSurveyId || existingSurvey?.id;
             return (
               <Card className="overflow-hidden border-violet-200 dark:border-violet-800">
-                <div className="flex border-b bg-muted/30">
-                  <button
-                    className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-medium transition-colors ${inlineViewTab === "3d" ? "bg-background text-foreground border-b-2 border-primary" : "text-muted-foreground hover:text-foreground"}`}
-                    onClick={() => setInlineViewTab("3d")}
-                    data-testid="tab-inline-3d"
-                  >
+                <div className="flex items-center justify-between px-3 py-2 bg-muted/30 border-b">
+                  <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                     <Box className="w-3.5 h-3.5" />
-                    {t("عرض ثلاثي الأبعاد", "3D View")}
-                  </button>
+                    {t("التصور ثلاثي الأبعاد والمخطط", "3D View & Floor Plan")}
+                  </div>
                   <button
-                    className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-medium transition-colors ${inlineViewTab === "2d" ? "bg-background text-foreground border-b-2 border-primary" : "text-muted-foreground hover:text-foreground"}`}
-                    onClick={() => setInlineViewTab("2d")}
-                    data-testid="tab-inline-2d"
-                  >
-                    <Map className="w-3.5 h-3.5" />
-                    {t("مخطط ثنائي الأبعاد", "2D Floor Plan")}
-                  </button>
-                  <button
-                    className="px-3 py-2.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                    onClick={() => navigate(`/scene-3d?surveyId=${sid}${inlineViewTab === "2d" ? "&tab=2d" : ""}`)}
+                    className="text-xs text-violet-600 hover:text-violet-800 transition-colors px-2 py-1 rounded hover:bg-violet-50"
+                    onClick={() => navigate(`/scene-3d?surveyId=${sid}`)}
                     data-testid="button-open-fullscreen"
                     title={t("فتح ملء الشاشة", "Open fullscreen")}
                   >
-                    ⛶
+                    ⛶ {t("ملء الشاشة", "Fullscreen")}
                   </button>
                 </div>
                 <iframe
-                  key={`${sid}-${inlineViewTab}`}
-                  src={`/scene-3d?surveyId=${sid}${inlineViewTab === "2d" ? "&tab=2d" : ""}&embed=1`}
+                  key={sid}
+                  src={`/scene-3d?surveyId=${sid}&embed=1`}
                   className="w-full border-0"
-                  style={{ height: "380px" }}
-                  title={inlineViewTab === "3d" ? t("عرض ثلاثي الأبعاد", "3D View") : t("مخطط ثنائي الأبعاد", "2D Floor Plan")}
-                  data-testid={`iframe-inline-view-${inlineViewTab}`}
+                  style={{ height: "420px" }}
+                  title={t("التصور ثلاثي الأبعاد", "3D Visualization")}
+                  data-testid="iframe-inline-view"
                 />
               </Card>
             );
@@ -1626,28 +1618,19 @@ export default function SiteSurveyPage() {
                                             </div>
                                           </div>
 
-                                          {/* Wall drain fields */}
+                                          {/* Wall drain fields — position only (no dimensions needed for a pipe) */}
                                           {drainIsWall && (
                                             <>
-                                              <div className="grid grid-cols-3 gap-1.5">
+                                              <div className="grid grid-cols-2 gap-1.5">
                                                 <div>
                                                   <Label className="text-[10px] text-muted-foreground">{t("ارتفاع عن الأرضية م", "From Floor (m)")}</Label>
                                                   <Input type="number" step="0.01" value={item.heightFromFloor} onChange={(e) => updateWallItem(editSpace.id, activeWall.id, itemIndex, "heightFromFloor", e.target.value)} className="h-7 text-xs" data-testid={`input-drain-height-floor-${itemIndex}`} />
                                                 </div>
                                                 <div>
-                                                  <Label className="text-[10px] text-muted-foreground">{t("العرض م", "W (m)")}</Label>
-                                                  <Input type="number" step="0.01" value={item.width} onChange={(e) => updateWallItem(editSpace.id, activeWall.id, itemIndex, "width", e.target.value)} className="h-7 text-xs" data-testid={`input-drain-width-${itemIndex}`} />
-                                                </div>
-                                                <div>
-                                                  <Label className="text-[10px] text-muted-foreground">{t("الارتفاع م", "H (m)")}</Label>
-                                                  <Input type="number" step="0.01" value={item.height} onChange={(e) => updateWallItem(editSpace.id, activeWall.id, itemIndex, "height", e.target.value)} className="h-7 text-xs" data-testid={`input-drain-height-dim-${itemIndex}`} />
+                                                  <Label className="text-[10px] text-muted-foreground">{t("بُعد عن الحرف الأول م", "From Edge (m)")}</Label>
+                                                  <Input type="number" step="0.01" value={item.distanceFromFirst} onChange={(e) => updateWallItem(editSpace.id, activeWall.id, itemIndex, "distanceFromFirst", e.target.value)} className="h-7 text-xs" data-testid={`input-drain-dist-first-wall-${itemIndex}`} />
                                                 </div>
                                               </div>
-                                              {spaceHeight > 0 && item.heightFromFloor && (
-                                                <p className="text-[10px] text-muted-foreground">
-                                                  {t("مسافة من السقف", "From Ceiling")}: <span className="font-semibold text-foreground">{(spaceHeight - (parseFloat(item.heightFromFloor) || 0)).toFixed(2)} م</span>
-                                                </p>
-                                              )}
                                             </>
                                           )}
 
@@ -1672,6 +1655,18 @@ export default function SiteSurveyPage() {
                                           </div>
                                         </div>
                                       )}
+                                      {item.type === "water_supply" && (
+                                        <div className="grid grid-cols-2 gap-1.5">
+                                          <div>
+                                            <Label className="text-[10px] text-muted-foreground">{t("ارتفاع عن الأرضية م", "From Floor (m)")}</Label>
+                                            <Input type="number" step="0.01" value={item.heightFromFloor} onChange={(e) => updateWallItem(editSpace.id, activeWall.id, itemIndex, "heightFromFloor", e.target.value)} className="h-7 text-xs" data-testid={`input-supply-height-floor-${itemIndex}`} />
+                                          </div>
+                                          <div>
+                                            <Label className="text-[10px] text-muted-foreground">{t("بُعد عن الحرف الأول م", "From Edge (m)")}</Label>
+                                            <Input type="number" step="0.01" value={item.distanceFromFirst} onChange={(e) => updateWallItem(editSpace.id, activeWall.id, itemIndex, "distanceFromFirst", e.target.value)} className="h-7 text-xs" data-testid={`input-supply-dist-first-${itemIndex}`} />
+                                          </div>
+                                        </div>
+                                      )}
                                       {item.type === "obstacle" && (
                                         <div>
                                           <Label className="text-[10px] text-muted-foreground">{t("وصف العائق", "Obstacle Description")}</Label>
@@ -1687,7 +1682,7 @@ export default function SiteSurveyPage() {
                             {/* Add item buttons */}
                             <div className="flex flex-wrap gap-1.5 pt-1 border-t border-border/40">
                               <span className="text-[10px] text-muted-foreground self-center w-full mb-0.5">{t("إضافة عنصر للجدار", "Add to wall")}:</span>
-                              {(["door", "window", "outlet", "drain", "obstacle"] as WallItem["type"][]).map((type) => {
+                              {(["door", "window", "outlet", "drain", "water_supply", "obstacle"] as WallItem["type"][]).map((type) => {
                                 const Icon = wallItemIcons[type];
                                 const c = wallItemColors[type];
                                 return (

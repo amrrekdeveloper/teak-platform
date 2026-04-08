@@ -240,7 +240,12 @@ function Router() {
 
 function FloatingContactWrapper() {
   const [location] = useLocation();
-  const isPublicPage = !location.startsWith("/dashboard") && !location.startsWith("/login");
+  const isPublicPage =
+    !location.startsWith("/dashboard") &&
+    !location.startsWith("/login") &&
+    !location.startsWith("/employee-login") &&
+    !location.startsWith("/scene-3d") &&
+    !location.startsWith("/site-survey");
   if (!isPublicPage) return null;
   return <FloatingContact />;
 }
