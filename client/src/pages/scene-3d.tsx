@@ -122,12 +122,13 @@ function isTallUnit(product: any): boolean {
 
 function isWallUnit(product: any): boolean {
   const code = (product.code || "").toUpperCase();
-  return code.startsWith("TK3") || code.startsWith("W") || code.startsWith("HK") || code.startsWith("AKK");
+  /* HF = horizontal fold base cabinet (H≈87cm) — NOT a wall unit */
+  return code.startsWith("TK3") || code.startsWith("HK") || code.startsWith("AKK");
 }
 
 function isWallUnitByCode(code: string): boolean {
   const c = code.toUpperCase();
-  return c.startsWith("TK3") || c.startsWith("W") || c.startsWith("HK") || c.startsWith("AKK");
+  return c.startsWith("TK3") || c.startsWith("HK") || c.startsWith("AKK");
 }
 
 function getDefaultHeight(product: any): number {
@@ -594,10 +595,10 @@ function WallPanel({
 
     for (const item of items) {
       if (item.type !== "door" && item.type !== "window") continue;
-      const dist = parseItemMeasure(item.distanceFromFirst, 0)  * SCALE;
-      const iw   = parseItemMeasure(item.width,  item.type === "door" ? 90  : 120) * SCALE;
-      const ih   = parseItemMeasure(item.height, item.type === "door" ? 210 : 120) * SCALE;
-      const iy   = item.type === "door" ? 0 : parseItemMeasure(item.heightFromFloor, 90) * SCALE;
+      const dist = parseItemMeasure(item.distanceFromFirst, 0);
+      const iw   = parseItemMeasure(item.width,  item.type === "door" ? 90  : 120);
+      const ih   = parseItemMeasure(item.height, item.type === "door" ? 210 : 120);
+      const iy   = item.type === "door" ? 0 : parseItemMeasure(item.heightFromFloor, 90);
 
       const hx = -hw + dist;
       const hole = new THREE.Path();
@@ -629,12 +630,12 @@ function WallReveal({ items, wallLen, wallH }: { items: any[]; wallLen: number; 
     <group>
       {items.map((item: any, i: number) => {
         if (item.type !== "door" && item.type !== "window") return null;
-        const dist  = parseItemMeasure(item.distanceFromFirst, 0)  * SCALE;
-        const iw    = parseItemMeasure(item.width,  item.type === "door" ? 90  : 120) * SCALE;
-        const ih    = parseItemMeasure(item.height, item.type === "door" ? 210 : 120) * SCALE;
+        const dist  = parseItemMeasure(item.distanceFromFirst, 0);
+        const iw    = parseItemMeasure(item.width,  item.type === "door" ? 90  : 120);
+        const ih    = parseItemMeasure(item.height, item.type === "door" ? 210 : 120);
         const startX = -hw + dist;
         const cx     = startX + iw / 2;
-        const iy     = item.type === "door" ? 0 : parseItemMeasure(item.heightFromFloor, 90) * SCALE;
+        const iy     = item.type === "door" ? 0 : parseItemMeasure(item.heightFromFloor, 90);
         const D      = WALL_DEPTH_3D;
         const mat    = <meshStandardMaterial color={REVEAL_COLOR} roughness={0.78} />;
 
@@ -855,9 +856,9 @@ function WallElements({ items, wallLen, wallH }: { items: any[]; wallLen: number
   return (
     <group>
       {items.map((item: any, i: number) => {
-        const dist = parseItemMeasure(item.distanceFromFirst, 0) * SCALE;
-        const iw   = parseItemMeasure(item.width,  item.type === "door" ? 90  : 120) * SCALE;
-        const ih   = parseItemMeasure(item.height, item.type === "door" ? 210 : 120) * SCALE;
+        const dist = parseItemMeasure(item.distanceFromFirst, 0);
+        const iw   = parseItemMeasure(item.width,  item.type === "door" ? 90  : 120);
+        const ih   = parseItemMeasure(item.height, item.type === "door" ? 210 : 120);
         const startX = -hw + dist;
         const cx     = startX + iw / 2;
         const FRAME_COLOR = "#2C1A0E";
@@ -870,7 +871,7 @@ function WallElements({ items, wallLen, wallH }: { items: any[]; wallLen: number
         }
 
         if (item.type === "window") {
-          const iy = parseItemMeasure(item.heightFromFloor, 90) * SCALE;
+          const iy = parseItemMeasure(item.heightFromFloor, 90);
           return (
             <WindowElement key={i} cx={cx} iy={iy} iw={iw} ih={ih} FRAME_W={FRAME_W} />
           );
@@ -886,7 +887,7 @@ function WallElements({ items, wallLen, wallH }: { items: any[]; wallLen: number
         }
 
         if (item.type === "outlet") {
-          const iy = parseItemMeasure(item.heightFromFloor, 40) * SCALE;
+          const iy = parseItemMeasure(item.heightFromFloor, 40);
           return (
             <mesh key={i} position={[cx, iy, 0.01]}>
               <planeGeometry args={[0.1, 0.1]} />
@@ -959,7 +960,11 @@ function Room({
 /** Detects if a product is a drawer unit by code pattern */
 function isDrawerUnit(product: any): boolean {
   const code = (product.code || "").toUpperCase();
-  return code.includes("DD") || code.includes("2DP") || code.includes("3DP") || code.includes("4DP") || code.includes("DR-");
+  return (
+    /^(2C|3C|4C)(\d|\s)/.test(code) ||
+    code.startsWith("DUSTBOX") || code.startsWith("TRASH") || code.startsWith("CLEAN") ||
+    code.includes("DD") || code.includes("2DP") || code.includes("3DP") || code.includes("4DP") || code.includes("DR-")
+  );
 }
 
 /** Detects if a product has glass-front doors */
@@ -1188,6 +1193,14 @@ function Cabinet({
         </>
       )}
 
+      {isWallUnit(product) && (
+        /* Mounting rail — aluminium bar at top-back of wall cabinet */
+        <mesh position={[0, H / 2 - 0.022, -D / 2 + 0.012]} castShadow>
+          <boxGeometry args={[W - 0.04, 0.038, 0.018]} />
+          <meshStandardMaterial color="#B8C0CC" roughness={0.25} metalness={0.65} />
+        </mesh>
+      )}
+
       {(hovered || selected) && (
         <Text
           position={[0, H / 2 + 0.18, 0]}
@@ -1290,6 +1303,43 @@ function WalkController({ speed = 4 }: { speed?: number }) {
   return null;
 }
 
+/* ── Ghost cabinet: shown in placing mode as translucent preview ── */
+function GhostCabinet({
+  product,
+  ghostRef,
+}: {
+  product: any;
+  ghostRef: React.MutableRefObject<{ pos: [number, number, number]; rotY: number; visible: boolean }>;
+}) {
+  const groupRef = useRef<THREE.Group>(null);
+  const pw = parseFloat(product.designW || product.manufacturingW || "60") * SCALE;
+  const ph = parseFloat(product.designH || product.manufacturingH || "87") * SCALE;
+  const pd = parseFloat(product.designD || product.manufacturingD || "60") * SCALE;
+
+  useFrame(() => {
+    if (!groupRef.current) return;
+    const g = ghostRef.current;
+    groupRef.current.visible = g.visible;
+    if (g.visible) {
+      groupRef.current.position.set(g.pos[0], g.pos[1], g.pos[2]);
+      groupRef.current.rotation.y = g.rotY;
+    }
+  });
+
+  return (
+    <group ref={groupRef} visible={false}>
+      <mesh>
+        <boxGeometry args={[pw, ph, pd]} />
+        <meshBasicMaterial color="#60A5FA" transparent opacity={0.22} depthWrite={false} />
+      </mesh>
+      <mesh>
+        <boxGeometry args={[pw + 0.008, ph + 0.008, pd + 0.008]} />
+        <meshBasicMaterial color="#93C5FD" wireframe transparent opacity={0.65} depthWrite={false} />
+      </mesh>
+    </group>
+  );
+}
+
 function Scene3D({
   survey, selectedIdx, onSelect, lightMode, floorType,
   placingProduct, onWallPlace, navMode, gyroActive,
@@ -1370,6 +1420,16 @@ function Scene3D({
       return acc;
     }
 
+    /* ── Manual placement: use the clicked position directly ── */
+    if (p._manualXOffset !== undefined) {
+      const xOff = p._manualXOffset;
+      const pStart = xOff - pW / 2;
+      const pEnd   = xOff + pW / 2;
+      const hasOverlap = (wallOpenings[wIdx] || []).some(op => pStart < op.end && pEnd > op.start);
+      acc.push({ ...p, _wallIndex: wIdx, _xOffset: xOff, _sourceIndex: sourceIdx, _conflict: hasOverlap });
+      return acc;
+    }
+
     const currentOffset = wallOffsets[wIdx];
     const rightReserve = wallRightReserved[wIdx];
     if (currentOffset + pW > wallLen - rightReserve - 10) return acc; /* skip overflow */
@@ -1404,6 +1464,11 @@ function Scene3D({
   /* PointerLockControls requires requestPointerLock() which is unavailable on iOS/mobile */
   const isDesktop = useMemo(() =>
     typeof navigator !== "undefined" && !/iPhone|iPad|iPod|Android/i.test(navigator.userAgent), []);
+
+  /* Ghost cabinet ref — updated imperatively by wall plane onPointerMove */
+  const ghostRef = useRef<{ pos: [number, number, number]; rotY: number; visible: boolean }>({
+    pos: [0, 0, 0], rotY: 0, visible: false,
+  });
 
   return (
     <>
@@ -1475,14 +1540,10 @@ function Scene3D({
 
       {/* ── Interactive Wall Click Planes (shown only in placing mode) ── */}
       {placingProduct && onWallPlace && [
-        /* wall 0: top  — along +Z face, cabinet depth offset from front */
-        { wallIdx: 0, pos: [-L/2*SCALE/2, H*SCALE/2, -W/2*SCALE + 0.05] as [number,number,number], rot: [0,0,0] as [number,number,number], planW: L*SCALE, planH: H*SCALE, axis: "x", axisSign: 1, axisBase: -L/2 },
-        /* wall 1: right */
-        { wallIdx: 1, pos: [L/2*SCALE - 0.05, H*SCALE/2, W/2*SCALE/2] as [number,number,number],  rot: [0,Math.PI/2,0] as [number,number,number], planW: W*SCALE, planH: H*SCALE, axis: "z", axisSign: 1, axisBase: -W/2 },
-        /* wall 2: bottom */
-        { wallIdx: 2, pos: [L/2*SCALE/2, H*SCALE/2, W/2*SCALE - 0.05] as [number,number,number],  rot: [0,Math.PI,0] as [number,number,number], planW: L*SCALE, planH: H*SCALE, axis: "x", axisSign: -1, axisBase: L/2 },
-        /* wall 3: left */
-        { wallIdx: 3, pos: [-L/2*SCALE + 0.05, H*SCALE/2, -W/2*SCALE/2] as [number,number,number], rot: [0,-Math.PI/2,0] as [number,number,number], planW: W*SCALE, planH: H*SCALE, axis: "z", axisSign: -1, axisBase: W/2 },
+        { wallIdx: 0, pos: [0, scaledH/2, -scaledW/2 + 0.02] as [number,number,number], rot: [0,0,0] as [number,number,number], planW: scaledL, planH: scaledH, axis: "x", axisSign: 1, axisBase: -L/2 },
+        { wallIdx: 1, pos: [scaledL/2 - 0.02, scaledH/2, 0] as [number,number,number],  rot: [0,Math.PI/2,0] as [number,number,number], planW: scaledW, planH: scaledH, axis: "z", axisSign: 1, axisBase: -W/2 },
+        { wallIdx: 2, pos: [0, scaledH/2, scaledW/2 - 0.02] as [number,number,number],  rot: [0,Math.PI,0] as [number,number,number], planW: scaledL, planH: scaledH, axis: "x", axisSign: -1, axisBase: L/2 },
+        { wallIdx: 3, pos: [-scaledL/2 + 0.02, scaledH/2, 0] as [number,number,number], rot: [0,-Math.PI/2,0] as [number,number,number], planW: scaledW, planH: scaledH, axis: "z", axisSign: -1, axisBase: W/2 },
       ].map(({ wallIdx, pos, rot, planW, planH, axis, axisSign, axisBase }) => (
         <mesh
           key={`wallplane-${wallIdx}`}
@@ -1490,7 +1551,7 @@ function Scene3D({
           rotation={rot}
           onClick={(e) => {
             e.stopPropagation();
-            /* Compute click point along the wall axis → cm offset from start */
+            ghostRef.current.visible = false;
             const localPt = e.point;
             let rawOffset: number;
             if (axis === "x") rawOffset = (localPt.x - axisBase * SCALE) * axisSign / SCALE;
@@ -1498,17 +1559,39 @@ function Scene3D({
             const clampedOffset = Math.max(5, Math.min(rawOffset, (axis === "x" ? L : W) - 5));
             onWallPlace(wallIdx, clampedOffset);
           }}
+          onPointerMove={(e) => {
+            e.stopPropagation();
+            const pt = e.point;
+            const pd = parseFloat(placingProduct.designD || placingProduct.manufacturingD || "60") * SCALE;
+            const ph = parseFloat(placingProduct.designH || placingProduct.manufacturingH || "87") * SCALE;
+            const wallUnit = isWallUnit(placingProduct);
+            let gx = pt.x, gy = wallUnit ? (scaledH - ph / 2 - 0.04) : ph / 2, gz = pt.z;
+            let ry = 0;
+            switch (wallIdx) {
+              case 0: gz = -scaledW / 2 + pd / 2; ry = 0; break;
+              case 1: gx = scaledL / 2 - pd / 2; ry = -Math.PI / 2; break;
+              case 2: gz = scaledW / 2 - pd / 2; ry = Math.PI; break;
+              case 3: gx = -scaledL / 2 + pd / 2; ry = Math.PI / 2; break;
+            }
+            ghostRef.current = { pos: [gx, gy, gz], rotY: ry, visible: true };
+          }}
+          onPointerLeave={() => { ghostRef.current.visible = false; }}
         >
           <planeGeometry args={[planW, planH]} />
           <meshBasicMaterial
             color="#60A5FA"
             transparent
-            opacity={0.08}
+            opacity={0.06}
             depthWrite={false}
             side={THREE.DoubleSide}
           />
         </mesh>
       ))}
+
+      {/* Ghost cabinet preview in placing mode */}
+      {placingProduct && (
+        <GhostCabinet product={placingProduct} ghostRef={ghostRef} />
+      )}
     </>
   );
 }
@@ -2018,14 +2101,25 @@ function FloorPlan2D({ survey }: { survey: any }) {
 
           {/* Title block */}
           <rect x={0} y={0} width={CW} height={TITLE_H} fill="#1E293B" />
-          <text x={CW/2} y={13} textAnchor="middle" fontSize={11} fontWeight="bold" fill="white"
-            fontFamily="sans-serif">
-            تيك للتصنيع — مخطط هندسي / Floor Plan
+          <text x={CW / 2} y={13} textAnchor="middle" fontSize={11} fontWeight="bold" fill="white" fontFamily="sans-serif">
+            {`تيك للتصنيع — ${spaces[0]?.name || "مخطط هندسي"} / Floor Plan`}
           </text>
-          <text x={CW/2} y={26} textAnchor="middle" fontSize={8} fill="#94A3B8"
-            fontFamily="monospace">
+          <text x={CW / 2} y={26} textAnchor="middle" fontSize={8} fill="#94A3B8" fontFamily="monospace">
             {new Date().toLocaleDateString("ar-SA")} · teak-sa.com
           </text>
+          {/* Survey/quotation ref on right */}
+          {survey.quotationId && (
+            <text x={CW - 8} y={22} textAnchor="end" fontSize={7.5} fill="#60A5FA" fontFamily="monospace">
+              {`عرض سعر #${survey.quotationId}`}
+            </text>
+          )}
+          {/* Space type on left */}
+          {spaces[0]?.type && (
+            <text x={8} y={22} fontSize={7.5} fill="#94A3B8" fontFamily="monospace" textAnchor="start">
+              {spaces[0].type === "kitchen" ? "مطبخ" : spaces[0].type}
+              {spaces[0].buildingStatus ? ` · ${spaces[0].buildingStatus === "ready" ? "جاهز" : "قيد الإنشاء"}` : ""}
+            </text>
+          )}
 
           {/* Thin border lines between title and content */}
           <line x1={0} y1={TITLE_H} x2={CW} y2={TITLE_H} stroke="#CBD5E0" strokeWidth={0.5} />
@@ -2067,12 +2161,20 @@ const CABINET_GROUPS: Record<string, { ar: string; en: string }> = {
 
 function classifyProduct(p: any): string {
   const code = (p.code || "").toUpperCase();
-  const grp  = (p.groupName || p.descriptionAr || "").toLowerCase();
-  if (code.startsWith("HK") || code.startsWith("TK3") || code.startsWith("W-") || grp.includes("علو") || grp.includes("upper") || grp.includes("wall")) return "wall";
-  if (code.startsWith("TL") || code.startsWith("T-") || grp.includes("طويل") || grp.includes("tall")) return "tall";
-  if (code.includes("COR") || code.includes("ZAW") || grp.includes("زاوية") || grp.includes("corner")) return "corner";
-  if (code.startsWith("B-") || code.startsWith("BP") || code.startsWith("BL") || grp.includes("أرض") || grp.includes("base")) return "base";
-  return "base"; /* default to base for kitchen */
+  const grpAr = (p.groupNameAr || p.groupName || "").toLowerCase();
+  const grpEn = (p.groupNameEn || "").toLowerCase();
+  const grp   = grpAr + " " + grpEn;
+  /* Explicit wall-unit code prefixes (HK = wall lift-up, TK3 = wall series, AKK = blind corner wall) */
+  if (code.startsWith("HK") || code.startsWith("TK3") || code.startsWith("AKK") ||
+      grp.includes("علو") || grp.includes("upper") || grp.includes("wall cabinet")) return "wall";
+  /* Tall / full-height units */
+  if (code.startsWith("TK4") || code.startsWith("TL") || code.startsWith("CLEAN 60CM") ||
+      code.startsWith("TROLLY") || grp.includes("طويل") || grp.includes("tall")) return "tall";
+  /* Corner units — blind/carousel */
+  if (code.includes("COR") || code.includes("ZAW") || code.startsWith("AK2") ||
+      grp.includes("زاوية") || grp.includes("corner")) return "corner";
+  /* Everything else is base (includes TK5 mechanism units, HF, 2C, 3C, DUSTBOX, etc.) */
+  return "base";
 }
 
 function ProductLibraryPanel({
@@ -2423,14 +2525,14 @@ export default function Scene3DPage() {
   const selectedProducts = useMemo(() => (survey?.selectedProducts || []) as any[], [survey]);
   const spaceProducts = useMemo(() => (surveyForSpace?.selectedProducts || []) as any[], [surveyForSpace]);
 
-  /** Set of spaceProduct indices (0-based in spaceProducts) that overlap a door/window opening */
+  /** Set of spaceProduct indices (0-based in activeSpaceProducts) that overlap a door/window opening */
   const conflictIndices = useMemo<Set<number>>(() => {
     const result = new Set<number>();
     const walls: any[] = activeSpace?.walls || [];
     if (walls.length === 0) return result;
     const openings = buildWallOpenings(walls);
     const offsets: Record<number, number> = { 0: 10, 1: 10, 2: 10, 3: 10 };
-    spaceProducts.forEach((p: any, idx: number) => {
+    activeSpaceProducts.forEach((p: any, idx: number) => {
       const letter = (p.wallId || "").slice(-1).toUpperCase();
       const wIdx = WALL_LETTER_IDX[letter] ?? 0;
       const pW = parseFloat(p.designW || p.dimensions?.w || "60");
@@ -2441,7 +2543,7 @@ export default function Scene3DPage() {
       if (hasConflict) result.add(idx);
     });
     return result;
-  }, [activeSpace, spaceProducts]);
+  }, [activeSpace, activeSpaceProducts]);
 
   /** Collect all design warnings for the current space */
   const designWarnings = useMemo<DesignWarning[]>(() => {
@@ -2459,7 +2561,7 @@ export default function Scene3DPage() {
     wallLensForCheck[0] = roomLc; wallLensForCheck[1] = roomWc;
     wallLensForCheck[2] = roomLc; wallLensForCheck[3] = roomWc;
 
-    spaceProducts.forEach((p: any, idx: number) => {
+    activeSpaceProducts.forEach((p: any, idx: number) => {
       const letter = (p.wallId || "").slice(-1).toUpperCase();
       const wIdx = WALL_LETTER_IDX[letter] ?? 0;
       const pW = parseFloat(p.designW || p.dimensions?.w || "60");
@@ -2492,7 +2594,7 @@ export default function Scene3DPage() {
       }
     });
     return warnings;
-  }, [activeSpace, spaceProducts, surveyForSpace]);
+  }, [activeSpace, activeSpaceProducts, surveyForSpace]);
 
   const subtotal = useMemo(() =>
     selectedProducts.reduce((s: number, p: any) => {
@@ -2736,7 +2838,7 @@ export default function Scene3DPage() {
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <Badge variant="outline" className="gap-1">
-            <Package className="h-3 w-3" /> {spaceProducts.length} {t("منتج", "products")}
+            <Package className="h-3 w-3" /> {activeSpaceProducts.length} {t("منتج", "products")}
           </Badge>
           {designWarnings.length > 0 && (
             <Badge variant="destructive" className="gap-1" data-testid="badge-warnings-count">
@@ -2951,12 +3053,12 @@ export default function Scene3DPage() {
             <div className="p-3 border-b">
               <h2 className="font-semibold text-sm">{t("قائمة المنتجات", "Products List")}</h2>
             </div>
-            {spaceProducts.length === 0 ? (
+            {activeSpaceProducts.length === 0 ? (
               <p className="p-4 text-muted-foreground text-sm text-center">{t("لا توجد منتجات", "No products")}</p>
             ) : (
               <div className="p-2 space-y-2">
-                {spaceProducts.map((p: any, spaceIdx: number) => {
-                  const i = selectedProducts.findIndex((sp: any) => sp.id ? sp.id === p.id : sp === p);
+                {activeSpaceProducts.map((p: any, spaceIdx: number) => {
+                  const i = (localProducts ?? selectedProducts).findIndex((sp: any) => sp.id ? sp.id === p.id : sp === p);
                   const isSelected = selectedProduct === spaceIdx;
                   const price = Number(p.price || p.unitPrice || p.priceBeforeVat || 0);
                   const optCost = Number(p.optionsCost || 0);
