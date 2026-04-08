@@ -15,7 +15,7 @@ The application utilizes a modern full-stack architecture.
 -   **Routing:** `wouter v3` with nested dashboard routing.
 -   **State Management:** TanStack React Query v5 for data fetching.
 -   **Core Modules:** Public landing page with product showcases, quote request, and order tracking. Authenticated dashboard with modules for order management, CRM, quotations, contracts, payments, ZATCA invoices, work orders, production, inventory, HR, deliveries, installations, quality control, and system settings.
--   **Designer Tools:** Integrated Design Studio with 2D sketching (Konva.js) and 3D viewing (Three.js), supporting product specification, measurements, file uploads, fixture libraries, camera presets, and a searchable manufacturing dimensions guide.
+-   **Designer Tools:** Professional 3D Kitchen Designer replacing the dedicated 3D designer role. Features: (1) Engineering-quality 2D floor plan with double-line walls, arrowhead dimension lines, proper door swing arcs, window triple-line symbols, cabinet footprint hatching, scale bar, and title block. (2) Realistic 3D cabinet geometry with stile/rail door frame + recessed center panels, drawer unit bands, countertops, kickplates. (3) Interactive Product Library sidebar (tabbed by base/wall/tall/corner, searchable) — sales rep clicks a product then clicks a wall in 3D to place it. (4) Local state management with Undo and Save Design. Uses Three.js / React Three Fiber, SVG engineering plans.
 -   **Internationalization:** Global `DirectionProvider` ensures correct RTL/LTR display for all UI components.
 
 **Backend:**

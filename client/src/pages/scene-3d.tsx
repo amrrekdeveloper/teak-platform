@@ -13,6 +13,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   RotateCcw, Package, ArrowLeft, Trash2, Share2, Loader2,
   RefreshCw, Search, Sun, Moon, Download, Map, AlertTriangle, ClipboardList,
+  Plus, X, Layers, Move,
 } from "lucide-react";
 import { Link } from "wouter";
 import { queryClient } from "@/lib/queryClient";
@@ -730,39 +731,104 @@ function Room({
   );
 }
 
-function CabinetFront({ code, W, H, D, color }: { code: string; W: number; H: number; D: number; color: string }) {
-  const [texture, setTexture] = useState<THREE.Texture | null>(null);
+/** Detects if a product is a drawer unit by code pattern */
+function isDrawerUnit(product: any): boolean {
+  const code = (product.code || "").toUpperCase();
+  return code.includes("DD") || code.includes("2DP") || code.includes("3DP") || code.includes("4DP") || code.includes("DR-");
+}
 
-  useEffect(() => {
-    const loader = new THREE.TextureLoader();
-    loader.load(
-      `/products/${code}.bmp`,
-      (tex) => {
-        tex.wrapS = THREE.ClampToEdgeWrapping;
-        tex.wrapT = THREE.ClampToEdgeWrapping;
-        setTexture(tex);
-      },
-      undefined,
-      () => setTexture(null)
+/** Professional cabinet door front with stile/rail frame + recessed center panel */
+function CabinetFront({ W, H, D, frameColor, panelColor, drawerCount }: {
+  W: number; H: number; D: number; frameColor: string; panelColor: string; drawerCount?: number;
+}) {
+  const st = Math.min(0.042, W * 0.08);   // stile width (vertical frame members)
+  const rl = Math.min(0.048, H * 0.07);   // rail height (horizontal frame members)
+  const FD = 0.018;  // frame depth (protrudes from carcass front)
+  const PD = 0.008;  // panel depth (recessed slightly behind frame)
+  const z = D / 2;
+
+  const panelW = W - st * 2;
+  const panelH = H - rl * 2;
+
+  const frameMat = <meshStandardMaterial color={frameColor} roughness={0.55} metalness={0.06} />;
+  const panelMat = <meshStandardMaterial color={panelColor} roughness={0.70} metalness={0.02} />;
+
+  if (drawerCount && drawerCount > 1) {
+    // Drawer unit: show horizontal drawer fronts
+    const drawers = Array.from({ length: drawerCount });
+    const dH = (H - rl * (drawerCount + 1)) / drawerCount;
+    return (
+      <group position={[0, 0, z]}>
+        {/* Outer frame */}
+        <mesh position={[0, H / 2 - rl / 2, FD / 2]} castShadow>
+          <boxGeometry args={[W, rl, FD]} />{frameMat}
+        </mesh>
+        <mesh position={[0, -H / 2 + rl / 2, FD / 2]} castShadow>
+          <boxGeometry args={[W, rl, FD]} />{frameMat}
+        </mesh>
+        <mesh position={[-W / 2 + st / 2, 0, FD / 2]} castShadow>
+          <boxGeometry args={[st, H, FD]} />{frameMat}
+        </mesh>
+        <mesh position={[W / 2 - st / 2, 0, FD / 2]} castShadow>
+          <boxGeometry args={[st, H, FD]} />{frameMat}
+        </mesh>
+        {/* Individual drawer fronts */}
+        {drawers.map((_, di) => {
+          const yCenter = H / 2 - rl - di * (dH + rl) - dH / 2;
+          return (
+            <group key={di}>
+              <mesh position={[0, yCenter, PD / 2]} castShadow>
+                <boxGeometry args={[panelW - 0.002, dH - 0.004, PD]} />{panelMat}
+              </mesh>
+              {/* Drawer handle - horizontal bar */}
+              <mesh position={[0, yCenter, FD + 0.01]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+                <cylinderGeometry args={[0.006, 0.006, W * 0.45, 8]} />
+                <meshStandardMaterial color="#2A2A2A" roughness={0.25} metalness={0.85} />
+              </mesh>
+            </group>
+          );
+        })}
+      </group>
     );
-    return () => { setTexture(null); };
-  }, [code]);
+  }
 
-  const faceW = W * 0.88;
-  const faceH = H * 0.82;
-  const frameDepth = 0.025;
+  // Standard door front: frame + recessed center panel
+  const numDoors = W > 0.60 ? 2 : 1;
+  const doorW = panelW / numDoors - (numDoors > 1 ? st / 2 : 0);
 
   return (
-    <group position={[0, 0, D / 2]}>
-      <mesh position={[0, 0, frameDepth + 0.001]} castShadow>
-        <planeGeometry args={[faceW, faceH]} />
-        <meshStandardMaterial
-          color={texture ? "#FFFFFF" : "#D4AA72"}
-          map={texture || undefined}
-          roughness={0.50}
-          metalness={0.05}
-        />
+    <group position={[0, 0, z]}>
+      {/* Top rail */}
+      <mesh position={[0, H / 2 - rl / 2, FD / 2]} castShadow>
+        <boxGeometry args={[W, rl, FD]} />{frameMat}
       </mesh>
+      {/* Bottom rail */}
+      <mesh position={[0, -H / 2 + rl / 2, FD / 2]} castShadow>
+        <boxGeometry args={[W, rl, FD]} />{frameMat}
+      </mesh>
+      {/* Left stile */}
+      <mesh position={[-W / 2 + st / 2, 0, FD / 2]} castShadow>
+        <boxGeometry args={[st, H, FD]} />{frameMat}
+      </mesh>
+      {/* Right stile */}
+      <mesh position={[W / 2 - st / 2, 0, FD / 2]} castShadow>
+        <boxGeometry args={[st, H, FD]} />{frameMat}
+      </mesh>
+      {/* Center divider for double-door */}
+      {numDoors === 2 && (
+        <mesh position={[0, 0, FD / 2]} castShadow>
+          <boxGeometry args={[st, H, FD]} />{frameMat}
+        </mesh>
+      )}
+      {/* Center panel(s) — recessed */}
+      {Array.from({ length: numDoors }).map((_, di) => {
+        const px = numDoors === 2 ? (di === 0 ? -doorW / 2 - st / 4 : doorW / 2 + st / 4) : 0;
+        return (
+          <mesh key={di} position={[px, 0, PD / 2]} castShadow>
+            <boxGeometry args={[doorW, panelH, PD]} />{panelMat}
+          </mesh>
+        );
+      })}
     </group>
   );
 }
@@ -774,7 +840,6 @@ function Cabinet({
   selected: boolean; onSelect: (idx: number) => void; hasConflict?: boolean;
 }) {
   const [hovered, setHovered] = useState(false);
-  const color = getCabinetColor(product, index);
 
   const W = ((product.dimensions?.w || product.designW || 60)) * SCALE;
   const H = ((product.dimensions?.h || product.designH || getDefaultHeight(product))) * SCALE;
@@ -809,12 +874,7 @@ function Cabinet({
 
   const y = H / 2 + wallOff;
   const isSelected = selected;
-  const frameColor = isSelected ? "#C8A030" : "#3B2510";
-  const handleColor = "#2A2A2A";
-
   const frameThick = 0.018;
-  const handleR = 0.008;
-  const handleLen = Math.min(W * 0.35, 0.18);
 
   const graniteTexture = useMemo(() => isBaseUnit(product) ? makeGraniteTexture() : null, []);
   /* Wood texture for cabinet carcass body */
@@ -862,21 +922,13 @@ function Cabinet({
       </mesh>
 
       <CabinetFront
-        code={product.code || ""}
         W={W}
         H={H}
         D={D + frameThick}
-        color={color}
+        frameColor={isSelected ? "#C8A030" : "#2C1A0E"}
+        panelColor={isSelected ? "#D4B870" : isWallUnit(product) ? "#DED0B8" : "#C8A878"}
+        drawerCount={isDrawerUnit(product) ? 3 : undefined}
       />
-
-      <mesh
-        position={[W * 0.3, 0, D / 2 + frameThick + handleR * 2]}
-        rotation={[Math.PI / 2, 0, 0]}
-        castShadow
-      >
-        <cylinderGeometry args={[handleR, handleR, handleLen, 8]} />
-        <meshStandardMaterial color={handleColor} roughness={0.3} metalness={0.8} />
-      </mesh>
 
       {isBaseUnit(product) && (
         <>
@@ -940,8 +992,11 @@ function buildWallOpenings(walls: any[]): Record<number, Array<{ start: number; 
 
 function Scene3D({
   survey, selectedIdx, onSelect, lightMode, floorType,
+  placingProduct, onWallPlace,
 }: {
   survey: any; selectedIdx: number; onSelect: (i: number) => void; lightMode: "day" | "night"; floorType: FloorType;
+  placingProduct?: any | null;
+  onWallPlace?: (wallIndex: number, xOffsetCm: number) => void;
 }) {
   const firstSpace = (survey.spaces || [])[0];
   const roomDims = survey.roomDimensions
@@ -1071,9 +1126,47 @@ function Scene3D({
           hasConflict={!!p._conflict}
         />
       ))}
+
+      {/* ── Interactive Wall Click Planes (shown only in placing mode) ── */}
+      {placingProduct && onWallPlace && [
+        /* wall 0: top  — along +Z face, cabinet depth offset from front */
+        { wallIdx: 0, pos: [-L/2*SCALE/2, H*SCALE/2, -W/2*SCALE + 0.05] as [number,number,number], rot: [0,0,0] as [number,number,number], planW: L*SCALE, planH: H*SCALE, axis: "x", axisSign: 1, axisBase: -L/2 },
+        /* wall 1: right */
+        { wallIdx: 1, pos: [L/2*SCALE - 0.05, H*SCALE/2, W/2*SCALE/2] as [number,number,number],  rot: [0,Math.PI/2,0] as [number,number,number], planW: W*SCALE, planH: H*SCALE, axis: "z", axisSign: 1, axisBase: -W/2 },
+        /* wall 2: bottom */
+        { wallIdx: 2, pos: [L/2*SCALE/2, H*SCALE/2, W/2*SCALE - 0.05] as [number,number,number],  rot: [0,Math.PI,0] as [number,number,number], planW: L*SCALE, planH: H*SCALE, axis: "x", axisSign: -1, axisBase: L/2 },
+        /* wall 3: left */
+        { wallIdx: 3, pos: [-L/2*SCALE + 0.05, H*SCALE/2, -W/2*SCALE/2] as [number,number,number], rot: [0,-Math.PI/2,0] as [number,number,number], planW: W*SCALE, planH: H*SCALE, axis: "z", axisSign: -1, axisBase: W/2 },
+      ].map(({ wallIdx, pos, rot, planW, planH, axis, axisSign, axisBase }) => (
+        <mesh
+          key={`wallplane-${wallIdx}`}
+          position={pos}
+          rotation={rot}
+          onClick={(e) => {
+            e.stopPropagation();
+            /* Compute click point along the wall axis → cm offset from start */
+            const localPt = e.point;
+            let rawOffset: number;
+            if (axis === "x") rawOffset = (localPt.x - axisBase * SCALE) * axisSign / SCALE;
+            else              rawOffset = (localPt.z - axisBase * SCALE) * axisSign / SCALE;
+            const clampedOffset = Math.max(5, Math.min(rawOffset, (axis === "x" ? L : W) - 5));
+            onWallPlace(wallIdx, clampedOffset);
+          }}
+        >
+          <planeGeometry args={[planW, planH]} />
+          <meshBasicMaterial
+            color="#60A5FA"
+            transparent
+            opacity={0.08}
+            depthWrite={false}
+            side={THREE.DoubleSide}
+          />
+        </mesh>
+      ))}
     </>
   );
 }
+
 
 function FloorPlan2D({ survey }: { survey: any }) {
   const { t } = useLanguage();
@@ -1081,10 +1174,23 @@ function FloorPlan2D({ survey }: { survey: any }) {
   const spaces: any[] = survey.spaces || [];
   const allProducts: any[] = survey.selectedProducts || [];
 
-  const CANVAS_W = 680;
-  const CANVAS_H = 500;
-  const WALL_LABELS = ["A", "B", "C", "D"];
-  const WALL_COLORS = ["#3B82F6", "#10B981", "#F59E0B", "#8B5CF6"];
+  /* Canvas & visual constants */
+  const CW = 900, CH = 680;
+  const TITLE_H = 36;
+  const FOOT_H  = 44;
+  const CONTENT_Y = TITLE_H + 6;
+  const CONTENT_H = CH - TITLE_H - 6 - FOOT_H;
+
+  /* Engineering color palette */
+  const WALL_FILL   = "#2D3748";
+  const ROOM_BG     = "#FAF9F6";
+  const DIM_COLOR   = "#1A202C";
+  const DOOR_COLOR  = "#744210";
+  const WIN_OUT     = "#1E40AF";
+  const WIN_GLASS   = "#93C5FD";
+  const WLABEL_COLORS = ["#2563EB","#059669","#D97706","#7C3AED"];
+
+  const WALL_LABELS = ["A","B","C","D"];
 
   function downloadPNG() {
     const svg = svgRef.current;
@@ -1095,23 +1201,20 @@ function FloorPlan2D({ survey }: { survey: any }) {
     const img = new Image();
     img.onload = () => {
       const canvas = document.createElement("canvas");
-      const scale = 2;
-      canvas.width = CANVAS_W * scale;
-      canvas.height = CANVAS_H * scale;
+      const sc = 2;
+      canvas.width = CW * sc; canvas.height = CH * sc;
       const ctx = canvas.getContext("2d");
       if (!ctx) { URL.revokeObjectURL(svgUrl); return; }
-      ctx.fillStyle = "#ffffff";
+      ctx.fillStyle = "#fff";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.scale(scale, scale);
-      ctx.drawImage(img, 0, 0, CANVAS_W, CANVAS_H);
+      ctx.scale(sc, sc);
+      ctx.drawImage(img, 0, 0, CW, CH);
       URL.revokeObjectURL(svgUrl);
       canvas.toBlob((blob) => {
         if (!blob) return;
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
-        a.href = url;
-        a.download = "floor-plan.png";
-        a.click();
+        a.href = url; a.download = "floor-plan.png"; a.click();
         URL.revokeObjectURL(url);
       }, "image/png");
     };
@@ -1120,353 +1223,663 @@ function FloorPlan2D({ survey }: { survey: any }) {
 
   if (spaces.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-4 text-muted-foreground">
-        <Map className="w-12 h-12 opacity-30" />
-        <p className="text-sm">{t("لا توجد بيانات مساحات لعرض المخطط", "No space data for floor plan")}</p>
+      <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
+        {t("لا توجد مساحات لعرضها", "No spaces to display")}
       </div>
     );
   }
 
-  const cols = Math.ceil(Math.sqrt(spaces.length));
-  const cellW = CANVAS_W / cols;
-  const cellH = CANVAS_H / Math.ceil(spaces.length / cols);
-  const pad = 32;
+  /* Layout grid */
+  const cols = Math.min(spaces.length, 2);
+  const rows = Math.ceil(spaces.length / cols);
+  const CELL_W = CW / cols;
+  const CELL_H = CONTENT_H / rows;
+  const DIM_M  = 58; /* margin around room for dimension lines */
 
   const elements: JSX.Element[] = [];
+  const defs: JSX.Element[] = [];
 
-  const validSpaceIds = new Set(spaces.map((s: any) => s.id));
+  /* SVG arrowhead markers */
+  defs.push(
+    <marker key="arre" id="arre" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+      <path d="M0,0 L7,3.5 L0,7 L1.5,3.5 Z" fill={DIM_COLOR} />
+    </marker>
+  );
+  defs.push(
+    <marker key="arrs" id="arrs" markerWidth="7" markerHeight="7" refX="1" refY="3.5" orient="auto-start-reverse">
+      <path d="M0,0 L7,3.5 L0,7 L1.5,3.5 Z" fill={DIM_COLOR} />
+    </marker>
+  );
 
-  spaces.forEach((space, spaceIdx) => {
-    const spaceProducts = allProducts.filter(
-      (p: any) =>
-        p.spaceId === space.id ||
-        (spaceIdx === 0 && (!p.spaceId || !validSpaceIds.has(p.spaceId)))
+  /* Hatch patterns for cabinet footprints — one per wall colour */
+  WLABEL_COLORS.forEach((c, i) => {
+    defs.push(
+      <pattern key={`hp${i}`} id={`hp${i}`}
+        patternUnits="userSpaceOnUse" width="6" height="6"
+        patternTransform="rotate(45)">
+        <line x1="0" y1="0" x2="0" y2="6" stroke={c} strokeWidth="1.1" opacity="0.55" />
+      </pattern>
     );
+  });
+  /* Light dot pattern for room floor */
+  defs.push(
+    <pattern key="floor-dot" id="floor-dot"
+      patternUnits="userSpaceOnUse" width="14" height="14">
+      <circle cx="7" cy="7" r="0.9" fill="#CBD5E0" />
+    </pattern>
+  );
+
+  spaces.forEach((space, si) => {
+    const col = si % cols;
+    const row = Math.floor(si / cols);
+    const cellX = col * CELL_W;
+    const cellY = CONTENT_Y + row * CELL_H;
+
+    const drawX = cellX + DIM_M;
+    const drawY = cellY + DIM_M;
+    const drawW = CELL_W - DIM_M * 2;
+    const drawH = CELL_H - DIM_M * 2;
+
     const rawL = parseFloat(space.length) || 3;
-    const rawW = parseFloat(space.width) || 2.4;
-    const roomL = rawL <= 30 ? rawL * 100 : rawL;
-    const roomW = rawW <= 30 ? rawW * 100 : rawW;
+    const rawW_s = parseFloat(space.width)  || 2.4;
+    const roomLcm = rawL   <= 30 ? rawL   * 100 : rawL;
+    const roomWcm = rawW_s <= 30 ? rawW_s * 100 : rawW_s;
 
-    const col = spaceIdx % cols;
-    const row = Math.floor(spaceIdx / cols);
-    const ox = col * cellW + pad;
-    const oy = row * cellH + pad;
-    const availW = cellW - pad * 2;
-    const availH = cellH - pad * 2;
+    const scaleX = drawW / roomLcm;
+    const scaleY = drawH / roomWcm;
+    const scale  = Math.min(scaleX, scaleY, 1.6);
 
-    const scale = Math.min(availW / roomL, availH / roomW, 1.2);
-    const rW = roomL * scale;
-    const rH = roomW * scale;
-    const rx = ox + (availW - rW) / 2;
-    const ry = oy + (availH - rH) / 2 + 16;
+    const rW = roomLcm * scale;
+    const rH = roomWcm * scale;
+    const rx  = drawX + (drawW - rW) / 2;
+    const ry  = drawY + (drawH - rH) / 2;
 
+    /* Visual wall thickness in pixels (proportional but capped) */
+    const WVIZ = Math.max(8, Math.min(16, scale * 13));
+
+    /* ── ROOM BACKGROUND ────────────────────────────── */
     elements.push(
-      <text key={`label-${spaceIdx}`} x={ox + availW / 2} y={oy + 12} textAnchor="middle"
-        fontSize={11} fontWeight="bold" fill="#1F2937">
-        {space.name || t("مكان", "Space")} {spaceIdx + 1}
-      </text>
+      <rect key={`bg-${si}`} x={rx} y={ry} width={rW} height={rH}
+        fill="url(#floor-dot)" stroke="none" />
+    );
+    elements.push(
+      <rect key={`room-${si}`} x={rx} y={ry} width={rW} height={rH}
+        fill={ROOM_BG} fillOpacity={0.82} stroke="none" />
     );
 
-    elements.push(
-      <rect key={`room-${spaceIdx}`} x={rx} y={ry} width={rW} height={rH}
-        fill="#F9F6F0" stroke="#374151" strokeWidth={2} />
-    );
-
-    const walls: any[] = space.walls || [];
-    const wallDefs = [
-      { label: WALL_LABELS[0], color: WALL_COLORS[0], side: "top" },
-      { label: WALL_LABELS[1], color: WALL_COLORS[1], side: "right" },
-      { label: WALL_LABELS[2], color: WALL_COLORS[2], side: "bottom" },
-      { label: WALL_LABELS[3], color: WALL_COLORS[3], side: "left" },
+    /* ── WALLS (filled rectangles) ──────────────────── */
+    const wallParts = [
+      { x: rx - WVIZ, y: ry - WVIZ, w: rW + WVIZ * 2, h: WVIZ },           /* top    */
+      { x: rx + rW,   y: ry,         w: WVIZ,           h: rH  },           /* right  */
+      { x: rx - WVIZ, y: ry + rH,    w: rW + WVIZ * 2, h: WVIZ },           /* bottom */
+      { x: rx - WVIZ, y: ry,         w: WVIZ,           h: rH  },           /* left   */
     ];
-
-    wallDefs.forEach((wd, wi) => {
-      let lx = 0, ly = 0;
-      if (wd.side === "top") { lx = rx + rW / 2; ly = ry - 8; }
-      else if (wd.side === "right") { lx = rx + rW + 8; ly = ry + rH / 2; }
-      else if (wd.side === "bottom") { lx = rx + rW / 2; ly = ry + rH + 14; }
-      else { lx = rx - 8; ly = ry + rH / 2; }
-
+    wallParts.forEach((wp, wi) => {
       elements.push(
-        <text key={`wall-label-${spaceIdx}-${wi}`} x={lx} y={ly}
-          textAnchor="middle" dominantBaseline="middle"
-          fontSize={9} fontWeight="bold" fill={wd.color}>
-          {wd.label}
-        </text>
+        <rect key={`wall-${si}-${wi}`}
+          x={wp.x} y={wp.y} width={wp.w} height={wp.h}
+          fill={WALL_FILL}
+        />
       );
+    });
 
+    /* ── DIMENSION LINES ───────────────────────────── */
+    const DG = 14; /* gap from outer wall face to dim line */
+    const DE = 5;  /* extension line overrun beyond dim line */
+
+    /* Top dim — room length */
+    const dimYT = ry - WVIZ - DG;
+    const lenLabel = `${(roomLcm / 100).toFixed(2)} م`;
+    elements.push(<line key={`dxt-l-${si}`} x1={rx} y1={ry - WVIZ - DE} x2={rx} y2={dimYT}
+      stroke={DIM_COLOR} strokeWidth={0.8} />);
+    elements.push(<line key={`dxt-r-${si}`} x1={rx + rW} y1={ry - WVIZ - DE} x2={rx + rW} y2={dimYT}
+      stroke={DIM_COLOR} strokeWidth={0.8} />);
+    elements.push(<line key={`dxt-${si}`} x1={rx} y1={dimYT} x2={rx + rW} y2={dimYT}
+      stroke={DIM_COLOR} strokeWidth={1.1}
+      markerStart="url(#arrs)" markerEnd="url(#arre)" />);
+    elements.push(
+      <text key={`dxt-lbl-${si}`} x={rx + rW / 2} y={dimYT - 5}
+        textAnchor="middle" fontSize={9.5} fill={DIM_COLOR}
+        fontFamily="monospace" fontWeight="600">{lenLabel}</text>
+    );
+
+    /* Left dim — room width */
+    const dimXL = rx - WVIZ - DG;
+    const widLabel = `${(roomWcm / 100).toFixed(2)} م`;
+    elements.push(<line key={`dxl-t-${si}`} x1={rx - WVIZ - DE} y1={ry} x2={dimXL} y2={ry}
+      stroke={DIM_COLOR} strokeWidth={0.8} />);
+    elements.push(<line key={`dxl-b-${si}`} x1={rx - WVIZ - DE} y1={ry + rH} x2={dimXL} y2={ry + rH}
+      stroke={DIM_COLOR} strokeWidth={0.8} />);
+    elements.push(<line key={`dxl-${si}`} x1={dimXL} y1={ry} x2={dimXL} y2={ry + rH}
+      stroke={DIM_COLOR} strokeWidth={1.1}
+      markerStart="url(#arrs)" markerEnd="url(#arre)" />);
+    elements.push(
+      <text key={`dxl-lbl-${si}`}
+        x={dimXL - 5} y={ry + rH / 2}
+        textAnchor="middle" dominantBaseline="middle"
+        fontSize={9.5} fill={DIM_COLOR} fontFamily="monospace" fontWeight="600"
+        transform={`rotate(-90, ${dimXL - 5}, ${ry + rH / 2})`}>{widLabel}</text>
+    );
+
+    /* ── WALL LABELS (A B C D) ─────────────────────── */
+    const walls: any[] = space.walls || [];
+    const wLblPos = [
+      { x: rx + rW / 2, y: ry - WVIZ - DG - 16 },
+      { x: rx + rW + WVIZ + 14, y: ry + rH / 2 },
+      { x: rx + rW / 2, y: ry + rH + WVIZ + 16 },
+      { x: rx - WVIZ - 14, y: ry + rH / 2 },
+    ];
+    WALL_LABELS.forEach((lbl, wi) => {
+      elements.push(
+        <text key={`wlbl-${si}-${wi}`}
+          x={wLblPos[wi].x} y={wLblPos[wi].y}
+          textAnchor="middle" dominantBaseline="middle"
+          fontSize={11} fontWeight="bold" fill={WLABEL_COLORS[wi]}>{lbl}</text>
+      );
+      /* individual wall length below/beside label */
       const wall = walls[wi];
       if (wall?.length) {
-        const rawWl = parseFloat(wall.length);
-        const wl = rawWl <= 30 ? rawWl * 100 : rawWl;
-        let dlx = 0, dly = 0;
-        if (wd.side === "top") { dlx = rx + rW / 2; dly = ry - 16; }
-        else if (wd.side === "right") { dlx = rx + rW + 18; dly = ry + rH / 2; }
-        else if (wd.side === "bottom") { dlx = rx + rW / 2; dly = ry + rH + 24; }
-        else { dlx = rx - 22; dly = ry + rH / 2; }
+        const wlcm = parseFloat(wall.length) <= 30 ? parseFloat(wall.length)*100 : parseFloat(wall.length);
+        const lblPos2 = [
+          { x: rx + rW / 2, y: ry - WVIZ - DG - 28 },
+          { x: rx + rW + WVIZ + 28, y: ry + rH / 2 },
+          { x: rx + rW / 2, y: ry + rH + WVIZ + 30 },
+          { x: rx - WVIZ - 30, y: ry + rH / 2 },
+        ][wi];
         elements.push(
-          <text key={`dim-${spaceIdx}-${wi}`} x={dlx} y={dly}
+          <text key={`wlen-${si}-${wi}`} x={lblPos2.x} y={lblPos2.y}
             textAnchor="middle" dominantBaseline="middle"
-            fontSize={8} fill="#6B7280">
-            {wl}cm
+            fontSize={7.5} fill={WLABEL_COLORS[wi]} fontFamily="monospace">
+            {`${(wlcm/100).toFixed(2)}م`}
           </text>
         );
       }
+    });
 
-      if (wall) {
-        const items: any[] = wall.items || [];
-        items.forEach((item: any, ii: number) => {
-          const rawDist = parseFloat(item.distanceFromFirst || "0");
-          const dist = (rawDist <= 30 ? rawDist * 100 : rawDist) * scale;
-          const rawIw = parseFloat(item.width || "0");
-          const iw = Math.max((rawIw > 0 ? (rawIw <= 30 ? rawIw * 100 : rawIw) : 90) * scale, 8);
-          let ix = 0, iy = 0;
+    /* ── SPACE TITLE inside room ───────────────────── */
+    elements.push(
+      <text key={`sname-${si}`} x={rx + rW / 2} y={ry + rH / 2 - 7}
+        textAnchor="middle" fontSize={12} fontWeight="bold" fill="#94A3B8">
+        {space.name || `${t("مساحة","Space")} ${si+1}`}
+      </text>
+    );
+    elements.push(
+      <text key={`sdim-${si}`} x={rx + rW / 2} y={ry + rH / 2 + 10}
+        textAnchor="middle" fontSize={8} fill="#94A3B8">
+        {`${(roomLcm/100).toFixed(2)}م × ${(roomWcm/100).toFixed(2)}م`}
+      </text>
+    );
 
-          if (wd.side === "top") { ix = rx + dist; iy = ry; }
-          else if (wd.side === "right") { ix = rx + rW; iy = ry + dist; }
-          else if (wd.side === "bottom") { ix = rx + rW - dist - iw; iy = ry + rH; }
-          else { ix = rx; iy = ry + rH - dist - iw; }
+    /* ── WALL ITEMS (door / window / outlet / drain / water_supply) ── */
+    const wallDefs = [
+      { side: "top",    color: WLABEL_COLORS[0] },
+      { side: "right",  color: WLABEL_COLORS[1] },
+      { side: "bottom", color: WLABEL_COLORS[2] },
+      { side: "left",   color: WLABEL_COLORS[3] },
+    ];
 
-          const isHoriz = wd.side === "top" || wd.side === "bottom";
+    walls.forEach((wall: any, wi: number) => {
+      const wd = wallDefs[wi];
+      if (!wd || !wall) return;
+      const items: any[] = wall.items || [];
+      const isHoriz = wd.side === "top" || wd.side === "bottom";
 
-          if (item.type === "door") {
-            /* Door symbol: hinge at ix,iy; door leaf along wall; arc shows swing direction */
-            /* Arc goes from the door endpoint into the room at 90 degrees */
-            let arcD = "";
-            let lbX = ix + iw / 2;
-            let lbY = iy - 6;
-            if (wd.side === "top") {
-              /* top wall: door leaf goes right along wall; arc swings downward into room */
-              arcD = `M ${ix + iw} ${iy} A ${iw} ${iw} 0 0 0 ${ix} ${iy + iw}`;
-              lbX = ix + iw / 2; lbY = iy - 5;
-            } else if (wd.side === "bottom") {
-              /* bottom wall: arc swings upward into room */
-              arcD = `M ${ix} ${iy} A ${iw} ${iw} 0 0 0 ${ix + iw} ${iy - iw}`;
-              lbX = ix + iw / 2; lbY = iy + 12;
-            } else if (wd.side === "right") {
-              /* right wall: arc swings leftward into room */
-              arcD = `M ${ix} ${iy} A ${iw} ${iw} 0 0 0 ${ix - iw} ${iy + iw}`;
-              lbX = ix + 8; lbY = iy + iw / 2;
-            } else {
-              /* left wall: arc swings rightward into room */
-              arcD = `M ${ix} ${iy + iw} A ${iw} ${iw} 0 0 0 ${ix + iw} ${iy}`;
-              lbX = ix - 8; lbY = iy + iw / 2;
-            }
-            /* Door gap (clear white area in wall) */
-            elements.push(
-              <g key={`item-${spaceIdx}-${wi}-${ii}`}>
-                <rect x={isHoriz ? ix : ix - 2} y={isHoriz ? iy - 2 : iy}
-                  width={isHoriz ? iw : 4} height={isHoriz ? 4 : iw}
-                  fill="white" stroke="none" />
-                {/* Door leaf line along wall */}
-                <line x1={ix} y1={iy}
-                  x2={ix + (isHoriz ? iw : 0)}
-                  y2={iy + (isHoriz ? 0 : iw)}
-                  stroke="#92400E" strokeWidth={2} />
-                {/* Swing arc */}
-                <path d={arcD} fill="none" stroke="#92400E" strokeWidth={1} strokeDasharray="3,2" />
-                <text x={lbX} y={lbY} textAnchor="middle" dominantBaseline="middle"
-                  fontSize={7} fontWeight="bold" fill="#92400E">ب</text>
-              </g>
-            );
-          } else if (item.type === "window") {
-            /* Window: three parallel lines (wall thickness symbol) + "ن" label */
-            const x2 = ix + (isHoriz ? iw : 0);
-            const y2 = iy + (isHoriz ? 0 : iw);
-            const lbX = ix + (isHoriz ? iw / 2 : -4);
-            const lbY = iy + (isHoriz ? -4 : iw / 2);
-            elements.push(
-              <g key={`item-${spaceIdx}-${wi}-${ii}`}>
-                {/* Clear gap (white) */}
-                <rect x={isHoriz ? ix : ix - 3} y={isHoriz ? iy - 3 : iy}
-                  width={isHoriz ? iw : 6} height={isHoriz ? 6 : iw}
-                  fill="white" />
-                {/* Outer wall line */}
-                <line x1={ix} y1={iy} x2={x2} y2={y2} stroke="#3B82F6" strokeWidth={2} />
-                {/* Glass pane (middle) */}
-                {isHoriz
-                  ? <line x1={ix} y1={iy + 3} x2={x2} y2={y2 + 3} stroke="#93C5FD" strokeWidth={1.5} />
-                  : <line x1={ix + 3} y1={iy} x2={x2 + 3} y2={y2} stroke="#93C5FD" strokeWidth={1.5} />}
-                {/* Inner wall line */}
-                {isHoriz
-                  ? <line x1={ix} y1={iy + 5} x2={x2} y2={y2 + 5} stroke="#3B82F6" strokeWidth={2} />
-                  : <line x1={ix + 5} y1={iy} x2={x2 + 5} y2={y2} stroke="#3B82F6" strokeWidth={2} />}
-                <text x={lbX} y={lbY} textAnchor="middle" dominantBaseline="middle"
-                  fontSize={7} fontWeight="bold" fill="#1D4ED8">ن</text>
-              </g>
-            );
-          } else if (item.type === "outlet") {
-            /* Outlet: center symbol AT distanceFromFirst (ix/iy is already at dist) */
-            const symX = ix;
-            const symY = iy;
-            elements.push(
-              <g key={`item-${spaceIdx}-${wi}-${ii}`}>
-                <circle cx={symX} cy={symY} r={4} fill="#F59E0B" stroke="#D97706" strokeWidth={1} />
-                <text x={symX} y={symY} textAnchor="middle" dominantBaseline="middle"
-                  fontSize={5} fill="white" fontWeight="bold">⚡</text>
-              </g>
-            );
-          } else if (item.type === "drain") {
-            /* Drain: center symbol AT distanceFromFirst */
-            const symX = ix;
-            const symY = iy;
-            elements.push(
-              <g key={`item-${spaceIdx}-${wi}-${ii}`}>
-                <circle cx={symX} cy={symY} r={4} fill="#3B82F6" stroke="#1D4ED8" strokeWidth={1} />
-                <text x={symX} y={symY} textAnchor="middle" dominantBaseline="middle"
-                  fontSize={5} fill="white">💧</text>
-              </g>
-            );
+      items.forEach((item: any, ii: number) => {
+        const rawDist = parseFloat(item.distanceFromFirst || "0");
+        const dist = (rawDist <= 30 ? rawDist * 100 : rawDist) * scale;
+        const rawIw  = parseFloat(item.width || "0");
+        const iw = Math.max(
+          (rawIw > 0 ? (rawIw <= 30 ? rawIw * 100 : rawIw) : (item.type === "door" ? 90 : 100)) * scale,
+          8
+        );
+
+        /* anchor position along wall */
+        let ix = 0, iy = 0;
+        if      (wd.side === "top")    { ix = rx + dist;             iy = ry;      }
+        else if (wd.side === "right")  { ix = rx + rW;               iy = ry + dist; }
+        else if (wd.side === "bottom") { ix = rx + rW - dist - iw;   iy = ry + rH; }
+        else                           { ix = rx;                     iy = ry + rH - dist - iw; }
+
+        const key = `item-${si}-${wi}-${ii}`;
+
+        if (item.type === "door") {
+          /* Gap in wall */
+          elements.push(
+            <rect key={`${key}-g`}
+              x={isHoriz ? ix : ix - WVIZ}
+              y={isHoriz ? iy - WVIZ : iy}
+              width={isHoriz ? iw : WVIZ + 2}
+              height={isHoriz ? WVIZ + 2 : iw}
+              fill={ROOM_BG} stroke="none" />
+          );
+          /* Door leaf + arc */
+          let arcD = "", leafX2 = ix, leafY2 = iy;
+          if (wd.side === "top") {
+            leafX2 = ix + iw; leafY2 = iy;
+            arcD = `M${ix+iw},${iy} A${iw},${iw} 0 0,0 ${ix},${iy+iw}`;
+          } else if (wd.side === "bottom") {
+            leafX2 = ix + iw; leafY2 = iy;
+            arcD = `M${ix},${iy} A${iw},${iw} 0 0,0 ${ix+iw},${iy-iw}`;
+          } else if (wd.side === "right") {
+            leafX2 = ix; leafY2 = iy + iw;
+            arcD = `M${ix},${iy} A${iw},${iw} 0 0,0 ${ix-iw},${iy+iw}`;
+          } else {
+            leafX2 = ix + WVIZ; leafY2 = iy + iw;
+            arcD = `M${ix+WVIZ},${iy+iw} A${iw},${iw} 0 0,0 ${ix+WVIZ+iw},${iy}`;
           }
-        });
-      }
+          elements.push(
+            <g key={key}>
+              <line x1={ix+(wd.side==="left"?WVIZ:0)} y1={iy}
+                x2={leafX2} y2={leafY2}
+                stroke={DOOR_COLOR} strokeWidth={2.2} />
+              <path d={arcD} fill="none"
+                stroke={DOOR_COLOR} strokeWidth={1.2} strokeDasharray="5,3" />
+            </g>
+          );
+
+        } else if (item.type === "window") {
+          /* Gap in wall */
+          elements.push(
+            <rect key={`${key}-g`}
+              x={isHoriz ? ix : ix - WVIZ}
+              y={isHoriz ? iy - WVIZ : iy}
+              width={isHoriz ? iw : WVIZ + 2}
+              height={isHoriz ? WVIZ + 2 : iw}
+              fill={ROOM_BG} stroke="none" />
+          );
+          const o1 = WVIZ * 0.12, o2 = WVIZ * 0.5, o3 = WVIZ * 0.88;
+          elements.push(
+            <g key={key}>
+              {/* outer */}
+              <line x1={isHoriz?ix:ix-WVIZ+o1} y1={isHoriz?iy-WVIZ+o1:iy}
+                x2={isHoriz?ix+iw:ix-WVIZ+o1} y2={isHoriz?iy-WVIZ+o1:iy+iw}
+                stroke={WIN_OUT} strokeWidth={1.8} />
+              {/* glass */}
+              <line x1={isHoriz?ix:ix-WVIZ+o2} y1={isHoriz?iy-WVIZ+o2:iy}
+                x2={isHoriz?ix+iw:ix-WVIZ+o2} y2={isHoriz?iy-WVIZ+o2:iy+iw}
+                stroke={WIN_GLASS} strokeWidth={2.5} />
+              {/* inner */}
+              <line x1={isHoriz?ix:ix-WVIZ+o3} y1={isHoriz?iy-WVIZ+o3:iy}
+                x2={isHoriz?ix+iw:ix-WVIZ+o3} y2={isHoriz?iy-WVIZ+o3:iy+iw}
+                stroke={WIN_OUT} strokeWidth={1.8} />
+            </g>
+          );
+
+        } else if (item.type === "outlet") {
+          const cx2 = isHoriz ? ix+iw/2 : ix-WVIZ/2;
+          const cy2 = isHoriz ? iy-WVIZ/2 : iy+iw/2;
+          elements.push(
+            <g key={key}>
+              <circle cx={cx2} cy={cy2} r={6} fill="#FEF3C7" stroke="#F59E0B" strokeWidth={1.5}/>
+              <text x={cx2} y={cy2+1} textAnchor="middle" dominantBaseline="middle"
+                fontSize={7} fill="#D97706" fontWeight="bold">⚡</text>
+            </g>
+          );
+        } else if (item.type === "drain") {
+          const cx2 = isHoriz ? ix+iw/2 : ix-WVIZ/2;
+          const cy2 = isHoriz ? iy-WVIZ/2 : iy+iw/2;
+          elements.push(
+            <g key={key}>
+              <circle cx={cx2} cy={cy2} r={6} fill="#EFF6FF" stroke="#3B82F6" strokeWidth={1.5}/>
+              <line x1={cx2-3} y1={cy2-2} x2={cx2} y2={cy2+3} stroke="#1D4ED8" strokeWidth={1.5}/>
+              <line x1={cx2+3} y1={cy2-2} x2={cx2} y2={cy2+3} stroke="#1D4ED8" strokeWidth={1.5}/>
+            </g>
+          );
+        } else if (item.type === "water_supply") {
+          const cx2 = isHoriz ? ix+iw/2 : ix-WVIZ/2;
+          const cy2 = isHoriz ? iy-WVIZ/2 : iy+iw/2;
+          elements.push(
+            <g key={key}>
+              <circle cx={cx2} cy={cy2} r={6} fill="#ECFDF5" stroke="#059669" strokeWidth={1.5}/>
+              <line x1={cx2-3.5} y1={cy2} x2={cx2+3.5} y2={cy2} stroke="#065F46" strokeWidth={1.4}/>
+              <line x1={cx2} y1={cy2-3.5} x2={cx2} y2={cy2+3.5} stroke="#065F46" strokeWidth={1.4}/>
+            </g>
+          );
+        }
+      });
     });
 
-    /* wall lengths in SVG units for corner end-positioning */
-    const wallSvgLengths: Record<number, number> = { 0: rW, 1: rH, 2: rW, 3: rH };
+    /* ── CABINET FOOTPRINTS ─────────────────────────── */
+    const spaceProds = allProducts.filter((p: any) => p.spaceId === space.id);
+    const wallSvgLens: Record<number,number> = { 0: rW, 1: rH, 2: rW, 3: rH };
+    const svgRR: Record<number,number> = { 0:0,1:0,2:0,3:0 };
+    const svgLR: Record<number,number> = { 0:0,1:0,2:0,3:0 };
+    const wallIdToIdx2: Record<string,number> = {};
+    walls.forEach((w:any,wi:number)=>{ if(w?.id) wallIdToIdx2[w.id]=wi; });
 
-    /* Pre-pass: reserve 2D start/end space for corner units */
-    const svgRightReserved: Record<number, number> = { 0: 0, 1: 0, 2: 0, 3: 0 };
-    const svgLeftReserved:  Record<number, number> = { 0: 0, 1: 0, 2: 0, 3: 0 };
-    spaceProducts.forEach((prod: any) => {
-      if (!prod._isCorner) return;
-      const wallIdToIdxPre: Record<string, number> = {};
-      walls.forEach((w: any, wi: number) => { if (w?.id) wallIdToIdxPre[w.id] = wi; });
-      const wIdxPre = prod.wallId && wallIdToIdxPre[prod.wallId] !== undefined
-        ? wallIdToIdxPre[prod.wallId] : 0;
-      const pw2 = Math.max(parseFloat(prod.designW || prod.dimensions?.w || "60") * scale, 6);
-      const junc = (prod._cornerJunction as "start" | "end") ?? "end";
-      if (junc === "start") svgLeftReserved[wIdxPre]  = Math.max(svgLeftReserved[wIdxPre],  pw2 + 2);
-      else                  svgRightReserved[wIdxPre] = Math.max(svgRightReserved[wIdxPre], pw2 + 2);
+    spaceProds.forEach((prod:any)=>{
+      if(!prod._isCorner) return;
+      const wIdx2 = prod.wallId && wallIdToIdx2[prod.wallId]!==undefined ? wallIdToIdx2[prod.wallId] : 0;
+      const pw2 = Math.max(parseFloat(prod.designW||prod.dimensions?.w||"60")*scale,6);
+      const junc2 = (prod._cornerJunction as "start"|"end")??"end";
+      if(junc2==="start") svgLR[wIdx2]=Math.max(svgLR[wIdx2],pw2+2);
+      else                svgRR[wIdx2]=Math.max(svgRR[wIdx2],pw2+2);
     });
 
-    const wallOffsets: Record<number, number> = {
-      0: svgLeftReserved[0],
-      1: svgLeftReserved[1],
-      2: svgLeftReserved[2],
-      3: svgLeftReserved[3],
+    const wallOffsets2: Record<number,number> = {
+      0:svgLR[0], 1:svgLR[1], 2:svgLR[2], 3:svgLR[3]
     };
 
-    const wallIdToIdx: Record<string, number> = {};
-    walls.forEach((w: any, wi: number) => { if (w?.id) wallIdToIdx[w.id] = wi; });
-
-    spaceProducts.forEach((prod: any, pi: number) => {
-      let wIdx = 0;
-      if (prod.wallId && wallIdToIdx[prod.wallId] !== undefined) {
-        wIdx = wallIdToIdx[prod.wallId];
-      } else {
-        wIdx = pi % 4;
-      }
-      const wDef = wallDefs[wIdx % 4];
-      const prodCode = prod.code || "";
+    spaceProds.forEach((prod:any,pi:number)=>{
+      let wIdx=0;
+      if(prod.wallId && wallIdToIdx2[prod.wallId]!==undefined) wIdx=wallIdToIdx2[prod.wallId];
+      else wIdx=pi%4;
+      const wDef = wallDefs[wIdx%4];
+      const prodCode = prod.code||"";
       const isWall2D = isWallUnitByCode(prodCode);
-      const rawDepth = isWall2D ? 35 : parseFloat(prod.dimensions?.d || "60");
-      const pw = Math.max(parseFloat(prod.designW || prod.dimensions?.w || "60") * scale, 6);
-      const pd = Math.max(rawDepth * scale * 0.4, 4);
+      const rawDepth = isWall2D ? 35 : parseFloat(prod.dimensions?.d||"60");
+      const pw = Math.max(parseFloat(prod.designW||prod.dimensions?.w||"60")*scale,6);
+      const pd = Math.max(rawDepth*scale*0.45,4);
       const isCorner2D = !!prod._isCorner;
-      const cornerJunc2D = (prod._cornerJunction as "start" | "end") ?? "end";
+      const junc2D = (prod._cornerJunction as "start"|"end")??"end";
 
-      let pOffset: number;
-      if (isCorner2D) {
-        /* Corner units: use explicit junction offset helper (returns center), convert to left edge */
-        pOffset = getCornerJunctionOffset(wIdx, cornerJunc2D, wallSvgLengths[wIdx], pw) - pw / 2;
+      let pOffset:number;
+      if(isCorner2D){
+        pOffset=getCornerJunctionOffset(wIdx,junc2D,wallSvgLens[wIdx],pw)-pw/2;
       } else {
-        const rightReserve2D = svgRightReserved[wIdx] ?? 0;
-        const maxOffset = wallSvgLengths[wIdx] - rightReserve2D - pw - 2;
-        pOffset = Math.min(wallOffsets[wIdx] ?? 0, maxOffset);
-        wallOffsets[wIdx] = pOffset + pw + 2;
+        const rr=svgRR[wIdx]??0;
+        const maxOff=wallSvgLens[wIdx]-rr-pw-2;
+        pOffset=Math.min(wallOffsets2[wIdx]??0,maxOff);
+        wallOffsets2[wIdx]=pOffset+pw+2;
       }
 
-      let px = 0, py = 0, rectW = pw, rectH = pd;
-      if (wDef.side === "top") { px = rx + pOffset; py = ry; rectH = pd; }
-      else if (wDef.side === "right") { px = rx + rW - pd; py = ry + pOffset; rectW = pd; rectH = pw; }
-      else if (wDef.side === "bottom") { px = rx + rW - pOffset - pw; py = ry + rH - pd; rectH = pd; }
-      else { px = rx; py = ry + rH - pOffset - pw; rectW = pd; rectH = pw; }
+      let px=0,py=0,rectW=pw,rectH=pd;
+      if      (wDef.side==="top")    { px=rx+pOffset;         py=ry;           rectH=pd; }
+      else if (wDef.side==="right")  { px=rx+rW-pd;           py=ry+pOffset;   rectW=pd; rectH=pw; }
+      else if (wDef.side==="bottom") { px=rx+rW-pOffset-pw;   py=ry+rH-pd;    rectH=pd; }
+      else                            { px=rx;                  py=ry+rH-pOffset-pw; rectW=pd; rectH=pw; }
 
-      if (px >= rx - 2 && py >= ry - 2 && px + rectW <= rx + rW + 10 && py + rectH <= ry + rH + 10) {
+      if(px>=rx-2 && py>=ry-2 && px+rectW<=rx+rW+10 && py+rectH<=ry+rH+10){
+        const hatchId = `hp${wIdx%4}`;
         elements.push(
-          <g key={`prod-${spaceIdx}-${pi}`}>
+          <g key={`prod-${si}-${pi}`}>
             <rect x={px} y={py} width={rectW} height={rectH}
-              fill={isCorner2D ? "#FDE68A" : isWall2D ? "none" : wDef.color + "40"}
-              stroke={isCorner2D ? "#92400E" : wDef.color}
-              strokeWidth={isWall2D ? 1.2 : isCorner2D ? 1.5 : 1}
-              strokeDasharray={isWall2D && !isCorner2D ? "4,3" : undefined}
-              rx={1} />
-            {rectW > 10 && (
-              <text x={px + rectW / 2} y={py + rectH / 2} textAnchor="middle"
-                dominantBaseline="middle" fontSize={5}
-                fill={isCorner2D ? "#92400E" : wDef.color} fontWeight="bold">
-                {isCorner2D ? "📐" : (prodCode).slice(0, 7)}
+              fill={isCorner2D ? "#FDE68A" : `url(#${hatchId})`}
+              stroke={isCorner2D ? DOOR_COLOR : wDef.color}
+              strokeWidth={isWall2D ? 1.2 : isCorner2D ? 1.8 : 1.4}
+              strokeDasharray={isWall2D && !isCorner2D ? "5,3" : undefined}
+              rx={1.5} />
+            {/* Dim label inside footprint */}
+            {rectW > 12 && (
+              <text x={px+rectW/2} y={py+rectH/2+1}
+                textAnchor="middle" dominantBaseline="middle"
+                fontSize={Math.max(5,Math.min(7,rectW/6))}
+                fill={isCorner2D ? "#78350F" : wDef.color} fontWeight="bold">
+                {isCorner2D ? "◣" : `${Math.round(parseFloat(prod.designW||prod.dimensions?.w||"60"))}cm`}
               </text>
             )}
           </g>
         );
       }
     });
-
-    const doorsC = parseInt(space.doorsCount || "0");
-    const windowsC = parseInt(space.windowsCount || "0");
-    const hasDoors = doorsC > 0;
-    const hasWindows = windowsC > 0;
-
-    if (hasDoors || hasWindows) {
-      elements.push(
-        <text key={`info-${spaceIdx}`} x={rx} y={ry + rH + 28}
-          fontSize={7} fill="#9CA3AF">
-          {hasDoors ? `${doorsC} ${t("باب", "door(s)")}` : ""}
-          {hasDoors && hasWindows ? " · " : ""}
-          {hasWindows ? `${windowsC} ${t("نافذة", "window(s)")}` : ""}
-        </text>
-      );
-    }
   });
+
+  /* ── SCALE BAR ────────────────────────────────────── */
+  /* Use scale of the last (or only) space, or fallback */
+  const scaleBarY = CONTENT_Y + CONTENT_H + 8;
+  const scaleBarX = CW / 2 - 50;
+  const pxPer1m   = Math.min(
+    spaces.length > 0
+      ? (() => {
+          const s0 = spaces[0];
+          const rl = parseFloat(s0.length)||3;
+          const rlcm = rl<=30?rl*100:rl;
+          const cellW2 = CW / Math.min(spaces.length,2);
+          const drawW2 = cellW2 - DIM_M * 2;
+          return Math.min(drawW2 / rlcm, 1.6) * 100;
+        })()
+      : 60,
+    80 /* cap at 80px = 1m for visual clarity */
+  );
+
+  elements.push(
+    <g key="scalebar">
+      <line x1={scaleBarX} y1={scaleBarY+14} x2={scaleBarX+pxPer1m} y2={scaleBarY+14}
+        stroke={DIM_COLOR} strokeWidth={2} markerStart="url(#arrs)" markerEnd="url(#arre)" />
+      <text x={scaleBarX+pxPer1m/2} y={scaleBarY+26}
+        textAnchor="middle" fontSize={8.5} fill={DIM_COLOR} fontFamily="monospace">
+        1 م = 100 سم
+      </text>
+      <text x={CW-10} y={CH-8} textAnchor="end" fontSize={7} fill="#94A3B8">
+        teak-sa.com
+      </text>
+    </g>
+  );
 
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between p-3 border-b shrink-0">
         <p className="text-sm font-semibold text-muted-foreground">
-          {t("مخطط هندسي 2D", "2D Engineering Plan")} · {spaces.length} {t("مساحة", "spaces")}
+          {t("مخطط هندسي 2D","2D Engineering Plan")} · {spaces.length} {t("مساحة","spaces")}
         </p>
         <Button size="sm" variant="outline" onClick={downloadPNG} data-testid="btn-download-plan">
           <Download className="h-3.5 w-3.5 me-1" />
-          {t("تحميل PNG", "Download PNG")}
+          {t("تحميل PNG","Download PNG")}
         </Button>
       </div>
-      <div className="flex-1 overflow-auto bg-white dark:bg-gray-900 p-2">
+
+      <div className="flex-1 overflow-auto bg-gray-50 dark:bg-gray-900 p-2">
         <svg
           ref={svgRef}
-          width={CANVAS_W}
-          height={CANVAS_H}
-          viewBox={`0 0 ${CANVAS_W} ${CANVAS_H}`}
-          className="w-full h-auto"
-          style={{ maxWidth: CANVAS_W }}
+          width={CW} height={CH}
+          viewBox={`0 0 ${CW} ${CH}`}
+          className="w-full h-auto shadow-sm border border-gray-200 dark:border-gray-700"
+          style={{ maxWidth: CW, background: "#fff" }}
           xmlns="http://www.w3.org/2000/svg"
         >
-          <rect width={CANVAS_W} height={CANVAS_H} fill="white" />
-          <text x={CANVAS_W / 2} y={16} textAnchor="middle" fontSize={12} fontWeight="bold" fill="#374151">
-            تيك للتصنيع — Floor Plan · مخطط المعاينة
+          <defs>{defs}</defs>
+          <rect width={CW} height={CH} fill="white" />
+
+          {/* Title block */}
+          <rect x={0} y={0} width={CW} height={TITLE_H} fill="#1E293B" />
+          <text x={CW/2} y={13} textAnchor="middle" fontSize={11} fontWeight="bold" fill="white"
+            fontFamily="sans-serif">
+            تيك للتصنيع — مخطط هندسي / Floor Plan
           </text>
+          <text x={CW/2} y={26} textAnchor="middle" fontSize={8} fill="#94A3B8"
+            fontFamily="monospace">
+            {new Date().toLocaleDateString("ar-SA")} · teak-sa.com
+          </text>
+
+          {/* Thin border lines between title and content */}
+          <line x1={0} y1={TITLE_H} x2={CW} y2={TITLE_H} stroke="#CBD5E0" strokeWidth={0.5} />
+
           {elements}
-          <text x={CANVAS_W - 6} y={CANVAS_H - 6} textAnchor="end"
-            fontSize={7} fill="#9CA3AF">
-            teak2030.net
-          </text>
+
+          {/* Legend */}
+          <g transform={`translate(10, ${CONTENT_Y + CONTENT_H + 6})`}>
+            <rect x={0} y={0} width={6} height={6} fill={WALL_FILL} />
+            <text x={9} y={6} fontSize={7.5} fill="#4B5563">{t("جدار","Wall")}</text>
+            <line x1={52} y1={3} x2={68} y2={3} stroke={DOOR_COLOR} strokeWidth={2}/>
+            <text x={71} y={6} fontSize={7.5} fill="#4B5563">{t("باب","Door")}</text>
+            <line x1={106} y1={3} x2={122} y2={3} stroke={WIN_OUT} strokeWidth={1.5}/>
+            <text x={125} y={6} fontSize={7.5} fill="#4B5563">{t("نافذة","Window")}</text>
+            <circle cx={161} cy={3} r={4} fill="#ECFDF5" stroke="#059669" strokeWidth={1.2}/>
+            <text x={168} y={6} fontSize={7.5} fill="#4B5563">{t("مياه","Water")}</text>
+            <circle cx={203} cy={3} r={4} fill="#FEF3C7" stroke="#F59E0B" strokeWidth={1.2}/>
+            <text x={210} y={6} fontSize={7.5} fill="#4B5563">{t("كهرباء","Electric")}</text>
+            <rect x={245} y={0} width={8} height={7} fill="url(#hp0)" stroke={WLABEL_COLORS[0]} strokeWidth={1}/>
+            <text x={256} y={6} fontSize={7.5} fill="#4B5563">{t("خزانة","Cabinet")}</text>
+          </g>
         </svg>
-      </div>
-      <div className="p-2 border-t shrink-0">
-        <div className="flex flex-wrap gap-3 text-[10px] text-muted-foreground">
-          <span className="flex items-center gap-1"><span className="w-6 h-1 border-t-2 border-blue-500 block" />{t("باب", "Door")}</span>
-          <span className="flex items-center gap-1"><span className="w-6 h-1 border-t-2 border-green-500 border-dashed block" />{t("نافذة", "Window")}</span>
-          <span className="flex items-center gap-1"><span className="w-3 h-3 bg-amber-400 rounded-full flex items-center justify-center text-[6px] text-white">⚡</span>{t("كهرباء", "Outlet")}</span>
-          <span className="flex items-center gap-1"><span className="w-3 h-3 bg-blue-500 rounded-full flex items-center justify-center text-[6px] text-white">💧</span>{t("تصريف", "Drain")}</span>
-          <span className="flex items-center gap-1"><span className="w-3 h-3 bg-blue-100 border border-blue-400 rounded-sm block" />{t("منتج", "Product")}</span>
-        </div>
       </div>
     </div>
   );
 }
 
 
+/* ═══════════════════════════════════════════════════════════
+   PRODUCT LIBRARY PANEL — professional catalog sidebar
+   ═══════════════════════════════════════════════════════════ */
+const CABINET_GROUPS: Record<string, { ar: string; en: string }> = {
+  "base":    { ar: "خزائن أرضية", en: "Base Cabinets" },
+  "wall":    { ar: "خزائن علوية", en: "Wall Cabinets" },
+  "tall":    { ar: "خزائن طويلة", en: "Tall Cabinets" },
+  "corner":  { ar: "خزائن زاوية", en: "Corner Cabinets" },
+  "other":   { ar: "متنوع",       en: "Other" },
+};
+
+function classifyProduct(p: any): string {
+  const code = (p.code || "").toUpperCase();
+  const grp  = (p.groupName || p.descriptionAr || "").toLowerCase();
+  if (code.startsWith("HK") || code.startsWith("TK3") || code.startsWith("W-") || grp.includes("علو") || grp.includes("upper") || grp.includes("wall")) return "wall";
+  if (code.startsWith("TL") || code.startsWith("T-") || grp.includes("طويل") || grp.includes("tall")) return "tall";
+  if (code.includes("COR") || code.includes("ZAW") || grp.includes("زاوية") || grp.includes("corner")) return "corner";
+  if (code.startsWith("B-") || code.startsWith("BP") || code.startsWith("BL") || grp.includes("أرض") || grp.includes("base")) return "base";
+  return "base"; /* default to base for kitchen */
+}
+
+function ProductLibraryPanel({
+  products,
+  placingProduct,
+  onSelectProduct,
+  onClose,
+  isLoading,
+  search,
+  onSearch,
+}: {
+  products: any[];
+  placingProduct: any | null;
+  onSelectProduct: (p: any) => void;
+  onClose: () => void;
+  isLoading: boolean;
+  search: string;
+  onSearch: (s: string) => void;
+}) {
+  const { t } = useLanguage();
+  const [activeGroup, setActiveGroup] = useState<string>("base");
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return products.filter(p => {
+      const matchGroup = classifyProduct(p) === activeGroup;
+      if (!matchGroup) return false;
+      if (!q) return true;
+      return (
+        (p.code || "").toLowerCase().includes(q) ||
+        (p.descriptionAr || "").toLowerCase().includes(q) ||
+        (p.descriptionEn || "").toLowerCase().includes(q)
+      );
+    });
+  }, [products, activeGroup, search]);
+
+  return (
+    <div className="w-72 border-s bg-background flex flex-col h-full shadow-xl z-10">
+      {/* Header */}
+      <div className="p-3 border-b bg-slate-800 text-white flex items-center justify-between shrink-0">
+        <div className="flex items-center gap-2">
+          <Layers className="h-4 w-4 text-blue-300" />
+          <span className="font-bold text-sm">{t("مكتبة المنتجات","Product Library")}</span>
+        </div>
+        <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors">
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+
+      {/* Group Tabs */}
+      <div className="flex flex-wrap gap-1 p-2 border-b shrink-0 bg-slate-50 dark:bg-slate-900">
+        {Object.entries(CABINET_GROUPS).map(([grp, labels]) => {
+          const count = products.filter(p => classifyProduct(p) === grp).length;
+          if (count === 0) return null;
+          return (
+            <button
+              key={grp}
+              onClick={() => setActiveGroup(grp)}
+              className={`text-[10px] px-2 py-1 rounded-md border transition-all font-medium ${
+                activeGroup === grp
+                  ? "bg-blue-600 text-white border-blue-600 shadow-sm"
+                  : "bg-white dark:bg-slate-800 text-muted-foreground border-transparent hover:border-blue-300"
+              }`}
+            >
+              {t(labels.ar, labels.en)}
+              <span className="ms-1 opacity-70">({count})</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Search */}
+      <div className="p-2 shrink-0">
+        <div className="relative">
+          <Search className="absolute start-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={e => onSearch(e.target.value)}
+            placeholder={t("بحث في الكتالوج...","Search catalog...")}
+            className="ps-7 h-8 text-xs"
+            data-testid="input-library-search"
+          />
+        </div>
+      </div>
+
+      {/* Product List */}
+      <div className="flex-1 overflow-y-auto px-2 pb-2 space-y-1.5">
+        {isLoading && (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          </div>
+        )}
+        {!isLoading && filtered.length === 0 && (
+          <p className="text-center text-xs text-muted-foreground py-6">
+            {t("لا توجد منتجات","No products found")}
+          </p>
+        )}
+        {!isLoading && filtered.map((p: any) => {
+          const isPlacing = placingProduct?.id === p.id;
+          const dims = `${p.designW||p.manufacturingW||0}×${p.designH||p.manufacturingH||0}×${p.designD||p.manufacturingD||0} cm`;
+          return (
+            <button
+              key={p.id}
+              onClick={() => onSelectProduct(isPlacing ? null : p)}
+              data-testid={`lib-product-${p.id}`}
+              className={`w-full text-start rounded-lg border p-2.5 transition-all cursor-pointer ${
+                isPlacing
+                  ? "border-blue-500 bg-blue-50 dark:bg-blue-900/30 shadow-md ring-1 ring-blue-400"
+                  : "border-border hover:border-blue-300 hover:bg-accent"
+              }`}
+            >
+              <div className="flex items-start justify-between gap-1">
+                <div className="min-w-0 flex-1">
+                  <p className="text-[10px] font-bold text-foreground font-mono truncate">{p.code}</p>
+                  <p className="text-[10px] text-muted-foreground leading-tight mt-0.5 line-clamp-2">
+                    {p.descriptionAr || p.descriptionEn || p.code}
+                  </p>
+                  <p className="text-[9px] text-blue-500 mt-1 font-mono">{dims}</p>
+                </div>
+                <div className="flex flex-col items-end shrink-0 gap-1">
+                  {isPlacing ? (
+                    <Badge className="text-[9px] px-1.5 py-0 bg-blue-500">
+                      <Move className="h-2.5 w-2.5 me-0.5" />
+                      {t("اختر جداراً","Pick wall")}
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-[9px] px-1.5 py-0">
+                      <Plus className="h-2.5 w-2.5" />
+                    </Badge>
+                  )}
+                  {p.priceBeforeVat && (
+                    <span className="text-[9px] text-green-600 font-mono">
+                      {Number(p.priceBeforeVat).toLocaleString()} {t("ر.س","SAR")}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Instructions */}
+      {placingProduct && (
+        <div className="p-2.5 bg-blue-50 dark:bg-blue-900/20 border-t border-blue-200 shrink-0">
+          <p className="text-[10px] text-blue-700 dark:text-blue-300 font-medium">
+            {t("انقر على الجدار في المشهد ثلاثي الأبعاد لوضع الخزانة","Click on a wall in the 3D scene to place the cabinet")}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function Scene3DPage() {
   const { t } = useLanguage();
@@ -1483,6 +1896,14 @@ export default function Scene3DPage() {
   const [replaceSearch, setReplaceSearch] = useState("");
   const [lightMode, setLightMode] = useState<"day" | "night">("day");
   const [floorType, setFloorType] = useState<FloorType>("marble");
+
+  /* ── Design Mode: interactive placement ── */
+  const [showLibrary, setShowLibrary] = useState(false);
+  const [placingProduct, setPlacingProduct] = useState<any | null>(null);
+  const [librarySearch, setLibrarySearch] = useState("");
+  const [localProducts, setLocalProducts] = useState<any[] | null>(null); /* null = use server data */
+  const [localHistory, setLocalHistory] = useState<any[][]>([]);
+  const [designSaved, setDesignSaved] = useState(true);
   const [activeTab, setActiveTab] = useState(() => {
     const t = params.get("tab");
     if (t === "2d") return "2d";
@@ -1686,8 +2107,8 @@ export default function Scene3DPage() {
       const data = await res.json();
       return Array.isArray(data) ? data : (data.products || []);
     },
-    enabled: replacingIndex !== null,
-    staleTime: 120000,
+    enabled: true,
+    staleTime: 180000,
   });
 
   const filteredReplacements = useMemo(() => {
@@ -1741,6 +2162,80 @@ export default function Scene3DPage() {
     },
     onError: () => { toast({ title: t("حدث خطأ في الاستبدال", "Replacement error"), variant: "destructive" }); },
   });
+
+  /* ── Sync localProducts when server data arrives ── */
+  const activeSelectedProducts = useMemo(() =>
+    localProducts !== null ? localProducts : selectedProducts,
+    [localProducts, selectedProducts]
+  );
+  const activeSpaceProducts = useMemo(() =>
+    activeSelectedProducts.filter((p: any) => !activeSpace || p.spaceId === activeSpace.id),
+    [activeSelectedProducts, activeSpace]
+  );
+
+  /* ── Save Design mutation ── */
+  const saveDesignMutation = useMutation({
+    mutationFn: async () => {
+      const qId = survey?.quotationId || quotationIdParam;
+      if (!qId || localProducts === null) throw new Error("Nothing to save");
+      const res = await fetch("/api/customer-portal/update-products", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ quotationId: parseInt(qId), products: localProducts }),
+      });
+      if (!res.ok) throw new Error("Save failed");
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: t("تم حفظ التصميم", "Design saved successfully") });
+      setDesignSaved(true);
+      setLocalProducts(null);
+      setLocalHistory([]);
+      queryClient.invalidateQueries({ queryKey: ["/api/site-surveys", surveyId, isPublic, tokenParam] });
+    },
+    onError: () => { toast({ title: t("خطأ في الحفظ", "Save error"), variant: "destructive" }); },
+  });
+
+  /* ── Wall click placement handler ── */
+  const handleWallPlace = useCallback((wallIndex: number, xOffsetCm: number) => {
+    if (!placingProduct || !activeSpace) return;
+    const wallLetters = ["A","B","C","D"];
+    const wallId = activeSpace.walls?.find((_w: any, i: number) => i === wallIndex)?.id
+                ?? `${activeSpace.id}-wall-${wallLetters[wallIndex]}`;
+    const newProd = {
+      productId: placingProduct.id,
+      code: placingProduct.code,
+      nameAr: placingProduct.descriptionAr || placingProduct.code,
+      name: placingProduct.descriptionEn || placingProduct.descriptionAr || placingProduct.code,
+      unitPrice: parseFloat(placingProduct.priceBeforeVat?.toString() || "0"),
+      quantity: 1,
+      optionsCost: 0,
+      optionDetails: {},
+      spaceId: activeSpace.id,
+      wallId,
+      designW: parseFloat(placingProduct.designW?.toString() || "60").toString(),
+      dimensions: {
+        w: parseFloat(placingProduct.designW?.toString() || placingProduct.manufacturingW?.toString() || "60"),
+        h: parseFloat(placingProduct.designH?.toString() || placingProduct.manufacturingH?.toString() || "72"),
+        d: parseFloat(placingProduct.designD?.toString() || placingProduct.manufacturingD?.toString() || "60"),
+      },
+      _manualXOffset: xOffsetCm,
+    };
+    const base = localProducts !== null ? localProducts : selectedProducts;
+    setLocalHistory(h => [...h, base]);
+    setLocalProducts([...base, newProd]);
+    setDesignSaved(false);
+    toast({ title: t("تم إضافة الخزانة", "Cabinet added"), description: placingProduct.code });
+  }, [placingProduct, activeSpace, localProducts, selectedProducts, t, toast]);
+
+  /* ── Undo last placement ── */
+  const handleUndo = useCallback(() => {
+    if (localHistory.length === 0) return;
+    setLocalProducts(localHistory[localHistory.length - 1]);
+    setLocalHistory(h => h.slice(0, -1));
+    setDesignSaved(false);
+  }, [localHistory]);
 
   const handleShare = useCallback(() => {
     const token = survey?.shareToken || "";
@@ -1809,7 +2304,7 @@ export default function Scene3DPage() {
             </div>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Badge variant="outline" className="gap-1">
             <Package className="h-3 w-3" /> {spaceProducts.length} {t("منتج", "products")}
           </Badge>
@@ -1818,19 +2313,56 @@ export default function Scene3DPage() {
               <AlertTriangle className="h-3 w-3" /> {designWarnings.length} {t("تحذير", "warnings")}
             </Badge>
           )}
+          {!designSaved && localProducts !== null && (
+            <Badge variant="outline" className="gap-1 border-amber-400 text-amber-600">
+              ● {t("تعديلات غير محفوظة","Unsaved")}
+            </Badge>
+          )}
           <Badge variant="secondary" className="font-bold">
             {(() => { const d = parseFloat(survey?.discount || "0"); return ((subtotal - d) * 1.15).toLocaleString(undefined, { maximumFractionDigits: 0 }); })()} {t("ر.س", "SAR")}
           </Badge>
+
+          {/* Design mode: save + undo */}
+          {localProducts !== null && !designSaved && (
+            <>
+              <Button size="sm" variant="outline" onClick={handleUndo} disabled={localHistory.length === 0}
+                data-testid="btn-undo-placement" title={t("تراجع","Undo")}>
+                <RotateCcw className="h-3.5 w-3.5 me-1" />{t("تراجع","Undo")}
+              </Button>
+              <Button size="sm" onClick={() => saveDesignMutation.mutate()}
+                disabled={saveDesignMutation.isPending}
+                data-testid="btn-save-design">
+                {saveDesignMutation.isPending
+                  ? <Loader2 className="h-3.5 w-3.5 animate-spin me-1" />
+                  : null}
+                {t("حفظ التصميم","Save Design")}
+              </Button>
+            </>
+          )}
+
           {activeTab === "3d" && (
-            <Button
-              size="sm"
-              variant={lightMode === "night" ? "default" : "outline"}
-              onClick={() => setLightMode(lm => lm === "day" ? "night" : "day")}
-              data-testid="btn-toggle-light"
-              title={t("تبديل الإضاءة", "Toggle lighting")}
-            >
-              {lightMode === "day" ? <Moon className="h-3.5 w-3.5" /> : <Sun className="h-3.5 w-3.5" />}
-            </Button>
+            <>
+              {/* Library toggle */}
+              <Button
+                size="sm"
+                variant={showLibrary ? "default" : "outline"}
+                onClick={() => setShowLibrary(v => !v)}
+                data-testid="btn-toggle-library"
+                title={t("مكتبة المنتجات","Product Library")}
+                className={showLibrary ? "bg-slate-700 text-white hover:bg-slate-600" : ""}
+              >
+                <Layers className="h-3.5 w-3.5 me-1" />{t("الكتالوج","Catalog")}
+              </Button>
+              <Button
+                size="sm"
+                variant={lightMode === "night" ? "default" : "outline"}
+                onClick={() => setLightMode(lm => lm === "day" ? "night" : "day")}
+                data-testid="btn-toggle-light"
+                title={t("تبديل الإضاءة", "Toggle lighting")}
+              >
+                {lightMode === "day" ? <Moon className="h-3.5 w-3.5" /> : <Sun className="h-3.5 w-3.5" />}
+              </Button>
+            </>
           )}
           <Button size="sm" variant="outline" onClick={handleShare} data-testid="btn-share-3d">
             <Share2 className="h-3.5 w-3.5" />
@@ -1852,21 +2384,65 @@ export default function Scene3DPage() {
         </TabsList>
 
         <TabsContent value="3d" className="flex-1 overflow-hidden mt-0 data-[state=active]:flex">
-          <div className="flex-1 relative" style={{ background: lightMode === "day" ? "linear-gradient(to bottom, #e0f2fe, #bae6fd)" : "linear-gradient(to bottom, #0f0c29, #1a1a2e)" }}>
+          {/* Library sidebar */}
+          {showLibrary && (
+            <ProductLibraryPanel
+              products={adekoProducts}
+              placingProduct={placingProduct}
+              onSelectProduct={(p) => setPlacingProduct(p)}
+              onClose={() => { setShowLibrary(false); setPlacingProduct(null); }}
+              isLoading={false}
+              search={librarySearch}
+              onSearch={setLibrarySearch}
+            />
+          )}
+          <div
+            className="flex-1 relative"
+            style={{
+              background: lightMode === "day"
+                ? "linear-gradient(to bottom, #e0f2fe, #bae6fd)"
+                : "linear-gradient(to bottom, #0f0c29, #1a1a2e)",
+              cursor: placingProduct ? "crosshair" : "default",
+            }}
+          >
             {isLoading && (
               <div className="absolute inset-0 flex items-center justify-center">
                 <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+              </div>
+            )}
+            {/* Placing mode indicator banner */}
+            {placingProduct && (
+              <div className="absolute top-0 inset-x-0 z-20 bg-blue-600/90 text-white text-xs text-center py-1.5 font-medium">
+                {t("وضع التثبيت","Placing")} · <strong>{placingProduct.code}</strong>
+                {" — "}
+                {t("انقر على جدار لوضع الخزانة","Click a wall to place")}
+                <button
+                  onClick={() => setPlacingProduct(null)}
+                  className="ms-3 px-2 py-0.5 rounded bg-white/20 hover:bg-white/30"
+                >
+                  {t("إلغاء","Cancel")}
+                </button>
               </div>
             )}
             {surveyForSpace && (
               <Canvas key={key} shadows gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: lightMode === "day" ? 1.0 : 0.7 }}>
                 <Suspense fallback={null}>
                   <Scene3D
-                    survey={surveyForSpace}
+                    survey={localProducts !== null
+                      ? {
+                          ...surveyForSpace,
+                          selectedProducts: localProducts.filter(
+                            (p: any) => !activeSpace || p.spaceId === activeSpace.id
+                          ),
+                        }
+                      : surveyForSpace
+                    }
                     selectedIdx={selectedProduct}
                     onSelect={setSelectedProduct}
                     lightMode={lightMode}
                     floorType={floorType}
+                    placingProduct={placingProduct}
+                    onWallPlace={handleWallPlace}
                   />
                 </Suspense>
               </Canvas>
