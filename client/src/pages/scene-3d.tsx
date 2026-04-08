@@ -1257,10 +1257,11 @@ function CabinetFront({ W, H, D, frameColor, panelColor, drawerCount, isGlass, i
 }
 
 function Cabinet({
-  product, index, roomL, roomW, selected, onSelect, hasConflict,
+  product, index, roomL, roomW, selected, onSelect, hasConflict, onDragStart,
 }: {
   product: any; index: number; roomL: number; roomW: number; roomH?: number;
   selected: boolean; onSelect: (idx: number) => void; hasConflict?: boolean;
+  onDragStart?: (sourceIdx: number) => void;
 }) {
   const [hovered, setHovered] = useState(false);
 
@@ -1325,6 +1326,12 @@ function Cabinet({
       onPointerOver={() => setHovered(true)}
       onPointerOut={() => setHovered(false)}
       onClick={(e) => { e.stopPropagation(); onSelect(index); }}
+      onPointerDown={(e) => {
+        if (selected && onDragStart) {
+          e.stopPropagation();
+          onDragStart(index);
+        }
+      }}
     >
       {isCorner ? (
         /* ── Corner unit: two perpendicular arm boxes forming an L-shape ── */
@@ -1604,15 +1611,113 @@ function GhostCabinet({
   );
 }
 
+/* ── Cabinet drag controller — attaches DOM events to canvas for reliable dragging ── */
+function CabinetDragController({
+  dragRef,
+  onDragMove,
+  onDragCommit,
+  setIsDragging,
+}: {
+  dragRef: React.MutableRefObject<{
+    active: boolean; sourceIdx: number; wallIdx: number; wallLen: number;
+    cabHalfW: number; axis: "x"|"z"; axisSign: number; axisBase: number; liveOffset: number;
+    wallPlaneZ: number; wallPlaneX: number;
+  }>;
+  onDragMove: (sourceIdx: number, newXOffset: number) => void;
+  onDragCommit: (sourceIdx: number, newXOffset: number) => void;
+  setIsDragging: (v: boolean) => void;
+}) {
+  const { gl, camera, raycaster } = useThree();
+
+  useEffect(() => {
+    const canvas = gl.domElement;
+
+    const calcOffset = (e: PointerEvent): number | null => {
+      const dr = dragRef.current;
+      if (!dr.active) return null;
+      const rect = canvas.getBoundingClientRect();
+      const nx = ((e.clientX - rect.left) / rect.width)  *  2 - 1;
+      const ny = ((e.clientY - rect.top)  / rect.height) * -2 + 1;
+      raycaster.setFromCamera(new THREE.Vector2(nx, ny), camera);
+      /* Build a plane coinciding with the wall face */
+      let plane: THREE.Plane;
+      if (dr.axis === "x") {
+        /* Wall runs along x — plane is perpendicular to z */
+        const zWorld = dr.wallPlaneZ;
+        const normal = new THREE.Vector3(0, 0, zWorld >= 0 ? -1 : 1); /* faces into room */
+        plane = new THREE.Plane(normal, Math.abs(zWorld));
+      } else {
+        /* Wall runs along z — plane is perpendicular to x */
+        const xWorld = dr.wallPlaneX;
+        const normal = new THREE.Vector3(xWorld >= 0 ? -1 : 1, 0, 0); /* faces into room */
+        plane = new THREE.Plane(normal, Math.abs(xWorld));
+      }
+      const hit = new THREE.Vector3();
+      if (!raycaster.ray.intersectPlane(plane, hit)) return null;
+      /* Convert world hit back to cm offset from wall start */
+      const rawOffset = dr.axis === "x"
+        ? (hit.x - dr.axisBase * SCALE) * dr.axisSign / SCALE
+        : (hit.z - dr.axisBase * SCALE) * dr.axisSign / SCALE;
+      return Math.max(dr.cabHalfW + 2, Math.min(rawOffset, dr.wallLen - dr.cabHalfW - 2));
+    };
+
+    const onMove = (e: PointerEvent) => {
+      const dr = dragRef.current;
+      if (!dr.active) return;
+      const offset = calcOffset(e);
+      if (offset === null) return;
+      dr.liveOffset = offset;
+      onDragMove(dr.sourceIdx, offset);
+    };
+
+    const onUp = (e: PointerEvent) => {
+      const dr = dragRef.current;
+      if (!dr.active) return;
+      const offset = calcOffset(e) ?? dr.liveOffset;
+      onDragCommit(dr.sourceIdx, offset);
+      dragRef.current = { ...dr, active: false };
+      setIsDragging(false);
+    };
+
+    const onCancel = () => {
+      const dr = dragRef.current;
+      if (!dr.active) return;
+      /* On cancel, commit last known live position to avoid stuck state */
+      onDragCommit(dr.sourceIdx, dr.liveOffset);
+      dragRef.current = { ...dr, active: false };
+      setIsDragging(false);
+    };
+
+    canvas.addEventListener("pointermove", onMove);
+    canvas.addEventListener("pointerup", onUp);
+    canvas.addEventListener("pointercancel", onCancel);
+    /* Also listen on window to catch pointer releases outside the canvas */
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onCancel);
+    return () => {
+      canvas.removeEventListener("pointermove", onMove);
+      canvas.removeEventListener("pointerup", onUp);
+      canvas.removeEventListener("pointercancel", onCancel);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
+    };
+  }, [gl, camera, raycaster, dragRef, onDragMove, onDragCommit, setIsDragging]);
+
+  return null;
+}
+
 function Scene3D({
   survey, selectedIdx, onSelect, lightMode, floorType,
   placingProduct, onWallPlace, navMode, gyroActive,
+  onDragMove, onDragCommit,
 }: {
   survey: any; selectedIdx: number; onSelect: (i: number) => void; lightMode: "day" | "night"; floorType: FloorType;
   placingProduct?: any | null;
   onWallPlace?: (wallIndex: number, xOffsetCm: number) => void;
   navMode?: "orbit" | "walk";
   gyroActive?: boolean;
+  onDragMove?: (sourceIdx: number, newXOffset: number) => void;
+  onDragCommit?: (sourceIdx: number, newXOffset: number) => void;
 }) {
   const firstSpace = (survey.spaces || [])[0];
   const roomDims = survey.roomDimensions
@@ -1673,7 +1778,6 @@ function Scene3D({
     const wIdx = getWallIndex(p);
     const pW = parseFloat(p.designW || p.dimensions?.w || "60");
     const wallLen = wallLengths[wIdx] || L;
-
     /* Corner units anchored via explicit junction coordinate helper.
        getCornerJunctionOffset(wallIndex, junction, wallLenCm, cornerW)
        → returns center x-offset in cm from wall start. */
@@ -1734,6 +1838,36 @@ function Scene3D({
     pos: [0, 0, 0], rotY: 0, visible: false,
   });
 
+  /* Drag-to-reposition state */
+  type DragState = {
+    active: boolean;
+    sourceIdx: number;
+    wallIdx: number;
+    wallLen: number;
+    cabHalfW: number;
+    axis: "x" | "z";
+    axisSign: number;
+    axisBase: number;
+    liveOffset: number;
+    wallPlaneZ: number;
+    wallPlaneX: number;
+  };
+  const dragRef = useRef<DragState>({
+    active: false, sourceIdx: -1, wallIdx: 0, wallLen: 400,
+    cabHalfW: 30, axis: "x", axisSign: 1, axisBase: 0, liveOffset: 0,
+    wallPlaneZ: 0, wallPlaneX: 0,
+  });
+  const [isDraggingCabinet, setIsDraggingCabinet] = useState(false);
+
+  /* Wall config table used by both placing planes and drag planes */
+  const WALL_PLANES = useMemo(() => [
+    { wallIdx: 0, pos: [0, scaledH/2, -scaledW/2 + 0.02] as [number,number,number], rot: [0,0,0] as [number,number,number], planW: scaledL, planH: scaledH, axis: "x" as "x"|"z", axisSign: 1, axisBase: -L/2, wallLen: L },
+    { wallIdx: 1, pos: [scaledL/2 - 0.02, scaledH/2, 0] as [number,number,number],  rot: [0,Math.PI/2,0] as [number,number,number], planW: scaledW, planH: scaledH, axis: "z" as "x"|"z", axisSign: 1, axisBase: -W/2, wallLen: W },
+    { wallIdx: 2, pos: [0, scaledH/2, scaledW/2 - 0.02] as [number,number,number],  rot: [0,Math.PI,0] as [number,number,number], planW: scaledL, planH: scaledH, axis: "x" as "x"|"z", axisSign: -1, axisBase: L/2, wallLen: L },
+    { wallIdx: 3, pos: [-scaledL/2 + 0.02, scaledH/2, 0] as [number,number,number], rot: [0,-Math.PI/2,0] as [number,number,number], planW: scaledW, planH: scaledH, axis: "z" as "x"|"z", axisSign: -1, axisBase: W/2, wallLen: W },
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], [scaledL, scaledW, scaledH, L, W]);
+
   return (
     <>
       <SoftShadows size={25} samples={10} focus={0} />
@@ -1741,7 +1875,7 @@ function Scene3D({
 
       {/* Camera: outside room (z > W/2), just below ceiling height — sees the interior clearly */}
       <PerspectiveCamera makeDefault position={[scaledL * 0.35, scaledH * 0.75, scaledW * 3.5]} fov={55} />
-      <OrbitControls enableDamping dampingFactor={0.05} minDistance={1} maxDistance={25} enabled={!isWalking} />
+      <OrbitControls enableDamping dampingFactor={0.05} minDistance={1} maxDistance={25} enabled={!isWalking && !isDraggingCabinet} />
       {isWalking && (
         <>
           {/* PointerLockControls only on desktop — not supported on iOS/mobile */}
@@ -1797,16 +1931,50 @@ function Scene3D({
           selected={selectedIdx === p._sourceIndex}
           onSelect={onSelect}
           hasConflict={!!p._conflict}
+          onDragStart={onDragMove && onDragCommit ? (spaceLocalIdx: number) => {
+            /* Find the product's wall and dimensions to set up drag state */
+            const dp = productsWithPos.find((pp: any) => pp._sourceIndex === spaceLocalIdx);
+            if (!dp) return;
+            const wIdx = dp._wallIndex ?? 0;
+            const plane = WALL_PLANES[wIdx];
+            if (!plane) return;
+            const cabHalfW = parseFloat(dp.designW || dp.dimensions?.w || "60") / 2;
+            const wallLen = wallLengths[wIdx] || L;
+            /* Use _globalIndex for drag identity (correct index in parent's localProducts) */
+            const globalIdx = dp._globalIndex !== undefined ? dp._globalIndex : spaceLocalIdx;
+            /* Compute the world-space position of the wall face for raycasting */
+            const wallPlaneZ = wIdx === 0 ? -scaledW / 2 : wIdx === 2 ? scaledW / 2 : 0;
+            const wallPlaneX = wIdx === 1 ?  scaledL / 2 : wIdx === 3 ? -scaledL / 2 : 0;
+            dragRef.current = {
+              active: true,
+              sourceIdx: globalIdx,
+              wallIdx: wIdx,
+              wallLen,
+              cabHalfW,
+              axis: plane.axis,
+              axisSign: plane.axisSign,
+              axisBase: plane.axisBase,
+              liveOffset: dp._xOffset ?? cabHalfW + 10,
+              wallPlaneZ,
+              wallPlaneX,
+            };
+            setIsDraggingCabinet(true);
+          } : undefined}
         />
       ))}
 
+      {/* ── Cabinet drag controller (DOM events via useThree) ── */}
+      {onDragMove && onDragCommit && (
+        <CabinetDragController
+          dragRef={dragRef}
+          onDragMove={onDragMove}
+          onDragCommit={onDragCommit}
+          setIsDragging={setIsDraggingCabinet}
+        />
+      )}
+
       {/* ── Interactive Wall Click Planes (shown only in placing mode) ── */}
-      {placingProduct && onWallPlace && [
-        { wallIdx: 0, pos: [0, scaledH/2, -scaledW/2 + 0.02] as [number,number,number], rot: [0,0,0] as [number,number,number], planW: scaledL, planH: scaledH, axis: "x", axisSign: 1, axisBase: -L/2 },
-        { wallIdx: 1, pos: [scaledL/2 - 0.02, scaledH/2, 0] as [number,number,number],  rot: [0,Math.PI/2,0] as [number,number,number], planW: scaledW, planH: scaledH, axis: "z", axisSign: 1, axisBase: -W/2 },
-        { wallIdx: 2, pos: [0, scaledH/2, scaledW/2 - 0.02] as [number,number,number],  rot: [0,Math.PI,0] as [number,number,number], planW: scaledL, planH: scaledH, axis: "x", axisSign: -1, axisBase: L/2 },
-        { wallIdx: 3, pos: [-scaledL/2 + 0.02, scaledH/2, 0] as [number,number,number], rot: [0,-Math.PI/2,0] as [number,number,number], planW: scaledW, planH: scaledH, axis: "z", axisSign: -1, axisBase: W/2 },
-      ].map(({ wallIdx, pos, rot, planW, planH, axis, axisSign, axisBase }) => (
+      {placingProduct && onWallPlace && WALL_PLANES.map(({ wallIdx, pos, rot, planW, planH, axis, axisSign, axisBase }) => (
         <mesh
           key={`wallplane-${wallIdx}`}
           position={pos}
@@ -2537,6 +2705,15 @@ function ProductLibraryPanel({
         {!isLoading && filtered.map((p: any) => {
           const isPlacing = placingProduct?.id === p.id;
           const dims = `${p.designW||p.manufacturingW||0}×${p.designH||p.manufacturingH||0}×${p.designD||p.manufacturingD||0} cm`;
+          const pType = classifyProduct(p);
+          const typeLabel: Record<string, { ar: string; en: string; color: string }> = {
+            base:   { ar: "أرضي",  en: "Base",   color: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" },
+            wall:   { ar: "علوي",  en: "Wall",   color: "bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300" },
+            tall:   { ar: "طويل",  en: "Tall",   color: "bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300" },
+            corner: { ar: "زاوية", en: "Corner", color: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300" },
+            other:  { ar: "متنوع", en: "Other",  color: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400" },
+          };
+          const tInfo = typeLabel[pType] || typeLabel.other;
           return (
             <button
               key={p.id}
@@ -2591,6 +2768,13 @@ function ProductLibraryPanel({
                       </span>
                     )}
                   </div>
+                  {/* Product type badge */}
+                  <span
+                    data-testid={`badge-type-${p.id}`}
+                    className={`inline-block text-[8px] font-semibold px-1.5 py-0.5 rounded mt-1 leading-none ${tInfo.color}`}
+                  >
+                    {t(tInfo.ar, tInfo.en)}
+                  </span>
                 </div>
               </div>
             </button>
@@ -2717,6 +2901,8 @@ export default function Scene3DPage() {
   const [localProducts, setLocalProducts] = useState<any[] | null>(null); /* null = use server data */
   const [localHistory, setLocalHistory] = useState<any[][]>([]);
   const [designSaved, setDesignSaved] = useState(true);
+  /* Pre-drag snapshot: captured at the moment drag starts, before any live move mutations */
+  const preDragSnapshot = useRef<any[] | null>(null);
 
   /* Reset local state when navigating to a different survey (SPA navigation without page reload) */
   useEffect(() => {
@@ -3096,6 +3282,36 @@ export default function Scene3DPage() {
     toast({ title: t("تم نقل الخزانة", "Cabinet moved") });
   }, [activeSpace, localProducts, selectedProducts, makeWallId, wallLenCmByIdx, t, toast]);
 
+  /* ── Drag live update: capture pre-drag snapshot on first call, then reposition ── */
+  const handleDragMove = useCallback((sourceIdx: number, newXOffset: number) => {
+    setLocalProducts(prev => {
+      if (!prev) return prev;
+      /* Snapshot the state BEFORE any drag mutation (only once per drag gesture) */
+      if (preDragSnapshot.current === null) {
+        preDragSnapshot.current = prev;
+      }
+      return prev.map((p: any, i: number) =>
+        i === sourceIdx ? { ...p, _manualXOffset: newXOffset } : p
+      );
+    });
+  }, []);
+
+  /* ── Drag commit: push pre-drag snapshot into history so undo returns to pre-drag ── */
+  const handleDragCommit = useCallback((sourceIdx: number, newXOffset: number) => {
+    const snapshot = preDragSnapshot.current;
+    preDragSnapshot.current = null; /* reset for next drag */
+    setLocalProducts(prev => {
+      const base = prev !== null ? prev : [...selectedProducts];
+      /* History entry is the state before drag started */
+      const historyEntry = snapshot !== null ? snapshot : base;
+      setLocalHistory(h => [...h, historyEntry]);
+      return base.map((p: any, i: number) =>
+        i === sourceIdx ? { ...p, _manualXOffset: newXOffset } : p
+      );
+    });
+    setDesignSaved(false);
+  }, [selectedProducts]);
+
   /* ── Undo last placement ── */
   const handleUndo = useCallback(() => {
     if (localHistory.length === 0) return;
@@ -3349,23 +3565,33 @@ export default function Scene3DPage() {
                     if (isWallUnit(p) !== isUpper) return acc;
                     return acc + parseFloat(p.designW || p.dimensions?.w || "60") + 5;
                   }, 10);
+                  const remainingCm = Math.max(0, wallLenCm - usedCm - 5);
                   const fits = usedCm + pW <= wallLenCm - 5;
                   /* Label wall C (index 2) as "أمامك" hint since camera faces it */
                   const hint = wallIdx === 2 ? " ◀" : "";
+                  /* Color coding: green ≥50% free, orange 20-49%, red <20% */
+                  const freeRatio = remainingCm / wallLenCm;
+                  const spaceColor = !fits ? "text-white/40" : freeRatio >= 0.5 ? "text-green-300" : freeRatio >= 0.2 ? "text-orange-300" : "text-red-300";
                   return (
                     <button
                       key={wallIdx}
                       onClick={() => handleWallPlace(wallIdx, usedCm + pW / 2)}
                       disabled={!fits}
-                      className={`px-3 py-1 rounded-md text-xs font-bold border transition-all ${
+                      data-testid={`wall-place-btn-${letter}`}
+                      className={`flex flex-col items-center px-3 py-1 rounded-md text-xs font-bold border transition-all ${
                         fits
                           ? "bg-white text-blue-700 border-white hover:bg-blue-50 active:scale-95"
                           : "bg-white/20 text-white/40 border-white/20 cursor-not-allowed"
                       }`}
-                      title={fits ? t(`وضع على الجدار ${letter}`, `Place on Wall ${letter}`)
+                      title={fits ? t(`وضع على الجدار ${letter} — ${remainingCm} سم متبقية`, `Place on Wall ${letter} — ${remainingCm} cm remaining`)
                                   : t(`الجدار ${letter} ممتلئ`, `Wall ${letter} is full`)}
                     >
-                      {t(`جدار ${letter}`, `Wall ${letter}`)}{hint}
+                      <span>{t(`جدار ${letter}`, `Wall ${letter}`)}{hint}</span>
+                      <span className={`text-[9px] font-normal leading-none mt-0.5 ${spaceColor}`}>
+                        {fits
+                          ? t(`${remainingCm} سم متبقية`, `${remainingCm} cm left`)
+                          : t("ممتلئ", "Full")}
+                      </span>
                     </button>
                   );
                 })}
@@ -3386,9 +3612,9 @@ export default function Scene3DPage() {
                       survey={localProducts !== null
                         ? {
                             ...surveyForSpace,
-                            selectedProducts: localProducts.filter(
-                              (p: any) => !activeSpace || p.spaceId === activeSpace.id
-                            ),
+                            selectedProducts: localProducts
+                              .map((p: any, globalIdx: number) => ({ ...p, _globalIndex: globalIdx }))
+                              .filter((p: any) => !activeSpace || p.spaceId === activeSpace.id),
                           }
                         : surveyForSpace
                       }
@@ -3400,6 +3626,8 @@ export default function Scene3DPage() {
                       onWallPlace={handleWallPlace}
                       navMode={navMode}
                       gyroActive={isMobile && gyroGranted && navMode === "walk"}
+                      onDragMove={localProducts !== null ? handleDragMove : undefined}
+                      onDragCommit={localProducts !== null ? handleDragCommit : undefined}
                     />
                   </Suspense>
                 </XR>
@@ -3536,7 +3764,11 @@ export default function Scene3DPage() {
                           )}
                           {/* Move-to-wall row — shown below card when selected in design mode */}
                           {isSelected && localProducts !== null && (
-                            <div className="mt-1.5 pt-1.5 border-t flex items-center gap-1 flex-wrap" onClick={(e) => e.stopPropagation()}>
+                            <div className="mt-1.5 pt-1.5 border-t flex flex-col gap-1" onClick={(e) => e.stopPropagation()}>
+                              <p className="text-[8px] text-blue-500 dark:text-blue-400 italic leading-none">
+                                {t("• اسحب الخزانة مباشرةً في المشهد لتحريكها","• Drag the cabinet in the 3D scene to reposition")}
+                              </p>
+                              <div className="flex items-center gap-1 flex-wrap">
                               <span className="text-[9px] text-muted-foreground shrink-0">{t("نقل إلى:","Move to:")}</span>
                               {([0,1,2,3] as const).map((wi) => {
                                 const letter = WALL_LETTERS_CONST[wi];
@@ -3558,6 +3790,7 @@ export default function Scene3DPage() {
                                   </button>
                                 );
                               })}
+                              </div>
                             </div>
                           )}
                         </div>
