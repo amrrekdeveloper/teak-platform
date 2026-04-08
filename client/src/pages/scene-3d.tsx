@@ -1,8 +1,9 @@
-import { Suspense, useState, useMemo, useCallback, useEffect, useRef } from "react";
+import { Suspense, useState, useMemo, useCallback, useEffect, useRef, Component } from "react";
+import type { ReactNode } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useSearch } from "wouter";
 import { useLanguage } from "@/components/language-provider";
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { Canvas, useFrame, useThree, useLoader } from "@react-three/fiber";
 import { OrbitControls, PerspectiveCamera, Text, Environment, ContactShadows, SoftShadows, Grid, PointerLockControls } from "@react-three/drei";
 import { XR, createXRStore, TeleportTarget } from "@react-three/xr";
 import * as THREE from "three";
@@ -22,6 +23,16 @@ import { getCornerJunctionOffset } from "@/lib/kitchenTemplates";
 import { useToast } from "@/hooks/use-toast";
 
 const SCALE = 0.01;
+
+/* ── Silent error boundary for texture-load failures ─────── */
+class TextureErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() { return { hasError: true }; }
+  render() { return this.state.hasError ? null : this.props.children; }
+}
 
 /* ── XR store (singleton for VR/AR sessions) ───────────── */
 const xrStore = createXRStore();
@@ -1031,9 +1042,46 @@ function isGlassCabinet(product: any): boolean {
   return code.includes("GL") || code.includes("GLS") || name.includes("زجاج") || name.includes("glass");
 }
 
+/** Detects if a product is an oven column unit (ANKF codes) */
+function isOvenUnit(product: any): boolean {
+  const code = (product.code || "").toUpperCase();
+  return code.startsWith("ANKF") || code.includes("ANKF");
+}
+
+/** Detects if a product is an open shelf unit (ARAF codes) */
+function isOpenShelfUnit(product: any): boolean {
+  const code = (product.code || "").toUpperCase();
+  return code.startsWith("ARAF") || code.startsWith("UARAF") || code.includes("ARAF");
+}
+
+/**
+ * ProductFrontFace — loads the BMP thumbnail and renders it as a textured plane
+ * on the front face of the cabinet. Must be used inside a <Suspense> boundary.
+ */
+function ProductFrontFaceInner({ thumbnail, W, H }: { thumbnail: string; W: number; H: number }) {
+  const texture = useLoader(THREE.TextureLoader, thumbnail);
+  return (
+    <mesh position={[0, 0, 0.002]}>
+      <planeGeometry args={[W * 0.94, H * 0.94]} />
+      <meshStandardMaterial map={texture} roughness={0.55} metalness={0.02} transparent />
+    </mesh>
+  );
+}
+
+function ProductFrontFace({ thumbnail, W, H }: { thumbnail: string | null | undefined; W: number; H: number }) {
+  if (!thumbnail) return null;
+  return (
+    <TextureErrorBoundary>
+      <Suspense fallback={null}>
+        <ProductFrontFaceInner thumbnail={thumbnail} W={W} H={H} />
+      </Suspense>
+    </TextureErrorBoundary>
+  );
+}
+
 /** Professional cabinet door front with stile/rail frame + recessed center panel */
-function CabinetFront({ W, H, D, frameColor, panelColor, drawerCount, isGlass }: {
-  W: number; H: number; D: number; frameColor: string; panelColor: string; drawerCount?: number; isGlass?: boolean;
+function CabinetFront({ W, H, D, frameColor, panelColor, drawerCount, isGlass, isOven, isOpenShelf }: {
+  W: number; H: number; D: number; frameColor: string; panelColor: string; drawerCount?: number; isGlass?: boolean; isOven?: boolean; isOpenShelf?: boolean;
 }) {
   const st = Math.min(0.042, W * 0.08);   // stile width (vertical frame members)
   const rl = Math.min(0.048, H * 0.07);   // rail height (horizontal frame members)
@@ -1046,6 +1094,78 @@ function CabinetFront({ W, H, D, frameColor, panelColor, drawerCount, isGlass }:
 
   const frameMat = <meshStandardMaterial color={frameColor} roughness={0.55} metalness={0.06} />;
   const panelMat = <meshStandardMaterial color={panelColor} roughness={0.70} metalness={0.02} />;
+
+  /* ── Oven column unit: dark stainless panel + rectangular oven window ── */
+  if (isOven) {
+    const ovenWinW = W * 0.82;
+    const ovenWinH = H * 0.28;
+    const ovenWinY = H * 0.04;
+    return (
+      <group position={[0, 0, z]}>
+        {/* Outer frame border */}
+        <mesh position={[0, H / 2 - rl / 2, FD / 2]}>
+          <boxGeometry args={[W, rl, FD]} />{frameMat}
+        </mesh>
+        <mesh position={[0, -H / 2 + rl / 2, FD / 2]}>
+          <boxGeometry args={[W, rl, FD]} />{frameMat}
+        </mesh>
+        <mesh position={[-W / 2 + st / 2, 0, FD / 2]}>
+          <boxGeometry args={[st, H, FD]} />{frameMat}
+        </mesh>
+        <mesh position={[W / 2 - st / 2, 0, FD / 2]}>
+          <boxGeometry args={[st, H, FD]} />{frameMat}
+        </mesh>
+        {/* Dark stainless panel */}
+        <mesh position={[0, 0, PD / 2]}>
+          <boxGeometry args={[panelW, panelH, PD]} />
+          <meshStandardMaterial color="#2A2A2A" roughness={0.22} metalness={0.78} />
+        </mesh>
+        {/* Oven window cutout (slightly raised dark glass) */}
+        <mesh position={[0, ovenWinY, FD]}>
+          <boxGeometry args={[ovenWinW, ovenWinH, PD]} />
+          <meshStandardMaterial color="#0A0A0A" roughness={0.08} metalness={0.5} />
+        </mesh>
+        {/* Oven control strip at top of window */}
+        <mesh position={[0, ovenWinY + ovenWinH / 2 + 0.02, FD]}>
+          <boxGeometry args={[ovenWinW * 0.9, 0.03, PD * 0.5]} />
+          <meshStandardMaterial color="#444444" roughness={0.3} metalness={0.9} />
+        </mesh>
+      </group>
+    );
+  }
+
+  /* ── Open shelf unit: horizontal shelf ledges visible on front ── */
+  if (isOpenShelf) {
+    const shelfCount = Math.max(2, Math.round(H / 0.25));
+    const shelfSpacing = H / (shelfCount + 1);
+    return (
+      <group position={[0, 0, z]}>
+        {/* Outer frame */}
+        <mesh position={[0, H / 2 - rl / 2, FD / 2]}>
+          <boxGeometry args={[W, rl, FD]} />{frameMat}
+        </mesh>
+        <mesh position={[0, -H / 2 + rl / 2, FD / 2]}>
+          <boxGeometry args={[W, rl, FD]} />{frameMat}
+        </mesh>
+        <mesh position={[-W / 2 + st / 2, 0, FD / 2]}>
+          <boxGeometry args={[st, H, FD]} />{frameMat}
+        </mesh>
+        <mesh position={[W / 2 - st / 2, 0, FD / 2]}>
+          <boxGeometry args={[st, H, FD]} />{frameMat}
+        </mesh>
+        {/* Horizontal shelf ledges */}
+        {Array.from({ length: shelfCount }).map((_, si) => {
+          const yPos = -H / 2 + shelfSpacing * (si + 1);
+          return (
+            <mesh key={si} position={[0, yPos, FD / 2]}>
+              <boxGeometry args={[panelW, 0.016, FD * 1.2]} />
+              {panelMat}
+            </mesh>
+          );
+        })}
+      </group>
+    );
+  }
 
   if (drawerCount && drawerCount > 1) {
     // Drawer unit: show horizontal drawer fronts
@@ -1194,6 +1314,10 @@ function Cabinet({
     : (isSelected ? "#E8C547" : hovered ? "#D4B870" : "#FFFFFF");
   const tintOpacity = hasConflict ? 0.55 : (isSelected || hovered) ? 0.28 : 0.0;
 
+  const productCode = (product.code || "").toUpperCase();
+  const isCorner = !!product._isCorner || productCode.includes("90 90") || productCode.includes("90_90");
+  const junction = (product._cornerJunction as "start" | "end") ?? "end";
+
   return (
     <group
       position={[x, y, z]}
@@ -1202,38 +1326,121 @@ function Cabinet({
       onPointerOut={() => setHovered(false)}
       onClick={(e) => { e.stopPropagation(); onSelect(index); }}
     >
-      {/* Cabinet carcass with oak wood texture */}
-      <mesh>
-        <boxGeometry args={[W, H, D]} />
-        <meshStandardMaterial
-          map={hasConflict ? undefined : woodTexture}
-          roughness={0.62}
-          metalness={0.04}
-          color={hasConflict ? "#CC2222" : tintColor}
-        />
-      </mesh>
-      {/* Selection / conflict highlight overlay */}
-      {(isSelected || hovered || hasConflict) && (
-        <mesh>
-          <boxGeometry args={[W + 0.004, H + 0.004, D + 0.004]} />
-          <meshBasicMaterial color={tintColor} transparent opacity={tintOpacity} depthWrite={false} />
-        </mesh>
+      {isCorner ? (
+        /* ── Corner unit: two perpendicular arm boxes forming an L-shape ── */
+        <>
+          {/* Primary arm along the main wall (full width W, depth D) */}
+          <mesh position={[0, 0, 0]}>
+            <boxGeometry args={[W, H, D]} />
+            <meshStandardMaterial
+              map={hasConflict ? undefined : woodTexture}
+              roughness={0.62} metalness={0.04}
+              color={hasConflict ? "#CC2222" : tintColor}
+            />
+          </mesh>
+          {/* Secondary arm along adjacent wall — extends into the corner */}
+          {/* Offset along -Z so it forms the perpendicular L leg */}
+          <mesh position={[
+            junction === "end" ? W / 2 + D / 2 : -W / 2 - D / 2,
+            0,
+            -D / 2
+          ]}>
+            <boxGeometry args={[D, H, W]} />
+            <meshStandardMaterial
+              map={hasConflict ? undefined : woodTexture}
+              roughness={0.62} metalness={0.04}
+              color={hasConflict ? "#CC2222" : tintColor}
+            />
+          </mesh>
+          {/* Front face on primary arm: frame + optional BMP texture */}
+          <mesh position={[0, 0, D / 2 + frameThick / 2]}>
+            <boxGeometry args={[W - 0.008, H - 0.008, frameThick]} />
+            <meshStandardMaterial color={frameColor} roughness={0.65} metalness={0.12} />
+          </mesh>
+          <CabinetFront
+            W={W} H={H} D={D + frameThick}
+            frameColor={frameColor}
+            panelColor={isSelected ? "#D4B870" : "#C8A878"}
+            isOven={isOvenUnit(product)}
+            isOpenShelf={isOpenShelfUnit(product)}
+          />
+          <group position={[0, 0, D / 2 + frameThick]}>
+            <ProductFrontFace thumbnail={product.thumbnail} W={W} H={H} />
+          </group>
+          {/* Front face on secondary arm: frame + optional BMP texture */}
+          <group position={[
+            junction === "end" ? W / 2 + D / 2 : -W / 2 - D / 2,
+            0,
+            -D / 2
+          ]} rotation={[0, junction === "end" ? -Math.PI / 2 : Math.PI / 2, 0]}>
+            <mesh position={[0, 0, W / 2 + frameThick / 2]}>
+              <boxGeometry args={[D - 0.008, H - 0.008, frameThick]} />
+              <meshStandardMaterial color={frameColor} roughness={0.65} metalness={0.12} />
+            </mesh>
+            <CabinetFront
+              W={D} H={H} D={W + frameThick}
+              frameColor={frameColor}
+              panelColor={isSelected ? "#D4B870" : "#C8A878"}
+              isOven={isOvenUnit(product)}
+              isOpenShelf={isOpenShelfUnit(product)}
+            />
+            <group position={[0, 0, W / 2 + frameThick]}>
+              <ProductFrontFace thumbnail={product.thumbnail} W={D} H={H} />
+            </group>
+          </group>
+          {/* Selection overlay */}
+          {(isSelected || hovered || hasConflict) && (
+            <mesh>
+              <boxGeometry args={[W + 0.004, H + 0.004, D + 0.004]} />
+              <meshBasicMaterial color={tintColor} transparent opacity={tintOpacity} depthWrite={false} />
+            </mesh>
+          )}
+        </>
+      ) : (
+        /* ── Standard single-box cabinet ── */
+        <>
+          {/* Cabinet carcass with oak wood texture */}
+          <mesh>
+            <boxGeometry args={[W, H, D]} />
+            <meshStandardMaterial
+              map={hasConflict ? undefined : woodTexture}
+              roughness={0.62}
+              metalness={0.04}
+              color={hasConflict ? "#CC2222" : tintColor}
+            />
+          </mesh>
+          {/* Selection / conflict highlight overlay */}
+          {(isSelected || hovered || hasConflict) && (
+            <mesh>
+              <boxGeometry args={[W + 0.004, H + 0.004, D + 0.004]} />
+              <meshBasicMaterial color={tintColor} transparent opacity={tintOpacity} depthWrite={false} />
+            </mesh>
+          )}
+
+          <mesh position={[0, 0, D / 2 + frameThick / 2]}>
+            <boxGeometry args={[W - 0.008, H - 0.008, frameThick]} />
+            <meshStandardMaterial color={frameColor} roughness={0.65} metalness={0.12} />
+          </mesh>
+
+          {/* BMP product image on front face — covers CabinetFront when available */}
+          <group position={[0, 0, D / 2 + frameThick]}>
+            <ProductFrontFace thumbnail={product.thumbnail} W={W} H={H} />
+          </group>
+
+          {/* Fallback CabinetFront shown when no thumbnail (or as backing frame) */}
+          <CabinetFront
+            W={W}
+            H={H}
+            D={D + frameThick}
+            frameColor={isSelected ? "#C8A030" : "#2C1A0E"}
+            panelColor={isSelected ? "#D4B870" : isWallUnit(product) ? "#DED0B8" : "#C8A878"}
+            drawerCount={isDrawerUnit(product) ? 3 : undefined}
+            isGlass={isGlassCabinet(product)}
+            isOven={isOvenUnit(product)}
+            isOpenShelf={isOpenShelfUnit(product)}
+          />
+        </>
       )}
-
-      <mesh position={[0, 0, D / 2 + frameThick / 2]}>
-        <boxGeometry args={[W - 0.008, H - 0.008, frameThick]} />
-        <meshStandardMaterial color={frameColor} roughness={0.65} metalness={0.12} />
-      </mesh>
-
-      <CabinetFront
-        W={W}
-        H={H}
-        D={D + frameThick}
-        frameColor={isSelected ? "#C8A030" : "#2C1A0E"}
-        panelColor={isSelected ? "#D4B870" : isWallUnit(product) ? "#DED0B8" : "#C8A878"}
-        drawerCount={isDrawerUnit(product) ? 3 : undefined}
-        isGlass={isGlassCabinet(product)}
-      />
 
       {isBaseUnit(product) && (
         <>
