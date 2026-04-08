@@ -2525,6 +2525,16 @@ export default function Scene3DPage() {
   const selectedProducts = useMemo(() => (survey?.selectedProducts || []) as any[], [survey]);
   const spaceProducts = useMemo(() => (surveyForSpace?.selectedProducts || []) as any[], [surveyForSpace]);
 
+  /* ── activeSelectedProducts / activeSpaceProducts must be here before conflictIndices ── */
+  const activeSelectedProducts = useMemo(() =>
+    localProducts !== null ? localProducts : selectedProducts,
+    [localProducts, selectedProducts]
+  );
+  const activeSpaceProducts = useMemo(() =>
+    activeSelectedProducts.filter((p: any) => !activeSpace || p.spaceId === activeSpace.id),
+    [activeSelectedProducts, activeSpace]
+  );
+
   /** Set of spaceProduct indices (0-based in activeSpaceProducts) that overlap a door/window opening */
   const conflictIndices = useMemo<Set<number>>(() => {
     const result = new Set<number>();
@@ -2694,16 +2704,6 @@ export default function Scene3DPage() {
     },
     onError: () => { toast({ title: t("حدث خطأ في الاستبدال", "Replacement error"), variant: "destructive" }); },
   });
-
-  /* ── Sync localProducts when server data arrives ── */
-  const activeSelectedProducts = useMemo(() =>
-    localProducts !== null ? localProducts : selectedProducts,
-    [localProducts, selectedProducts]
-  );
-  const activeSpaceProducts = useMemo(() =>
-    activeSelectedProducts.filter((p: any) => !activeSpace || p.spaceId === activeSpace.id),
-    [activeSelectedProducts, activeSpace]
-  );
 
   /* ── Save Design mutation ── */
   const saveDesignMutation = useMutation({
