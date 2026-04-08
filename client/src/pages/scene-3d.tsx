@@ -332,30 +332,94 @@ function KitchenIsland({ L, W, cabinetColor }: { L: number; W: number; cabinetCo
   );
 }
 
+let _plasterTexSingleton: THREE.DataTexture | null = null;
+function getPlasterTexture(): THREE.DataTexture {
+  if (_plasterTexSingleton) return _plasterTexSingleton;
+  const size = 256;
+  const data = new Uint8Array(size * size * 4);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const idx = (y * size + x) * 4;
+      /* Fine plaster stipple: two-frequency noise */
+      const n1 = Math.sin(x * 0.41 + y * 0.37) * 4;
+      const n2 = Math.sin(x * 1.13 - y * 0.97) * 2;
+      const n3 = Math.cos(x * 0.23 + y * 0.61) * 2;
+      const base = 242 + n1 + n2 + n3;
+      const v = Math.min(255, Math.max(228, base));
+      data[idx] = v;
+      data[idx + 1] = v;
+      data[idx + 2] = Math.min(255, v - 4); /* very faint warm tint */
+      data[idx + 3] = 255;
+    }
+  }
+  const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(6, 6);
+  tex.needsUpdate = true;
+  _plasterTexSingleton = tex;
+  return tex;
+}
+
 function CeilingWithCornice({ L, W, H }: { L: number; W: number; H: number }) {
-  const CROWN = 0.08;
+  const plaster = useMemo(() => getPlasterTexture(), []);
+  /* Crown profile: outer box (wide shelf) + inner step (vertical drop) */
+  const SHELF_W  = 0.10; /* horizontal ledge depth */
+  const SHELF_H  = 0.04; /* ledge thickness */
+  const STEP_W   = 0.055; /* vertical step */
+  const STEP_H   = 0.10; /* drop height */
+  const cy = H - SHELF_H / 2;
+  const stepY = H - SHELF_H - STEP_H / 2;
+
+  /* Helper to set texture repeat per segment */
+  const makeCornMat = (roughness = 0.88) => (
+    <meshStandardMaterial color="#F2EFE9" roughness={roughness} metalness={0} />
+  );
+
   return (
     <group>
-      {/* Ceiling faces DOWN (-Y) so orbit camera above can see into the room */}
+      {/* Ceiling plane — faces DOWN so orbit cam above sees into room */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, H, 0]}>
         <planeGeometry args={[L, W]} />
-        <meshStandardMaterial color="#F5F3EF" roughness={0.96} metalness={0} side={THREE.DoubleSide} />
+        <meshStandardMaterial map={plaster} roughness={0.94} metalness={0} side={THREE.DoubleSide} color="#F8F6F2" />
       </mesh>
-      <mesh position={[0, H - CROWN / 2, -W / 2]}>
-        <boxGeometry args={[L + CROWN * 2, CROWN, CROWN]} />
-        <meshStandardMaterial color="#F0EDE8" roughness={0.9} />
+
+      {/* ── Crown moulding — four sides, each with shelf + vertical step ── */}
+      {/* Front wall (−Z) */}
+      <mesh position={[0, cy, -W / 2 + SHELF_W / 2]}>
+        <boxGeometry args={[L + SHELF_W * 2, SHELF_H, SHELF_W]} />
+        {makeCornMat()}
       </mesh>
-      <mesh position={[L / 2, H - CROWN / 2, 0]}>
-        <boxGeometry args={[CROWN, CROWN, W]} />
-        <meshStandardMaterial color="#F0EDE8" roughness={0.9} />
+      <mesh position={[0, stepY, -W / 2 + STEP_W / 2]}>
+        <boxGeometry args={[L + STEP_W * 2, STEP_H, STEP_W]} />
+        {makeCornMat(0.92)}
       </mesh>
-      <mesh position={[0, H - CROWN / 2, W / 2]}>
-        <boxGeometry args={[L + CROWN * 2, CROWN, CROWN]} />
-        <meshStandardMaterial color="#F0EDE8" roughness={0.9} />
+      {/* Back wall (+Z) */}
+      <mesh position={[0, cy, W / 2 - SHELF_W / 2]}>
+        <boxGeometry args={[L + SHELF_W * 2, SHELF_H, SHELF_W]} />
+        {makeCornMat()}
       </mesh>
-      <mesh position={[-L / 2, H - CROWN / 2, 0]}>
-        <boxGeometry args={[CROWN, CROWN, W]} />
-        <meshStandardMaterial color="#F0EDE8" roughness={0.9} />
+      <mesh position={[0, stepY, W / 2 - STEP_W / 2]}>
+        <boxGeometry args={[L + STEP_W * 2, STEP_H, STEP_W]} />
+        {makeCornMat(0.92)}
+      </mesh>
+      {/* Right wall (+X) */}
+      <mesh position={[L / 2 - SHELF_W / 2, cy, 0]}>
+        <boxGeometry args={[SHELF_W, SHELF_H, W]} />
+        {makeCornMat()}
+      </mesh>
+      <mesh position={[L / 2 - STEP_W / 2, stepY, 0]}>
+        <boxGeometry args={[STEP_W, STEP_H, W]} />
+        {makeCornMat(0.92)}
+      </mesh>
+      {/* Left wall (−X) */}
+      <mesh position={[-L / 2 + SHELF_W / 2, cy, 0]}>
+        <boxGeometry args={[SHELF_W, SHELF_H, W]} />
+        {makeCornMat()}
+      </mesh>
+      <mesh position={[-L / 2 + STEP_W / 2, stepY, 0]}>
+        <boxGeometry args={[STEP_W, STEP_H, W]} />
+        {makeCornMat(0.92)}
       </mesh>
     </group>
   );
@@ -513,10 +577,27 @@ function makeBacksplashTexture(): THREE.DataTexture {
   return tex;
 }
 
+function BacksplashPanel({ len, pos, rot, bsH }: {
+  len: number; pos: [number,number,number]; rot: [number,number,number]; bsH: number;
+}) {
+  /* Each panel gets its own texture instance so repeat settings don't bleed */
+  const texture = useMemo(() => {
+    const t = makeBacksplashTexture();
+    t.repeat.set(len / 0.3, bsH / 0.12);
+    t.needsUpdate = true;
+    return t;
+  }, [len, bsH]);
+  return (
+    <mesh position={pos} rotation={rot}>
+      <planeGeometry args={[len, bsH]} />
+      <meshStandardMaterial map={texture} roughness={0.28} metalness={0.08} />
+    </mesh>
+  );
+}
+
 function Backsplash({ L, W, wallIndices }: { L: number; W: number; wallIndices: number[] }) {
-  const bsTexture = useMemo(() => makeBacksplashTexture(), []);
-  const bsH = 0.65;
-  const bsY = 0.85 + bsH / 2;
+  const bsH = 0.60;
+  const bsY = 0.87 + bsH / 2;
   const depth = 0.005;
 
   return (
@@ -524,8 +605,6 @@ function Backsplash({ L, W, wallIndices }: { L: number; W: number; wallIndices: 
       {wallIndices.map((wi) => {
         const isHoriz = wi === 0 || wi === 2;
         const len = isHoriz ? L : W;
-        bsTexture.repeat.set(len / 0.3, bsH / 0.1);
-        bsTexture.needsUpdate = true;
         const pos: [number, number, number] =
           wi === 0 ? [0, bsY, -W / 2 + depth] :
           wi === 1 ? [L / 2 - depth, bsY, 0] :
@@ -536,12 +615,7 @@ function Backsplash({ L, W, wallIndices }: { L: number; W: number; wallIndices: 
           wi === 1 ? [0, -Math.PI / 2, 0] :
           wi === 2 ? [0, Math.PI, 0] :
                      [0, Math.PI / 2, 0];
-        return (
-          <mesh key={wi} position={pos} rotation={rot}>
-            <planeGeometry args={[len, bsH]} />
-            <meshStandardMaterial map={bsTexture} roughness={0.3} metalness={0.1} />
-          </mesh>
-        );
+        return <BacksplashPanel key={wi} len={len} pos={pos} rot={rot} bsH={bsH} />;
       })}
     </group>
   );
@@ -2263,36 +2337,55 @@ function ProductLibraryPanel({
               key={p.id}
               onClick={() => onSelectProduct(isPlacing ? null : p)}
               data-testid={`lib-product-${p.id}`}
-              className={`w-full text-start rounded-lg border p-2.5 transition-all cursor-pointer ${
+              className={`w-full text-start rounded-lg border p-2 transition-all cursor-pointer ${
                 isPlacing
                   ? "border-blue-500 bg-blue-50 dark:bg-blue-900/30 shadow-md ring-1 ring-blue-400"
                   : "border-border hover:border-blue-300 hover:bg-accent"
               }`}
             >
-              <div className="flex items-start justify-between gap-1">
+              <div className="flex items-start gap-2">
+                {/* Thumbnail */}
+                <div className="w-12 h-12 rounded border bg-slate-100 dark:bg-slate-800 flex items-center justify-center shrink-0 overflow-hidden">
+                  {p.thumbnail ? (
+                    <img
+                      src={p.thumbnail}
+                      alt={p.code}
+                      className="w-full h-full object-contain"
+                      onError={(e) => {
+                        (e.currentTarget as HTMLImageElement).style.display = "none";
+                        (e.currentTarget.parentElement as HTMLElement).innerHTML =
+                          `<span style="font-size:18px">🪵</span>`;
+                      }}
+                    />
+                  ) : (
+                    <span className="text-lg">🪵</span>
+                  )}
+                </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-[10px] font-bold text-foreground font-mono truncate">{p.code}</p>
-                  <p className="text-[10px] text-muted-foreground leading-tight mt-0.5 line-clamp-2">
+                  <div className="flex items-start justify-between gap-1">
+                    <p className="text-[10px] font-bold text-foreground font-mono truncate">{p.code}</p>
+                    {isPlacing ? (
+                      <Badge className="text-[9px] px-1.5 py-0 bg-blue-500 shrink-0">
+                        <Move className="h-2.5 w-2.5 me-0.5" />
+                        {t("اختر جداراً","Pick wall")}
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-[9px] px-1.5 py-0 shrink-0">
+                        <Plus className="h-2.5 w-2.5" />
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground leading-tight mt-0.5 line-clamp-1">
                     {p.descriptionAr || p.descriptionEn || p.code}
                   </p>
-                  <p className="text-[9px] text-blue-500 mt-1 font-mono">{dims}</p>
-                </div>
-                <div className="flex flex-col items-end shrink-0 gap-1">
-                  {isPlacing ? (
-                    <Badge className="text-[9px] px-1.5 py-0 bg-blue-500">
-                      <Move className="h-2.5 w-2.5 me-0.5" />
-                      {t("اختر جداراً","Pick wall")}
-                    </Badge>
-                  ) : (
-                    <Badge variant="outline" className="text-[9px] px-1.5 py-0">
-                      <Plus className="h-2.5 w-2.5" />
-                    </Badge>
-                  )}
-                  {p.priceBeforeVat && (
-                    <span className="text-[9px] text-green-600 font-mono">
-                      {Number(p.priceBeforeVat).toLocaleString()} {t("ر.س","SAR")}
-                    </span>
-                  )}
+                  <div className="flex items-center justify-between mt-1">
+                    <p className="text-[9px] text-blue-500 font-mono">{dims}</p>
+                    {Number(p.priceBeforeVat) > 0 && (
+                      <span className="text-[9px] text-green-600 font-mono">
+                        {Number(p.priceBeforeVat).toLocaleString()} {t("ر.س","SAR")}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             </button>
@@ -2419,6 +2512,15 @@ export default function Scene3DPage() {
   const [localProducts, setLocalProducts] = useState<any[] | null>(null); /* null = use server data */
   const [localHistory, setLocalHistory] = useState<any[][]>([]);
   const [designSaved, setDesignSaved] = useState(true);
+
+  /* Reset local state when navigating to a different survey (SPA navigation without page reload) */
+  useEffect(() => {
+    setLocalProducts(null);
+    setLocalHistory([]);
+    setDesignSaved(true);
+    setPlacingProduct(null);
+    setShowLibrary(false);
+  }, [surveyId, appointmentIdParam]);
   const [activeTab, setActiveTab] = useState(() => {
     const t = params.get("tab");
     if (t === "2d") return "2d";
@@ -2892,7 +2994,10 @@ export default function Scene3DPage() {
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => xrStore.enterVR()}
+                onClick={async () => {
+                  try { await xrStore.enterVR(); }
+                  catch { toast({ title: t("VR غير مدعوم على هذا الجهاز", "VR not supported on this device"), variant: "destructive" }); }
+                }}
                 data-testid="btn-enter-vr"
                 title={t("ادخل VR", "Enter VR")}
               >
@@ -2946,15 +3051,48 @@ export default function Scene3DPage() {
                 <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
               </div>
             )}
-            {/* Placing mode indicator banner */}
+            {/* Placing mode indicator banner — shows wall selection buttons */}
             {placingProduct && (
-              <div className="absolute top-0 inset-x-0 z-20 bg-blue-600/90 text-white text-xs text-center py-1.5 font-medium">
-                {t("وضع التثبيت","Placing")} · <strong>{placingProduct.code}</strong>
-                {" — "}
-                {t("انقر على جدار لوضع الخزانة","Click a wall to place")}
+              <div className="absolute top-0 inset-x-0 z-20 bg-blue-700/95 text-white text-xs py-2 px-3 flex flex-wrap items-center gap-2">
+                <span className="font-semibold">{t("وضع التثبيت","Placing")}:</span>
+                <span className="font-mono bg-white/20 px-1.5 py-0.5 rounded">{placingProduct.code}</span>
+                <span className="opacity-70 hidden sm:inline">{t("— اختر الجدار:","— Pick wall:")}</span>
+                {/* Wall A/B/C/D quick-place buttons */}
+                {(activeSpace?.walls || []).map((wall: any, wallIdx: number) => {
+                  const letter = ["A","B","C","D"][wallIdx] || String(wallIdx);
+                  const wallLen = parseFloat(wallIdx === 0 || wallIdx === 2
+                    ? (activeSpace?.length || "400") : (activeSpace?.width || "300"));
+                  const wallLenCm = wallLen <= 30 ? wallLen * 100 : wallLen;
+                  /* Compute next auto-offset on this wall */
+                  const onThisWall = activeSpaceProducts.filter((p: any) => {
+                    const wl = p.wallId || "";
+                    return wl === wall.id || wl.endsWith(`-wall-${letter}`);
+                  });
+                  const usedCm = onThisWall.reduce((acc: number, p: any) =>
+                    acc + parseFloat(p.designW || p.dimensions?.w || "60") + 5, 10);
+                  const pW = parseFloat(placingProduct.designW?.toString() || "60");
+                  const fits = usedCm + pW <= wallLenCm - 5;
+                  return (
+                    <button
+                      key={wall.id || wallIdx}
+                      onClick={() => handleWallPlace(wallIdx, usedCm + pW / 2)}
+                      disabled={!fits}
+                      className={`px-3 py-1 rounded-md text-xs font-bold border transition-all ${
+                        fits
+                          ? "bg-white text-blue-700 border-white hover:bg-blue-50 active:scale-95"
+                          : "bg-white/20 text-white/40 border-white/20 cursor-not-allowed"
+                      }`}
+                      title={fits ? t(`وضع على الجدار ${letter}`, `Place on Wall ${letter}`)
+                                  : t(`لا توجد مساحة كافية في الجدار ${letter}`, `Not enough space on Wall ${letter}`)}
+                    >
+                      {t(`الجدار ${letter}`, `Wall ${letter}`)}
+                    </button>
+                  );
+                })}
+                <span className="opacity-50 text-[10px] hidden lg:inline">{t("أو انقر مباشرة على الجدار في المشهد","or click directly on wall in scene")}</span>
                 <button
                   onClick={() => setPlacingProduct(null)}
-                  className="ms-3 px-2 py-0.5 rounded bg-white/20 hover:bg-white/30"
+                  className="ms-auto px-2 py-1 rounded bg-white/15 hover:bg-white/25 text-white text-xs"
                 >
                   {t("إلغاء","Cancel")}
                 </button>
