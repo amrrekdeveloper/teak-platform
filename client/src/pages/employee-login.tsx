@@ -34,6 +34,7 @@ export default function EmployeeLoginPage() {
   const [countdown, setCountdown] = useState(0);
   const [showTransition, setShowTransition] = useState(false);
   const [devMode, setDevMode] = useState(false);
+  const [devCode, setDevCode] = useState("");
 
   useEffect(() => {
     if (countdown > 0) {
@@ -74,6 +75,8 @@ export default function EmployeeLoginPage() {
       }
 
       setDevMode(!!data.devMode);
+      setDevCode(data.devCode || "");
+      if (data.devCode) setOtp(data.devCode);
       setStep("otp");
       setCountdown(60);
       toast({
@@ -127,6 +130,7 @@ export default function EmployeeLoginPage() {
     setOtp("");
     setError("");
     setDevMode(false);
+    setDevCode("");
   }, []);
 
   const maskedPhone = phone ? `${phone.substring(0, 4)}****${phone.substring(8)}` : "";
@@ -197,8 +201,24 @@ export default function EmployeeLoginPage() {
             )}
 
             {devMode && step === "otp" && (
-              <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-800 dark:bg-amber-950/20 dark:border-amber-800 dark:text-amber-300" data-testid="text-dev-mode-notice">
-                {t("وضع التطوير: الرمز يظهر في سجل الخادم (console)", "Dev mode: code printed in server console")}
+              <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5 text-xs text-amber-800 dark:bg-amber-950/20 dark:border-amber-800 dark:text-amber-300 space-y-1.5" data-testid="text-dev-mode-notice">
+                <div className="font-medium flex items-center gap-1.5">
+                  ⚙️ {t("وضع التطوير — لا يُرسل SMS", "Dev mode — SMS not sent")}
+                </div>
+                {devCode && (
+                  <div className="flex items-center gap-2">
+                    <span className="opacity-75">{t("الرمز:", "Code:")}</span>
+                    <button
+                      className="font-mono font-bold text-sm tracking-widest bg-amber-100 dark:bg-amber-900/40 px-2 py-0.5 rounded border border-amber-300 dark:border-amber-700 cursor-pointer hover:bg-amber-200 transition-colors"
+                      onClick={() => setOtp(devCode)}
+                      title={t("انقر لنسخه في الحقل", "Click to fill the field")}
+                      data-testid="button-dev-fill-code"
+                    >
+                      {devCode}
+                    </button>
+                    <span className="opacity-60 text-[10px]">{t("(انقر للنسخ)", "(tap to fill)")}</span>
+                  </div>
+                )}
               </div>
             )}
 

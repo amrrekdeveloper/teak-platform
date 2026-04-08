@@ -219,6 +219,7 @@ export async function registerRoutes(
       const intlPhone = phone.startsWith("0") ? `+966${phone.slice(1)}` : phone;
       const smsText = `رمز التحقق لتيك: ${code} (صالح 10 دقائق)`;
 
+      let devCode: string | undefined;
       if (smsApiKey) {
         try {
           const smsRes = await fetch(smsGateway, {
@@ -237,6 +238,7 @@ export async function registerRoutes(
           console.error("SMS send error:", smsErr);
         }
       } else {
+        devCode = code;
         console.log(`[DEV] OTP for ${phone}: ${code}`);
       }
 
@@ -245,6 +247,7 @@ export async function registerRoutes(
         message: "تم إرسال رمز التحقق",
         messageEn: "Verification code sent",
         devMode: !smsApiKey,
+        ...(devCode ? { devCode } : {}),
       });
     } catch (error) {
       console.error("send-otp error:", error);
