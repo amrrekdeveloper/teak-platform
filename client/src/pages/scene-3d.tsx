@@ -2852,6 +2852,35 @@ export default function Scene3DPage() {
     setDesignSaved(false);
   }, [localHistory]);
 
+  /* ── Delete a locally-placed product (design mode) ── */
+  const handleLocalDelete = useCallback((globalIndex: number) => {
+    const base = localProducts !== null ? localProducts : [...selectedProducts];
+    setLocalHistory(h => [...h, base]);
+    setLocalProducts(base.filter((_: any, i: number) => i !== globalIndex));
+    setDesignSaved(false);
+    setSelectedProduct(-1);
+  }, [localProducts, selectedProducts]);
+
+  /* ── Keyboard shortcut: Delete / Backspace removes selected element ── */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Delete" && e.key !== "Backspace") return;
+      /* Ignore when typing in inputs */
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || (e.target as HTMLElement)?.isContentEditable) return;
+      if (selectedProduct < 0 || localProducts === null) return;
+      const p = activeSpaceProducts[selectedProduct];
+      if (!p) return;
+      const allProds = localProducts;
+      const idx = allProds.findIndex((sp: any) => sp.id ? sp.id === p.id : sp === p);
+      if (idx < 0) return;
+      e.preventDefault();
+      handleLocalDelete(idx);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selectedProduct, localProducts, activeSpaceProducts, handleLocalDelete]);
+
   const handleShare = useCallback(() => {
     const token = survey?.shareToken || "";
     const shareUrl = `${window.location.origin}/view-3d?surveyId=${surveyId}&public=1${token ? `&token=${token}` : ""}`;
@@ -3219,23 +3248,37 @@ export default function Scene3DPage() {
                               </div>
                             )}
                           </div>
-                          {isSelected && canEdit && (survey?.quotationId || quotationIdParam) && (
+                          {isSelected && (
                             <div className="flex flex-col gap-0.5 shrink-0">
-                              <Button
-                                variant="ghost" size="icon" className="h-6 w-6 text-destructive"
-                                onClick={(e) => { e.stopPropagation(); removeProductMutation.mutate(i); }}
-                                disabled={removeProductMutation.isPending}
-                                data-testid={`btn-remove-product-${i}`}
-                              >
-                                {removeProductMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
-                              </Button>
-                              <Button
-                                variant="ghost" size="icon" className="h-6 w-6 text-blue-600"
-                                onClick={(e) => { e.stopPropagation(); setReplacingIndex(replacingIndex === i ? null : i); setReplaceSearch(""); }}
-                                data-testid={`btn-replace-product-${i}`}
-                              >
-                                <RefreshCw className="h-3 w-3" />
-                              </Button>
+                              {/* Delete: local design mode OR customer portal */}
+                              {(localProducts !== null) ? (
+                                <Button
+                                  variant="ghost" size="icon" className="h-6 w-6 text-destructive"
+                                  onClick={(e) => { e.stopPropagation(); handleLocalDelete(i); }}
+                                  data-testid={`btn-remove-product-${i}`}
+                                  title={t("حذف العنصر", "Delete element")}
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              ) : canEdit && (survey?.quotationId || quotationIdParam) && (
+                                <Button
+                                  variant="ghost" size="icon" className="h-6 w-6 text-destructive"
+                                  onClick={(e) => { e.stopPropagation(); removeProductMutation.mutate(i); }}
+                                  disabled={removeProductMutation.isPending}
+                                  data-testid={`btn-remove-product-${i}`}
+                                >
+                                  {removeProductMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+                                </Button>
+                              )}
+                              {canEdit && (survey?.quotationId || quotationIdParam) && (
+                                <Button
+                                  variant="ghost" size="icon" className="h-6 w-6 text-blue-600"
+                                  onClick={(e) => { e.stopPropagation(); setReplacingIndex(replacingIndex === i ? null : i); setReplaceSearch(""); }}
+                                  data-testid={`btn-replace-product-${i}`}
+                                >
+                                  <RefreshCw className="h-3 w-3" />
+                                </Button>
+                              )}
                             </div>
                           )}
                         </div>
