@@ -2,8 +2,9 @@ import { Suspense, useState, useMemo, useCallback, useEffect, useRef } from "rea
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useSearch } from "wouter";
 import { useLanguage } from "@/components/language-provider";
-import { Canvas } from "@react-three/fiber";
-import { OrbitControls, PerspectiveCamera, Text, Environment, ContactShadows, SoftShadows, Grid } from "@react-three/drei";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { OrbitControls, PerspectiveCamera, Text, Environment, ContactShadows, SoftShadows, Grid, PointerLockControls } from "@react-three/drei";
+import { XR, createXRStore, TeleportTarget } from "@react-three/xr";
 import * as THREE from "three";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -21,6 +22,9 @@ import { getCornerJunctionOffset } from "@/lib/kitchenTemplates";
 import { useToast } from "@/hooks/use-toast";
 
 const SCALE = 0.01;
+
+/* ── XR store (singleton for VR/AR sessions) ───────────── */
+const xrStore = createXRStore();
 
 interface DesignWarning {
   type: "conflict" | "overflow" | "corner";
@@ -755,6 +759,100 @@ function WindowElement({ cx, iy, iw, ih, FRAME_W }: { cx: number; iy: number; iw
 }
 
 /** Renders door frames, window glass, door swing arc, drain & outlet markers on one wall. */
+/* ── Animated interactive door component ───────────────── */
+function InteractiveDoor({ startX, iw, ih }: { startX: number; iw: number; ih: number }) {
+  const [doorOpen, setDoorOpen] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const doorRef = useRef<THREE.Group>(null);
+  const doorAngle = useRef(0);
+  const FRAME_COLOR = "#2C1A0E";
+  const FRAME_W = 0.055;
+
+  useFrame((_, delta) => {
+    if (!doorRef.current) return;
+    const target = doorOpen ? Math.PI / 2 : 0;
+    doorAngle.current = THREE.MathUtils.lerp(doorAngle.current, target, delta * 4);
+    doorRef.current.rotation.y = doorAngle.current;
+  });
+
+  return (
+    <group>
+      {/* Pivot group at the hinge edge of the door */}
+      <group position={[startX, 0, 0.006]}>
+        {/* Rotating door leaf */}
+        <group
+          ref={doorRef}
+          onClick={(e) => { e.stopPropagation(); setDoorOpen(d => !d); }}
+          onPointerOver={(e) => { e.stopPropagation(); setHovered(true); document.body.style.cursor = "pointer"; }}
+          onPointerOut={(e) => { e.stopPropagation(); setHovered(false); document.body.style.cursor = "default"; }}
+        >
+          {/* Door panel, offset by iw/2 from hinge */}
+          <group position={[iw / 2, ih / 2, 0]}>
+            <mesh>
+              <planeGeometry args={[iw - 0.04, ih - 0.01]} />
+              <meshStandardMaterial
+                color={hovered ? "#A07050" : "#8B6040"}
+                roughness={0.75}
+                metalness={0.04}
+              />
+            </mesh>
+            {/* Handle */}
+            <mesh position={[iw / 2 - 0.09, 0, 0.055]} rotation={[Math.PI / 2, 0, 0]}>
+              <cylinderGeometry args={[0.013, 0.013, 0.11, 8]} />
+              <meshStandardMaterial color="#B0B0B0" roughness={0.2} metalness={0.85} />
+            </mesh>
+            {/* Door thickness */}
+            <mesh position={[0, 0, -0.018]}>
+              <boxGeometry args={[iw - 0.04, ih - 0.01, 0.04]} />
+              <meshStandardMaterial color="#7A5533" roughness={0.8} metalness={0.02} />
+            </mesh>
+          </group>
+        </group>
+      </group>
+
+      {/* Door frame (static) */}
+      <group position={[startX + iw / 2, ih / 2, 0.006]}>
+        {/* Top frame */}
+        <mesh position={[0, ih / 2 + FRAME_W / 2, 0.01]}>
+          <boxGeometry args={[iw + FRAME_W * 2, FRAME_W, FRAME_W]} />
+          <meshStandardMaterial color={FRAME_COLOR} roughness={0.6} />
+        </mesh>
+        {/* Left frame */}
+        <mesh position={[-iw / 2 - FRAME_W / 2, 0, 0.01]}>
+          <boxGeometry args={[FRAME_W, ih + FRAME_W, FRAME_W]} />
+          <meshStandardMaterial color={FRAME_COLOR} roughness={0.6} />
+        </mesh>
+        {/* Right frame */}
+        <mesh position={[iw / 2 + FRAME_W / 2, 0, 0.01]}>
+          <boxGeometry args={[FRAME_W, ih + FRAME_W, FRAME_W]} />
+          <meshStandardMaterial color={FRAME_COLOR} roughness={0.6} />
+        </mesh>
+      </group>
+
+      {/* Door swing arc at floor level */}
+      <mesh position={[startX, 0.004, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[iw * 0.96, iw, 32, 1, 0, Math.PI / 2]} />
+        <meshStandardMaterial color="#8B6040" transparent opacity={doorOpen ? 0.06 : 0.14} side={THREE.DoubleSide} />
+      </mesh>
+
+      {/* "Click to open" label */}
+      {hovered && (
+        <Text
+          position={[startX + iw / 2, ih + 0.12, 0.05]}
+          fontSize={0.08}
+          color="#FFFFFF"
+          anchorX="center"
+          anchorY="middle"
+          outlineColor="#000000"
+          outlineWidth={0.005}
+        >
+          {doorOpen ? "🔒 إغلاق الباب" : "🚪 فتح الباب"}
+        </Text>
+      )}
+    </group>
+  );
+}
+
 function WallElements({ items, wallLen, wallH }: { items: any[]; wallLen: number; wallH: number }) {
   const hw = wallLen / 2;
   return (
@@ -770,40 +868,7 @@ function WallElements({ items, wallLen, wallH }: { items: any[]; wallLen: number
 
         if (item.type === "door") {
           return (
-            <group key={i}>
-              {/* Door panel */}
-              <group position={[cx, ih / 2, 0.006]}>
-                <mesh>
-                  <planeGeometry args={[iw - 0.04, ih - 0.01]} />
-                  <meshStandardMaterial color="#8B6040" roughness={0.75} metalness={0.04} />
-                </mesh>
-                {/* Top frame */}
-                <mesh position={[0, ih / 2 + FRAME_W / 2, 0.01]}>
-                  <boxGeometry args={[iw + FRAME_W * 2, FRAME_W, FRAME_W]} />
-                  <meshStandardMaterial color={FRAME_COLOR} roughness={0.6} />
-                </mesh>
-                {/* Left frame */}
-                <mesh position={[-iw / 2 - FRAME_W / 2, 0, 0.01]}>
-                  <boxGeometry args={[FRAME_W, ih + FRAME_W, FRAME_W]} />
-                  <meshStandardMaterial color={FRAME_COLOR} roughness={0.6} />
-                </mesh>
-                {/* Right frame */}
-                <mesh position={[ iw / 2 + FRAME_W / 2, 0, 0.01]}>
-                  <boxGeometry args={[FRAME_W, ih + FRAME_W, FRAME_W]} />
-                  <meshStandardMaterial color={FRAME_COLOR} roughness={0.6} />
-                </mesh>
-                {/* Handle */}
-                <mesh position={[iw / 2 - 0.09, 0, 0.055]} rotation={[Math.PI / 2, 0, 0]}>
-                  <cylinderGeometry args={[0.013, 0.013, 0.11, 8]} />
-                  <meshStandardMaterial color="#B0B0B0" roughness={0.2} metalness={0.85} />
-                </mesh>
-              </group>
-              {/* Door swing arc at floor level (showing 90° swing path) */}
-              <mesh position={[startX, 0.004, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-                <ringGeometry args={[iw * 0.96, iw, 32, 1, 0, Math.PI / 2]} />
-                <meshStandardMaterial color="#8B6040" transparent opacity={0.14} side={THREE.DoubleSide} />
-              </mesh>
-            </group>
+            <InteractiveDoor key={i} startX={startX} iw={iw} ih={ih} />
           );
         }
 
@@ -1171,13 +1236,72 @@ function buildWallOpenings(walls: any[]): Record<number, Array<{ start: number; 
   return openings;
 }
 
+/* ── Mobile gyroscope controller (inside Canvas) ────────── */
+function GyroController({ active }: { active: boolean }) {
+  const { camera } = useThree();
+
+  useEffect(() => {
+    if (!active) return;
+
+    const handler = (e: DeviceOrientationEvent) => {
+      const { alpha, beta, gamma } = e;
+      if (alpha === null && beta === null && gamma === null) return;
+      camera.rotation.set(
+        THREE.MathUtils.degToRad((beta  ?? 0)) - Math.PI / 2,
+        THREE.MathUtils.degToRad(-(alpha ?? 0)),
+        THREE.MathUtils.degToRad(gamma ?? 0),
+        "YXZ"
+      );
+    };
+
+    window.addEventListener("deviceorientation", handler);
+    return () => window.removeEventListener("deviceorientation", handler);
+  }, [active, camera]);
+
+  return null;
+}
+
+/* ── First-person WASD controller ─────────────────────── */
+function WalkController({ speed = 4 }: { speed?: number }) {
+  const { camera } = useThree();
+  const keys = useRef(new Set<string>());
+
+  useEffect(() => {
+    /* Set eye-level position on mount */
+    camera.position.y = 1.65;
+
+    const onDown = (e: KeyboardEvent) => keys.current.add(e.code);
+    const onUp   = (e: KeyboardEvent) => keys.current.delete(e.code);
+    window.addEventListener("keydown", onDown);
+    window.addEventListener("keyup",   onUp);
+    return () => {
+      window.removeEventListener("keydown", onDown);
+      window.removeEventListener("keyup",   onUp);
+    };
+  }, [camera]);
+
+  useFrame((_, delta) => {
+    const k = keys.current;
+    if (k.has("KeyW") || k.has("ArrowUp"))    camera.translateZ(-speed * delta);
+    if (k.has("KeyS") || k.has("ArrowDown"))  camera.translateZ( speed * delta);
+    if (k.has("KeyA") || k.has("ArrowLeft"))  camera.translateX(-speed * delta);
+    if (k.has("KeyD") || k.has("ArrowRight")) camera.translateX( speed * delta);
+    /* Lock camera height at eye level (1.65m) */
+    camera.position.y = 1.65;
+  });
+
+  return null;
+}
+
 function Scene3D({
   survey, selectedIdx, onSelect, lightMode, floorType,
-  placingProduct, onWallPlace,
+  placingProduct, onWallPlace, navMode, gyroActive,
 }: {
   survey: any; selectedIdx: number; onSelect: (i: number) => void; lightMode: "day" | "night"; floorType: FloorType;
   placingProduct?: any | null;
   onWallPlace?: (wallIndex: number, xOffsetCm: number) => void;
+  navMode?: "orbit" | "walk";
+  gyroActive?: boolean;
 }) {
   const firstSpace = (survey.spaces || [])[0];
   const roomDims = survey.roomDimensions
@@ -1279,6 +1403,7 @@ function Scene3D({
   const scaledL = L * SCALE;
   const scaledW = W * SCALE;
   const scaledH = H * SCALE;
+  const isWalking = navMode === "walk";
 
   return (
     <>
@@ -1286,7 +1411,14 @@ function Scene3D({
       <color attach="background" args={[lightMode === "day" ? "#D6E8F5" : "#0f0c29"]} />
 
       <PerspectiveCamera makeDefault position={[0, scaledH * 1.6, scaledW * 2.2]} fov={55} />
-      <OrbitControls enableDamping dampingFactor={0.05} minDistance={1} maxDistance={25} />
+      <OrbitControls enableDamping dampingFactor={0.05} minDistance={1} maxDistance={25} enabled={!isWalking} />
+      {isWalking && (
+        <>
+          <PointerLockControls minPolarAngle={Math.PI / 4} maxPolarAngle={Math.PI * 0.72} />
+          <WalkController speed={4} />
+          <GyroController active={!!gyroActive} />
+        </>
+      )}
 
       {lightMode === "day" ? (
         <DayLighting />
@@ -2091,6 +2223,72 @@ function ProductLibraryPanel({
   );
 }
 
+/* ── Mobile touch joystick overlay (walk mode) ─────────── */
+function MobileTouchControls({ gyroGranted }: { gyroGranted: boolean }) {
+  const moveRef = useRef<{ dx: number; dy: number }>({ dx: 0, dy: 0 });
+  const lookRef = useRef<{ dx: number; dy: number }>({ dx: 0, dy: 0 });
+  const leftTouchId  = useRef<number | null>(null);
+  const rightTouchId = useRef<number | null>(null);
+  const leftStart    = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const rightStart   = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  const onTouchStart = useCallback((e: React.TouchEvent) => {
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      const t = e.changedTouches[i];
+      if (t.clientX < window.innerWidth / 2 && leftTouchId.current === null) {
+        leftTouchId.current = t.identifier;
+        leftStart.current = { x: t.clientX, y: t.clientY };
+      } else if (t.clientX >= window.innerWidth / 2 && rightTouchId.current === null) {
+        rightTouchId.current = t.identifier;
+        rightStart.current = { x: t.clientX, y: t.clientY };
+      }
+    }
+  }, []);
+
+  const onTouchMove = useCallback((e: React.TouchEvent) => {
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      const t = e.changedTouches[i];
+      if (t.identifier === leftTouchId.current) {
+        moveRef.current = { dx: t.clientX - leftStart.current.x, dy: t.clientY - leftStart.current.y };
+      } else if (t.identifier === rightTouchId.current) {
+        lookRef.current = { dx: t.clientX - rightStart.current.x, dy: t.clientY - rightStart.current.y };
+      }
+    }
+  }, []);
+
+  const onTouchEnd = useCallback((e: React.TouchEvent) => {
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      const t = e.changedTouches[i];
+      if (t.identifier === leftTouchId.current) {
+        leftTouchId.current = null;
+        moveRef.current = { dx: 0, dy: 0 };
+      } else if (t.identifier === rightTouchId.current) {
+        rightTouchId.current = null;
+        lookRef.current = { dx: 0, dy: 0 };
+      }
+    }
+  }, []);
+
+  return (
+    <div
+      className="absolute inset-0 pointer-events-none z-10"
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
+      onTouchEnd={onTouchEnd}
+      style={{ pointerEvents: "auto", touchAction: "none" }}
+    >
+      {/* Left zone indicator */}
+      <div className="absolute bottom-8 left-4 w-20 h-20 rounded-full bg-white/10 border border-white/30 flex items-center justify-center text-white/50 text-xs pointer-events-none">
+        ↑↓←→
+      </div>
+      {/* Right zone indicator */}
+      <div className="absolute bottom-8 right-4 w-20 h-20 rounded-full bg-white/10 border border-white/30 flex items-center justify-center text-white/50 text-xs pointer-events-none">
+        {gyroGranted ? "🔄" : "👀"}
+      </div>
+    </div>
+  );
+}
+
 export default function Scene3DPage() {
   const { t } = useLanguage();
   const { toast } = useToast();
@@ -2106,6 +2304,24 @@ export default function Scene3DPage() {
   const [replaceSearch, setReplaceSearch] = useState("");
   const [lightMode, setLightMode] = useState<"day" | "night">("day");
   const [floorType, setFloorType] = useState<FloorType>("marble");
+  const [navMode, setNavMode] = useState<"orbit" | "walk">("orbit");
+
+  /* ── Mobile gyroscope ── */
+  const isMobile = useMemo(() => /iPhone|iPad|Android/i.test(navigator.userAgent), []);
+  const [gyroGranted, setGyroGranted] = useState(false);
+
+  const requestGyroPermission = useCallback(async () => {
+    if (typeof (DeviceOrientationEvent as any).requestPermission === "function") {
+      try {
+        const s = await (DeviceOrientationEvent as any).requestPermission();
+        if (s === "granted") setGyroGranted(true);
+      } catch {
+        /* permission denied */
+      }
+    } else {
+      setGyroGranted(true);
+    }
+  }, []);
 
   /* ── Design Mode: interactive placement ── */
   const [showLibrary, setShowLibrary] = useState(false);
@@ -2572,6 +2788,27 @@ export default function Scene3DPage() {
               >
                 {lightMode === "day" ? <Moon className="h-3.5 w-3.5" /> : <Sun className="h-3.5 w-3.5" />}
               </Button>
+              {/* Walk mode toggle */}
+              <Button
+                size="sm"
+                variant={navMode === "walk" ? "default" : "outline"}
+                onClick={() => setNavMode(m => m === "orbit" ? "walk" : "orbit")}
+                data-testid="btn-toggle-walk"
+                title={navMode === "orbit" ? t("وضع التجوّل", "Walk mode") : t("وضع العرض", "Orbit mode")}
+                className={navMode === "walk" ? "bg-emerald-600 text-white hover:bg-emerald-700" : ""}
+              >
+                {navMode === "orbit" ? "🚶" : "🔭"} {navMode === "orbit" ? t("تجوّل", "Walk") : t("عرض", "View")}
+              </Button>
+              {/* VR button */}
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => xrStore.enterVR()}
+                data-testid="btn-enter-vr"
+                title={t("ادخل VR", "Enter VR")}
+              >
+                🥽 VR
+              </Button>
             </>
           )}
           <Button size="sm" variant="outline" onClick={handleShare} data-testid="btn-share-3d">
@@ -2636,26 +2873,50 @@ export default function Scene3DPage() {
             )}
             {surveyForSpace && (
               <Canvas key={key} shadows="soft" gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: lightMode === "day" ? 1.2 : 0.8 }}>
-                <Suspense fallback={null}>
-                  <Scene3D
-                    survey={localProducts !== null
-                      ? {
-                          ...surveyForSpace,
-                          selectedProducts: localProducts.filter(
-                            (p: any) => !activeSpace || p.spaceId === activeSpace.id
-                          ),
-                        }
-                      : surveyForSpace
-                    }
-                    selectedIdx={selectedProduct}
-                    onSelect={setSelectedProduct}
-                    lightMode={lightMode}
-                    floorType={floorType}
-                    placingProduct={placingProduct}
-                    onWallPlace={handleWallPlace}
-                  />
-                </Suspense>
+                <XR store={xrStore}>
+                  <Suspense fallback={null}>
+                    <Scene3D
+                      survey={localProducts !== null
+                        ? {
+                            ...surveyForSpace,
+                            selectedProducts: localProducts.filter(
+                              (p: any) => !activeSpace || p.spaceId === activeSpace.id
+                            ),
+                          }
+                        : surveyForSpace
+                      }
+                      selectedIdx={selectedProduct}
+                      onSelect={setSelectedProduct}
+                      lightMode={lightMode}
+                      floorType={floorType}
+                      placingProduct={placingProduct}
+                      onWallPlace={handleWallPlace}
+                      navMode={navMode}
+                      gyroActive={isMobile && gyroGranted && navMode === "walk"}
+                    />
+                  </Suspense>
+                </XR>
               </Canvas>
+            )}
+            {/* Walk mode: click to engage pointer lock */}
+            {navMode === "walk" && (
+              <div className="absolute bottom-14 start-1/2 -translate-x-1/2 bg-black/60 text-white text-xs px-3 py-1.5 rounded-full text-center whitespace-nowrap">
+                {t("انقر على المشهد للتحكم • WASD للحركة • Esc للخروج", "Click scene to look • WASD to move • Esc to exit")}
+              </div>
+            )}
+            {/* Mobile gyro button */}
+            {isMobile && navMode === "walk" && !gyroGranted && (
+              <button
+                onClick={requestGyroPermission}
+                data-testid="btn-gyro-permission"
+                className="absolute bottom-20 start-1/2 -translate-x-1/2 bg-indigo-600/90 text-white text-xs px-4 py-2 rounded-full"
+              >
+                🔄 {t("تفعيل الجيروسكوب", "Enable Gyroscope")}
+              </button>
+            )}
+            {/* Mobile touch joystick zones (shown in walk mode on mobile) */}
+            {isMobile && navMode === "walk" && (
+              <MobileTouchControls gyroGranted={gyroGranted} />
             )}
             {/* Floor type selector overlay */}
             <div className="absolute top-3 end-3 flex gap-1 bg-black/30 rounded-lg p-1">
@@ -2670,9 +2931,11 @@ export default function Scene3DPage() {
                 </button>
               ))}
             </div>
-            <div className="absolute bottom-3 start-1/2 -translate-x-1/2 bg-black/40 text-white text-xs px-3 py-1 rounded-full whitespace-nowrap">
-              {t("اسحب للتدوير • اضغط على منتج لتحديده • Scroll للتقريب", "Drag to rotate • Click product to select • Scroll to zoom")}
-            </div>
+            {navMode === "orbit" && (
+              <div className="absolute bottom-3 start-1/2 -translate-x-1/2 bg-black/40 text-white text-xs px-3 py-1 rounded-full whitespace-nowrap">
+                {t("اسحب للتدوير • اضغط على الباب لفتحه • Scroll للتقريب", "Drag to rotate • Click door to open • Scroll to zoom")}
+              </div>
+            )}
             {lightMode === "night" && (
               <div className="absolute top-3 start-3 text-[10px] text-yellow-300 bg-black/50 px-2 py-1 rounded-full">
                 🌙 {t("وضع الإضاءة الاصطناعية 2700K", "Artificial Light Mode 2700K")}
