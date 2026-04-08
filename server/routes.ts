@@ -183,7 +183,76 @@ export async function registerRoutes(
 ): Promise<Server> {
   setupAuth(app);
 
-  // Employee OTP auth: check phone exists in users table
+  // Employee OTP auth: send server-side OTP (no Firebase/reCAPTCHA required)
+  app.post("/api/employee-auth/send-otp", async (req: Request, res: Response) => {
+    try {
+      const { phone } = req.body;
+      if (!phone) {
+        return res.status(400).json({ message: "رقم الجوال مطلوب", messageEn: "Phone number is required" });
+      }
+      const user = await storage.getUserByPhone(phone);
+      if (!user) {
+        return res.status(404).json({ message: "رقم الجوال غير مسجل في النظام", messageEn: "Phone number not registered in system" });
+      }
+      if (!user.active) {
+        return res.status(403).json({ message: "الحساب معطل. يرجى التواصل مع المسؤول", messageEn: "Account is disabled" });
+      }
+      if (user.role === "customer") {
+        return res.status(403).json({ message: "رقم الجوال غير مسجل كموظف", messageEn: "Phone number not registered as employee" });
+      }
+
+      // Delete any existing OTPs for this phone
+      await pool.query("DELETE FROM employee_otp_codes WHERE phone = $1", [phone]);
+
+      // Generate 6-digit code
+      const code = String(Math.floor(100000 + Math.random() * 900000));
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+      await pool.query(
+        "INSERT INTO employee_otp_codes (phone, code, expires_at, attempts) VALUES ($1, $2, $3, 0)",
+        [phone, code, expiresAt]
+      );
+
+      // Send SMS via configurable gateway
+      const smsApiKey = process.env.SMS_API_KEY;
+      const smsGateway = process.env.SMS_GATEWAY || "https://api.unifonic.com/rest/Messages/Send";
+      const intlPhone = phone.startsWith("0") ? `+966${phone.slice(1)}` : phone;
+      const smsText = `رمز التحقق لتيك: ${code} (صالح 10 دقائق)`;
+
+      if (smsApiKey) {
+        try {
+          const smsRes = await fetch(smsGateway, {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({
+              AppSid: smsApiKey,
+              Recipient: intlPhone,
+              Body: smsText,
+              SenderID: "Teak",
+            }).toString(),
+          });
+          const smsBody = await smsRes.text();
+          console.log(`SMS sent to ${intlPhone}, response: ${smsBody.substring(0, 200)}`);
+        } catch (smsErr) {
+          console.error("SMS send error:", smsErr);
+        }
+      } else {
+        console.log(`[DEV] OTP for ${phone}: ${code}`);
+      }
+
+      return res.json({
+        success: true,
+        message: "تم إرسال رمز التحقق",
+        messageEn: "Verification code sent",
+        devMode: !smsApiKey,
+      });
+    } catch (error) {
+      console.error("send-otp error:", error);
+      return res.status(500).json({ message: "حدث خطأ في إرسال الرمز", messageEn: "Error sending OTP" });
+    }
+  });
+
+  // Employee OTP auth: check phone exists in users table (kept for compatibility)
   app.post("/api/employee-auth/check-phone", async (req: Request, res: Response) => {
     try {
       const { phone } = req.body;
@@ -200,25 +269,55 @@ export async function registerRoutes(
       if (user.role === "customer") {
         return res.status(403).json({ message: "رقم الجوال غير مسجل كموظف", messageEn: "Phone number not registered as employee" });
       }
-      return res.json({ success: true, message: "تم التحقق من رقم الجوال. سيتم إرسال رمز التحقق.", messageEn: "Phone verified. OTP will be sent." });
+      return res.json({ success: true, message: "تم التحقق من رقم الجوال.", messageEn: "Phone verified." });
     } catch (error) {
       console.error("check-phone error:", error);
       return res.status(500).json({ message: "حدث خطأ", messageEn: "An error occurred" });
     }
   });
 
-  // Employee OTP auth: verify Firebase ID token and start session
+  // Employee OTP auth: verify server-side OTP code and start session
   app.post("/api/employee-auth/verify-otp", async (req: Request, res: Response) => {
     try {
-      const { idToken } = req.body;
-      if (!idToken) {
-        return res.status(400).json({ message: "رمز التحقق مطلوب", messageEn: "ID token is required" });
+      const { phone, code } = req.body;
+      if (!phone || !code) {
+        return res.status(400).json({ message: "رقم الجوال والرمز مطلوبان", messageEn: "Phone and code are required" });
       }
-      const decoded = await verifyFirebaseToken(idToken);
-      if (!decoded) {
-        return res.status(401).json({ message: "رمز التحقق غير صالح", messageEn: "Invalid ID token" });
+
+      // Look up the OTP record
+      const otpResult = await pool.query(
+        "SELECT * FROM employee_otp_codes WHERE phone = $1 ORDER BY created_at DESC LIMIT 1",
+        [phone]
+      );
+
+      if (otpResult.rows.length === 0) {
+        return res.status(400).json({ message: "لم يتم إرسال رمز لهذا الرقم. أعد الإرسال", messageEn: "No OTP found for this phone. Please resend" });
       }
-      const user = await storage.getUserByPhone(decoded.phone);
+
+      const otpRecord = otpResult.rows[0];
+
+      // Check expiry
+      if (new Date() > new Date(otpRecord.expires_at)) {
+        await pool.query("DELETE FROM employee_otp_codes WHERE phone = $1", [phone]);
+        return res.status(400).json({ message: "انتهت صلاحية الرمز. أعد الإرسال", messageEn: "Code expired. Please resend" });
+      }
+
+      // Check attempts
+      if (otpRecord.attempts >= 5) {
+        await pool.query("DELETE FROM employee_otp_codes WHERE phone = $1", [phone]);
+        return res.status(400).json({ message: "محاولات كثيرة. أعد إرسال الرمز", messageEn: "Too many attempts. Please resend" });
+      }
+
+      // Verify code
+      if (otpRecord.code !== code.trim()) {
+        await pool.query("UPDATE employee_otp_codes SET attempts = attempts + 1 WHERE id = $1", [otpRecord.id]);
+        return res.status(401).json({ message: "رمز التحقق غير صحيح", messageEn: "Invalid verification code" });
+      }
+
+      // Code correct — clean up
+      await pool.query("DELETE FROM employee_otp_codes WHERE phone = $1", [phone]);
+
+      const user = await storage.getUserByPhone(phone);
       if (!user) {
         return res.status(404).json({ message: "رقم الجوال غير مسجل في النظام", messageEn: "Phone number not registered in system" });
       }
@@ -228,6 +327,7 @@ export async function registerRoutes(
       if (user.role === "customer") {
         return res.status(403).json({ message: "رقم الجوال غير مسجل كموظف", messageEn: "Phone number not registered as employee" });
       }
+
       req.session.userId = user.id;
       const { password: _, ...safeUser } = user;
       return res.json(safeUser);

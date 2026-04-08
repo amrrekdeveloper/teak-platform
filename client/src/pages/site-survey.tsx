@@ -236,7 +236,7 @@ const wallItemIcons: Record<string, typeof DoorOpen> = {
   window: Grid3X3,
   outlet: Plug,
   drain: Droplets,
-  water_supply: ShowerHead,
+  water_supply: Droplets,
   obstacle: X,
 };
 
@@ -559,152 +559,149 @@ export default function SiteSurveyPage() {
   async function handlePrintSurveyReport() {
     setPrintingPdf(true);
     try {
-      const jsPDFModule = await import("jspdf");
-      const jsPDF = jsPDFModule.default || (jsPDFModule as any).jsPDF;
-      const autoTableModule = await import("jspdf-autotable");
-      const autoTable = autoTableModule.default || (autoTableModule as any).autoTable || autoTableModule;
-
-      // Load company settings for VAT# and names
-      let vatNumber = "310012345600003";
-      let companyNameAr = "مصنع تيك للمنتجات الخشبية";
-      let companyNameEn = "Teak Wood Products Factory";
-      try {
-        const settingsRes = await fetch("/api/company-settings/public");
-        if (settingsRes.ok) {
-          const settings = await settingsRes.json();
-          if (settings.vatNumber) vatNumber = settings.vatNumber;
-          if (settings.nameAr) companyNameAr = settings.nameAr;
-          if (settings.nameEn) companyNameEn = settings.nameEn;
-        }
-      } catch (_) {}
-
-      // Load TEAK logo as base64 via Canvas
-      let logoBase64 = "";
-      try {
-        logoBase64 = await new Promise<string>((resolve) => {
-          const img = new Image();
-          img.crossOrigin = "anonymous";
-          img.onload = () => {
-            const canvas = document.createElement("canvas");
-            canvas.width = img.width;
-            canvas.height = img.height;
-            const ctx = canvas.getContext("2d");
-            if (ctx) { ctx.drawImage(img, 0, 0); resolve(canvas.toDataURL("image/png")); }
-            else resolve("");
-          };
-          img.onerror = () => resolve("");
-          img.src = teakLogoUrl;
-        });
-      } catch (_) {}
-
-      const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" }) as any;
-      const pageW = 210;
-      const margin = 14;
-      let y = margin;
-
-      // Header: dark blue banner
-      doc.setFillColor(26, 54, 93);
-      doc.rect(margin, y, pageW - margin * 2, 22, "F");
-
-      // Logo on the left side of banner
-      if (logoBase64) {
-        doc.addImage(logoBase64, "PNG", margin + 2, y + 3, 28, 16);
-      }
-
-      // Company name & report title centered
-      doc.setFont("helvetica", "bold");
-      doc.setTextColor(255, 255, 255);
-      doc.setFontSize(13);
-      doc.text(companyNameAr, pageW / 2, y + 8, { align: "center" });
-      doc.setFontSize(8.5);
-      doc.text(companyNameEn, pageW / 2, y + 14, { align: "center" });
-      doc.setFontSize(7.5);
-      doc.text("تقرير الزيارة الميدانية  |  Site Survey Report", pageW / 2, y + 20, { align: "center" });
-      y += 28;
-
-      doc.setTextColor(0, 0, 0);
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(8);
       const customer = (customers as any[]).find((c: any) => c.id === appointment?.customerId);
       const surveyNum = savedSurveyId || existingSurvey?.id || "—";
       const apptNum = appointmentId || "—";
-      doc.text(`Date / التاريخ: ${new Date().toLocaleDateString("en-GB")}`, pageW - margin, y, { align: "right" });
-      doc.text(`Customer / العميل: ${customer?.fullName || "—"}`, margin, y);
-      y += 5;
-      doc.text(`Phone / الجوال: ${customer?.phone || "—"}`, margin, y);
-      doc.text(`Survey# / رقم الزيارة: ${surveyNum}  |  Appt# ${apptNum}`, pageW - margin, y, { align: "right" });
-      y += 5;
-      doc.text(`VAT# / الرقم الضريبي: ${vatNumber}`, margin, y);
-      y += 8;
-      doc.setLineWidth(0.3);
-      doc.setDrawColor(180, 180, 180);
-      doc.line(margin, y, pageW - margin, y);
-      y += 5;
+      const dateStr = new Date().toLocaleDateString("ar-SA");
+      const repName = user ? (user.fullNameAr || user.fullNameEn || "") : "";
+
       const wallLetters = ["A", "B", "C", "D"];
+      const itemLabelAr: Record<string, string> = {
+        door: "باب", window: "نافذة", outlet: "مخرج كهرباء",
+        drain: "فتحة صرف", obstacle: "عائق", water_supply: "تغذية مياه",
+      };
+
+      let spacesHtml = "";
       spaces.forEach((space, si) => {
-        if (y > 250) { doc.addPage(); y = margin; }
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(10);
-        doc.setFillColor(240, 244, 248);
-        doc.rect(margin, y - 1, pageW - margin * 2, 8, "F");
         const spaceType = SPACE_TYPES.find(st => st.value === space.type);
-        doc.text(`${si + 1}. ${space.name || "Space"} (${spaceType ? spaceType.en : space.type || ""})`, margin + 2, y + 5);
-        y += 10;
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(8);
-        const dimParts = [];
-        if (space.length) dimParts.push(`L: ${space.length}m`);
-        if (space.width) dimParts.push(`W: ${space.width}m`);
-        if (space.height) dimParts.push(`H: ${space.height}m`);
-        if (dimParts.length > 0) { doc.text(`Dimensions: ${dimParts.join(" × ")}`, margin + 2, y); y += 5; }
-        if (space.buildingStatus) { doc.text(`Status: ${space.buildingStatus === "ready" ? "Ready" : "Under Construction"}`, margin + 2, y); y += 5; }
+        const typeName = spaceType ? spaceType.ar : space.type || "";
+        let wallsHtml = "";
         if (space.walls.length > 0) {
-          const head = [["Wall", "Length (m)", "Height (m)", "Items"]];
-          const body = space.walls.map((w, wi) => {
+          const rows = space.walls.map((w, wi) => {
             const letter = wallLetters[wi] || String(wi + 1);
-            const itemsSummary = w.items.map(it => {
-              const label = { door: "Door", window: "Window", outlet: "Outlet", drain: "Drain", water_supply: "Water Supply", obstacle: "Obstacle" }[it.type] || it.type;
-              const dims = (it.width && it.height) ? ` (${it.width}×${it.height}m)` : it.width ? ` (${it.width}m)` : "";
-              const dist = it.distanceFromFirst ? ` @${it.distanceFromFirst}m` : "";
-              const drainExtra = it.type === "drain"
-                ? ((it.drainPlacement ?? "wall") === "floor"
-                    ? ` [Floor${it.distanceFromWall ? `, ${it.distanceFromWall}m from wall` : ""}]`
-                    : `${it.heightFromFloor ? ` [Wall, ${it.heightFromFloor}m from floor]` : " [Wall]"}`)
-                : "";
-              return `${label}${dims}${dist}${drainExtra}`;
-            }).join("; ") || "-";
-            return [letter, w.length || "—", w.wallHeight || space.height || "—", itemsSummary];
-          });
-          autoTable(doc, { startY: y, head, body, theme: "grid", styles: { fontSize: 7, cellPadding: 2 }, headStyles: { fillColor: [26, 54, 93], textColor: 255, fontStyle: "bold" }, alternateRowStyles: { fillColor: [248, 250, 252] }, columnStyles: { 0: { cellWidth: 12 }, 1: { cellWidth: 22 }, 2: { cellWidth: 22 }, 3: { cellWidth: "auto" } }, margin: { left: margin, right: margin } });
-          y = (doc as any).lastAutoTable?.finalY ? (doc as any).lastAutoTable.finalY + 5 : y + 20;
+            let itemsHtml = "";
+            if (w.items.length > 0) {
+              itemsHtml = w.items.map(it => {
+                const label = itemLabelAr[it.type] || it.type;
+                const parts: string[] = [];
+                if (it.distanceFromFirst) parts.push(`بُعد عن الحرف: ${it.distanceFromFirst}م`);
+                if (it.heightFromFloor && it.type !== "drain") parts.push(`ارتفاع: ${it.heightFromFloor}م`);
+                if (it.width && it.type !== "drain" && it.type !== "water_supply") parts.push(`عرض: ${it.width}م`);
+                if (it.height && it.type !== "drain" && it.type !== "water_supply") parts.push(`ارتفاع: ${it.height}م`);
+                if (it.specs) parts.push(it.specs);
+                return `<span class="item-badge">${label}${parts.length ? ": " + parts.join(" | ") : ""}</span>`;
+              }).join("");
+            } else {
+              itemsHtml = `<span class="no-items">—</span>`;
+            }
+            return `<tr>
+              <td class="wall-letter">${letter}</td>
+              <td>${w.length ? w.length + " م" : "—"}</td>
+              <td>${w.wallHeight || space.height ? (w.wallHeight || space.height) + " م" : "—"}</td>
+              <td class="items-cell">${itemsHtml}</td>
+            </tr>`;
+          }).join("");
+          wallsHtml = `<table class="wall-table">
+            <thead><tr><th>الجدار</th><th>الطول</th><th>الارتفاع</th><th>العناصر</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>`;
+        } else {
+          wallsHtml = `<p class="no-walls">لم تُضف جدران</p>`;
         }
+        const dims = [space.length && `${space.length}م`, space.width && `${space.width}م`, space.height && `${space.height}م`].filter(Boolean).join(" × ");
+        spacesHtml += `<div class="space-section">
+          <div class="space-header">${si + 1}. ${space.name || "مكان"} — ${typeName}${dims ? ` | ${dims}` : ""}</div>
+          ${wallsHtml}
+        </div>`;
       });
-      if (selectedProducts.length > 0) {
-        if (y > 220) { doc.addPage(); y = margin; }
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(10);
-        doc.setFillColor(240, 244, 248);
-        doc.rect(margin, y - 1, pageW - margin * 2, 8, "F");
-        doc.text("Selected Products", margin + 2, y + 5);
-        y += 10;
-        const head = [["#", "Code", "Description", "Qty", "Wall"]];
-        const body = selectedProducts.map((p, pi) => {
-          const space = spaces.find(s => s.id === p.spaceId);
-          return [String(pi + 1), p.code || "—", p.description || p.groupName || "—", String(p.quantity || 1), space?.name || "—"];
-        });
-        autoTable(doc, { startY: y, head, body, theme: "grid", styles: { fontSize: 7, cellPadding: 2 }, headStyles: { fillColor: [26, 54, 93], textColor: 255, fontStyle: "bold" }, alternateRowStyles: { fillColor: [248, 250, 252] }, margin: { left: margin, right: margin } });
+
+      const logoDataUrl = await new Promise<string>((resolve) => {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => {
+          const canvas = document.createElement("canvas");
+          canvas.width = img.width; canvas.height = img.height;
+          const ctx = canvas.getContext("2d");
+          if (ctx) { ctx.drawImage(img, 0, 0); resolve(canvas.toDataURL("image/png")); }
+          else resolve("");
+        };
+        img.onerror = () => resolve("");
+        img.src = teakLogoUrl;
+      });
+
+      const html = `<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="utf-8"/>
+<title>تقرير الزيارة الميدانية</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; font-size: 13px; color: #111; background: #fff; direction: rtl; }
+  .page { max-width: 800px; margin: 0 auto; padding: 24px; }
+  .header { background: #1a365d; color: white; border-radius: 8px; padding: 16px 20px; display: flex; align-items: center; gap: 16px; margin-bottom: 20px; }
+  .header img { width: 56px; height: 56px; object-fit: contain; filter: brightness(0) invert(1); }
+  .header-text h1 { font-size: 18px; font-weight: 700; }
+  .header-text p { font-size: 11px; opacity: 0.8; margin-top: 2px; }
+  .header-text .subtitle { font-size: 12px; margin-top: 6px; background: rgba(255,255,255,0.15); padding: 3px 8px; border-radius: 4px; display: inline-block; }
+  .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 24px; margin-bottom: 20px; padding: 12px 16px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0; }
+  .meta-item { font-size: 12px; }
+  .meta-label { color: #64748b; font-size: 11px; }
+  .meta-value { font-weight: 600; color: #1a365d; }
+  .space-section { margin-bottom: 20px; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; }
+  .space-header { background: #1a365d; color: white; padding: 8px 14px; font-size: 13px; font-weight: 700; }
+  .wall-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .wall-table th { background: #e2e8f0; padding: 7px 10px; text-align: right; font-weight: 600; color: #1a365d; border-bottom: 2px solid #cbd5e1; }
+  .wall-table td { padding: 7px 10px; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
+  .wall-table tr:last-child td { border-bottom: none; }
+  .wall-table tr:nth-child(even) td { background: #f8fafc; }
+  .wall-letter { font-weight: 700; color: #1a365d; font-size: 14px; }
+  .items-cell { line-height: 1.8; }
+  .item-badge { display: inline-block; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 4px; padding: 1px 7px; margin: 2px 2px; font-size: 11px; color: #1e40af; }
+  .no-items { color: #94a3b8; }
+  .no-walls { padding: 10px 14px; color: #94a3b8; font-size: 12px; }
+  .footer { margin-top: 20px; padding-top: 12px; border-top: 1px solid #e2e8f0; text-align: center; font-size: 11px; color: #94a3b8; }
+  @media print {
+    body { font-size: 12px; }
+    .page { padding: 12px; }
+    .space-section { break-inside: avoid; }
+    @page { margin: 15mm; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="header">
+    ${logoDataUrl ? `<img src="${logoDataUrl}" alt="Teak"/>` : ""}
+    <div class="header-text">
+      <h1>مصنع تيك للمنتجات الخشبية</h1>
+      <p>Teak Wood Products Factory</p>
+      <span class="subtitle">تقرير الزيارة الميدانية — Site Survey Report</span>
+    </div>
+  </div>
+  <div class="meta-grid">
+    <div class="meta-item"><div class="meta-label">العميل</div><div class="meta-value">${customer?.fullName || "—"}</div></div>
+    <div class="meta-item"><div class="meta-label">تاريخ الرفع</div><div class="meta-value">${dateStr}</div></div>
+    <div class="meta-item"><div class="meta-label">رقم الجوال</div><div class="meta-value">${customer?.phone || "—"}</div></div>
+    <div class="meta-item"><div class="meta-label">المندوب</div><div class="meta-value">${repName}</div></div>
+    <div class="meta-item"><div class="meta-label">رقم الزيارة</div><div class="meta-value">${surveyNum}</div></div>
+    <div class="meta-item"><div class="meta-label">رقم الموعد</div><div class="meta-value">${apptNum}</div></div>
+  </div>
+  ${spacesHtml}
+  <div class="footer">تيك للصناعات الخشبية — جميع الحقوق محفوظة ${new Date().getFullYear()}</div>
+</div>
+<script>window.onload = function() { window.print(); };<\/script>
+</body>
+</html>`;
+
+      const printWin = window.open("", "_blank", "width=900,height=700");
+      if (printWin) {
+        printWin.document.write(html);
+        printWin.document.close();
+      } else {
+        toast({ title: t("يرجى السماح بفتح النوافذ المنبثقة", "Please allow popups"), variant: "destructive" });
       }
-      const totalPages = doc.getNumberOfPages();
-      for (let i = 1; i <= totalPages; i++) {
-        doc.setPage(i);
-        doc.setFontSize(7);
-        doc.setTextColor(150, 150, 150);
-        doc.text(`Page ${i} of ${totalPages} — Teak Wood Products Factory`, pageW / 2, 290, { align: "center" });
-      }
-      const customerName = customer?.fullName?.replace(/\s+/g, "_") || "customer";
-      doc.save(`survey_report_${customerName}_${new Date().toISOString().slice(0, 10)}.pdf`);
     } catch (err) {
-      console.error("PDF generation error:", err);
+      console.error("Print report error:", err);
       toast({ title: t("تعذر إنشاء التقرير", "Failed to generate report"), variant: "destructive" });
     } finally {
       setPrintingPdf(false);
@@ -830,6 +827,7 @@ export default function SiteSurveyPage() {
             items: [...w.items, {
               type, width: "", height: "", distanceFromFirst: "", heightFromFloor: "", specs: "", notes: "",
               ...(type === "drain" ? { drainPlacement: "wall" as const, distanceFromWall: "" } : {}),
+              ...(type === "water_supply" ? { drainPlacement: undefined, distanceFromWall: "" } : {}),
             }],
           };
         }),
@@ -1127,26 +1125,26 @@ export default function SiteSurveyPage() {
             const sid = savedSurveyId || existingSurvey?.id;
             return (
               <Card className="overflow-hidden border-violet-200 dark:border-violet-800">
-                <div className="flex items-center justify-between px-3 py-2 bg-muted/30 border-b">
+                <div className="flex items-center justify-between px-3 py-2 border-b bg-muted/30">
                   <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                     <Box className="w-3.5 h-3.5" />
-                    {t("التصور ثلاثي الأبعاد والمخطط", "3D View & Floor Plan")}
+                    {t("معاينة التصميم", "Design Preview")}
                   </div>
                   <button
-                    className="text-xs text-violet-600 hover:text-violet-800 transition-colors px-2 py-1 rounded hover:bg-violet-50"
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-md border text-[11px] font-medium transition-colors bg-primary/5 border-primary/30 text-primary hover:bg-primary/10"
                     onClick={() => navigate(`/scene-3d?surveyId=${sid}`)}
                     data-testid="button-open-fullscreen"
                     title={t("فتح ملء الشاشة", "Open fullscreen")}
                   >
-                    ⛶ {t("ملء الشاشة", "Fullscreen")}
+                    ⛶ {t("ملء الشاشة", "Full Screen")}
                   </button>
                 </div>
                 <iframe
-                  key={sid}
+                  key={`${sid}`}
                   src={`/scene-3d?surveyId=${sid}&embed=1`}
                   className="w-full border-0"
-                  style={{ height: "420px" }}
-                  title={t("التصور ثلاثي الأبعاد", "3D Visualization")}
+                  style={{ height: "380px" }}
+                  title={t("معاينة التصميم", "Design Preview")}
                   data-testid="iframe-inline-view"
                 />
               </Card>
@@ -1505,7 +1503,6 @@ export default function SiteSurveyPage() {
                                   const heightFromCeiling = isOutlet && spaceHeight > 0
                                     ? (spaceHeight - (parseFloat(item.heightFromFloor) || 0)).toFixed(2)
                                     : null;
-                                  const drainIsWall = (item.drainPlacement ?? "wall") === "wall";
                                   const itemColor = wallItemColors[item.type] || wallItemColors.obstacle;
                                   return (
                                     <div key={itemIndex} className={`p-2.5 rounded-lg border space-y-2 ${itemColor.bg} ${itemColor.border}`}>
@@ -1594,58 +1591,13 @@ export default function SiteSurveyPage() {
                                       )}
                                       {item.type === "drain" && (
                                         <div className="space-y-2">
-                                          {/* Drain placement toggle */}
-                                          <div>
-                                            <Label className="text-[10px] text-muted-foreground mb-1 block">{t("نوع التركيب", "Installation Type")}</Label>
-                                            <div className="flex gap-1.5">
-                                              <button
-                                                type="button"
-                                                onClick={() => updateWallItem(editSpace.id, activeWall.id, itemIndex, "drainPlacement", "wall")}
-                                                className={`flex-1 text-[11px] py-1 px-2 rounded-md border font-medium transition-colors ${drainIsWall ? "bg-teal-600 text-white border-teal-600" : "bg-background text-muted-foreground border-border hover:border-teal-400"}`}
-                                                data-testid={`button-drain-wall-${itemIndex}`}
-                                              >
-                                                🧱 {t("جدارية", "Wall Drain")}
-                                              </button>
-                                              <button
-                                                type="button"
-                                                onClick={() => updateWallItem(editSpace.id, activeWall.id, itemIndex, "drainPlacement", "floor")}
-                                                className={`flex-1 text-[11px] py-1 px-2 rounded-md border font-medium transition-colors ${!drainIsWall ? "bg-teal-600 text-white border-teal-600" : "bg-background text-muted-foreground border-border hover:border-teal-400"}`}
-                                                data-testid={`button-drain-floor-${itemIndex}`}
-                                              >
-                                                🔵 {t("أرضية", "Floor Drain")}
-                                              </button>
+                                          {/* Drain location only: distanceFromFirst */}
+                                          <div className="grid grid-cols-1 gap-1.5">
+                                            <div>
+                                              <Label className="text-[10px] text-muted-foreground">{t("بُعد عن الحرف الأول م", "From Corner (m)")}</Label>
+                                              <Input type="number" step="0.01" value={item.distanceFromFirst} onChange={(e) => updateWallItem(editSpace.id, activeWall.id, itemIndex, "distanceFromFirst", e.target.value)} className="h-7 text-xs" data-testid={`input-drain-dist-first-${itemIndex}`} />
                                             </div>
                                           </div>
-
-                                          {/* Wall drain fields — position only (no dimensions needed for a pipe) */}
-                                          {drainIsWall && (
-                                            <>
-                                              <div className="grid grid-cols-2 gap-1.5">
-                                                <div>
-                                                  <Label className="text-[10px] text-muted-foreground">{t("ارتفاع عن الأرضية م", "From Floor (m)")}</Label>
-                                                  <Input type="number" step="0.01" value={item.heightFromFloor} onChange={(e) => updateWallItem(editSpace.id, activeWall.id, itemIndex, "heightFromFloor", e.target.value)} className="h-7 text-xs" data-testid={`input-drain-height-floor-${itemIndex}`} />
-                                                </div>
-                                                <div>
-                                                  <Label className="text-[10px] text-muted-foreground">{t("بُعد عن الحرف الأول م", "From Edge (m)")}</Label>
-                                                  <Input type="number" step="0.01" value={item.distanceFromFirst} onChange={(e) => updateWallItem(editSpace.id, activeWall.id, itemIndex, "distanceFromFirst", e.target.value)} className="h-7 text-xs" data-testid={`input-drain-dist-first-wall-${itemIndex}`} />
-                                                </div>
-                                              </div>
-                                            </>
-                                          )}
-
-                                          {/* Floor drain fields */}
-                                          {!drainIsWall && (
-                                            <div className="grid grid-cols-2 gap-1.5">
-                                              <div>
-                                                <Label className="text-[10px] text-muted-foreground">{t("البُعد عن الجدار م", "Dist. from Wall (m)")}</Label>
-                                                <Input type="number" step="0.01" value={item.distanceFromWall ?? ""} onChange={(e) => updateWallItem(editSpace.id, activeWall.id, itemIndex, "distanceFromWall", e.target.value)} className="h-7 text-xs" data-testid={`input-drain-dist-wall-${itemIndex}`} />
-                                              </div>
-                                              <div>
-                                                <Label className="text-[10px] text-muted-foreground">{t("بُعد عن الحرف الأول م", "From Edge (m)")}</Label>
-                                                <Input type="number" step="0.01" value={item.distanceFromFirst} onChange={(e) => updateWallItem(editSpace.id, activeWall.id, itemIndex, "distanceFromFirst", e.target.value)} className="h-7 text-xs" data-testid={`input-drain-dist-first-${itemIndex}`} />
-                                              </div>
-                                            </div>
-                                          )}
 
                                           {/* Additional specs */}
                                           <div>
@@ -1655,14 +1607,16 @@ export default function SiteSurveyPage() {
                                         </div>
                                       )}
                                       {item.type === "water_supply" && (
-                                        <div className="grid grid-cols-2 gap-1.5">
-                                          <div>
-                                            <Label className="text-[10px] text-muted-foreground">{t("ارتفاع عن الأرضية م", "From Floor (m)")}</Label>
-                                            <Input type="number" step="0.01" value={item.heightFromFloor} onChange={(e) => updateWallItem(editSpace.id, activeWall.id, itemIndex, "heightFromFloor", e.target.value)} className="h-7 text-xs" data-testid={`input-supply-height-floor-${itemIndex}`} />
-                                          </div>
-                                          <div>
-                                            <Label className="text-[10px] text-muted-foreground">{t("بُعد عن الحرف الأول م", "From Edge (m)")}</Label>
-                                            <Input type="number" step="0.01" value={item.distanceFromFirst} onChange={(e) => updateWallItem(editSpace.id, activeWall.id, itemIndex, "distanceFromFirst", e.target.value)} className="h-7 text-xs" data-testid={`input-supply-dist-first-${itemIndex}`} />
+                                        <div className="space-y-2">
+                                          <div className="grid grid-cols-2 gap-1.5">
+                                            <div>
+                                              <Label className="text-[10px] text-muted-foreground">{t("بُعد عن الحرف م", "From Corner (m)")}</Label>
+                                              <Input type="number" step="0.01" value={item.distanceFromFirst} onChange={(e) => updateWallItem(editSpace.id, activeWall.id, itemIndex, "distanceFromFirst", e.target.value)} className="h-7 text-xs" data-testid={`input-water-dist-first-${itemIndex}`} />
+                                            </div>
+                                            <div>
+                                              <Label className="text-[10px] text-muted-foreground">{t("ارتفاع عن الأرضية م", "From Floor (m)")}</Label>
+                                              <Input type="number" step="0.01" value={item.heightFromFloor} onChange={(e) => updateWallItem(editSpace.id, activeWall.id, itemIndex, "heightFromFloor", e.target.value)} className="h-7 text-xs" data-testid={`input-water-height-floor-${itemIndex}`} />
+                                            </div>
                                           </div>
                                         </div>
                                       )}
@@ -2353,11 +2307,11 @@ export default function SiteSurveyPage() {
               className="h-8 text-xs text-blue-600 border-blue-300 dark:border-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950/30"
               onClick={handlePrintSurveyReport}
               disabled={printingPdf}
-              title={t("تصدير تقرير الزيارة PDF", "Export Survey Report PDF")}
+              title={t("طباعة المقاسات", "Print Measurements")}
               data-testid="button-print-survey-results"
             >
               {printingPdf ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Printer className="w-3.5 h-3.5" />}
-              <span className="hidden sm:inline ms-1">{t("PDF", "PDF")}</span>
+              <span className="hidden sm:inline ms-1">{t("طباعة", "Print")}</span>
             </Button>
           )}
         </div>

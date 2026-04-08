@@ -1,10 +1,9 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useLanguage } from "@/components/language-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Phone, KeyRound, Loader2, Users, AlertCircle, ArrowRight, RotateCcw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { auth, RecaptchaVerifier, signInWithPhoneNumber, type ConfirmationResult } from "@/lib/firebase";
 import { LoadingTransition } from "@/components/loading-transition";
 import teakLogo from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
 import { useQuery } from "@tanstack/react-query";
@@ -34,18 +33,7 @@ export default function EmployeeLoginPage() {
   const [error, setError] = useState("");
   const [countdown, setCountdown] = useState(0);
   const [showTransition, setShowTransition] = useState(false);
-
-  const confirmationRef = useRef<ConfirmationResult | null>(null);
-  const recaptchaRef = useRef<RecaptchaVerifier | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (recaptchaRef.current) {
-        try { recaptchaRef.current.clear(); } catch (_e) {}
-        recaptchaRef.current = null;
-      }
-    };
-  }, []);
+  const [devMode, setDevMode] = useState(false);
 
   useEffect(() => {
     if (countdown > 0) {
@@ -53,27 +41,6 @@ export default function EmployeeLoginPage() {
       return () => clearTimeout(timer);
     }
   }, [countdown]);
-
-  const setupRecaptcha = useCallback(() => {
-    if (recaptchaRef.current) {
-      recaptchaRef.current.clear();
-      recaptchaRef.current = null;
-    }
-    recaptchaRef.current = new RecaptchaVerifier(auth, "emp-recaptcha-container", {
-      size: "invisible",
-      callback: () => {},
-      "expired-callback": () => {
-        setError(t("انتهت صلاحية التحقق. أعد المحاولة", "Verification expired. Try again"));
-      },
-    });
-    return recaptchaRef.current;
-  }, [t]);
-
-  const formatPhoneForFirebase = (localPhone: string): string => {
-    let cleaned = localPhone.replace(/\D/g, "");
-    if (cleaned.startsWith("0")) cleaned = cleaned.substring(1);
-    return `+966${cleaned}`;
-  };
 
   const handleSendOTP = useCallback(async () => {
     const trimmed = phone.trim();
@@ -92,72 +59,46 @@ export default function EmployeeLoginPage() {
     setLoading(true);
 
     try {
-      const verifyRes = await fetch("/api/employee-auth/check-phone", {
+      const res = await fetch("/api/employee-auth/send-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone: digits }),
       });
 
-      const verifyData = await verifyRes.json();
+      const data = await res.json();
 
-      if (!verifyRes.ok) {
-        setError(lang === "ar" ? verifyData.message : (verifyData.messageEn || verifyData.message));
+      if (!res.ok) {
+        setError(lang === "ar" ? data.message : (data.messageEn || data.message));
         setLoading(false);
         return;
       }
 
-      const recaptchaVerifier = setupRecaptcha();
-      const firebasePhone = formatPhoneForFirebase(digits);
-      const confirmation = await signInWithPhoneNumber(auth, firebasePhone, recaptchaVerifier);
-      confirmationRef.current = confirmation;
-
+      setDevMode(!!data.devMode);
       setStep("otp");
       setCountdown(60);
       toast({
         title: t("تم الإرسال", "Code Sent"),
         description: t("تم إرسال رمز التحقق عبر رسالة نصية SMS", "Verification code sent via SMS"),
       });
-    } catch (err: unknown) {
-      console.error("Firebase send OTP error:", err);
-      const firebaseErr = err as { code?: string };
-      let msg = t("حدث خطأ في إرسال الرمز", "Error sending verification code");
-      if (firebaseErr?.code === "auth/too-many-requests") {
-        msg = t("محاولات كثيرة. حاول لاحقاً", "Too many attempts. Try again later");
-      } else if (firebaseErr?.code === "auth/invalid-phone-number") {
-        msg = t("رقم الجوال غير صحيح", "Invalid phone number");
-      } else if (firebaseErr?.code === "auth/quota-exceeded") {
-        msg = t("تم تجاوز حد الإرسال. حاول لاحقاً", "SMS quota exceeded. Try again later");
-      }
-      setError(msg);
-
-      if (recaptchaRef.current) {
-        try { recaptchaRef.current.clear(); } catch (_e) {}
-        recaptchaRef.current = null;
-      }
+    } catch (err) {
+      console.error("Send OTP error:", err);
+      setError(t("حدث خطأ في إرسال الرمز. حاول مجدداً", "Error sending code. Please try again"));
     } finally {
       setLoading(false);
     }
-  }, [phone, toast, t, lang, setupRecaptcha]);
+  }, [phone, toast, t, lang]);
 
   const handleVerifyOTP = useCallback(async () => {
     if (!otp.trim() || otp.length < 6) return;
-
-    if (!confirmationRef.current) {
-      setError(t("أعد إرسال رمز التحقق", "Please resend the verification code"));
-      return;
-    }
 
     setError("");
     setLoading(true);
 
     try {
-      const result = await confirmationRef.current.confirm(otp.trim());
-      const idToken = await result.user.getIdToken();
-
       const res = await fetch("/api/employee-auth/verify-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ idToken }),
+        body: JSON.stringify({ phone: phone.trim(), code: otp.trim() }),
       });
 
       const data = await res.json();
@@ -167,37 +108,25 @@ export default function EmployeeLoginPage() {
         return;
       }
 
-      if (recaptchaRef.current) {
-        try { recaptchaRef.current.clear(); } catch (_e) {}
-        recaptchaRef.current = null;
-      }
-
       setEmployeeName(data.fullNameAr || data.fullNameEn || "");
       toast({
         title: t("مرحباً", "Welcome"),
         description: t(`مرحباً ${data.fullNameAr || ""}`, `Welcome ${data.fullNameEn || ""}`),
       });
       setShowTransition(true);
-    } catch (err: unknown) {
-      console.error("Firebase verify OTP error:", err);
-      const firebaseErr = err as { code?: string };
-      let msg = t("رمز التحقق غير صحيح", "Invalid verification code");
-      if (firebaseErr?.code === "auth/invalid-verification-code") {
-        msg = t("رمز التحقق غير صحيح. تأكد من إدخال الرمز الصحيح", "Invalid verification code. Make sure you entered the correct code");
-      } else if (firebaseErr?.code === "auth/code-expired") {
-        msg = t("انتهت صلاحية الرمز. أعد الإرسال", "Code expired. Please resend");
-      }
-      setError(msg);
+    } catch (err) {
+      console.error("Verify OTP error:", err);
+      setError(t("حدث خطأ. حاول مجدداً", "An error occurred. Please try again"));
     } finally {
       setLoading(false);
     }
-  }, [otp, toast, t, lang]);
+  }, [otp, phone, toast, t, lang]);
 
   const handleResendOTP = useCallback(() => {
     setStep("phone");
     setOtp("");
     setError("");
-    confirmationRef.current = null;
+    setDevMode(false);
   }, []);
 
   const maskedPhone = phone ? `${phone.substring(0, 4)}****${phone.substring(8)}` : "";
@@ -264,6 +193,12 @@ export default function EmployeeLoginPage() {
               <div className="bg-destructive/5 border border-destructive/15 rounded-lg px-3 py-2 flex items-start gap-2" data-testid="text-employee-error">
                 <AlertCircle className="w-3.5 h-3.5 text-destructive mt-0.5 shrink-0" />
                 <p className="text-xs text-destructive leading-relaxed">{error}</p>
+              </div>
+            )}
+
+            {devMode && step === "otp" && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-800 dark:bg-amber-950/20 dark:border-amber-800 dark:text-amber-300" data-testid="text-dev-mode-notice">
+                {t("وضع التطوير: الرمز يظهر في سجل الخادم (console)", "Dev mode: code printed in server console")}
               </div>
             )}
 
@@ -372,8 +307,6 @@ export default function EmployeeLoginPage() {
             )}
           </div>
         </div>
-
-        <div id="emp-recaptcha-container" data-testid="emp-recaptcha-container"></div>
 
         <div className="text-center">
           <button
