@@ -248,22 +248,20 @@ function DownlightFixture({ pos, H, spotIntensity, castShadow }: {
         <ringGeometry args={[0.06, 0.075, 16]} />
         <meshStandardMaterial color="#D0D0D0" roughness={0.3} metalness={0.7} />
       </mesh>
-      {/* SpotLight pointing straight down via target below fixture */}
-      <spotLight
-        position={[0, 0, 0]}
-        intensity={spotIntensity}
-        color="#FFF5E0"
-        angle={Math.PI / 5}
-        penumbra={0.7}
-        distance={H * 1.5}
-        castShadow={castShadow}
-        shadow-mapSize-width={512}
-        shadow-mapSize-height={512}
-        shadow-bias={-0.001}
-      >
-        {/* Attach the spotlight target directly below in local space */}
-        <object3D attach="target" position={[0, -H, 0]} />
-      </spotLight>
+      {/* SpotLight — only rendered for the first MAX_SPOTLIGHTS fixtures to keep GPU load low */}
+      {spotIntensity > 0 && (
+        <spotLight
+          position={[0, 0, 0]}
+          intensity={spotIntensity}
+          color="#FFF5E0"
+          angle={Math.PI / 5}
+          penumbra={0.7}
+          distance={H * 1.5}
+          castShadow={false}
+        >
+          <object3D attach="target" position={[0, -H, 0]} />
+        </spotLight>
+      )}
     </group>
   );
 }
@@ -271,27 +269,30 @@ function DownlightFixture({ pos, H, spotIntensity, castShadow }: {
 function CeilingDownlights({ L, W, H, isNight }: { L: number; W: number; H: number; isNight?: boolean }) {
   const cols = Math.max(2, Math.round(L / 1.2));
   const rows = Math.max(2, Math.round(W / 1.2));
-  const lights: [number, number, number][] = [];
+  const allLights: [number, number, number][] = [];
 
   for (let c = 0; c < cols; c++) {
     for (let r = 0; r < rows; r++) {
       const x = -L / 2 + (L / (cols - 1 || 1)) * c;
       const z = -W / 2 + (W / (rows - 1 || 1)) * r;
-      lights.push([x, H - 0.02, z]);
+      allLights.push([x, H - 0.02, z]);
     }
   }
 
   const spotIntensity = isNight ? 14 : 4;
+  /* Cap at 4 actual SpotLights to avoid WebGL context loss on mobile/low-end GPUs.
+     Remaining positions still get the visual disc/ring fixture but no light. */
+  const MAX_SPOTLIGHTS = 4;
 
   return (
     <group>
-      {lights.map((pos, i) => (
+      {allLights.map((pos, i) => (
         <DownlightFixture
           key={i}
           pos={pos}
           H={H}
-          spotIntensity={spotIntensity}
-          castShadow={i < 4}
+          spotIntensity={i < MAX_SPOTLIGHTS ? spotIntensity : 0}
+          castShadow={false}
           isNight={isNight}
         />
       ))}
@@ -304,29 +305,24 @@ function CoveLighting({ L, W, H }: { L: number; W: number; H: number }) {
   const warmColor = "#FFE8C0";
   return (
     <>
-      <rectAreaLight position={[0, coveH, -W / 2 + 0.1]} width={L} height={0.1}
-        intensity={3} color={warmColor} rotation={[Math.PI / 2, 0, 0]} />
-      <rectAreaLight position={[0, coveH, W / 2 - 0.1]} width={L} height={0.1}
-        intensity={3} color={warmColor} rotation={[-Math.PI / 2, 0, 0]} />
-      <rectAreaLight position={[-L / 2 + 0.1, coveH, 0]} width={W} height={0.1}
-        intensity={3} color={warmColor} rotation={[Math.PI / 2, 0, Math.PI / 2]} />
-      <rectAreaLight position={[L / 2 - 0.1, coveH, 0]} width={W} height={0.1}
-        intensity={3} color={warmColor} rotation={[Math.PI / 2, 0, -Math.PI / 2]} />
+      {/* Single cheap point light at ceiling centre simulates cove ambient glow */}
+      <pointLight position={[0, coveH, 0]} intensity={2.5} color={warmColor} distance={Math.max(L, W) * 2} decay={1.5} />
+      {/* Emissive strips around the 4 ceiling edges (visual only, no GPU light cost) */}
       <mesh position={[0, coveH, -W / 2 + 0.02]}>
         <boxGeometry args={[L, 0.02, 0.04]} />
-        <meshStandardMaterial color={warmColor} emissive={warmColor} emissiveIntensity={1.5} />
+        <meshStandardMaterial color={warmColor} emissive={warmColor} emissiveIntensity={2} />
       </mesh>
       <mesh position={[0, coveH, W / 2 - 0.02]}>
         <boxGeometry args={[L, 0.02, 0.04]} />
-        <meshStandardMaterial color={warmColor} emissive={warmColor} emissiveIntensity={1.5} />
+        <meshStandardMaterial color={warmColor} emissive={warmColor} emissiveIntensity={2} />
       </mesh>
       <mesh position={[-L / 2 + 0.02, coveH, 0]}>
         <boxGeometry args={[0.04, 0.02, W]} />
-        <meshStandardMaterial color={warmColor} emissive={warmColor} emissiveIntensity={1.5} />
+        <meshStandardMaterial color={warmColor} emissive={warmColor} emissiveIntensity={2} />
       </mesh>
       <mesh position={[L / 2 - 0.02, coveH, 0]}>
         <boxGeometry args={[0.04, 0.02, W]} />
-        <meshStandardMaterial color={warmColor} emissive={warmColor} emissiveIntensity={1.5} />
+        <meshStandardMaterial color={warmColor} emissive={warmColor} emissiveIntensity={2} />
       </mesh>
     </>
   );
@@ -1404,17 +1400,23 @@ function Scene3D({
   const scaledW = W * SCALE;
   const scaledH = H * SCALE;
   const isWalking = navMode === "walk";
+  /* PointerLockControls requires requestPointerLock() which is unavailable on iOS/mobile */
+  const isDesktop = useMemo(() =>
+    typeof navigator !== "undefined" && !/iPhone|iPad|iPod|Android/i.test(navigator.userAgent), []);
 
   return (
     <>
-      <SoftShadows size={30} samples={16} focus={0} />
+      <SoftShadows size={25} samples={10} focus={0} />
       <color attach="background" args={[lightMode === "day" ? "#D6E8F5" : "#0f0c29"]} />
 
       <PerspectiveCamera makeDefault position={[0, scaledH * 1.6, scaledW * 2.2]} fov={55} />
       <OrbitControls enableDamping dampingFactor={0.05} minDistance={1} maxDistance={25} enabled={!isWalking} />
       {isWalking && (
         <>
-          <PointerLockControls minPolarAngle={Math.PI / 4} maxPolarAngle={Math.PI * 0.72} />
+          {/* PointerLockControls only on desktop — not supported on iOS/mobile */}
+          {isDesktop && (
+            <PointerLockControls minPolarAngle={Math.PI / 4} maxPolarAngle={Math.PI * 0.72} />
+          )}
           <WalkController speed={4} />
           <GyroController active={!!gyroActive} />
         </>
@@ -2872,7 +2874,7 @@ export default function Scene3DPage() {
               </div>
             )}
             {surveyForSpace && (
-              <Canvas key={key} shadows="soft" gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: lightMode === "day" ? 1.2 : 0.8 }}>
+              <Canvas key={key} shadows gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: lightMode === "day" ? 1.2 : 0.8 }}>
                 <XR store={xrStore}>
                   <Suspense fallback={null}>
                     <Scene3D
