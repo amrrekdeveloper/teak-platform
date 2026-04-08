@@ -875,6 +875,7 @@ function Cabinet({
   const y = H / 2 + wallOff;
   const isSelected = selected;
   const frameThick = 0.018;
+  const frameColor = isSelected ? "#C8A030" : "#2C1A0E";
 
   const graniteTexture = useMemo(() => isBaseUnit(product) ? makeGraniteTexture() : null, []);
   /* Wood texture for cabinet carcass body */
