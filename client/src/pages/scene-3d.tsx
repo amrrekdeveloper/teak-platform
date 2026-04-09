@@ -128,18 +128,18 @@ function isBaseUnit(product: any): boolean {
 
 function isTallUnit(product: any): boolean {
   const code = (product.code || "").toUpperCase();
-  return code.startsWith("TK4") || code.startsWith("U1");
+  return code.startsWith("TK4") || (code.startsWith("U1") && !code.startsWith("U1K"));
 }
 
 function isWallUnit(product: any): boolean {
   const code = (product.code || "").toUpperCase();
   /* HF = horizontal fold base cabinet (H≈87cm) — NOT a wall unit */
-  return code.startsWith("TK3") || code.startsWith("HK") || code.startsWith("AKK");
+  return code.startsWith("TK3") || code.startsWith("HK") || code.startsWith("AKK") || code.startsWith("U1K") || code.startsWith("U2K");
 }
 
 function isWallUnitByCode(code: string): boolean {
   const c = code.toUpperCase();
-  return c.startsWith("TK3") || c.startsWith("HK") || c.startsWith("AKK");
+  return c.startsWith("TK3") || c.startsWith("HK") || c.startsWith("AKK") || c.startsWith("U1K") || c.startsWith("U2K");
 }
 
 function getDefaultHeight(product: any): number {
@@ -1316,7 +1316,10 @@ function Cabinet({
   const tintOpacity = hasConflict ? 0.55 : (isSelected || hovered) ? 0.28 : 0.0;
 
   const productCode = (product.code || "").toUpperCase();
-  const isCorner = !!product._isCorner || productCode.includes("90 90") || productCode.includes("90_90");
+  const productGroup = ((product.group || product.category || "")).toLowerCase();
+  const isCorner = !!product._isCorner || productCode.includes("90 90") || productCode.includes("90_90")
+    || productCode.startsWith("AK2") || productCode.includes("ZAW") || productCode.includes("COR")
+    || productGroup.includes("زاوية") || productGroup.includes("corner");
   const junction = (product._cornerJunction as "start" | "end") ?? "end";
 
   return (
@@ -1329,6 +1332,7 @@ function Cabinet({
       onPointerDown={(e) => {
         if (selected && onDragStart) {
           e.stopPropagation();
+          setHovered(false);
           onDragStart(index);
         }
       }}
@@ -1430,9 +1434,12 @@ function Cabinet({
           </mesh>
 
           {/* BMP product image on front face — covers CabinetFront when available */}
-          <group position={[0, 0, D / 2 + frameThick]}>
-            <ProductFrontFace thumbnail={product.thumbnail} W={W} H={H} />
-          </group>
+          {/* Skip BMP for oven and open shelf units — their custom geometry must remain visible */}
+          {!isOvenUnit(product) && !isOpenShelfUnit(product) && (
+            <group position={[0, 0, D / 2 + frameThick]}>
+              <ProductFrontFace thumbnail={product.thumbnail} W={W} H={H} />
+            </group>
+          )}
 
           {/* Fallback CabinetFront shown when no thumbnail (or as backing frame) */}
           <CabinetFront
