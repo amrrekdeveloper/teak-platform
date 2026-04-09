@@ -134,12 +134,22 @@ function isTallUnit(product: any): boolean {
 function isWallUnit(product: any): boolean {
   const code = (product.code || "").toUpperCase();
   /* HF = horizontal fold base cabinet (H≈87cm) — NOT a wall unit */
-  return code.startsWith("TK3") || code.startsWith("HK") || code.startsWith("AKK") || code.startsWith("U1K") || code.startsWith("U2K");
+  return (
+    code.startsWith("TK3") || code.startsWith("HK") || code.startsWith("AKK") ||
+    code.startsWith("U1K") || code.startsWith("U2K") ||
+    code.startsWith("UG1K") || code.startsWith("UG2K") ||
+    code.startsWith("UARAF")
+  );
 }
 
 function isWallUnitByCode(code: string): boolean {
   const c = code.toUpperCase();
-  return c.startsWith("TK3") || c.startsWith("HK") || c.startsWith("AKK") || c.startsWith("U1K") || c.startsWith("U2K");
+  return (
+    c.startsWith("TK3") || c.startsWith("HK") || c.startsWith("AKK") ||
+    c.startsWith("U1K") || c.startsWith("U2K") ||
+    c.startsWith("UG1K") || c.startsWith("UG2K") ||
+    c.startsWith("UARAF")
+  );
 }
 
 function getDefaultHeight(product: any): number {
@@ -1238,12 +1248,12 @@ function CabinetFront({ W, H, D, frameColor, panelColor, drawerCount, isGlass, i
       {Array.from({ length: numDoors }).map((_, di) => {
         const px = numDoors === 2 ? (di === 0 ? -doorW / 2 - st / 4 : doorW / 2 + st / 4) : 0;
         return isGlass ? (
-          <mesh key={di} position={[px, 0, D / 2 + 0.003]}>
+          <mesh key={di} position={[px, 0, FD + 0.002]}>
             <planeGeometry args={[doorW, panelH]} />
             <meshStandardMaterial
-              color="#C8E8FF" transparent opacity={0.25}
+              color="#C8E8FF" transparent opacity={0.30}
               roughness={0.04} metalness={0.1}
-              envMapIntensity={1.5}
+              side={THREE.DoubleSide}
             />
           </mesh>
         ) : (
@@ -1298,7 +1308,6 @@ function Cabinet({
 
   const y = H / 2 + wallOff;
   const isSelected = selected;
-  const frameThick = 0.018;
   const frameColor = isSelected ? "#C8A030" : "#2C1A0E";
 
   const graniteTexture = useMemo(() => isBaseUnit(product) ? makeGraniteTexture() : null, []);
@@ -1363,41 +1372,27 @@ function Cabinet({
               color={hasConflict ? "#CC2222" : tintColor}
             />
           </mesh>
-          {/* Front face on primary arm: frame + optional BMP texture */}
-          <mesh position={[0, 0, D / 2 + frameThick / 2]}>
-            <boxGeometry args={[W - 0.008, H - 0.008, frameThick]} />
-            <meshStandardMaterial color={frameColor} roughness={0.65} metalness={0.12} />
-          </mesh>
+          {/* Front face on primary arm */}
           <CabinetFront
-            W={W} H={H} D={D + frameThick}
+            W={W} H={H} D={D}
             frameColor={frameColor}
-            panelColor={isSelected ? "#D4B870" : "#C8A878"}
+            panelColor={isSelected ? "#D4B870" : "#EDE8E0"}
             isOven={isOvenUnit(product)}
             isOpenShelf={isOpenShelfUnit(product)}
           />
-          <group position={[0, 0, D / 2 + frameThick]}>
-            <ProductFrontFace thumbnail={product.thumbnail} W={W} H={H} />
-          </group>
-          {/* Front face on secondary arm: frame + optional BMP texture */}
+          {/* Front face on secondary arm */}
           <group position={[
             junction === "end" ? W / 2 + D / 2 : -W / 2 - D / 2,
             0,
             -D / 2
           ]} rotation={[0, junction === "end" ? -Math.PI / 2 : Math.PI / 2, 0]}>
-            <mesh position={[0, 0, W / 2 + frameThick / 2]}>
-              <boxGeometry args={[D - 0.008, H - 0.008, frameThick]} />
-              <meshStandardMaterial color={frameColor} roughness={0.65} metalness={0.12} />
-            </mesh>
             <CabinetFront
-              W={D} H={H} D={W + frameThick}
+              W={D} H={H} D={W}
               frameColor={frameColor}
-              panelColor={isSelected ? "#D4B870" : "#C8A878"}
+              panelColor={isSelected ? "#D4B870" : "#EDE8E0"}
               isOven={isOvenUnit(product)}
               isOpenShelf={isOpenShelfUnit(product)}
             />
-            <group position={[0, 0, W / 2 + frameThick]}>
-              <ProductFrontFace thumbnail={product.thumbnail} W={D} H={H} />
-            </group>
           </group>
           {/* Selection overlay */}
           {(isSelected || hovered || hasConflict) && (
@@ -1428,26 +1423,12 @@ function Cabinet({
             </mesh>
           )}
 
-          <mesh position={[0, 0, D / 2 + frameThick / 2]}>
-            <boxGeometry args={[W - 0.008, H - 0.008, frameThick]} />
-            <meshStandardMaterial color={frameColor} roughness={0.65} metalness={0.12} />
-          </mesh>
-
-          {/* BMP product image on front face — covers CabinetFront when available */}
-          {/* Skip BMP for oven and open shelf units — their custom geometry must remain visible */}
-          {!isOvenUnit(product) && !isOpenShelfUnit(product) && (
-            <group position={[0, 0, D / 2 + frameThick]}>
-              <ProductFrontFace thumbnail={product.thumbnail} W={W} H={H} />
-            </group>
-          )}
-
-          {/* Fallback CabinetFront shown when no thumbnail (or as backing frame) */}
           <CabinetFront
             W={W}
             H={H}
-            D={D + frameThick}
+            D={D}
             frameColor={isSelected ? "#C8A030" : "#2C1A0E"}
-            panelColor={isSelected ? "#D4B870" : isWallUnit(product) ? "#DED0B8" : "#C8A878"}
+            panelColor={isSelected ? "#D4B870" : "#EDE8E0"}
             drawerCount={isDrawerUnit(product) ? 3 : undefined}
             isGlass={isGlassCabinet(product)}
             isOven={isOvenUnit(product)}
