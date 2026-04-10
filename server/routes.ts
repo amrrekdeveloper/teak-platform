@@ -1331,10 +1331,32 @@ export async function registerRoutes(
       if (data.status === "expired" && !data.orderStage) data.orderStage = "rejected";
       if (data.status === "cancelled" && !data.orderStage) data.orderStage = "cancelled";
       if ((data.status === "draft" || data.status === "open") && !data.orderStage) data.orderStage = "quote_draft";
+      const wasSent = data.status === "sent" && quotation.status !== "sent";
       delete data.id;
       delete data.createdAt;
       const updated = await storage.updateQuotation(parseInt(req.params.id), data);
       if (!updated) return res.status(404).json({ message: "عرض السعر غير موجود" });
+
+      if (wasSent) {
+        try {
+          const customer = await storage.getCustomer(quotation.customerId);
+          const staffUsers = (await storage.getUsers()).filter(u => ["owner", "assistant", "sales"].includes(u.role));
+          for (const staff of staffUsers) {
+            await storage.createNotification({
+              userId: staff.id,
+              titleAr: "تم إرسال عرض سعر للعميل",
+              titleEn: "Quotation Sent to Customer",
+              messageAr: `تم إرسال عرض السعر #${quotation.id} للعميل ${customer?.fullName || ""}`,
+              messageEn: `Quotation #${quotation.id} sent to customer ${customer?.fullName || ""}`,
+              type: "info",
+              relatedEntity: "quotation",
+              relatedId: quotation.id,
+              isRead: false,
+            });
+          }
+        } catch (_) { }
+      }
+
       res.json(updated);
     } catch (error) {
       res.status(500).json({ message: "حدث خطأ" });

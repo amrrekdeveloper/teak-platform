@@ -26,6 +26,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Plus, Trash2, Loader2, Calculator, ArrowLeft, ArrowRight, Paperclip, Image, FileText, Search, Package, Ruler, Send, Save, ChevronDown, ChevronUp, Settings2, Eye, Download, List, LayoutList, Upload, X as XIcon, Check, Receipt } from "lucide-react";
+import { QuotationShareMenu } from "@/components/quotation-share-menu";
 import { Switch } from "@/components/ui/switch";
 import { DialogFooter } from "@/components/ui/dialog";
 
@@ -823,6 +824,8 @@ export default function QuotationBuilderPage() {
     ).slice(0, 60);
   }, [adekoProducts, adekoSearch]);
 
+  const selectedCustomer = customers.find((c) => c.id === parseInt(customerId));
+
   const BackIcon = isRTL ? ArrowRight : ArrowLeft;
 
   return (
@@ -831,7 +834,7 @@ export default function QuotationBuilderPage() {
         <Button variant="ghost" size="icon" onClick={() => setLocation("/quotations")} data-testid="button-back">
           <BackIcon className="w-4 h-4" />
         </Button>
-        <div>
+        <div className="flex-1">
           <h1 className="text-2xl font-bold" data-testid="text-builder-title">
             {preselectedQuotationId
               ? t("تعديل عرض السعر", "Edit Quotation")
@@ -843,6 +846,24 @@ export default function QuotationBuilderPage() {
               : t("أنشئ عرض سعر جديد مع التسعير التلقائي", "Create a new quotation with automatic pricing")}
           </p>
         </div>
+        {(() => {
+          const shareId = savedQuotationId || (preselectedQuotationId ? parseInt(preselectedQuotationId) : null);
+          if (!shareId) return null;
+          return (
+            <QuotationShareMenu
+              quotationId={shareId}
+              quotationNumber={shareId}
+              customerName={selectedCustomer?.fullName}
+              customerPhone={selectedCustomer?.phone}
+              customerEmail={selectedCustomer?.email}
+              totalPrice={totals.finalPrice}
+              status={savedQuotationStatus || undefined}
+              iconOnly={true}
+              triggerSize="sm"
+              triggerClassName="border border-input bg-background text-foreground hover:bg-accent hover:text-accent-foreground"
+            />
+          );
+        })()}
       </div>
 
       <div className="space-y-6">
@@ -1646,12 +1667,26 @@ export default function QuotationBuilderPage() {
 
             {savedQuotationId && (savedQuotationStatus === "draft" || savedQuotationStatus === "sent") ? (
               <div className="space-y-2">
-                <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded-md px-3 py-2">
-                  <Save className="w-3.5 h-3.5 text-green-600" />
-                  <span>{savedQuotationStatus === "sent"
-                    ? t(`تم الإرسال للعميل — رقم عرض السعر: #${savedQuotationId}`, `Sent to customer — Quotation #${savedQuotationId}`)
-                    : t(`تم الحفظ كمسودة — رقم عرض السعر: #${savedQuotationId}`, `Saved as draft — Quotation #${savedQuotationId}`)
-                  }</span>
+                <div className="flex items-center justify-between gap-2 bg-muted/50 rounded-md px-3 py-2">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Save className="w-3.5 h-3.5 text-green-600" />
+                    <span>{savedQuotationStatus === "sent"
+                      ? t(`تم الإرسال للعميل — رقم عرض السعر: #${savedQuotationId}`, `Sent to customer — Quotation #${savedQuotationId}`)
+                      : t(`تم الحفظ كمسودة — رقم عرض السعر: #${savedQuotationId}`, `Saved as draft — Quotation #${savedQuotationId}`)
+                    }</span>
+                  </div>
+                  <QuotationShareMenu
+                    quotationId={savedQuotationId}
+                    quotationNumber={savedQuotationId}
+                    customerName={selectedCustomer?.fullName}
+                    customerPhone={selectedCustomer?.phone}
+                    customerEmail={selectedCustomer?.email}
+                    totalPrice={totals.finalPrice}
+                    status={savedQuotationStatus || undefined}
+                    iconOnly={true}
+                    triggerSize="sm"
+                    triggerClassName="border border-input bg-background text-foreground hover:bg-accent hover:text-accent-foreground h-7 w-7 p-0"
+                  />
                 </div>
                 <Button
                   variant="outline"

@@ -4,6 +4,7 @@ import { useRoute, Link, useLocation } from "wouter";
 import type { Quotation, Customer } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, ArrowRight, Loader2, Printer, Send, CheckCircle2, Receipt, X, Pencil } from "lucide-react";
+import { QuotationShareMenu } from "@/components/quotation-share-menu";
 import { useState, useEffect, useRef } from "react";
 import teakLogo from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
 import { LoadingTransition } from "@/components/loading-transition";
@@ -205,7 +206,7 @@ export default function QuotationViewPage() {
         }}
       />
 
-      <div className="flex items-center justify-between mb-4 print:hidden gap-2 flex-wrap">
+      <div className={`flex items-center justify-between mb-4 print:hidden gap-2 flex-wrap${autoPrint ? " hidden" : ""}`}>
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="icon" data-testid="button-back" onClick={() => navigate(returnTo || "/quotations")}>
             <BackIcon className="w-4 h-4" />
@@ -268,6 +269,18 @@ export default function QuotationViewPage() {
             <Printer className="w-4 h-4 me-2" />
             {t("طباعة", "Print")}
           </Button>
+          <QuotationShareMenu
+            quotationId={parseInt(id!)}
+            quotationNumber={quotation.quotationNumber}
+            customerName={customer?.fullName}
+            customerPhone={customer?.phone}
+            customerEmail={customer?.email}
+            totalPrice={parseFloat(quotation.totalPrice || quotation.finalPrice || "0")}
+            status={quotation.status}
+            iconOnly={true}
+            triggerSize="sm"
+            triggerClassName="border border-input bg-background text-foreground hover:bg-accent hover:text-accent-foreground"
+          />
         </div>
       </div>
 

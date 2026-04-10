@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { Link } from "wouter";
 import { queryClient } from "@/lib/queryClient";
+import { QuotationShareMenu } from "@/components/quotation-share-menu";
 import { getCornerJunctionOffset } from "@/lib/kitchenTemplates";
 import { useToast } from "@/hooks/use-toast";
 
@@ -2953,6 +2954,39 @@ export default function Scene3DPage() {
     staleTime: 30000,
   });
 
+  interface QuotationSummary {
+    id: number;
+    quotationNumber: string;
+    customerId: number;
+    status: string;
+    totalPrice: string;
+  }
+  interface CustomerSummary {
+    id: number;
+    fullName: string;
+    phone: string | null;
+    email: string | null;
+  }
+
+  const { data: quotationData } = useQuery<QuotationSummary | null>({
+    queryKey: ["/api/quotations", survey?.quotationId ? String(survey.quotationId) : null],
+    queryFn: async () => {
+      const res = await fetch(`/api/quotations/${survey.quotationId}`, { credentials: "include" });
+      if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: !!survey?.quotationId && !isPublic,
+  });
+
+  const { data: quotationCustomers = [] } = useQuery<CustomerSummary[]>({
+    queryKey: ["/api/customers"],
+    enabled: !!survey?.quotationId && !isPublic,
+  });
+
+  const quotationCustomer = quotationData
+    ? quotationCustomers.find((c) => c.id === quotationData.customerId)
+    : undefined;
+
   const surveySpaces: any[] = useMemo(() => survey?.spaces || [], [survey]);
   const [activeSpaceId, setActiveSpaceId] = useState<string>("");
 
@@ -3928,11 +3962,19 @@ export default function Scene3DPage() {
                 </div>
 
                 {survey?.quotationId && !isPublic && (
-                  <Link href={`/quotations/${survey.quotationId}`}>
-                    <Button className="w-full mt-2" size="sm" data-testid="btn-go-to-quotation">
-                      {t("عرض طلب السعر", "View Quotation")}
-                    </Button>
-                  </Link>
+                  <div className="mt-2">
+                    <QuotationShareMenu
+                      quotationId={survey.quotationId}
+                      quotationNumber={quotationData?.quotationNumber}
+                      customerName={quotationCustomer?.fullName}
+                      customerPhone={quotationCustomer?.phone}
+                      customerEmail={quotationCustomer?.email}
+                      totalPrice={quotationData?.totalPrice ? parseFloat(quotationData.totalPrice) : undefined}
+                      status={quotationData?.status}
+                      triggerLabel={t("عرض طلب السعر", "View Quotation")}
+                      triggerClassName="w-full"
+                    />
+                  </div>
                 )}
 
                 {/* Warnings panel */}
