@@ -3331,6 +3331,612 @@ function MobileTouchControls({ gyroGranted }: { gyroGranted: boolean }) {
   );
 }
 
+/* ══════════════════════════════════════════════════════════════════
+   KITCHEN WIZARD — 4-question setup wizard before 3D scene opens
+   ══════════════════════════════════════════════════════════════════ */
+
+type KitchenShape = "I" | "L" | "U" | "parallel";
+
+interface WizardAnswers {
+  shape: KitchenShape;
+  length: number;
+  width: number;
+  applianceSide: "right" | "left" | "any";
+  familySize: number;
+}
+
+function KitchenWizard({
+  onComplete,
+  onSkip,
+  initialLength,
+  initialWidth,
+}: {
+  onComplete: (answers: WizardAnswers) => void;
+  onSkip: () => void;
+  initialLength: number;
+  initialWidth: number;
+}) {
+  const { t } = useLanguage();
+  const [step, setStep] = useState(0);
+  const [shape, setShape] = useState<KitchenShape>("I");
+  const [length, setLength] = useState(initialLength || 400);
+  const [width, setWidth] = useState(initialWidth || 300);
+  const [applianceSide, setApplianceSide] = useState<"right" | "left" | "any">("any");
+  const [familySize, setFamilySize] = useState(4);
+
+  const total = 4;
+  const progress = ((step + 1) / total) * 100;
+
+  const handleNext = () => {
+    if (step < total - 1) {
+      setStep(s => s + 1);
+    } else {
+      onComplete({ shape, length, width, applianceSide, familySize });
+    }
+  };
+
+  const shapeOptions: { id: KitchenShape; labelAr: string; labelEn: string; icon: string }[] = [
+    { id: "I",        labelAr: "مستقيم (I)",    labelEn: "Straight (I)",    icon: "▬" },
+    { id: "L",        labelAr: "زاوية (L)",       labelEn: "Corner (L)",       icon: "⌐" },
+    { id: "U",        labelAr: "حرف U",           labelEn: "U-Shape",          icon: "⋃" },
+    { id: "parallel", labelAr: "جانبان متقابلان", labelEn: "Double-wall",      icon: "⫽" },
+  ];
+
+  const applianceOptions: { id: "right" | "left" | "any"; labelAr: string; labelEn: string }[] = [
+    { id: "right", labelAr: "اليمين", labelEn: "Right" },
+    { id: "left",  labelAr: "اليسار", labelEn: "Left"  },
+    { id: "any",   labelAr: "لا يهم", labelEn: "Any"   },
+  ];
+
+  return (
+    <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 backdrop-blur-sm" data-testid="kitchen-wizard-overlay">
+      <div className="bg-background rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
+        {/* Header */}
+        <div className="bg-slate-800 text-white px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="font-bold text-base">{t("معالج التصميم", "Design Wizard")}</h2>
+              <p className="text-slate-400 text-xs mt-0.5">
+                {t(`السؤال ${step + 1} من ${total}`, `Question ${step + 1} of ${total}`)}
+              </p>
+            </div>
+            <button
+              onClick={onSkip}
+              data-testid="btn-skip-wizard"
+              className="text-slate-400 hover:text-white text-xs px-3 py-1.5 rounded-lg border border-slate-600 hover:border-slate-400 transition-colors"
+            >
+              {t("تخطّي", "Skip")}
+            </button>
+          </div>
+          {/* Progress bar */}
+          <div className="mt-3 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-blue-500 rounded-full transition-all duration-300"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+        </div>
+
+        {/* Questions */}
+        <div className="px-6 py-5 min-h-[220px]">
+
+          {/* Q1: Kitchen shape */}
+          {step === 0 && (
+            <div data-testid="wizard-step-0">
+              <p className="font-semibold text-sm mb-4">{t("ما شكل مطبخك؟", "What is your kitchen layout?")}</p>
+              <div className="grid grid-cols-2 gap-3">
+                {shapeOptions.map(opt => (
+                  <button
+                    key={opt.id}
+                    onClick={() => setShape(opt.id)}
+                    data-testid={`wizard-shape-${opt.id}`}
+                    className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${
+                      shape === opt.id
+                        ? "border-blue-500 bg-blue-50 dark:bg-blue-900/30 shadow-md"
+                        : "border-border hover:border-blue-300"
+                    }`}
+                  >
+                    <span className="text-3xl">{opt.icon}</span>
+                    <span className="text-xs font-medium">{t(opt.labelAr, opt.labelEn)}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Q2: Room dimensions */}
+          {step === 1 && (
+            <div data-testid="wizard-step-1">
+              <p className="font-semibold text-sm mb-4">{t("أبعاد الغرفة (سم)", "Room dimensions (cm)")}</p>
+              <div className="space-y-4">
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">{t("الطول (سم)", "Length (cm)")}</label>
+                  <input
+                    type="number"
+                    value={length}
+                    onChange={e => setLength(Number(e.target.value) || 400)}
+                    data-testid="wizard-input-length"
+                    className="w-full border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    min={150}
+                    max={1000}
+                    step={10}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">{t("العرض (سم)", "Width (cm)")}</label>
+                  <input
+                    type="number"
+                    value={width}
+                    onChange={e => setWidth(Number(e.target.value) || 300)}
+                    data-testid="wizard-input-width"
+                    className="w-full border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    min={150}
+                    max={800}
+                    step={10}
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground mt-3 italic">
+                {t("هذه القيم مأخوذة من المسح الميداني — يمكنك تعديلها", "Values pre-filled from site survey — you can adjust")}
+              </p>
+            </div>
+          )}
+
+          {/* Q3: Appliance side */}
+          {step === 2 && (
+            <div data-testid="wizard-step-2">
+              <p className="font-semibold text-sm mb-4">{t("أين تفضّل الفرن والثلاجة؟", "Where do you prefer oven & fridge?")}</p>
+              <div className="flex gap-3">
+                {applianceOptions.map(opt => (
+                  <button
+                    key={opt.id}
+                    onClick={() => setApplianceSide(opt.id)}
+                    data-testid={`wizard-appliance-${opt.id}`}
+                    className={`flex-1 py-4 rounded-xl border-2 text-sm font-medium transition-all ${
+                      applianceSide === opt.id
+                        ? "border-blue-500 bg-blue-50 dark:bg-blue-900/30 shadow-md text-blue-700 dark:text-blue-300"
+                        : "border-border hover:border-blue-300"
+                    }`}
+                  >
+                    {t(opt.labelAr, opt.labelEn)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Q4: Family size */}
+          {step === 3 && (
+            <div data-testid="wizard-step-3">
+              <p className="font-semibold text-sm mb-4">{t("كم عدد أفراد الأسرة؟", "How many family members?")}</p>
+              <p className="text-xs text-muted-foreground mb-4">
+                {t("يؤثر ذلك على عدد الخزائن وحجم التخزين", "This affects number of cabinets and storage size")}
+              </p>
+              <div className="flex items-center gap-4 justify-center">
+                <button
+                  onClick={() => setFamilySize(s => Math.max(1, s - 1))}
+                  data-testid="btn-family-dec"
+                  className="w-10 h-10 rounded-full border-2 border-border text-xl font-bold hover:border-blue-400 transition-colors"
+                >−</button>
+                <div className="text-center">
+                  <div className="text-5xl font-bold text-blue-600" data-testid="family-size-value">{familySize}</div>
+                  <div className="text-xs text-muted-foreground mt-1">{t("أشخاص", "people")}</div>
+                </div>
+                <button
+                  onClick={() => setFamilySize(s => Math.min(12, s + 1))}
+                  data-testid="btn-family-inc"
+                  className="w-10 h-10 rounded-full border-2 border-border text-xl font-bold hover:border-blue-400 transition-colors"
+                >+</button>
+              </div>
+              <div className="mt-4 grid grid-cols-3 gap-1.5">
+                {[2, 4, 6, 8, 10, 12].map(n => (
+                  <button
+                    key={n}
+                    onClick={() => setFamilySize(n)}
+                    data-testid={`btn-family-preset-${n}`}
+                    className={`py-1.5 rounded-lg border text-xs font-medium transition-all ${
+                      familySize === n ? "border-blue-500 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300" : "border-border hover:border-blue-300"
+                    }`}
+                  >
+                    {n} {t("أشخاص", "people")}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t flex items-center justify-between">
+          <button
+            onClick={() => setStep(s => Math.max(0, s - 1))}
+            disabled={step === 0}
+            className="text-sm text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
+            data-testid="btn-wizard-back"
+          >
+            {t("← السابق", "← Back")}
+          </button>
+          <button
+            onClick={handleNext}
+            data-testid="btn-wizard-next"
+            className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold transition-colors shadow-sm"
+          >
+            {step < total - 1 ? t("التالي →", "Next →") : t("عرض التصاميم ✓", "Show Designs ✓")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   PRESET ENGINE — buildPreset() generates 6 design variants
+   ══════════════════════════════════════════════════════════════════ */
+
+interface PresetProduct {
+  productId?: number;
+  code: string;
+  nameAr: string;
+  name: string;
+  unitPrice: number;
+  quantity: number;
+  optionsCost: number;
+  optionDetails: Record<string, any>;
+  spaceId: string;
+  wallId: string;
+  designW: string;
+  dimensions: { w: number; h: number; d: number };
+  _manualXOffset: number;
+}
+
+/** Pick a product from the catalog by code-prefix (best match) or return first suitable */
+function pickProduct(catalog: any[], prefixes: string[], width: number, fallbackW: number): any | null {
+  for (const prefix of prefixes) {
+    const found = catalog.find(p => (p.code || "").toUpperCase().startsWith(prefix.toUpperCase()));
+    if (found) return found;
+  }
+  /* Fallback: find a product with the closest width */
+  const bases = catalog.filter(p => {
+    const w = parseFloat(p.designW || p.manufacturingW || "0");
+    return Math.abs(w - (width || fallbackW)) < 20;
+  });
+  return bases[0] || catalog[0] || null;
+}
+
+function makePresetProduct(
+  catalog: any[],
+  codePrefixes: string[],
+  wallId: string,
+  xOffset: number,
+  spaceId: string,
+  defaultW = 60,
+  defaultH = 85,
+  defaultD = 60,
+): PresetProduct | null {
+  const found = pickProduct(catalog, codePrefixes, defaultW, defaultW);
+  if (!found) return null;
+  const w = parseFloat(found.designW || found.manufacturingW || String(defaultW));
+  const h = parseFloat(found.designH || found.manufacturingH || String(defaultH));
+  const d = parseFloat(found.designD || found.manufacturingD || String(defaultD));
+  return {
+    productId: found.id,
+    code: found.code,
+    nameAr: found.descriptionAr || found.code,
+    name: found.descriptionEn || found.descriptionAr || found.code,
+    unitPrice: parseFloat(found.priceBeforeVat || "0"),
+    quantity: 1,
+    optionsCost: 0,
+    optionDetails: {},
+    spaceId,
+    wallId,
+    designW: String(w),
+    dimensions: { w, h, d },
+    _manualXOffset: xOffset,
+  };
+}
+
+/**
+ * Build a product list for one of 6 design presets.
+ * presetId: 1-6
+ * wizardAnswers: answers from the KitchenWizard
+ * catalog: flat array of catalog products (adekoProducts)
+ * surveyProducts: existing products from the survey (used as fallback source)
+ * spaceId: active space ID
+ * makeWallIdFn: function (wallIndex: number) => string
+ *
+ * The 6 presets are ALWAYS gated by the chosen kitchen shape:
+ *   shape=I    → presets 1 (straight basic), 2 (straight + tall column)
+ *   shape=L    → presets 3 (L basic), 4 (L + island peninsula)
+ *   shape=U    → presets 5 (U basic), 6 (U full / max storage)
+ *   shape=parallel → presets 1+2 using walls A+C (double-wall)
+ * When a preset ID doesn't match the selected shape, the function falls back
+ * to the closest matching layout for that shape.
+ */
+function buildPreset(
+  presetId: number,
+  wizardAnswers: WizardAnswers,
+  catalog: any[],
+  surveyProducts: any[],
+  spaceId: string,
+  makeWallIdFn: (wallIndex: number) => string,
+): PresetProduct[] {
+  const { shape, length, width, applianceSide, familySize } = wizardAnswers;
+
+  /* Merge catalog + survey products so we always have a source even if catalog is empty */
+  const allSources: any[] = catalog.length > 0
+    ? catalog
+    : surveyProducts.map(p => ({
+        ...p,
+        descriptionAr: p.nameAr || p.name || p.code,
+        descriptionEn: p.name || p.nameAr || p.code,
+        priceBeforeVat: String(p.unitPrice || p.price || 0),
+        designW: String(p.dimensions?.w || p.designW || 60),
+        designH: String(p.dimensions?.h || p.designH || 85),
+        designD: String(p.dimensions?.d || p.designD || 60),
+      }));
+
+  /* If still empty, return empty list — calling code must guard against this */
+  if (allSources.length === 0) return [];
+
+  const products: PresetProduct[] = [];
+
+  /* Wall IDs — always use letter-based form */
+  const wallA = makeWallIdFn(0); /* top / main wall (−Z) */
+  const wallB = makeWallIdFn(1); /* right (+X) */
+  const wallC = makeWallIdFn(2); /* bottom / opposite (+Z) — used in parallel layout */
+  const wallD = makeWallIdFn(3); /* left (−X) */
+
+  /* Storage bonus: +1 extra base cabinet for large families */
+  const storageBonus = familySize > 6 ? 1 : 0;
+
+  const add = (
+    prefixes: string[],
+    wall: string,
+    x: number,
+    w = 60, h = 85, d = 60
+  ) => {
+    const p = makePresetProduct(allSources, prefixes, wall, x, spaceId, w, h, d);
+    if (p) products.push(p);
+  };
+
+  /* ── Helper: fill a wall with base cabinets + wall cabinets above ── */
+  const fillWall = (
+    wall: string,
+    wallLen: number,
+    maxBase: number,
+    maxWall: number,
+    xStart = 10,
+    gap = 65,
+  ) => {
+    const baseCount = Math.min(Math.floor((wallLen - xStart - 10) / gap), maxBase);
+    for (let i = 0; i < baseCount; i++) {
+      add(["TK1", "TK2"], wall, xStart + 60 * i + 30);
+    }
+    const wallCount = Math.min(baseCount, maxWall);
+    for (let i = 0; i < wallCount; i++) {
+      add(["TK3", "HK"], wall, xStart + 60 * i + 30, 60, 70, 35);
+    }
+    return baseCount;
+  };
+
+  /* ══════════════════════════════════════════════════════════
+     The 6 presets are always DISTINCT from each other.
+     Each preset adapts to the chosen shape but follows its own
+     design strategy — no remapping that would collapse presets:
+
+     Preset 1: Minimal — single wall, open feel (all shapes)
+     Preset 2: Single wall + island/bar counter (all shapes)
+     Preset 3: Two walls / L-turn (I→extended; L→A+B; U→A+B; parallel→A+C)
+     Preset 4: Two walls + corner unit + appliance column (all shapes)
+     Preset 5: Three-wall or U layout — base storage focused (all shapes)
+     Preset 6: Three-wall or U layout — maximum storage + center island (all shapes)
+     ══════════════════════════════════════════════════════════ */
+
+  /* ── Shape-aware wall assignment ─────────────────────────
+     I       : A only  (extend to C for extra cabinets in 5/6)
+     parallel: A + C   (double-wall)
+     L       : A + B   (perpendicular walls)
+     U       : A + B + D (three walls)
+  */
+  const isI        = shape === "I";
+  const isParallel = shape === "parallel";
+  const isL        = shape === "L";
+  const isU        = shape === "U";
+
+  /* Secondary wall for 2-wall layouts */
+  const wall2: string = isParallel ? wallC
+              : isU             ? wallB
+              : isL             ? wallB
+              : wallA;                      /* I: use wallA again (extended run) */
+
+  /* Third wall available in U and parallel */
+  const wall3: string = (isU || isParallel) ? wallD : "";
+
+  /* ══════════════════════════════════════════════════════════
+     PRESET 1 — Minimal single-wall layout
+     Wall A only (or main run). Clean, open kitchen feel.
+     Appliance tall on preferred side.
+     ══════════════════════════════════════════════════════════ */
+  if (presetId === 1) {
+    const maxBase = 4 + storageBonus;
+    fillWall(wallA, length, maxBase, maxBase - 1);
+    /* Tall unit at preferred-side end */
+    const tallX = applianceSide === "left" ? 35 : length - 35;
+    add(["TK4", "TL"], wallA, tallX, 60, 200, 60);
+  }
+
+  /* ══════════════════════════════════════════════════════════
+     PRESET 2 — Single wall + island / bar counter
+     Wall A cabinets, shorter run to leave passage, then a
+     freestanding island row on wall C (opposite A).
+     ══════════════════════════════════════════════════════════ */
+  else if (presetId === 2) {
+    const maxBase = 3 + storageBonus;
+    fillWall(wallA, length, maxBase, maxBase);
+    /* Tall unit on preferred side of wall A */
+    const tallX = applianceSide === "left" ? 35 : length - 35;
+    add(["TK4", "TL"], wallA, tallX, 60, 200, 60);
+    /* Island / bar counter on opposite wall C (always, regardless of shape) */
+    const islandX = Math.round(length / 2);
+    add(["TK1", "TK2"], wallC, islandX - 60, 120, 85, 60); /* main island body */
+    add(["TK1", "TK2"], wallC, islandX + 60, 60, 85, 60);  /* side extension */
+  }
+
+  /* ══════════════════════════════════════════════════════════
+     PRESET 3 — Two-wall layout, base cabinets focused
+     Adapts per shape:
+       I/parallel : Wall A full run + wall C shorter run
+       L          : Wall A + wall B (corner turn)
+       U          : Wall A + wall B only (entry-level U)
+     No corner units — pure base + wall cabs.
+     ══════════════════════════════════════════════════════════ */
+  else if (presetId === 3) {
+    const countA = Math.min(Math.floor((length - 80) / 65), 4 + storageBonus);
+    fillWall(wallA, length, countA, countA - 1);
+    /* Second wall run */
+    if (wall2 !== wallA) {
+      const wallLen2 = (isParallel || isU || isL) ? width : length;
+      const countB = Math.min(Math.floor((wallLen2 - 80) / 65), 3 + storageBonus);
+      fillWall(wall2, wallLen2, countB, countB - 1);
+    }
+    /* Appliance tall on preferred wall / side */
+    const tallX = applianceSide === "left" ? 35 : length - 35;
+    add(["TK4", "TL"], wallA, tallX, 60, 200, 60);
+  }
+
+  /* ══════════════════════════════════════════════════════════
+     PRESET 4 — Two-wall layout + corner unit + appliance column
+     Same shape adaptation as preset 3, adds:
+       · Corner unit at the A–secondary-wall junction
+       · Dedicated appliance tall column on preferred wall
+     ══════════════════════════════════════════════════════════ */
+  else if (presetId === 4) {
+    const countA = Math.min(Math.floor((length - 120) / 65), 4 + storageBonus);
+    /* Offset start to leave room for corner unit at far end */
+    for (let i = 0; i < countA; i++) {
+      add(["TK1", "TK2"], wallA, 10 + 60 * i + 30);
+    }
+    for (let i = 0; i < Math.min(countA, 3); i++) {
+      add(["TK3", "HK"], wallA, 10 + 60 * i + 30, 60, 70, 35);
+    }
+    /* Corner unit at junction */
+    add(["AK2", "ZAW", "COR"], wallA, length - 50, 90, 85, 60);
+
+    /* Second wall */
+    if (wall2 !== wallA) {
+      const wallLen2 = (isParallel || isU || isL) ? width : length;
+      const countB = Math.min(Math.floor((wallLen2 - 100) / 65), 3);
+      for (let i = 0; i < countB; i++) {
+        add(["TK1", "TK2"], wall2, 10 + 60 * i + 30);
+      }
+      for (let i = 0; i < Math.min(countB, 2); i++) {
+        add(["TK3", "HK"], wall2, 10 + 60 * i + 30, 60, 70, 35);
+      }
+    }
+
+    /* Appliance tall on preferred side */
+    if (applianceSide === "right") {
+      const tWall = (isL || isU) ? wallB : wallA;
+      add(["TK4", "TL"], tWall, tWall === wallA ? length - 35 : width - 35, 60, 200, 60);
+    } else if (applianceSide === "left") {
+      add(["TK4", "TL"], wallD !== "" ? wallD : wallA, wallD !== "" ? 30 : 35, 60, 200, 60);
+    } else {
+      add(["TK4", "TL"], wallA, 35, 60, 200, 60);
+    }
+  }
+
+  /* ══════════════════════════════════════════════════════════
+     PRESET 5 — Three-wall / U layout, base-storage focus
+     Adapts per shape:
+       I/parallel : Wall A + wall C (extended) + wall D (end wall)
+       L          : Wall A + wall B + wall D (partial U from L)
+       U          : Walls A + B + D (true U, base + wall cabs)
+     Corner units at junctions.
+     ══════════════════════════════════════════════════════════ */
+  else if (presetId === 5) {
+    /* Wall A */
+    const countA = Math.min(Math.floor((length - 130) / 65), 4 + storageBonus);
+    fillWall(wallA, length, countA, countA - 1, 10);
+    /* Wall B / second wall */
+    const wallLen2 = (isU || isL) ? width : length;
+    const countB = Math.min(Math.floor((wallLen2 - 140) / 65), 3);
+    if (wall2 && wall2 !== wallA) fillWall(wall2, wallLen2, countB, countB - 1, 70);
+    /* Wall D / third wall */
+    if (wall3) {
+      const wallLen3 = (isU || isParallel) ? width : length;
+      const countD = Math.min(Math.floor((wallLen3 - 140) / 65), 3);
+      fillWall(wall3, wallLen3, countD, countD - 1, 70);
+    } else if (isI) {
+      /* For I shape, extend the third run on wall D as partial end wall */
+      fillWall(wallD, width, 2, 1, 10);
+    }
+    /* Corner units at junctions */
+    add(["AK2", "ZAW", "COR"], wallA, length - 50, 90, 85, 60);   /* A–right corner */
+    if (wall3 || isI) {
+      add(["AK2", "ZAW", "COR"], wallA, 50, 90, 85, 60);           /* A–left corner */
+    }
+    /* Appliance tall */
+    if (applianceSide === "right" && wall2) {
+      add(["TK4", "TL"], wall2, wallLen2 - 35, 60, 200, 60);
+    } else if (applianceSide === "left" && wall3) {
+      add(["TK4", "TL"], wall3, wallLen2 - 35, 60, 200, 60);
+    } else {
+      add(["TK4", "TL"], wallA, length - 35, 60, 200, 60);
+    }
+  }
+
+  /* ══════════════════════════════════════════════════════════
+     PRESET 6 — Maximum storage layout + center island
+     Three walls, full wall cabinets, two tall units, center island.
+     Adapts per shape but always maximises storage + island.
+     ══════════════════════════════════════════════════════════ */
+  else if (presetId === 6) {
+    /* Wall A — full run with wall cabs */
+    const countA = Math.min(Math.floor((length - 130) / 65), 5 + storageBonus);
+    fillWall(wallA, length, countA, countA, 10);
+    /* Wall B / second wall */
+    const wallLen2 = (isU || isL) ? width : length;
+    const countB = Math.min(Math.floor((wallLen2 - 130) / 65), 4);
+    if (wall2 && wall2 !== wallA) fillWall(wall2, wallLen2, countB, countB, 70);
+    /* Wall D / third wall */
+    const wallLen3 = (isU || isParallel) ? width : length;
+    if (wall3) {
+      const countD = Math.min(Math.floor((wallLen3 - 130) / 65), 4);
+      fillWall(wall3, wallLen3, countD, countD, 70);
+    } else if (isI || isL) {
+      fillWall(wallD, width, 2, 2, 10);
+    }
+    /* Corner units at both junctions */
+    add(["AK2", "ZAW", "COR"], wallA, length - 50, 90, 85, 60);
+    add(["AK2", "ZAW", "COR"], wallA, 50, 90, 85, 60);
+    /* Two tall units — preferred side + opposite */
+    const tallR = (applianceSide !== "left" && wall2) ? wall2 : wallA;
+    const tallRx = tallR === wall2 ? wallLen2 - 35 : length - 35;
+    add(["TK4", "TL"], tallR, tallRx, 60, 200, 60);
+    const tallL = (applianceSide !== "right" && wall3) ? wall3 : wallA;
+    const tallLx = tallL === wall3 ? wallLen3 - 35 : 35;
+    if (tallL !== tallR) add(["TK4", "TL"], tallL, tallLx, 60, 200, 60);
+    /* Center island — always on wall C, regardless of shape */
+    const islandX = Math.round(length / 2);
+    add(["TK1", "TK2"], wallC, islandX - 60, 120, 85, 60); /* main island body */
+    add(["TK1", "TK2"], wallC, islandX + 60, 60, 85, 60);  /* side extension */
+    add(["TK3", "HK"], wallC, islandX, 90, 70, 35);         /* overhead storage */
+  }
+
+  return products;
+}
+
+
+/* Preset label metadata (number → label) */
+const PRESET_LABELS: Record<number, { ar: string; en: string }> = {
+  1: { ar: "مستقيم بسيط",    en: "Straight Basic"    },
+  2: { ar: "مستقيم + جزيرة",  en: "Straight + Island" },
+  3: { ar: "زاوية L أساسي",   en: "L-Basic"           },
+  4: { ar: "زاوية L + جزيرة", en: "L + Island"        },
+  5: { ar: "حرف U أساسي",     en: "U-Basic"           },
+  6: { ar: "حرف U كامل",      en: "U-Full"            },
+};
+
 export default function Scene3DPage() {
   const { t } = useLanguage();
   const { toast } = useToast();
@@ -3376,6 +3982,11 @@ export default function Scene3DPage() {
   /* Pre-drag snapshot: captured at the moment drag starts, before any live move mutations */
   const preDragSnapshot = useRef<any[] | null>(null);
 
+  /* ── Kitchen Wizard state ── */
+  const [showWizard, setShowWizard] = useState(true);   /* shown on first open */
+  const [wizardAnswers, setWizardAnswers] = useState<WizardAnswers | null>(null);
+  const [activePreset, setActivePreset] = useState<number | null>(null);
+
   /* Reset local state when navigating to a different survey (SPA navigation without page reload) */
   useEffect(() => {
     setLocalProducts(null);
@@ -3383,6 +3994,9 @@ export default function Scene3DPage() {
     setDesignSaved(true);
     setPlacingProduct(null);
     setShowLibrary(false);
+    setShowWizard(true);
+    setWizardAnswers(null);
+    setActivePreset(null);
   }, [surveyId, appointmentIdParam]);
   const [activeTab, setActiveTab] = useState(() => {
     const t = params.get("tab");
@@ -3776,6 +4390,44 @@ export default function Scene3DPage() {
     const rwc = rw <= 30 ? rw * 100 : rw;
     return (wallIndex === 0 || wallIndex === 2) ? rlc : rwc;
   }, [surveyForSpace, activeSpace]);
+
+  /* ── Wizard complete: store answers, show 3D scene ── */
+  const handleWizardComplete = useCallback((answers: WizardAnswers) => {
+    setWizardAnswers(answers);
+    setShowWizard(false);
+    /* Auto-apply preset 1 as initial suggestion.
+       Always call buildPreset — it falls back to surveyProducts when catalog is empty. */
+    if (activeSpace) {
+      const preset = buildPreset(1, answers, adekoProducts, selectedProducts, activeSpace.id, makeWallId);
+      if (preset.length > 0) {
+        const otherSpaceProds = selectedProducts.filter((p: any) => p.spaceId !== activeSpace.id);
+        setLocalHistory([]);
+        setLocalProducts([...otherSpaceProds, ...preset]);
+        setActivePreset(1);
+        setDesignSaved(false);
+      }
+    }
+  }, [activeSpace, adekoProducts, makeWallId, selectedProducts]);
+
+  /* ── Apply a preset number (1-6) ── */
+  const handleApplyPreset = useCallback((presetId: number) => {
+    if (!wizardAnswers || !activeSpace) return;
+    const allProds = localProducts !== null ? localProducts : selectedProducts;
+    const surveyProds = allProds.filter((p: any) => p.spaceId === activeSpace.id);
+    const preset = buildPreset(presetId, wizardAnswers, adekoProducts, surveyProds, activeSpace.id, makeWallId);
+    /* Guard: do not destroy existing products with an empty preset */
+    if (preset.length === 0) {
+      toast({ title: t("لا تتوفر منتجات لهذا التصميم", "No products available for this preset"), variant: "destructive" });
+      return;
+    }
+    /* Keep products from OTHER spaces, replace active space products with preset */
+    const otherSpaceProds = allProds.filter((p: any) => p.spaceId !== activeSpace.id);
+    setLocalHistory(h => [...h, allProds]);
+    setLocalProducts([...otherSpaceProds, ...preset]);
+    setActivePreset(presetId);
+    setDesignSaved(false);
+    toast({ title: t(`تصميم رقم ${presetId}`, `Design #${presetId}`), description: t(PRESET_LABELS[presetId].ar, PRESET_LABELS[presetId].en) });
+  }, [wizardAnswers, activeSpace, adekoProducts, makeWallId, localProducts, selectedProducts, t, toast]);
 
   /* ── Wall click placement handler ── */
   const handleWallPlace = useCallback((wallIndex: number, xOffsetCm: number) => {
@@ -4324,6 +4976,43 @@ export default function Scene3DPage() {
                 </button>
               </div>
             )}
+            {/* ── Preset number bar (1-6): shown when wizard answers are available ── */}
+            {wizardAnswers && !showWizard && (
+              <div
+                className="absolute top-0 inset-x-0 z-20 flex items-center gap-1 px-3 py-2 bg-slate-900/90 backdrop-blur-sm border-b border-white/10"
+                data-testid="preset-bar"
+              >
+                <span className="text-white/60 text-[10px] font-medium me-1 shrink-0">
+                  {t("مقترحات:", "Presets:")}
+                </span>
+                {[1, 2, 3, 4, 5, 6].map(pid => (
+                  <button
+                    key={pid}
+                    onClick={() => handleApplyPreset(pid)}
+                    data-testid={`btn-preset-${pid}`}
+                    title={t(PRESET_LABELS[pid].ar, PRESET_LABELS[pid].en)}
+                    className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold transition-all ${
+                      activePreset === pid
+                        ? "bg-blue-500 text-white shadow-lg scale-105"
+                        : "bg-white/10 text-white/80 hover:bg-white/20 hover:text-white"
+                    }`}
+                  >
+                    <span className="text-sm font-black">{pid}</span>
+                    <span className="hidden sm:inline text-[9px] font-normal opacity-80 leading-tight">
+                      {t(PRESET_LABELS[pid].ar, PRESET_LABELS[pid].en)}
+                    </span>
+                  </button>
+                ))}
+                <button
+                  onClick={() => setShowWizard(true)}
+                  data-testid="btn-reopen-wizard"
+                  className="ms-auto text-[10px] text-white/50 hover:text-white/80 transition-colors px-2 py-1 rounded border border-white/20 hover:border-white/40"
+                  title={t("إعادة فتح معالج التصميم", "Reopen design wizard")}
+                >
+                  {t("↺ المعالج", "↺ Wizard")}
+                </button>
+              </div>
+            )}
             {surveyForSpace && (
               <Canvas key={key} gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: lightMode === "day" ? 1.2 : 0.8 }}>
                 <XR store={xrStore}>
@@ -4352,6 +5041,15 @@ export default function Scene3DPage() {
                   </Suspense>
                 </XR>
               </Canvas>
+            )}
+            {/* ── Kitchen Wizard overlay ── */}
+            {showWizard && !printMode && activeTab === "3d" && (
+              <KitchenWizard
+                onComplete={handleWizardComplete}
+                onSkip={() => setShowWizard(false)}
+                initialLength={dispL}
+                initialWidth={dispW}
+              />
             )}
             {/* Walk mode: click to engage pointer lock */}
             {navMode === "walk" && (
