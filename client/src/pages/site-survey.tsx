@@ -481,13 +481,13 @@ export default function SiteSurveyPage() {
     mutationFn: async (quotationId: number) => {
       const res = await apiRequest("PATCH", `/api/quotations/${quotationId}`, {
         orderStage: "survey_done",
-        notes: `[جاهز للتصميم]: تم رفع المقاسات بتاريخ ${new Date().toLocaleDateString("ar-SA")} — بانتظار التصميم`,
+        notes: `[تم رفع المقاسات]: بتاريخ ${new Date().toLocaleDateString("ar-SA")} — بانتظار إعداد عرض السعر`,
       });
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/quotations"] });
-      toast({ title: t("تم إرسال الطلب للمصمم بنجاح", "Request sent to designer successfully") });
+      toast({ title: t("تم حفظ الطلب بالمقاسات بنجاح — بانتظار إعداد عرض السعر", "Order saved with measurements — awaiting quotation") });
       navigate(returnTo);
     },
     onError: () => {
@@ -1060,7 +1060,7 @@ export default function SiteSurveyPage() {
                 {t("تم حفظ المقاسات بنجاح", "Measurements Saved Successfully")}
               </h2>
               <p className="text-sm text-green-700 dark:text-green-400 mt-0.5">
-                {t("سيتولى المصمم دراسة المقاسات وإرسال التصميم المناسب", "The designer will review and create the design for you")}
+                {t("بانتظار إعداد عرض السعر", "Awaiting quotation preparation")}
               </p>
             </div>
           </div>
@@ -1071,6 +1071,35 @@ export default function SiteSurveyPage() {
                 <Ruler className="w-4 h-4 text-primary" />
                 <h3 className="font-semibold text-sm">{t("ملخص المقاسات", "Measurements Summary")}</h3>
                 <Badge variant="secondary" className="ms-auto text-xs">{spaces.length} {t("مكان", spaces.length === 1 ? "space" : "spaces")}</Badge>
+                <button
+                  className="p-1.5 rounded-md hover:bg-muted transition-colors text-muted-foreground hover:text-primary"
+                  onClick={handlePrintSurveyReport}
+                  disabled={printingPdf}
+                  title={t("طباعة المقاسات PDF", "Print Measurements PDF")}
+                  data-testid="button-print-measurements-pdf"
+                >
+                  {printingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
+                </button>
+                {(savedSurveyId || existingSurvey?.id) && (
+                  <>
+                    <button
+                      className="p-1.5 rounded-md hover:bg-muted transition-colors text-muted-foreground hover:text-primary"
+                      onClick={() => window.open(`/scene-3d?surveyId=${savedSurveyId || existingSurvey?.id}&printMode=3d`, "_blank")}
+                      title={t("طباعة التصميم ثلاثي الأبعاد", "Print 3D Design")}
+                      data-testid="button-print-3d"
+                    >
+                      <Box className="w-4 h-4" />
+                    </button>
+                    <button
+                      className="p-1.5 rounded-md hover:bg-muted transition-colors text-muted-foreground hover:text-primary"
+                      onClick={() => window.open(`/scene-3d?surveyId=${savedSurveyId || existingSurvey?.id}&printMode=2d`, "_blank")}
+                      title={t("طباعة المخطط الأفقي 2D", "Print 2D Floor Plan")}
+                      data-testid="button-print-2d"
+                    >
+                      <Map className="w-4 h-4" />
+                    </button>
+                  </>
+                )}
               </div>
               {spaces.map((space, idx) => {
                 const wallLetters = ["A", "B", "C", "D"];
@@ -2351,8 +2380,8 @@ export default function SiteSurveyPage() {
           >
             {sendToDesignerMutation.isPending
               ? <Loader2 className="w-4 h-4 me-1 animate-spin" />
-              : <CheckCircle2 className="w-4 h-4 me-1" />}
-            {t("إرسال للمصمم", "Send to Designer")}
+              : <Save className="w-4 h-4 me-1" />}
+            {t("حفظ الطلب بالمقاسات", "Save Order with Measurements")}
           </Button>
         ) : step === 1 && subStep === "walls" ? (
           <Button

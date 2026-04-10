@@ -2857,6 +2857,7 @@ export default function Scene3DPage() {
   const appointmentIdParam = params.get("appointmentId");
   const isPublic = params.get("public") === "1";
   const quotationIdParam = params.get("quotationId");
+  const printMode = params.get("printMode") as "3d" | "2d" | null;
   const [key, setKey] = useState(0);
   const [selectedProduct, setSelectedProduct] = useState(-1);
   const [replacingIndex, setReplacingIndex] = useState<number | null>(null);
@@ -3366,6 +3367,95 @@ export default function Scene3DPage() {
   const dispL = parseFloat(rawRoomDims.length) <= 30 ? Math.round(parseFloat(rawRoomDims.length) * 100) : Math.round(parseFloat(rawRoomDims.length));
   const dispW = parseFloat(rawRoomDims.width) <= 30 ? Math.round(parseFloat(rawRoomDims.width) * 100) : Math.round(parseFloat(rawRoomDims.width));
   const dispH = parseFloat(rawRoomDims.height) <= 30 ? Math.round(parseFloat(rawRoomDims.height) * 100) : Math.round(parseFloat(rawRoomDims.height));
+
+  /* ── Print mode: 3D canvas capture ── */
+  if (printMode === "3d" && !isLoading) {
+    return (
+      <div style={{ background: "linear-gradient(to bottom, #e0f2fe, #bae6fd)", width: "100vw", height: "100vh", display: "flex", flexDirection: "column" }}>
+        <div style={{ padding: "8px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", background: "#1a365d", color: "white" }}>
+          <span style={{ fontWeight: 700, fontSize: 15 }}>{t("التصور ثلاثي الأبعاد", "3D Visualization")} — {surveyForSpace?.name || survey?.spaces?.[0]?.name || t("مكان", "Space")}</span>
+          <button
+            data-testid="button-print-3d-capture"
+            style={{ background: "#2563eb", color: "white", border: "none", borderRadius: 6, padding: "6px 18px", cursor: "pointer", fontWeight: 700, fontSize: 13 }}
+            onClick={() => {
+              const canvas = document.querySelector("canvas");
+              if (!canvas) { window.print(); return; }
+              const dataUrl = canvas.toDataURL("image/png");
+              const win = window.open("", "_blank");
+              if (!win) return;
+              win.document.write(`<!DOCTYPE html><html><head><title>${t("تصميم ثلاثي الأبعاد", "3D Design")}</title><style>@page{margin:0;size:landscape}body{margin:0;display:flex;justify-content:center;align-items:center;height:100vh;background:#000}img{max-width:100%;max-height:100vh;object-fit:contain}</style></head><body><img src="${dataUrl}"/><script>window.onload=function(){window.print()}<\/script></body></html>`);
+              win.document.close();
+            }}
+          >
+            📸 {t("طباعة", "Print")}
+          </button>
+        </div>
+        <div style={{ flex: 1, position: "relative" }}>
+          <Canvas
+            gl={{ preserveDrawingBuffer: true }}
+            camera={{ position: [dispL * SCALE * 0.7, dispH * SCALE * 0.8, dispW * SCALE * 0.9], fov: 55 }}
+            style={{ width: "100%", height: "100%" }}
+          >
+            <DayLighting />
+            <CeilingWithCornice L={dispL * SCALE} W={dispW * SCALE} H={dispH * SCALE} />
+            <CeilingDownlights L={dispL * SCALE} W={dispW * SCALE} H={dispH * SCALE} />
+            <Room
+              length={dispL}
+              width={dispW}
+              height={dispH}
+              floorType={floorType}
+            />
+            {activeSpaceProducts.map((product: any, i: number) => (
+              <Cabinet
+                key={i}
+                product={product}
+                index={i}
+                roomL={dispL}
+                roomW={dispW}
+                roomH={dispH}
+                selected={false}
+                onSelect={() => {}}
+              />
+            ))}
+            <OrbitControls
+              enableZoom={false}
+              enablePan={false}
+              enableRotate={false}
+              target={[0, dispH * SCALE * 0.4, 0]}
+            />
+          </Canvas>
+        </div>
+      </div>
+    );
+  }
+
+  /* ── Print mode: 2D floor plan ── */
+  if (printMode === "2d" && !isLoading) {
+    return (
+      <div style={{ background: "#fff", width: "100vw", minHeight: "100vh", display: "flex", flexDirection: "column" }}>
+        <div style={{ padding: "8px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", background: "#1a365d", color: "white" }}>
+          <span style={{ fontWeight: 700, fontSize: 15 }}>{t("المخطط الأفقي 2D", "2D Floor Plan")} — {surveyForSpace?.name || survey?.spaces?.[0]?.name || t("مكان", "Space")}</span>
+          <button
+            data-testid="button-print-2d-plan"
+            style={{ background: "#2563eb", color: "white", border: "none", borderRadius: 6, padding: "6px 18px", cursor: "pointer", fontWeight: 700, fontSize: 13 }}
+            onClick={() => window.print()}
+          >
+            🖨️ {t("طباعة", "Print")}
+          </button>
+        </div>
+        <style>{`@media print { button { display: none !important; } header { display: none !important; } }`}</style>
+        {surveyForSpace ? (
+          <div style={{ flex: 1, overflow: "auto" }}>
+            <FloorPlan2D survey={surveyForSpace} />
+          </div>
+        ) : (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", flex: 1 }}>
+            <p style={{ color: "#6b7280" }}>{t("جاري التحميل...", "Loading...")}</p>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="h-screen flex flex-col">
