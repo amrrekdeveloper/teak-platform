@@ -332,6 +332,17 @@ function CoveLighting({ L, W, H }: { L: number; W: number; H: number }) {
   );
 }
 
+/** Returns true if a product is a corner/L-shaped unit (by flag or code pattern) */
+function isCornerProduct(product: any): boolean {
+  if (!product) return false;
+  if (product._isCorner) return true;
+  const code = (product.code || "").toUpperCase();
+  const grp  = ((product.group || product.category || "")).toLowerCase();
+  return code.includes("90 90") || code.includes("90_90")
+    || code.startsWith("AK2") || code.includes("ZAW") || code.includes("COR")
+    || grp.includes("زاوية") || grp.includes("corner");
+}
+
 /** Returns a cabinet's vertical tier: "wall" | "tall" | "base" */
 function getCabinetTier(product: any): "wall" | "tall" | "base" {
   if (isWallUnit(product)) return "wall";
@@ -1709,6 +1720,19 @@ function Cabinet({
               color={hasConflict ? "#CC2222" : tintColor}
             />
           </mesh>
+          {/* Corner inner filler block — closes the inner-corner seam */}
+          <mesh position={[
+            junction === "end" ? W / 2 + D / 2 : -W / 2 - D / 2,
+            0,
+            -D / 2 - D / 2
+          ]}>
+            <boxGeometry args={[D, H, D]} />
+            <meshStandardMaterial
+              map={hasConflict ? undefined : woodTexture}
+              roughness={0.62} metalness={0.04}
+              color={hasConflict ? "#CC2222" : tintColor}
+            />
+          </mesh>
           {/* Front face on primary arm */}
           <CabinetFront
             W={W} H={H} D={D}
@@ -2090,7 +2114,7 @@ function Scene3D({
   const wallRightReserved: Record<number, number> = { 0: 0, 1: 0, 2: 0, 3: 0 };
   const wallLeftReserved:  Record<number, number> = { 0: 0, 1: 0, 2: 0, 3: 0 };
   products.forEach((p: any) => {
-    if (!p._isCorner) return;
+    if (!isCornerProduct(p)) return;
     const wIdx = getWallIndex(p);
     const pW = parseFloat(p.designW || p.dimensions?.w || "60");
     const junction = (p._cornerJunction as "start" | "end") ?? "end";
@@ -2115,10 +2139,10 @@ function Scene3D({
     /* Corner units anchored via explicit junction coordinate helper.
        getCornerJunctionOffset(wallIndex, junction, wallLenCm, cornerW)
        → returns center x-offset in cm from wall start. */
-    if (p._isCorner) {
+    if (isCornerProduct(p)) {
       const junction = (p._cornerJunction as "start" | "end") ?? "end";
       const xOffset = getCornerJunctionOffset(wIdx, junction, wallLen, pW);
-      acc.push({ ...p, _wallIndex: wIdx, _xOffset: xOffset, _sourceIndex: sourceIdx, _conflict: false });
+      acc.push({ ...p, _isCorner: true, _wallIndex: wIdx, _xOffset: xOffset, _sourceIndex: sourceIdx, _conflict: false });
       return acc;
     }
 
