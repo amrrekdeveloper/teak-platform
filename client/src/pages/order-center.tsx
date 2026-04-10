@@ -167,8 +167,11 @@ export default function OrderCenterPage() {
   const { data: contracts = [] } = useQuery<any[]>({ queryKey: ["/api/contracts"] });
   const { data: inspections = [] } = useQuery<any[]>({ queryKey: ["/api/inspections"] });
   const { data: designAssignments = [] } = useQuery<any[]>({ queryKey: ["/api/design-assignments"] });
+  const { data: payments = [] } = useQuery<any[]>({ queryKey: ["/api/payments"] });
 
   const [inspectionsOpen, setInspectionsOpen] = useState(true);
+  const [trackingOpen, setTrackingOpen] = useState(true);
+  const [trackingStageFilter, setTrackingStageFilter] = useState<"all" | "pending" | "sales_reviewed" | "confirmed" | "in_production">("all");
   const [newOrderDialog, setNewOrderDialog] = useState(false);
   const [newOrderForm, setNewOrderForm] = useState({ fullName: "", phone: "", productDescription: "", notes: "", city: "" });
   const [showNewOrderTransition, setShowNewOrderTransition] = useState(false);
@@ -197,6 +200,34 @@ export default function OrderCenterPage() {
       u.role === "sales" && u.active !== false
     );
   }, [usersData]);
+
+  const trackingOrders = useMemo(() => {
+    const activeQuotations = quotations.filter((q: any) => !["rejected", "expired"].includes(q.status) && q.status === "approved");
+    return activeQuotations.map((q: any) => {
+      const customer = customers.find((c: any) => c.id === q.customerId);
+      const assignedUser = q.assignedTo ? usersData.find((u: any) => u.id === q.assignedTo) : null;
+      const contract = contracts.find((c: any) => c.quotationId === q.id);
+      const wo = workOrders.find((w: any) => {
+        const wContract = contracts.find((c: any) => c.id === w.contractId);
+        return wContract?.quotationId === q.id;
+      });
+      const contractPayments = contract ? (payments as any[]).filter((p: any) => p.contractId === contract.id) : [];
+      const pendingPayment = contractPayments.find((p: any) => p.status === "pending");
+      const salesReviewedPayment = contractPayments.find((p: any) => p.status === "sales_reviewed");
+
+      let paymentStage: "pending" | "sales_reviewed" | "confirmed" | "in_production" | "none" = "none";
+      if (wo) paymentStage = "in_production";
+      else if (salesReviewedPayment) paymentStage = "sales_reviewed";
+      else if (pendingPayment) paymentStage = "pending";
+      else if (contractPayments.some((p: any) => p.status === "confirmed")) paymentStage = "confirmed";
+
+      const lastUpdated = contractPayments.length > 0
+        ? Math.max(...contractPayments.map((p: any) => new Date(p.createdAt).getTime()))
+        : new Date(q.updatedAt || q.createdAt).getTime();
+
+      return { q, customer, assignedUser, contract, wo, contractPayments, paymentStage, lastUpdated };
+    });
+  }, [quotations, customers, usersData, contracts, workOrders, payments]);
 
   const assignMutation = useMutation({
     mutationFn: async ({ id, assignedTo }: { id: number; assignedTo: number }) => {
@@ -406,6 +437,131 @@ export default function OrderCenterPage() {
           );
         })}
       </div>
+
+      {isManager && trackingOrders.length > 0 && (
+        <Collapsible open={trackingOpen} onOpenChange={setTrackingOpen}>
+          <Card>
+            <CollapsibleTrigger asChild>
+              <button
+                className="flex items-center justify-between gap-2 w-full px-4 py-3 text-start"
+                data-testid="button-toggle-tracking"
+              >
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-primary" />
+                  <span className="text-sm font-semibold">
+                    {t("تتبع حركة الطلبات", "Order Flow Tracking")}
+                  </span>
+                  <Badge variant="secondary" className="text-[10px]">
+                    {trackingOrders.length}
+                  </Badge>
+                  {trackingOrders.filter((o) => {
+                    const days = (Date.now() - o.lastUpdated) / 86400000;
+                    return days > 3;
+                  }).length > 0 && (
+                    <Badge variant="destructive" className="text-[10px]">
+                      <AlertCircle className="w-2.5 h-2.5 me-0.5" />
+                      {trackingOrders.filter((o) => (Date.now() - o.lastUpdated) / 86400000 > 3).length} {t("متأخرة", "delayed")}
+                    </Badge>
+                  )}
+                </div>
+                <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${trackingOpen ? "rotate-180" : ""}`} />
+              </button>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <CardContent className="px-4 pb-4 pt-0">
+                <div className="flex gap-2 mb-3 flex-wrap">
+                  {(["all", "pending", "sales_reviewed", "confirmed", "in_production"] as const).map((stage) => {
+                    const stageLabels: Record<string, { ar: string; en: string }> = {
+                      all: { ar: "الكل", en: "All" },
+                      pending: { ar: "بانتظار مراجعة المندوب", en: "Pending Sales Review" },
+                      sales_reviewed: { ar: "بانتظار المحاسب", en: "Awaiting Accountant" },
+                      confirmed: { ar: "مدفوع", en: "Paid" },
+                      in_production: { ar: "قيد الإنتاج", en: "In Production" },
+                    };
+                    const count = stage === "all" ? trackingOrders.length : trackingOrders.filter((o) => o.paymentStage === stage).length;
+                    return (
+                      <button
+                        key={stage}
+                        onClick={() => setTrackingStageFilter(stage)}
+                        className={`px-2.5 py-1 rounded-md text-xs font-medium border transition-colors ${
+                          trackingStageFilter === stage
+                            ? "bg-primary text-primary-foreground border-primary"
+                            : "bg-muted text-muted-foreground border-border hover:bg-muted/80"
+                        }`}
+                        data-testid={`filter-tracking-${stage}`}
+                      >
+                        {t(stageLabels[stage].ar, stageLabels[stage].en)} ({count})
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs min-w-[600px]" data-testid="table-order-tracking">
+                    <thead>
+                      <tr className="border-b bg-muted/30">
+                        <th className="text-start px-3 py-2 font-semibold text-muted-foreground whitespace-nowrap">{t("رقم الطلب", "Order #")}</th>
+                        <th className="text-start px-3 py-2 font-semibold text-muted-foreground whitespace-nowrap">{t("العميل", "Customer")}</th>
+                        <th className="text-start px-3 py-2 font-semibold text-muted-foreground whitespace-nowrap">{t("المندوب", "Agent")}</th>
+                        <th className="text-start px-3 py-2 font-semibold text-muted-foreground whitespace-nowrap">{t("مرحلة الدفع", "Payment Stage")}</th>
+                        <th className="text-start px-3 py-2 font-semibold text-muted-foreground whitespace-nowrap">{t("آخر تحديث", "Last Update")}</th>
+                        <th className="text-start px-3 py-2 font-semibold text-muted-foreground whitespace-nowrap">{t("الأيام", "Days")}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {trackingOrders
+                        .filter((o) => trackingStageFilter === "all" || o.paymentStage === trackingStageFilter)
+                        .sort((a, b) => b.lastUpdated - a.lastUpdated)
+                        .map((o) => {
+                          const daysSinceUpdate = Math.floor((Date.now() - o.lastUpdated) / 86400000);
+                          const isDelayed = daysSinceUpdate > 3;
+                          const paymentStageCfg: Record<string, { ar: string; en: string; color: string }> = {
+                            pending: { ar: "بانتظار مراجعة المندوب", en: "Pending Sales Review", color: "text-amber-600 bg-amber-50 dark:bg-amber-950/30" },
+                            sales_reviewed: { ar: "بانتظار اعتماد المحاسب", en: "Awaiting Accountant", color: "text-blue-600 bg-blue-50 dark:bg-blue-950/30" },
+                            confirmed: { ar: "مدفوع — لا أمر عمل", en: "Paid — No Work Order", color: "text-green-600 bg-green-50 dark:bg-green-950/30" },
+                            in_production: { ar: "قيد الإنتاج", en: "In Production", color: "text-orange-600 bg-orange-50 dark:bg-orange-950/30" },
+                            none: { ar: "بانتظار الدفع", en: "Awaiting Payment", color: "text-muted-foreground bg-muted" },
+                          };
+                          const stageCfg = paymentStageCfg[o.paymentStage] || paymentStageCfg.none;
+                          return (
+                            <tr
+                              key={o.q.id}
+                              className={`border-b last:border-0 ${isDelayed ? "bg-red-50/40 dark:bg-red-950/10" : "hover:bg-muted/20"}`}
+                              data-testid={`row-tracking-${o.q.id}`}
+                            >
+                              <td className="px-3 py-2 font-mono font-bold whitespace-nowrap">
+                                #{o.q.quotationNumber || o.q.id}
+                              </td>
+                              <td className="px-3 py-2 whitespace-nowrap">
+                                {o.customer?.fullName || "—"}
+                              </td>
+                              <td className="px-3 py-2 whitespace-nowrap">
+                                {o.assignedUser ? t(o.assignedUser.fullNameAr, o.assignedUser.fullNameEn) : <span className="text-muted-foreground">—</span>}
+                              </td>
+                              <td className="px-3 py-2 whitespace-nowrap">
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${stageCfg.color}`}>
+                                  {t(stageCfg.ar, stageCfg.en)}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2 whitespace-nowrap text-muted-foreground">
+                                {new Date(o.lastUpdated).toLocaleDateString(lang === "ar" ? "ar-SA" : "en-US", { month: "short", day: "numeric" })}
+                              </td>
+                              <td className="px-3 py-2 whitespace-nowrap">
+                                <span className={`font-bold ${isDelayed ? "text-red-600" : "text-muted-foreground"}`}>
+                                  {daysSinceUpdate} {t("يوم", "d")}
+                                  {isDelayed && " ⚠️"}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </CollapsibleContent>
+          </Card>
+        </Collapsible>
+      )}
 
       {upcomingInspections.length > 0 && (
         <Collapsible open={inspectionsOpen} onOpenChange={setInspectionsOpen}>

@@ -1,5 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLanguage } from "@/components/language-provider";
+import { useAuth } from "@/hooks/use-auth";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Payment, Customer, Contract } from "@shared/schema";
@@ -9,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { useState } from "react";
-import { Search, Loader2, CreditCard, CheckCircle2, XCircle, Clock, AlertTriangle, Image as ImageIcon, FileText } from "lucide-react";
+import { Search, Loader2, CreditCard, CheckCircle2, XCircle, Clock, AlertTriangle, Image as ImageIcon, FileText, UserCheck } from "lucide-react";
 import { Link } from "wouter";
 import { PaymentReceiptModal } from "@/components/payment-receipt";
 
@@ -28,7 +29,8 @@ const methodLabels: Record<string, { ar: string; en: string }> = {
 };
 
 const statusConfig: Record<string, { ar: string; en: string; color: string; icon: any }> = {
-  pending: { ar: "بانتظار التأكيد", en: "Pending", color: "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300", icon: Clock },
+  pending: { ar: "بانتظار مراجعة المندوب", en: "Pending Sales Review", color: "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300", icon: Clock },
+  sales_reviewed: { ar: "راجعها المندوب — بانتظار المحاسب", en: "Sales Reviewed — Awaiting Accountant", color: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300", icon: UserCheck },
   confirmed: { ar: "مؤكدة", en: "Confirmed", color: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300", icon: CheckCircle2 },
   rejected: { ar: "مرفوضة", en: "Rejected", color: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300", icon: XCircle },
 };
@@ -36,8 +38,10 @@ const statusConfig: Record<string, { ar: string; en: string; color: string; icon
 export default function PaymentsPage() {
   const { t } = useLanguage();
   const { toast } = useToast();
+  const { user } = useAuth();
   const [search, setSearch] = useState("");
-  const [activeTab, setActiveTab] = useState<"pending" | "all">("pending");
+  const isAccountantRole = user?.role === "accountant";
+  const [activeTab, setActiveTab] = useState<"pending" | "sales_reviewed" | "all">(isAccountantRole ? "sales_reviewed" : "pending");
   const [rejectingId, setRejectingId] = useState<number | null>(null);
   const [rejectionReason, setRejectionReason] = useState("");
   const [previewImage, setPreviewImage] = useState<string | null>(null);
@@ -94,13 +98,35 @@ export default function PaymentsPage() {
     },
   });
 
+  const salesReviewMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("PATCH", `/api/payments/${id}/sales-review`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+      toast({ title: t("تم تأكيد استلام السداد بنجاح", "Receipt confirmed successfully") });
+    },
+    onError: (err: any) => {
+      toast({ title: err?.message || t("حدث خطأ", "Error"), variant: "destructive" });
+    },
+  });
+
   const getCustomerName = (customerId: number) => customers.find((c) => c.id === customerId)?.fullName || "";
   const getContractNumber = (contractId: number) => contracts.find((c) => c.id === contractId)?.contractNumber || "";
 
+  const isSalesRole = user?.role === "sales";
+  const isOwnerOrAssistant = user?.role === "owner" || user?.role === "assistant";
+
   const pendingPayments = payments.filter((p: any) => p.status === "pending");
+  const salesReviewedPayments = payments.filter((p: any) => p.status === "sales_reviewed");
   const allPayments = payments;
 
-  const displayPayments = activeTab === "pending" ? pendingPayments : allPayments;
+  const displayPayments = activeTab === "pending"
+    ? pendingPayments
+    : activeTab === "sales_reviewed"
+    ? salesReviewedPayments
+    : allPayments;
 
   const filtered = displayPayments.filter((p) => {
     const name = getCustomerName(p.customerId);
@@ -124,27 +150,43 @@ export default function PaymentsPage() {
             )}
           </p>
         </div>
-        {pendingPayments.length > 0 && (
+        {(pendingPayments.length + salesReviewedPayments.length) > 0 && (
           <Badge variant="destructive" className="text-sm px-3 py-1" data-testid="badge-pending-count">
             <AlertTriangle className="w-3 h-3 me-1" />
-            {t(`${pendingPayments.length} بانتظار التأكيد`, `${pendingPayments.length} pending`)}
+            {t(`${pendingPayments.length + salesReviewedPayments.length} بانتظار المعالجة`, `${pendingPayments.length + salesReviewedPayments.length} pending`)}
           </Badge>
         )}
       </div>
 
-      <div className="flex gap-2 mb-4">
-        <Button
-          variant={activeTab === "pending" ? "default" : "outline"}
-          size="sm"
-          onClick={() => setActiveTab("pending")}
-          data-testid="tab-pending"
-        >
-          <Clock className="w-3 h-3 me-1" />
-          {t("بانتظار التأكيد", "Pending")}
-          {pendingPayments.length > 0 && (
-            <span className="ms-1 bg-white/20 rounded-full px-1.5 text-xs">{pendingPayments.length}</span>
-          )}
-        </Button>
+      <div className="flex gap-2 mb-4 flex-wrap">
+        {(isOwnerOrAssistant || isSalesRole) && (
+          <Button
+            variant={activeTab === "pending" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setActiveTab("pending")}
+            data-testid="tab-pending"
+          >
+            <Clock className="w-3 h-3 me-1" />
+            {t("بانتظار مراجعة المندوب", "Pending Sales Review")}
+            {pendingPayments.length > 0 && (
+              <span className="ms-1 bg-amber-100 text-amber-700 rounded-full px-1.5 text-xs">{pendingPayments.length}</span>
+            )}
+          </Button>
+        )}
+        {(isOwnerOrAssistant || isAccountantRole) && (
+          <Button
+            variant={activeTab === "sales_reviewed" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setActiveTab("sales_reviewed")}
+            data-testid="tab-sales-reviewed"
+          >
+            <UserCheck className="w-3 h-3 me-1" />
+            {t("مراجعة المندوب — بانتظار المحاسب", "Sales Reviewed")}
+            {salesReviewedPayments.length > 0 && (
+              <span className="ms-1 bg-blue-100 text-blue-700 rounded-full px-1.5 text-xs">{salesReviewedPayments.length}</span>
+            )}
+          </Button>
+        )}
         <Button
           variant={activeTab === "all" ? "default" : "outline"}
           size="sm"
@@ -262,17 +304,21 @@ export default function PaymentsPage() {
                     </div>
                   </div>
 
-                  {payment.status === "pending" && (
+                  {(payment.status === "pending" || payment.status === "sales_reviewed") && (
                     <div className="space-y-3 pt-2 border-t">
                       {payment.attachmentUrl && (
                         <div
-                          className="cursor-pointer rounded-lg overflow-hidden border border-amber-200 dark:border-amber-800 max-h-48 bg-amber-50 dark:bg-amber-950/20 flex items-center justify-center"
+                          className={`cursor-pointer rounded-lg overflow-hidden border max-h-48 flex items-center justify-center ${
+                            payment.status === "pending"
+                              ? "border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20"
+                              : "border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/20"
+                          }`}
                           onClick={() => setPreviewImage(payment.attachmentUrl)}
                           data-testid={`img-receipt-preview-${payment.id}`}
                         >
                           {payment.attachmentUrl.startsWith("data:application/pdf") ? (
                             <div className="text-center p-4">
-                              <FileText className="w-10 h-10 text-amber-500 mx-auto mb-1" />
+                              <FileText className={`w-10 h-10 mx-auto mb-1 ${payment.status === "pending" ? "text-amber-500" : "text-blue-500"}`} />
                               <p className="text-xs text-muted-foreground">{t("ملف PDF", "PDF File")}</p>
                             </div>
                           ) : (
@@ -313,30 +359,62 @@ export default function PaymentsPage() {
                           </div>
                         ) : (
                           <>
-                            <Button
-                              size="sm"
-                              className="bg-green-600 hover:bg-green-700 text-white flex-1"
-                              onClick={() => confirmMutation.mutate(payment.id)}
-                              disabled={confirmMutation.isPending}
-                              data-testid={`button-confirm-${payment.id}`}
-                            >
-                              {confirmMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : (
-                                <>
-                                  <CheckCircle2 className="w-3 h-3 me-1" />
-                                  {t("اعتماد الدفعة", "Approve Payment")}
-                                </>
-                              )}
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="text-red-600 border-red-200 hover:bg-red-50 flex-1"
-                              onClick={() => setRejectingId(payment.id)}
-                              data-testid={`button-reject-${payment.id}`}
-                            >
-                              <XCircle className="w-3 h-3 me-1" />
-                              {t("رفض مع سبب", "Reject with Reason")}
-                            </Button>
+                            {payment.status === "pending" && (isOwnerOrAssistant || isSalesRole) && (
+                              <Button
+                                size="sm"
+                                className="bg-blue-600 hover:bg-blue-700 text-white flex-1"
+                                onClick={() => salesReviewMutation.mutate(payment.id)}
+                                disabled={salesReviewMutation.isPending}
+                                data-testid={`button-sales-review-${payment.id}`}
+                              >
+                                {salesReviewMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : (
+                                  <>
+                                    <UserCheck className="w-3 h-3 me-1" />
+                                    {t("تأكيد استلام السداد", "Confirm Receipt")}
+                                  </>
+                                )}
+                              </Button>
+                            )}
+                            {payment.status === "sales_reviewed" && (isOwnerOrAssistant || isAccountantRole) && (
+                              <Button
+                                size="sm"
+                                className="bg-green-600 hover:bg-green-700 text-white flex-1"
+                                onClick={() => confirmMutation.mutate(payment.id)}
+                                disabled={confirmMutation.isPending}
+                                data-testid={`button-confirm-${payment.id}`}
+                              >
+                                {confirmMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : (
+                                  <>
+                                    <CheckCircle2 className="w-3 h-3 me-1" />
+                                    {t("اعتماد نهائي", "Final Approval")}
+                                  </>
+                                )}
+                              </Button>
+                            )}
+                            {isOwnerOrAssistant && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-red-600 border-red-200 hover:bg-red-50 flex-1"
+                                onClick={() => setRejectingId(payment.id)}
+                                data-testid={`button-reject-${payment.id}`}
+                              >
+                                <XCircle className="w-3 h-3 me-1" />
+                                {t("رفض مع سبب", "Reject with Reason")}
+                              </Button>
+                            )}
+                            {!isOwnerOrAssistant && (isAccountantRole || isSalesRole) && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-red-600 border-red-200 hover:bg-red-50"
+                                onClick={() => setRejectingId(payment.id)}
+                                data-testid={`button-reject-${payment.id}`}
+                              >
+                                <XCircle className="w-3 h-3 me-1" />
+                                {t("رفض", "Reject")}
+                              </Button>
+                            )}
                           </>
                         )}
                       </div>

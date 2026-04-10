@@ -1468,7 +1468,8 @@ export async function registerRoutes(
         await materializePaymentSchedules(quotationId, quotation.customerId, contract.id);
       }
 
-      // Create a pending payment for the accountant to confirm if receipt was provided
+      // Create a sales_reviewed payment for the accountant to confirm if receipt was provided
+      // Sales rep uploading at showroom skips the pending stage and goes directly to sales_reviewed
       if (paymentReceiptData && contract) {
         const q = quotation as any;
         const defaultAmount = q.finalPrice || q.totalPrice || quotation.subtotal || "0";
@@ -1480,18 +1481,20 @@ export async function registerRoutes(
           amount: paymentAmount && parseFloat(paymentAmount) > 0 ? paymentAmount : defaultAmount,
           method: safeMethod,
           paymentStage: "deposit",
-          notes: `دفعة مسجّلة عند الاعتماد في المعرض — بانتظار تأكيد المحاسب`,
+          notes: `دفعة مسجّلة عند الاعتماد في المعرض — بانتظار اعتماد المحاسب`,
           attachmentUrl: paymentReceiptData,
           recordedBy: userId,
-          status: "pending",
-        });
+          status: "sales_reviewed",
+          salesReviewedBy: userId,
+          salesReviewedAt: new Date(),
+        } as any);
         const accountantStaff = (await storage.getUsers()).filter((u: any) => ["owner", "assistant", "accountant"].includes(u.role));
         for (const staff of accountantStaff) {
           await storage.createNotification({
             userId: staff.id,
             type: "action",
-            titleAr: "وصل دفع جديد بانتظار التأكيد",
-            titleEn: "New Payment Receipt Pending Confirmation",
+            titleAr: "وصل دفع من المعرض بانتظار اعتمادك",
+            titleEn: "Showroom Payment Receipt Awaiting Your Approval",
             messageAr: `المندوب رفع وصل دفع للعميل ${(await storage.getCustomer(quotation.customerId))?.fullName || ""} بمبلغ ${payment.amount} ر.س`,
             messageEn: `Sales rep uploaded payment receipt of ${payment.amount} SAR`,
             relatedEntity: "payment",
@@ -1820,53 +1823,64 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/payments", requireRole("owner", "assistant", "accountant"), async (req, res) => {
+  app.post("/api/payments", requireRole("owner", "assistant", "accountant", "sales"), async (req, res) => {
     try {
-      const paymentStatus = req.body.status || "confirmed";
-
-      const data = { ...req.body, recordedBy: req.session.userId, status: paymentStatus };
-      const payment = await storage.createPayment(data);
-
-      const contract = await storage.getContract(payment.contractId);
-      if (contract) {
-        const newPaidAmount = parseFloat(contract.paidAmount) + parseFloat(payment.amount);
-        const newRemaining = parseFloat(contract.totalAmount) - newPaidAmount;
-        await storage.updateContract(contract.id, {
-          paidAmount: String(newPaidAmount),
-          remainingAmount: String(newRemaining),
-          status: newRemaining <= 0 ? "completed" : "active",
-        });
+      const currentUser = await storage.getUser(req.session.userId!);
+      const isSalesRole = currentUser?.role === "sales";
+      let paymentStatus = req.body.status || "confirmed";
+      if (isSalesRole && req.body.attachmentUrl) {
+        paymentStatus = "sales_reviewed";
       }
 
-      const settings = await storage.getCompanySettings();
-      const customer = await storage.getCustomer(payment.customerId);
-      if (settings && customer) {
-        const invoiceData: any = {
-          contractId: payment.contractId,
-          customerId: payment.customerId,
-          paymentStage: payment.paymentStage,
-          type: "simplified_tax_invoice",
-          items: [{ description: `دفعة - ${payment.paymentStage}`, amount: payment.amount }],
-          subtotal: String(parseFloat(payment.amount) / 1.15),
-          vatRate: "15",
-          vatAmount: String(parseFloat(payment.amount) - parseFloat(payment.amount) / 1.15),
-          totalWithVat: payment.amount,
-          sellerName: settings.nameAr,
-          sellerVatNumber: settings.vatNumber,
-          sellerAddress: settings.address,
-          buyerName: customer.fullName,
-          buyerPhone: customer.phone,
-          paymentMethod: payment.method === "bank_transfer" ? "تحويل بنكي" : payment.method === "cash" ? "نقدي" : "بطاقة",
-          status: "paid",
-          issuedAt: new Date(),
-          paidAt: new Date(),
-          createdBy: req.session.userId,
-        };
+      const data: any = { ...req.body, recordedBy: req.session.userId, status: paymentStatus };
+      if (isSalesRole && req.body.attachmentUrl) {
+        data.salesReviewedBy = req.session.userId;
+        data.salesReviewedAt = new Date();
+      }
+      const payment = await storage.createPayment(data);
 
-        invoiceData.qrCodeData = generateQRData(invoiceData);
-        const invoice = await storage.createInvoice(invoiceData);
+      if (payment.status === "confirmed") {
+        const contract = await storage.getContract(payment.contractId);
+        if (contract) {
+          const newPaidAmount = parseFloat(contract.paidAmount) + parseFloat(payment.amount);
+          const newRemaining = parseFloat(contract.totalAmount) - newPaidAmount;
+          await storage.updateContract(contract.id, {
+            paidAmount: String(newPaidAmount),
+            remainingAmount: String(newRemaining),
+            status: newRemaining <= 0 ? "completed" : "active",
+          });
+        }
 
-        await storage.updatePayment(payment.id, { invoiceId: invoice.id } as any).catch(() => {});
+        const settings = await storage.getCompanySettings();
+        const customer = await storage.getCustomer(payment.customerId);
+        if (settings && customer) {
+          const invoiceData: any = {
+            contractId: payment.contractId,
+            customerId: payment.customerId,
+            paymentStage: payment.paymentStage,
+            type: "simplified_tax_invoice",
+            items: [{ description: `دفعة - ${payment.paymentStage}`, amount: payment.amount }],
+            subtotal: String(parseFloat(payment.amount) / 1.15),
+            vatRate: "15",
+            vatAmount: String(parseFloat(payment.amount) - parseFloat(payment.amount) / 1.15),
+            totalWithVat: payment.amount,
+            sellerName: settings.nameAr,
+            sellerVatNumber: settings.vatNumber,
+            sellerAddress: settings.address,
+            buyerName: customer.fullName,
+            buyerPhone: customer.phone,
+            paymentMethod: payment.method === "bank_transfer" ? "تحويل بنكي" : payment.method === "cash" ? "نقدي" : "بطاقة",
+            status: "paid",
+            issuedAt: new Date(),
+            paidAt: new Date(),
+            createdBy: req.session.userId,
+          };
+
+          invoiceData.qrCodeData = generateQRData(invoiceData);
+          const invoice = await storage.createInvoice(invoiceData);
+
+          await storage.updatePayment(payment.id, { invoiceId: invoice.id } as any).catch(() => {});
+        }
       }
 
       res.status(201).json(payment);
@@ -1876,6 +1890,51 @@ export async function registerRoutes(
     }
   });
 
+  app.patch("/api/payments/:id/sales-review", requireRole("owner", "assistant", "sales"), async (req, res) => {
+    try {
+      const paymentId = parseInt(req.params.id);
+      if (isNaN(paymentId)) return res.status(400).json({ message: "معرف غير صالح" });
+      const payment = await storage.getPayment(paymentId);
+      if (!payment) return res.status(404).json({ message: "الدفعة غير موجودة" });
+      if (payment.status === "sales_reviewed") return res.json({ message: "تمت المراجعة مسبقاً", payment });
+      if (payment.status !== "pending") return res.status(400).json({ message: "لا يمكن مراجعة دفعة ليست في حالة انتظار" });
+
+      const reviewerUser = await storage.getUser(req.session.userId!);
+      const isOwnerOrAssistantReviewer = reviewerUser?.role === "owner" || reviewerUser?.role === "assistant";
+      if (!isOwnerOrAssistantReviewer) {
+        const contract = await storage.getContract(payment.contractId);
+        if (contract?.quotationId) {
+          const quotation = await storage.getQuotation(contract.quotationId);
+          if (quotation?.assignedTo !== req.session.userId) {
+            return res.status(403).json({ message: "غير مصرح لك بمراجعة هذه الدفعة — ليست من عقودك", messageEn: "Not authorized to review this payment — not your contract" });
+          }
+        }
+      }
+
+      const updated = await storage.updatePayment(paymentId, {
+        status: "sales_reviewed",
+        salesReviewedBy: req.session.userId,
+        salesReviewedAt: new Date(),
+      } as any);
+
+      const customer = await storage.getCustomer(payment.customerId);
+      const allUsers = await storage.getUsers();
+      const accountantStaff = allUsers.filter((u: any) => ["owner", "assistant", "accountant"].includes(u.role));
+      for (const staff of accountantStaff) {
+        await storage.createNotification({
+          userId: staff.id,
+          type: "action",
+          titleAr: "وصل دفع بانتظار اعتماد المحاسب",
+          titleEn: "Payment Receipt Awaiting Accountant Approval",
+          messageAr: `المندوب راجع وصل دفع بمبلغ ${payment.amount} ريال من العميل ${customer?.fullName} — بانتظار اعتمادك`,
+          messageEn: `Sales rep reviewed payment receipt of ${payment.amount} SAR from ${customer?.fullName} — awaiting your approval`,
+        });
+      }
+
+      res.json({ message: "تمت مراجعة الدفعة بنجاح", messageEn: "Payment sales-reviewed successfully", payment: updated });
+    } catch (error) { console.error("Sales review payment error:", error); res.status(500).json({ message: "حدث خطأ" }); }
+  });
+
   app.patch("/api/payments/:id/confirm", requireRole("owner", "assistant", "accountant"), async (req, res) => {
     try {
       const paymentId = parseInt(req.params.id);
@@ -1883,7 +1942,12 @@ export async function registerRoutes(
       const payment = await storage.getPayment(paymentId);
       if (!payment) return res.status(404).json({ message: "الدفعة غير موجودة" });
       if (payment.status === "confirmed") return res.json({ message: "الدفعة مؤكدة مسبقاً", payment });
-      if (payment.status !== "pending") return res.status(400).json({ message: "لا يمكن تأكيد دفعة ليست في حالة انتظار" });
+
+      const currentUser = await storage.getUser(req.session.userId!);
+      const isOwnerOrAssistant = currentUser?.role === "owner" || currentUser?.role === "assistant";
+      if (!isOwnerOrAssistant && payment.status !== "sales_reviewed") {
+        return res.status(400).json({ message: "يجب أن تمر الدفعة بمراجعة المندوب أولاً قبل الاعتماد النهائي", messageEn: "Payment must be sales-reviewed before final approval" });
+      }
 
       const updated = await storage.updatePayment(paymentId, {
         status: "confirmed",
@@ -1949,6 +2013,10 @@ export async function registerRoutes(
             });
           }
 
+          if (quotation) {
+            await storage.updateQuotation(quotation.id, { orderStage: "in_production" } as any).catch(() => {});
+          }
+
           const productionUsers = await storage.getUsers();
           const productionStaff = productionUsers.filter((u: any) => ["owner", "assistant", "production"].includes(u.role));
           for (const staff of productionStaff) {
@@ -1989,7 +2057,7 @@ export async function registerRoutes(
       const { rejectionReason } = req.body;
       const payment = await storage.getPayment(paymentId);
       if (!payment) return res.status(404).json({ message: "الدفعة غير موجودة" });
-      if (payment.status !== "pending") return res.status(400).json({ message: "لا يمكن رفض دفعة ليست في حالة انتظار" });
+      if (!["pending", "sales_reviewed"].includes(payment.status)) return res.status(400).json({ message: "لا يمكن رفض دفعة مؤكدة أو مرفوضة مسبقاً" });
 
       const updated = await storage.updatePayment(paymentId, {
         status: "rejected",
@@ -3377,16 +3445,21 @@ export async function registerRoutes(
         status: "pending",
       });
 
-      const salesUsers = await storage.getUsers();
-      const relevantStaff = salesUsers.filter((u: any) => ["owner", "assistant", "sales", "accountant"].includes(u.role));
-      for (const staff of relevantStaff) {
+      const allUsers = await storage.getUsers();
+      const allQuotations = await storage.getQuotations();
+      const relatedQuotation = allQuotations.find((q: any) => q.id === contract.quotationId);
+      const assignedSalesId = relatedQuotation?.assignedTo;
+      const notifyUserIds = new Set<number>();
+      allUsers.filter((u: any) => ["owner", "assistant"].includes(u.role)).forEach((u: any) => notifyUserIds.add(u.id));
+      if (assignedSalesId) notifyUserIds.add(assignedSalesId);
+      for (const uid of notifyUserIds) {
         await storage.createNotification({
-          userId: staff.id,
+          userId: uid,
           type: "action",
-          titleAr: "وصل دفع جديد من العميل",
-          titleEn: "New Payment Receipt from Customer",
-          messageAr: `العميل ${customer.fullName} رفع وصل دفع بمبلغ ${amount}`,
-          messageEn: `Customer ${customer.fullName} uploaded payment receipt of ${amount}`,
+          titleAr: "وصل دفع جديد من العميل — بانتظار مراجعتك",
+          titleEn: "New Payment Receipt from Customer — Awaiting Your Review",
+          messageAr: `العميل ${customer.fullName} رفع وصل دفع بمبلغ ${amount} — يرجى مراجعته وتأكيد الاستلام`,
+          messageEn: `Customer ${customer.fullName} uploaded payment receipt of ${amount} — please review and confirm`,
         });
       }
 

@@ -422,6 +422,7 @@ export const paymentMethodEnum = pgEnum("payment_method", [
 
 export const paymentStatusEnum = pgEnum("payment_status", [
   "pending",
+  "sales_reviewed",
   "confirmed",
   "rejected",
 ]);
@@ -440,6 +441,8 @@ export const payments = pgTable("payments", {
   attachmentUrl: text("attachment_url"),
   notes: text("notes"),
   recordedBy: integer("recorded_by").references(() => users.id),
+  salesReviewedBy: integer("sales_reviewed_by").references(() => users.id),
+  salesReviewedAt: timestamp("sales_reviewed_at"),
   confirmedBy: integer("confirmed_by").references(() => users.id),
   confirmedAt: timestamp("confirmed_at"),
   rejectionReason: text("rejection_reason"),

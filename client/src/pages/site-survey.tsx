@@ -302,6 +302,11 @@ export default function SiteSurveyPage() {
   const { data: customers = [] } = useQuery<any[]>({ queryKey: ["/api/customers"] });
   const { data: adekoProducts = [] } = useQuery<any[]>({ queryKey: ["/api/adeko-products"] });
   const { data: adekoGroups = [] } = useQuery<any[]>({ queryKey: ["/api/adeko-products/groups"] });
+  const { data: allContracts = [] } = useQuery<any[]>({ queryKey: ["/api/contracts"] });
+  const { data: allPayments = [] } = useQuery<any[]>({
+    queryKey: ["/api/payments"],
+    enabled: !!(user?.role === "sales" || user?.role === "owner" || user?.role === "assistant"),
+  });
 
   const [spaces, setSpaces] = useState<SpaceData[]>([{ ...newSpace(), name: t("المكان الأول", "Space 1") }]);
   const [selectedProducts, setSelectedProducts] = useState<SelectedProduct[]>([]);
@@ -316,6 +321,7 @@ export default function SiteSurveyPage() {
   const [designFilesLoaded, setDesignFilesLoaded] = useState(false);
   const [pendingFileLabel, setPendingFileLabel] = useState("");
   const [showResults, setShowResults] = useState(false);
+  const [receiptPreviewUrl, setReceiptPreviewUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (existingSurvey && existingSurvey.id && !surveyInitializedRef.current) {
@@ -474,6 +480,20 @@ export default function SiteSurveyPage() {
     },
     onError: () => {
       toast({ title: t("حدث خطأ في الحفظ", "Save failed"), variant: "destructive" });
+    },
+  });
+
+  const salesReviewPaymentMutation = useMutation({
+    mutationFn: async (paymentId: number) => {
+      const res = await apiRequest("PATCH", `/api/payments/${paymentId}/sales-review`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+      toast({ title: t("تم تأكيد استلام السداد", "Receipt confirmed successfully") });
+    },
+    onError: (err: any) => {
+      toast({ title: err?.message || t("حدث خطأ", "Error"), variant: "destructive" });
     },
   });
 
@@ -1149,6 +1169,109 @@ export default function SiteSurveyPage() {
               })}
             </CardContent>
           </Card>
+
+          {(user?.role === "sales" || user?.role === "owner" || user?.role === "assistant") && (() => {
+            const relatedQuotationId = appointment?.quotationId;
+            if (!relatedQuotationId) return null;
+            const contract = (allContracts as any[]).find((c: any) => c.quotationId === relatedQuotationId);
+            if (!contract) return null;
+            const contractPendingPayments = (allPayments as any[]).filter(
+              (p: any) => p.contractId === contract.id && p.status === "pending"
+            );
+            if (contractPendingPayments.length === 0) return null;
+            const customer = (customers as any[]).find((c: any) => c.id === contract.customerId);
+            return (
+              <Card className="border-amber-200 dark:border-amber-800" data-testid="section-pending-receipts">
+                <CardContent className="p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Check className="w-4 h-4 text-amber-600" />
+                    <h3 className="font-semibold text-sm text-amber-800 dark:text-amber-200">
+                      {t("وصولات بانتظار مراجعتك", "Receipts Awaiting Your Review")}
+                    </h3>
+                    <Badge className="text-[10px] bg-amber-100 text-amber-700 border-amber-300 ms-auto">
+                      {contractPendingPayments.length}
+                    </Badge>
+                  </div>
+                  <div className="space-y-3">
+                    {contractPendingPayments.map((payment: any) => (
+                      <div key={payment.id} className="border border-amber-200 dark:border-amber-700 rounded-lg p-3 space-y-2 bg-amber-50 dark:bg-amber-950/20">
+                        <div className="flex items-center justify-between gap-2">
+                          <div>
+                            <p className="text-sm font-semibold">{customer?.fullName || "—"}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {parseFloat(payment.amount).toLocaleString()} {t("ر.س", "SAR")} — {new Date(payment.createdAt).toLocaleDateString("ar-SA")}
+                            </p>
+                          </div>
+                          {payment.attachmentUrl && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="border-amber-300 text-amber-700"
+                              onClick={() => setReceiptPreviewUrl(payment.attachmentUrl)}
+                              data-testid={`button-view-receipt-survey-${payment.id}`}
+                            >
+                              <FileImage className="w-3.5 h-3.5 me-1" />
+                              {t("عرض الوصل", "View Receipt")}
+                            </Button>
+                          )}
+                        </div>
+                        {payment.attachmentUrl && (
+                          <div
+                            className="cursor-pointer rounded overflow-hidden max-h-36 bg-white dark:bg-gray-900 border border-amber-200 flex items-center justify-center"
+                            onClick={() => setReceiptPreviewUrl(payment.attachmentUrl)}
+                          >
+                            {payment.attachmentUrl.startsWith("data:application/pdf") ? (
+                              <div className="p-4 text-center">
+                                <FileText className="w-8 h-8 text-amber-400 mx-auto" />
+                                <p className="text-xs text-muted-foreground mt-1">{t("ملف PDF", "PDF File")}</p>
+                              </div>
+                            ) : (
+                              <img src={payment.attachmentUrl} alt="Receipt" className="w-full max-h-36 object-contain" />
+                            )}
+                          </div>
+                        )}
+                        <Button
+                          className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                          size="sm"
+                          onClick={() => salesReviewPaymentMutation.mutate(payment.id)}
+                          disabled={salesReviewPaymentMutation.isPending}
+                          data-testid={`button-confirm-receipt-survey-${payment.id}`}
+                        >
+                          {salesReviewPaymentMutation.isPending ? (
+                            <Loader2 className="w-3 h-3 animate-spin me-1" />
+                          ) : (
+                            <CheckCircle2 className="w-3 h-3 me-1" />
+                          )}
+                          {t("تأكيد استلام السداد", "Confirm Receipt")}
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })()}
+
+          {receiptPreviewUrl && (
+            <div
+              className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4"
+              onClick={() => setReceiptPreviewUrl(null)}
+            >
+              <div className="max-w-2xl max-h-[80vh] overflow-auto bg-white dark:bg-gray-900 rounded-lg p-2" onClick={(e) => e.stopPropagation()}>
+                {receiptPreviewUrl.startsWith("data:application/pdf") ? (
+                  <div className="text-center p-8">
+                    <p className="text-muted-foreground mb-2">{t("ملف PDF", "PDF File")}</p>
+                    <a href={receiptPreviewUrl} download="receipt.pdf" className="text-primary underline">{t("تحميل الملف", "Download File")}</a>
+                  </div>
+                ) : (
+                  <img src={receiptPreviewUrl} alt="Receipt" className="w-full h-auto rounded" />
+                )}
+                <Button className="w-full mt-2" variant="outline" onClick={() => setReceiptPreviewUrl(null)}>
+                  {t("إغلاق", "Close")}
+                </Button>
+              </div>
+            </div>
+          )}
 
           {(savedSurveyId || existingSurvey?.id) && (() => {
             const sid = savedSurveyId || existingSurvey?.id;

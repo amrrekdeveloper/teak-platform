@@ -284,8 +284,35 @@ export default function MyOrdersPage() {
   const { data: contracts = [] } = useQuery<Contract[]>({ queryKey: ["/api/contracts"] });
   const { data: appointments = [] } = useQuery<Appointment[]>({ queryKey: ["/api/appointments"] });
   const { data: siteSurveys = [] } = useQuery<SiteSurvey[]>({ queryKey: ["/api/site-surveys"] });
+  const { data: allPayments = [] } = useQuery<any[]>({ queryKey: ["/api/payments"] });
 
   const isManager = user && ["owner", "assistant", "it"].includes(user.role);
+  const isSalesRole = user?.role === "sales";
+
+  const pendingReceiptsForReview = useMemo(() => {
+    if (!isSalesRole || !user) return [];
+    return allPayments.filter((p: any) => {
+      if (p.status !== "pending") return false;
+      const contract = contracts.find((c: Contract) => c.id === p.contractId);
+      if (!contract?.quotationId) return false;
+      const quotation = quotations.find((q: Quotation) => q.id === contract.quotationId);
+      return quotation?.assignedTo === user.id;
+    });
+  }, [allPayments, contracts, quotations, isSalesRole, user]);
+
+  const salesReviewPaymentMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("PATCH", `/api/payments/${id}/sales-review`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+      toast({ title: t("تمت مراجعة الوصل بنجاح، بانتظار اعتماد المحاسب", "Receipt reviewed, awaiting accountant approval") });
+    },
+    onError: () => {
+      toast({ title: t("حدث خطأ", "Error"), variant: "destructive" });
+    },
+  });
 
   useEffect(() => {
     const expired = appointments.filter(appt => {
@@ -753,6 +780,61 @@ export default function MyOrdersPage() {
             </SelectContent>
           </Select>
         </div>
+      )}
+
+      {isSalesRole && pendingReceiptsForReview.length > 0 && (
+        <Card className="border-amber-200 bg-amber-50/60 dark:border-amber-800 dark:bg-amber-950/20" data-testid="card-pending-receipts-review">
+          <CardContent className="p-3">
+            <div className="flex items-center gap-2 mb-2">
+              <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+              <span className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+                {t(`وصولات بانتظار مراجعتك (${pendingReceiptsForReview.length})`, `Receipts Awaiting Your Review (${pendingReceiptsForReview.length})`)}
+              </span>
+            </div>
+            <div className="space-y-2">
+              {pendingReceiptsForReview.map((payment: any) => {
+                const customer = customers.find((c: Customer) => c.id === payment.customerId);
+                const contract = contracts.find((c: Contract) => c.id === payment.contractId);
+                return (
+                  <div key={payment.id} className="flex items-center justify-between gap-2 bg-white dark:bg-amber-950/40 rounded-lg p-2.5 border border-amber-100 dark:border-amber-800/50" data-testid={`row-pending-receipt-${payment.id}`}>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-medium text-foreground truncate">
+                        {customer?.fullName || t("عميل غير معروف", "Unknown customer")}
+                      </div>
+                      <div className="text-[11px] text-muted-foreground">
+                        {t("مبلغ:", "Amount:")} <span className="font-semibold text-amber-700 dark:text-amber-400">{payment.amount?.toLocaleString()} {t("ريال", "SAR")}</span>
+                        {contract && <span className="mx-1">·</span>}
+                        {contract && <span>{contract.contractNumber}</span>}
+                      </div>
+                    </div>
+                    {payment.paymentReceiptData && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-xs px-2"
+                        onClick={() => window.open(payment.paymentReceiptData, "_blank")}
+                        data-testid={`button-view-receipt-${payment.id}`}
+                      >
+                        <Eye className="w-3.5 h-3.5 me-1" />
+                        {t("عرض", "View")}
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      className="h-7 text-xs bg-amber-600 hover:bg-amber-700 text-white"
+                      onClick={() => salesReviewPaymentMutation.mutate(payment.id)}
+                      disabled={salesReviewPaymentMutation.isPending}
+                      data-testid={`button-confirm-receipt-review-${payment.id}`}
+                    >
+                      {salesReviewPaymentMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5 me-1" />}
+                      {t("تأكيد المراجعة", "Confirm Review")}
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       <div className="overflow-x-auto -mx-1 px-1" style={{ paddingTop: "4px", paddingBottom: "6px" }}>
