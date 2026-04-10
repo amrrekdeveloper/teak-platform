@@ -1291,19 +1291,19 @@ function Cabinet({
   const wallOff = isWallUnit(product) ? 1.5 : 0;
 
   if (wallIndex === 0) {
-    x = -L / 2 + xOffset;
+    x = Math.max(-L / 2 + W / 2, Math.min(L / 2 - W / 2, -L / 2 + xOffset));
     z = -rW / 2 + D / 2 + 0.01;
   } else if (wallIndex === 1) {
     x = L / 2 - D / 2 - 0.01;
-    z = -rW / 2 + xOffset;
+    z = Math.max(-rW / 2 + W / 2, Math.min(rW / 2 - W / 2, -rW / 2 + xOffset));
     rotY = -Math.PI / 2;
   } else if (wallIndex === 2) {
-    x = L / 2 - xOffset;
+    x = Math.max(-L / 2 + W / 2, Math.min(L / 2 - W / 2, L / 2 - xOffset));
     z = rW / 2 - D / 2 - 0.01;
     rotY = Math.PI;
   } else {
     x = -L / 2 + D / 2 + 0.01;
-    z = rW / 2 - xOffset;
+    z = Math.max(-rW / 2 + W / 2, Math.min(rW / 2 - W / 2, rW / 2 - xOffset));
     rotY = Math.PI / 2;
   }
 
@@ -1777,9 +1777,9 @@ function Scene3D({
       return acc;
     }
 
-    /* ── Manual placement: use the clicked position directly ── */
+    /* ── Manual placement: use the clicked position, clamped to wall bounds ── */
     if (p._manualXOffset !== undefined) {
-      const xOff = p._manualXOffset;
+      const xOff = Math.max(pW / 2 + 5, Math.min(p._manualXOffset, wallLen - pW / 2 - 5));
       const pStart = xOff - pW / 2;
       const pEnd   = xOff + pW / 2;
       const hasOverlap = (wallOpenings[wIdx] || []).some(op => pStart < op.end && pEnd > op.start);
@@ -1863,7 +1863,7 @@ function Scene3D({
       <color attach="background" args={[lightMode === "day" ? "#D6E8F5" : "#0f0c29"]} />
 
       {/* Camera: outside room (z > W/2), just below ceiling height — sees the interior clearly */}
-      <PerspectiveCamera makeDefault position={[scaledL * 0.35, scaledH * 0.75, scaledW * 3.5]} fov={55} />
+      <PerspectiveCamera makeDefault position={[scaledL * 0.5, scaledH * 1.0, Math.max(scaledL, scaledW) * 1.3]} fov={55} />
       <OrbitControls enableDamping dampingFactor={0.05} minDistance={1} maxDistance={25} enabled={!isWalking && !isDraggingCabinet} />
       {isWalking && (
         <>
