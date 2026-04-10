@@ -1225,6 +1225,29 @@ function isOvenUnit(product: any): boolean {
   return code.startsWith("ANKF") || code.includes("ANKF");
 }
 
+/** Detects if a product is a built-in dishwasher (BMK codes) */
+function isDishwasherUnit(product: any): boolean {
+  const code = (product.code || "").toUpperCase();
+  const name = (product.nameAr || product.name || "").toLowerCase();
+  return code.startsWith("BMK") || code.includes("BMK") || name.includes("غسالة أطباق") || name.includes("dishwasher");
+}
+
+/** Detects if a product is a tall fridge/refrigerator column (BZD/KBN codes) */
+function isFridgeUnit(product: any): boolean {
+  const code = (product.code || "").toUpperCase();
+  const name = (product.nameAr || product.name || "").toLowerCase();
+  return code.startsWith("BZD") || code.startsWith("KBN") || code.includes("BZD") || code.includes("KBN")
+    || name.includes("ثلاجة") || name.includes("fridge") || name.includes("refrigerator");
+}
+
+/** Detects if a product is a tall oven tower (YBF/BF codes) */
+function isTallOvenUnit(product: any): boolean {
+  const code = (product.code || "").toUpperCase();
+  const name = (product.nameAr || product.name || "").toLowerCase();
+  return code.startsWith("YBF") || (code.startsWith("BF") && !code.startsWith("BFU"))
+    || code.includes("YBF") || name.includes("فرن عمودي") || name.includes("tall oven");
+}
+
 /** Detects if a product is an open shelf unit (ARAF codes) */
 function isOpenShelfUnit(product: any): boolean {
   const code = (product.code || "").toUpperCase();
@@ -1257,20 +1280,21 @@ function ProductFrontFace({ thumbnail, W, H }: { thumbnail: string | null | unde
 }
 
 /** Professional cabinet door front with stile/rail frame + recessed center panel */
-function CabinetFront({ W, H, D, frameColor, panelColor, drawerCount, isGlass, isOven, isOpenShelf }: {
-  W: number; H: number; D: number; frameColor: string; panelColor: string; drawerCount?: number; isGlass?: boolean; isOven?: boolean; isOpenShelf?: boolean;
+function CabinetFront({ W, H, D, frameColor, panelColor, drawerCount, isGlass, isOven, isOpenShelf, isDishwasher, isFridge, isTallOven }: {
+  W: number; H: number; D: number; frameColor: string; panelColor: string; drawerCount?: number; isGlass?: boolean; isOven?: boolean; isOpenShelf?: boolean; isDishwasher?: boolean; isFridge?: boolean; isTallOven?: boolean;
 }) {
-  const st = Math.min(0.042, W * 0.08);   // stile width (vertical frame members)
-  const rl = Math.min(0.048, H * 0.07);   // rail height (horizontal frame members)
-  const FD = 0.018;  // frame depth (protrudes from carcass front)
+  const st = Math.min(0.032, W * 0.06);   // stile width (vertical frame members — thinner for elegance)
+  const rl = Math.min(0.036, H * 0.05);   // rail height (horizontal frame members)
+  const FD = 0.016;  // frame depth (protrudes from carcass front)
   const PD = 0.008;  // panel depth (recessed slightly behind frame)
   const z = D / 2;
 
   const panelW = W - st * 2;
   const panelH = H - rl * 2;
 
-  const frameMat = <meshStandardMaterial color={frameColor} roughness={0.55} metalness={0.06} />;
-  const panelMat = <meshStandardMaterial color={panelColor} roughness={0.70} metalness={0.02} />;
+  const frameMat = <meshPhysicalMaterial color={frameColor} roughness={0.45} metalness={0.05} clearcoat={0.3} clearcoatRoughness={0.4} />;
+  const panelMat = <meshPhysicalMaterial color={panelColor} roughness={0.55} metalness={0.03} clearcoat={0.2} clearcoatRoughness={0.5} />;
+  const handleMat = <meshPhysicalMaterial color="#B2B2AE" roughness={0.12} metalness={0.92} clearcoat={0.8} clearcoatRoughness={0.1} />;
 
   /* ── Oven column unit: dark stainless panel + rectangular oven window ── */
   if (isOven) {
@@ -1306,6 +1330,122 @@ function CabinetFront({ W, H, D, frameColor, panelColor, drawerCount, isGlass, i
         <mesh position={[0, ovenWinY + ovenWinH / 2 + 0.02, FD]}>
           <boxGeometry args={[ovenWinW * 0.9, 0.03, PD * 0.5]} />
           <meshStandardMaterial color="#444444" roughness={0.3} metalness={0.9} />
+        </mesh>
+        {/* Oven horizontal bar handle */}
+        <mesh position={[0, ovenWinY - ovenWinH * 0.5 - 0.025, FD + 0.012]}>
+          <boxGeometry args={[ovenWinW * 0.7, 0.016, 0.016]} />{handleMat}
+        </mesh>
+      </group>
+    );
+  }
+
+  /* ── Dishwasher: stainless steel body with control strip & handle at top ── */
+  if (isDishwasher) {
+    return (
+      <group position={[0, 0, z]}>
+        {/* Stainless steel door panel */}
+        <mesh position={[0, H * 0.1, FD / 2]}>
+          <boxGeometry args={[W - st * 2, H * 0.7, PD]} />
+          <meshPhysicalMaterial color="#C8C8C4" roughness={0.18} metalness={0.82} clearcoat={0.6} clearcoatRoughness={0.1} />
+        </mesh>
+        {/* Upper control panel (dark strip) */}
+        <mesh position={[0, H * 0.47, FD]}>
+          <boxGeometry args={[W - st * 2, H * 0.08, PD * 0.5]} />
+          <meshStandardMaterial color="#1A1A1A" roughness={0.25} metalness={0.85} />
+        </mesh>
+        {/* Outer frame */}
+        <mesh position={[0, H / 2 - rl / 2, FD / 2]}><boxGeometry args={[W, rl, FD]} />{frameMat}</mesh>
+        <mesh position={[0, -H / 2 + rl / 2, FD / 2]}><boxGeometry args={[W, rl, FD]} />{frameMat}</mesh>
+        <mesh position={[-W / 2 + st / 2, 0, FD / 2]}><boxGeometry args={[st, H, FD]} />{frameMat}</mesh>
+        <mesh position={[W / 2 - st / 2, 0, FD / 2]}><boxGeometry args={[st, H, FD]} />{frameMat}</mesh>
+        {/* Horizontal bar handle at top */}
+        <mesh position={[0, H * 0.42, FD + 0.014]}>
+          <boxGeometry args={[W * 0.7, 0.018, 0.018]} />{handleMat}
+        </mesh>
+      </group>
+    );
+  }
+
+  /* ── Fridge/Refrigerator: tall stainless body with vertical & horizontal handles ── */
+  if (isFridge) {
+    const freezerH = H * 0.32;
+    const fridgeH = H * 0.65;
+    return (
+      <group position={[0, 0, z]}>
+        {/* Outer frame */}
+        <mesh position={[0, H / 2 - rl / 2, FD / 2]}><boxGeometry args={[W, rl, FD]} />{frameMat}</mesh>
+        <mesh position={[0, -H / 2 + rl / 2, FD / 2]}><boxGeometry args={[W, rl, FD]} />{frameMat}</mesh>
+        <mesh position={[-W / 2 + st / 2, 0, FD / 2]}><boxGeometry args={[st, H, FD]} />{frameMat}</mesh>
+        <mesh position={[W / 2 - st / 2, 0, FD / 2]}><boxGeometry args={[st, H, FD]} />{frameMat}</mesh>
+        {/* Mid-rail separating freezer from fridge */}
+        <mesh position={[0, H / 2 - rl - fridgeH - rl / 2, FD / 2]}>
+          <boxGeometry args={[W - st * 2, rl, FD]} />{frameMat}
+        </mesh>
+        {/* Fridge door panel (upper, larger) */}
+        <mesh position={[0, H / 2 - rl - fridgeH / 2, PD / 2]}>
+          <boxGeometry args={[W - st * 2, fridgeH - rl, PD]} />
+          <meshPhysicalMaterial color="#D0D0CE" roughness={0.20} metalness={0.75} clearcoat={0.5} clearcoatRoughness={0.15} />
+        </mesh>
+        {/* Freezer panel (lower) */}
+        <mesh position={[0, -H / 2 + rl + freezerH / 2, PD / 2]}>
+          <boxGeometry args={[W - st * 2, freezerH - rl, PD]} />
+          <meshPhysicalMaterial color="#C4C4C0" roughness={0.22} metalness={0.72} clearcoat={0.4} clearcoatRoughness={0.2} />
+        </mesh>
+        {/* Fridge door vertical handle */}
+        <mesh position={[W * 0.3, H / 2 - rl - fridgeH * 0.4, FD + 0.016]}>
+          <boxGeometry args={[0.018, fridgeH * 0.45, 0.018]} />{handleMat}
+        </mesh>
+        {/* Freezer horizontal handle */}
+        <mesh position={[0, -H / 2 + rl + freezerH * 0.65, FD + 0.014]}>
+          <boxGeometry args={[W * 0.55, 0.016, 0.016]} />{handleMat}
+        </mesh>
+      </group>
+    );
+  }
+
+  /* ── Tall oven tower: upper oven + lower storage drawers ── */
+  if (isTallOven) {
+    const ovenZoneH = H * 0.40;
+    const storageH = H - ovenZoneH - rl * 3;
+    const winH = ovenZoneH * 0.45;
+    const winY = H / 2 - rl - ovenZoneH * 0.55;
+    return (
+      <group position={[0, 0, z]}>
+        {/* Outer frame */}
+        <mesh position={[0, H / 2 - rl / 2, FD / 2]}><boxGeometry args={[W, rl, FD]} />{frameMat}</mesh>
+        <mesh position={[0, -H / 2 + rl / 2, FD / 2]}><boxGeometry args={[W, rl, FD]} />{frameMat}</mesh>
+        <mesh position={[-W / 2 + st / 2, 0, FD / 2]}><boxGeometry args={[st, H, FD]} />{frameMat}</mesh>
+        <mesh position={[W / 2 - st / 2, 0, FD / 2]}><boxGeometry args={[st, H, FD]} />{frameMat}</mesh>
+        {/* Mid-rail */}
+        <mesh position={[0, H / 2 - rl - ovenZoneH - rl / 2, FD / 2]}>
+          <boxGeometry args={[W - st * 2, rl, FD]} />{frameMat}
+        </mesh>
+        {/* Oven zone dark panel */}
+        <mesh position={[0, H / 2 - rl - ovenZoneH / 2, PD / 2]}>
+          <boxGeometry args={[panelW, ovenZoneH - rl, PD]} />
+          <meshStandardMaterial color="#1E1E1E" roughness={0.20} metalness={0.80} />
+        </mesh>
+        {/* Oven window */}
+        <mesh position={[0, winY, FD + 0.002]}>
+          <boxGeometry args={[W * 0.80, winH, PD]} />
+          <meshStandardMaterial color="#080808" roughness={0.06} metalness={0.5} />
+        </mesh>
+        {/* Oven control strip */}
+        <mesh position={[0, winY + winH / 2 + 0.016, FD + 0.002]}>
+          <boxGeometry args={[W * 0.78, 0.028, PD * 0.4]} />
+          <meshStandardMaterial color="#333333" roughness={0.3} metalness={0.88} />
+        </mesh>
+        {/* Lower storage panel */}
+        <mesh position={[0, -H / 2 + rl + storageH / 2, PD / 2]}>
+          <boxGeometry args={[panelW, storageH, PD]} />{panelMat}
+        </mesh>
+        {/* Oven handle */}
+        <mesh position={[0, winY - winH * 0.5 - 0.022, FD + 0.014]}>
+          <boxGeometry args={[W * 0.65, 0.016, 0.016]} />{handleMat}
+        </mesh>
+        {/* Lower storage handle */}
+        <mesh position={[0, -H / 2 + rl + storageH * 0.7, FD + 0.014]}>
+          <boxGeometry args={[W * 0.55, 0.016, 0.016]} />{handleMat}
         </mesh>
       </group>
     );
@@ -1371,10 +1511,9 @@ function CabinetFront({ W, H, D, frameColor, panelColor, drawerCount, isGlass, i
               <mesh position={[0, yCenter, PD / 2]}>
                 <boxGeometry args={[panelW - 0.002, dH - 0.004, PD]} />{panelMat}
               </mesh>
-              {/* Drawer handle - horizontal bar */}
-              <mesh position={[0, yCenter, FD + 0.01]} rotation={[Math.PI / 2, 0, 0]}>
-                <cylinderGeometry args={[0.006, 0.006, W * 0.45, 8]} />
-                <meshStandardMaterial color="#2A2A2A" roughness={0.25} metalness={0.85} />
+              {/* Drawer handle - horizontal bar nickel */}
+              <mesh position={[0, yCenter, FD + 0.012]}>
+                <boxGeometry args={[Math.min(W * 0.52, 0.20), 0.014, 0.014]} />{handleMat}
               </mesh>
             </group>
           );
@@ -1429,6 +1568,16 @@ function CabinetFront({ W, H, D, frameColor, panelColor, drawerCount, isGlass, i
           </mesh>
         );
       })}
+      {/* Door handle(s) — horizontal bar nickel, lower-center of each door */}
+      {!isGlass && Array.from({ length: numDoors }).map((_, di) => {
+        const px = numDoors === 2 ? (di === 0 ? -doorW / 2 - st / 4 : doorW / 2 + st / 4) : 0;
+        const handleY = -panelH * 0.30;
+        return (
+          <mesh key={`handle-${di}`} position={[px, handleY, FD + 0.016]}>
+            <boxGeometry args={[Math.min(doorW * 0.60, 0.20), 0.015, 0.015]} />{handleMat}
+          </mesh>
+        );
+      })}
     </group>
   );
 }
@@ -1456,26 +1605,29 @@ function Cabinet({
   /* Wall units (HK/TK3/W) mount at 150 cm from floor — bottom at 1.5m */
   const wallOff = isWallUnit(product) ? 1.5 : 0;
 
+  /* Wall thickness = 0.12m (6cm half) — position cabinets flush against inner wall face */
+  const WALL_HALF = 0.06;
   if (wallIndex === 0) {
     x = Math.max(-L / 2 + W / 2, Math.min(L / 2 - W / 2, -L / 2 + xOffset));
-    z = -rW / 2 + D / 2 + 0.01;
+    z = -rW / 2 + WALL_HALF + D / 2;
   } else if (wallIndex === 1) {
-    x = L / 2 - D / 2 - 0.01;
+    x = L / 2 - WALL_HALF - D / 2;
     z = Math.max(-rW / 2 + W / 2, Math.min(rW / 2 - W / 2, -rW / 2 + xOffset));
     rotY = -Math.PI / 2;
   } else if (wallIndex === 2) {
     x = Math.max(-L / 2 + W / 2, Math.min(L / 2 - W / 2, L / 2 - xOffset));
-    z = rW / 2 - D / 2 - 0.01;
+    z = rW / 2 - WALL_HALF - D / 2;
     rotY = Math.PI;
   } else {
-    x = -L / 2 + D / 2 + 0.01;
+    x = -L / 2 + WALL_HALF + D / 2;
     z = Math.max(-rW / 2 + W / 2, Math.min(rW / 2 - W / 2, rW / 2 - xOffset));
     rotY = Math.PI / 2;
   }
 
   const y = H / 2 + wallOff;
   const isSelected = selected;
-  const frameColor = isSelected ? "#C8A030" : "#2C1A0E";
+  /* Warm wood frame color — matches professional kitchen cabinet style */
+  const frameColor = isSelected ? "#C8A030" : "#8B6914";
 
   const graniteTexture = useMemo(() => isBaseUnit(product) ? makeGraniteTexture() : null, []);
   /* Wood texture for cabinet carcass body */
@@ -1543,9 +1695,12 @@ function Cabinet({
           <CabinetFront
             W={W} H={H} D={D}
             frameColor={frameColor}
-            panelColor={isSelected ? "#D4B870" : "#EDE8E0"}
+            panelColor={isSelected ? "#D4B870" : "#D8C9A0"}
             isOven={isOvenUnit(product)}
             isOpenShelf={isOpenShelfUnit(product)}
+            isDishwasher={isDishwasherUnit(product)}
+            isFridge={isFridgeUnit(product)}
+            isTallOven={isTallOvenUnit(product)}
           />
           {/* Front face on secondary arm */}
           <group position={[
@@ -1556,9 +1711,12 @@ function Cabinet({
             <CabinetFront
               W={D} H={H} D={W}
               frameColor={frameColor}
-              panelColor={isSelected ? "#D4B870" : "#EDE8E0"}
+              panelColor={isSelected ? "#D4B870" : "#D8C9A0"}
               isOven={isOvenUnit(product)}
               isOpenShelf={isOpenShelfUnit(product)}
+              isDishwasher={isDishwasherUnit(product)}
+              isFridge={isFridgeUnit(product)}
+              isTallOven={isTallOvenUnit(product)}
             />
           </group>
           {/* Selection overlay */}
@@ -1594,12 +1752,15 @@ function Cabinet({
             W={W}
             H={H}
             D={D}
-            frameColor={isSelected ? "#C8A030" : "#2C1A0E"}
-            panelColor={isSelected ? "#D4B870" : "#EDE8E0"}
+            frameColor={frameColor}
+            panelColor={isSelected ? "#D4B870" : "#D8C9A0"}
             drawerCount={isDrawerUnit(product) ? 3 : undefined}
             isGlass={isGlassCabinet(product)}
             isOven={isOvenUnit(product)}
             isOpenShelf={isOpenShelfUnit(product)}
+            isDishwasher={isDishwasherUnit(product)}
+            isFridge={isFridgeUnit(product)}
+            isTallOven={isTallOvenUnit(product)}
           />
         </>
       )}
@@ -1971,6 +2132,32 @@ function Scene3D({
     return acc;
   }, []);
 
+  /* ── Cabinet-to-cabinet overlap detection (post-pass) ── */
+  const cabinetConflictSet = (() => {
+    const conflicts = new Set<number>();
+    const byWall: Record<number, { start: number; end: number; idx: number; isUpper: boolean }[]> = {};
+    for (const p of productsWithPos) {
+      const wIdx: number = p._wallIndex ?? 0;
+      const pW = parseFloat(p.designW || p.dimensions?.w || "60");
+      const xOff: number = p._xOffset ?? 30;
+      if (!byWall[wIdx]) byWall[wIdx] = [];
+      byWall[wIdx].push({ start: xOff - pW / 2, end: xOff + pW / 2, idx: p._sourceIndex, isUpper: isWallUnit(p) });
+    }
+    for (const items of Object.values(byWall)) {
+      for (let i = 0; i < items.length; i++) {
+        for (let j = i + 1; j < items.length; j++) {
+          const a = items[i], b = items[j];
+          if (a.isUpper !== b.isUpper) continue;
+          if (a.start < b.end - 2 && a.end > b.start + 2) {
+            conflicts.add(a.idx);
+            conflicts.add(b.idx);
+          }
+        }
+      }
+    }
+    return conflicts;
+  })();
+
   /* Determine which walls have base cabinets → render backsplash only there */
   const wallsWithBase = Array.from(
     new Set(
@@ -2086,7 +2273,7 @@ function Scene3D({
           roomH={H}
           selected={selectedIdx === p._sourceIndex}
           onSelect={onSelect}
-          hasConflict={!!p._conflict}
+          hasConflict={!!p._conflict || cabinetConflictSet.has(p._sourceIndex)}
           onDragStart={onDragMove && onDragCommit ? (spaceLocalIdx: number) => {
             /* Find the product's wall and dimensions to set up drag state */
             const dp = productsWithPos.find((pp: any) => pp._sourceIndex === spaceLocalIdx);
@@ -3519,6 +3706,20 @@ export default function Scene3DPage() {
     setSelectedProduct(-1);
   }, [localProducts, selectedProducts]);
 
+  /* ── Flip corner cabinet junction (start ↔ end) ── */
+  const handleLocalCornerFlip = useCallback((globalIndex: number) => {
+    const base = localProducts !== null ? localProducts : [...selectedProducts];
+    const p = base[globalIndex];
+    if (!p) return;
+    setLocalHistory(h => [...h, base]);
+    const current = (p._cornerJunction as "start" | "end") ?? "end";
+    const updated = [...base];
+    updated[globalIndex] = { ...p, _cornerJunction: current === "end" ? "start" : "end" };
+    setLocalProducts(updated);
+    setDesignSaved(false);
+    toast({ title: t("تم عكس اتجاه الزاوية", "Corner orientation flipped") });
+  }, [localProducts, selectedProducts, t, toast]);
+
   /* ── Keyboard shortcut: Delete / Backspace removes selected element ── */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -4070,6 +4271,24 @@ export default function Scene3DPage() {
                                 );
                               })}
                               </div>
+                              {/* Corner flip button — only for corner cabinets */}
+                              {(() => {
+                                const pc = (p.code || "").toUpperCase();
+                                const pg = ((p.group || p.category || "")).toLowerCase();
+                                const isCornerProd = !!p._isCorner || pc.includes("90 90") || pc.includes("90_90")
+                                  || pc.startsWith("AK2") || pc.includes("ZAW") || pc.includes("COR")
+                                  || pg.includes("زاوية") || pg.includes("corner");
+                                return isCornerProd && (
+                                  <button
+                                    onClick={() => handleLocalCornerFlip(i)}
+                                    className="mt-1 text-[9px] px-2 py-0.5 rounded border border-orange-400 text-orange-600 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-950/30 font-medium w-fit flex items-center gap-1"
+                                    data-testid={`btn-corner-flip-${i}`}
+                                    title={t("عكس اتجاه الزاوية", "Flip corner orientation")}
+                                  >
+                                    ↔ {t("عكس الزاوية", "Flip corner")}
+                                  </button>
+                                );
+                              })()}
                             </div>
                           )}
                         </div>
