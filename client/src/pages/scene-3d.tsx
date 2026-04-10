@@ -167,18 +167,16 @@ function getDefaultDepth(product: any): number {
 function DayLighting() {
   return (
     <>
-      {/* Bright studio daylight: warm white ambient */}
-      <ambientLight intensity={0.85} color="#FFF8F0" />
-      {/* Primary sun — upper right, warm white */}
-      <directionalLight
-        position={[8, 12, 6]}
-        intensity={1.4}
-        color="#FFFBF2"
-      />
+      {/* Reduced ambient: let PBR environment map carry more of the lighting */}
+      <ambientLight intensity={0.55} color="#FFF8F2" />
+      {/* Primary sun — warm golden, sharp key light */}
+      <directionalLight position={[10, 15, 8]} intensity={1.6} color="#FFF5E0" />
       {/* Sky fill — cool blue bounce from opposite side */}
-      <directionalLight position={[-6, 8, -5]} intensity={0.45} color="#CADDFF" />
-      {/* Under-floor soft fill — eliminates harsh under-cabinet shadows */}
-      <directionalLight position={[0, -4, 3]} intensity={0.2} color="#FFF5E8" />
+      <directionalLight position={[-8, 10, -6]} intensity={0.5} color="#C5D8FF" />
+      {/* Ground bounce — warm fill from below (GI approximation) */}
+      <directionalLight position={[0, -6, 2]} intensity={0.25} color="#FFE8C8" />
+      {/* Side accent — slight warm from right */}
+      <directionalLight position={[12, 4, 0]} intensity={0.3} color="#FFE0B0" />
     </>
   );
 }
@@ -482,23 +480,26 @@ function makeParquetTexture(L: number, W: number): THREE.DataTexture {
 function makeTileTexture(L: number, W: number): THREE.DataTexture {
   const size = 512;
   const data = new Uint8Array(size * size * 4);
-  const grout = 14;
+  const grout = 12;
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
       const idx = (y * size + x) * 4;
-      const gx = x % size < grout || x % size > size - grout;
-      const gy = y % size < grout || y % size > size - grout;
-      const isGrout = gx || gy;
-      const noise = (Math.sin(x * 0.3 + y * 0.7) * 3 + Math.cos(x * 0.9 - y * 0.4) * 2);
+      const isGrout = x < grout || y < grout || x > size - grout || y > size - grout;
       if (isGrout) {
-        data[idx] = 180; data[idx + 1] = 180; data[idx + 2] = 178;
+        /* Warm greige grout */
+        data[idx] = 172; data[idx + 1] = 168; data[idx + 2] = 163; data[idx + 3] = 255;
       } else {
-        const base = 228 + noise;
-        data[idx] = Math.min(255, Math.max(0, base));
-        data[idx + 1] = Math.min(255, Math.max(0, base - 2));
-        data[idx + 2] = Math.min(255, Math.max(0, base - 4));
+        /* Tile body: off-white with specular center shine + micro-noise */
+        const nx = (x - grout) / (size - grout * 2);
+        const ny = (y - grout) / (size - grout * 2);
+        const shine = Math.sin(nx * Math.PI) * Math.sin(ny * Math.PI) * 14;
+        const noise = Math.sin(x * 0.43 + y * 0.31) * 2 + Math.cos(x * 0.89 - y * 0.57) * 2;
+        const base = 236 + shine + noise;
+        data[idx]   = Math.min(255, Math.max(205, base));
+        data[idx+1] = Math.min(255, Math.max(202, base - 1));
+        data[idx+2] = Math.min(255, Math.max(198, base - 3));
+        data[idx+3] = 255;
       }
-      data[idx + 3] = 255;
     }
   }
   const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
@@ -509,40 +510,73 @@ function makeTileTexture(L: number, W: number): THREE.DataTexture {
   return tex;
 }
 
-/* Better white marble floor: large tiles with thin grout + veins */
+/* Photorealistic white Calacatta marble: large slabs with dramatic veining */
 function makeMarbleTexture(L: number, W: number): THREE.DataTexture {
   const size = 512;
   const data = new Uint8Array(size * size * 4);
-  const grout = 6; /* thin grout line */
+  const grout = 5;
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
       const idx = (y * size + x) * 4;
       const isGrout = x < grout || y < grout || x > size - grout || y > size - grout;
       if (isGrout) {
-        /* Light grey grout */
-        data[idx] = 195; data[idx + 1] = 193; data[idx + 2] = 190; data[idx + 3] = 255;
+        data[idx] = 185; data[idx+1] = 182; data[idx+2] = 178; data[idx+3] = 255;
       } else {
-        /* White marble tile with grey/gold veins */
         const nx = x / size, ny = y / size;
-        const v1 = Math.sin((nx * 2.8 + ny * 3.4 + Math.sin(nx * 1.8 - ny * 1.4) * 2.2) * Math.PI) * 18;
-        const v2 = Math.sin((nx * 4.5 - ny * 2.9 + Math.cos(nx * 2.1 + ny * 1.8) * 1.5) * Math.PI) * 11;
-        const v3 = Math.sin((nx * 1.2 + ny * 5.1 + Math.sin(ny * 2.4) * 1.1) * Math.PI * 1.3) * 7;
-        const gold = Math.sin((nx * 3.2 + ny * 4.1 + 0.8) * Math.PI * 2) > 0.91 ? 20 : 0;
-        const base = 238 + v1 * 0.55 + v2 * 0.35 + v3 * 0.25;
-        data[idx]     = Math.min(255, Math.max(210, base + gold));
-        data[idx + 1] = Math.min(255, Math.max(205, base + gold * 0.65));
-        data[idx + 2] = Math.min(255, Math.max(198, base - gold * 0.15));
-        data[idx + 3] = 255;
+        /* Primary vein system: sweeping diagonal */
+        const v1 = Math.sin((nx * 3.1 + ny * 2.7 + Math.sin(nx * 1.5 - ny * 1.2) * 2.8) * Math.PI) * 22;
+        /* Secondary fine veins */
+        const v2 = Math.sin((nx * 6.2 - ny * 4.1 + Math.cos(nx * 2.8 + ny * 2.2) * 1.8) * Math.PI) * 10;
+        /* Tertiary micro veins */
+        const v3 = Math.sin((nx * 9.5 + ny * 7.3) * Math.PI) * 4;
+        /* Gold accent veins */
+        const gold = Math.sin((nx * 4.1 + ny * 5.2 + 1.1) * Math.PI * 2.3) > 0.93 ? 24 : 0;
+        /* Creamy base with warm tone */
+        const base = 242 + v1 * 0.5 + v2 * 0.3 + v3 * 0.2;
+        data[idx]   = Math.min(255, Math.max(215, base + gold));
+        data[idx+1] = Math.min(255, Math.max(210, base + gold * 0.6));
+        data[idx+2] = Math.min(255, Math.max(200, base - gold * 0.2));
+        data[idx+3] = 255;
       }
     }
   }
   const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.RepeatWrapping;
-  /* Large tiles: ~80cm each → repeat = room_size / 0.8m */
-  tex.repeat.set(Math.max(1, L / 0.8), Math.max(1, W / 0.8));
+  tex.repeat.set(Math.max(1, L / 0.9), Math.max(1, W / 0.9));
   tex.needsUpdate = true;
   return tex;
+}
+
+/* NEW: subtle wall paint texture for micro-variation */
+function makeWallPaintTexture(): THREE.DataTexture {
+  const size = 256;
+  const data = new Uint8Array(size * size * 4);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const idx = (y * size + x) * 4;
+      const n1 = Math.sin(x * 0.29 + y * 0.23) * 2.5;
+      const n2 = Math.sin(x * 0.71 - y * 0.59) * 1.8;
+      const n3 = Math.cos(x * 0.17 + y * 0.43) * 1.2;
+      const v = 252 + n1 + n2 + n3;
+      data[idx]   = Math.min(255, Math.max(245, v));
+      data[idx+1] = Math.min(255, Math.max(243, v - 1));
+      data[idx+2] = Math.min(255, Math.max(240, v - 3));
+      data[idx+3] = 255;
+    }
+  }
+  const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(8, 6);
+  tex.needsUpdate = true;
+  return tex;
+}
+
+let _wallPaintTex: THREE.DataTexture | null = null;
+function getWallPaintTexture(): THREE.DataTexture {
+  if (!_wallPaintTex) _wallPaintTex = makeWallPaintTexture();
+  return _wallPaintTex;
 }
 
 function FloorMesh({ L, W, floorType }: { L: number; W: number; floorType: FloorType }) {
@@ -552,13 +586,17 @@ function FloorMesh({ L, W, floorType }: { L: number; W: number; floorType: Floor
     return makeParquetTexture(L, W);
   }, [L, W, floorType]);
 
-  const roughness = floorType === "marble" ? 0.18 : floorType === "tile" ? 0.45 : 0.68;
-  const metalness = floorType === "marble" ? 0.12 : 0.0;
+  /* meshPhysicalMaterial: clearcoat gives real floor reflections */
+  const matProps = floorType === "marble"
+    ? { roughness: 0.06, metalness: 0.0, clearcoat: 0.92, clearcoatRoughness: 0.06 }
+    : floorType === "tile"
+    ? { roughness: 0.20, metalness: 0.0, clearcoat: 0.55, clearcoatRoughness: 0.14 }
+    : { roughness: 0.64, metalness: 0.0, clearcoat: 0.08, clearcoatRoughness: 0.32 };
 
   return (
     <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.001, 0]}>
       <planeGeometry args={[L, W]} />
-      <meshStandardMaterial map={texture} roughness={roughness} metalness={metalness} />
+      <meshPhysicalMaterial map={texture} {...matProps} envMapIntensity={2.2} />
     </mesh>
   );
 }
@@ -691,12 +729,19 @@ function WallPanel({
     return new THREE.ShapeGeometry(shape, 2);
   }, [wallLen, wallH, items]);
 
+  const wallTex = useMemo(() => getWallPaintTexture(), []);
+
   return (
     <mesh geometry={geometry}>
-      <meshStandardMaterial
-        color={wallColor} roughness={0.88} metalness={0}
-        transparent={transparent} opacity={transparent ? 0.12 : 1}
+      <meshPhysicalMaterial
+        map={wallTex}
+        color={wallColor}
+        roughness={0.82}
+        metalness={0}
+        transparent={transparent}
+        opacity={transparent ? 0.07 : 1}
         side={THREE.DoubleSide}
+        envMapIntensity={0.25}
       />
     </mesh>
   );
@@ -751,85 +796,206 @@ function WallReveal({ items, wallLen, wallH }: { items: any[]; wallLen: number; 
 
 function WindowElement({ cx, iy, iw, ih, FRAME_W }: { cx: number; iy: number; iw: number; ih: number; FRAME_W: number }) {
   const windowOutdoor = useMemo(() => {
+    const CW = 1024, CH = 768;
     const c = document.createElement("canvas");
-    c.width = 512; c.height = 512;
+    c.width = CW; c.height = CH;
     const ctx = c.getContext("2d")!;
-    const sky = ctx.createLinearGradient(0, 0, 0, 300);
-    sky.addColorStop(0, "#2B6CB0");
-    sky.addColorStop(0.6, "#90CDF4");
-    sky.addColorStop(1, "#EBF8FF");
+
+    /* ── Sky gradient: deep azure → pale azure at horizon ── */
+    const sky = ctx.createLinearGradient(0, 0, 0, CH * 0.72);
+    sky.addColorStop(0,    "#1A4A7A");
+    sky.addColorStop(0.25, "#2471A3");
+    sky.addColorStop(0.55, "#5DADE2");
+    sky.addColorStop(0.78, "#AED6F1");
+    sky.addColorStop(1,    "#D6EAF8");
     ctx.fillStyle = sky;
-    ctx.fillRect(0, 0, 512, 300);
-    const haze = ctx.createLinearGradient(0, 275, 0, 320);
+    ctx.fillRect(0, 0, CW, CH);
+
+    /* ── Sun disk with atmosphere glow ── */
+    const sx = CW * 0.72, sy = CH * 0.24;
+    const glow = ctx.createRadialGradient(sx, sy, 0, sx, sy, 110);
+    glow.addColorStop(0,    "rgba(255,252,210,1.0)");
+    glow.addColorStop(0.18, "rgba(255,240,170,0.85)");
+    glow.addColorStop(0.4,  "rgba(255,220,130,0.45)");
+    glow.addColorStop(0.7,  "rgba(255,200,100,0.18)");
+    glow.addColorStop(1,    "rgba(255,180,80,0)");
+    ctx.fillStyle = glow;
+    ctx.fillRect(sx - 110, sy - 110, 220, 220);
+    ctx.beginPath();
+    ctx.arc(sx, sy, 28, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(255,255,235,1)";
+    ctx.fill();
+
+    /* ── Cirrus clouds ── */
+    ctx.globalAlpha = 0.72;
+    ([
+      [80,  85, 210, 22],
+      [340, 60, 190, 18],
+      [570, 100, 230, 26],
+      [820, 72, 160, 19],
+    ] as [number,number,number,number][]).forEach(([x, y, w, h]) => {
+      for (let i = 0; i < 5; i++) {
+        const bx = x + (i - 2) * (w / 5);
+        const cg = ctx.createRadialGradient(bx, y, 0, bx, y + h, h * 1.5);
+        cg.addColorStop(0, "rgba(255,255,255,0.85)");
+        cg.addColorStop(1, "rgba(255,255,255,0)");
+        ctx.fillStyle = cg;
+        ctx.beginPath();
+        ctx.ellipse(bx, y, w / 4, h, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    });
+    ctx.globalAlpha = 1;
+
+    /* ── Horizon atmospheric haze ── */
+    const haze = ctx.createLinearGradient(0, CH * 0.66, 0, CH * 0.76);
     haze.addColorStop(0, "rgba(255,255,255,0)");
-    haze.addColorStop(0.5, "rgba(240,250,255,0.8)");
+    haze.addColorStop(0.5, "rgba(220,238,255,0.65)");
     haze.addColorStop(1, "rgba(255,255,255,0)");
     ctx.fillStyle = haze;
-    ctx.fillRect(0, 275, 512, 45);
-    const gnd = ctx.createLinearGradient(0, 310, 0, 512);
-    gnd.addColorStop(0, "#C6DDA0");
-    gnd.addColorStop(1, "#6B9E3A");
+    ctx.fillRect(0, CH * 0.66, CW, CH * 0.1);
+
+    /* ── Distant hills silhouette ── */
+    ctx.beginPath();
+    ctx.moveTo(0, CH * 0.74);
+    for (let x = 0; x <= CW; x += 8) {
+      const y = CH * 0.72 + Math.sin(x * 0.006) * 22 + Math.sin(x * 0.0022 + 1.3) * 32;
+      ctx.lineTo(x, y);
+    }
+    ctx.lineTo(CW, CH);
+    ctx.lineTo(0, CH);
+    ctx.fillStyle = "#8BBF70";
+    ctx.fill();
+
+    /* ── Ground: lush lawn gradient ── */
+    const gnd = ctx.createLinearGradient(0, CH * 0.74, 0, CH);
+    gnd.addColorStop(0,   "#7ABF5E");
+    gnd.addColorStop(0.4, "#5A9E3A");
+    gnd.addColorStop(1,   "#3A7A20");
     ctx.fillStyle = gnd;
-    ctx.fillRect(0, 310, 512, 202);
-    [[55, 305, 52], [150, 295, 62], [270, 300, 48], [390, 308, 58], [465, 295, 44]].forEach(([x, y, r]) => {
-      const g = ctx.createRadialGradient(x, y, 4, x, y - 18, r);
-      g.addColorStop(0, "#4A7C2A");
-      g.addColorStop(1, "rgba(40,90,15,0)");
-      ctx.fillStyle = g;
-      ctx.beginPath();
-      ctx.ellipse(x, y, r, r * 1.25, 0, 0, Math.PI * 2);
-      ctx.fill();
+    ctx.fillRect(0, CH * 0.74, CW, CH);
+
+    /* ── Trees with multi-layer canopy ── */
+    ([
+      [70,  CH*0.73, 44],
+      [200, CH*0.70, 62],
+      [360, CH*0.72, 40],
+      [510, CH*0.68, 70],
+      [680, CH*0.71, 50],
+      [820, CH*0.69, 65],
+      [950, CH*0.73, 42],
+    ] as [number,number,number][]).forEach(([tx, ty, tr]) => {
+      /* trunk */
+      const trunkH = tr * 0.55;
+      ctx.fillStyle = "#6B3F18";
+      ctx.fillRect(tx - 5, ty, 10, trunkH);
+      /* canopy layers (3 tiers from bottom) */
+      ([0, 16, 30] as number[]).forEach((dy, i) => {
+        const r = tr - i * 10;
+        if (r <= 0) return;
+        const cg = ctx.createRadialGradient(tx, ty - dy - r * 0.2, r * 0.05, tx, ty - dy, r);
+        cg.addColorStop(0,   "#4A8E28");
+        cg.addColorStop(0.5, "#357A18");
+        cg.addColorStop(1,   "rgba(25,70,10,0)");
+        ctx.fillStyle = cg;
+        ctx.beginPath();
+        ctx.ellipse(tx, ty - dy, r, r * 1.3, 0, 0, Math.PI * 2);
+        ctx.fill();
+      });
     });
+
+    /* ── Subtle light ray from sun (volumetric look) ── */
+    ctx.globalAlpha = 0.08;
+    for (let r = 0; r < 4; r++) {
+      const angle = -Math.PI / 2 + (r - 1.5) * 0.08;
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(sx + Math.cos(angle) * 900, sy + Math.sin(angle) * 900);
+      ctx.lineWidth = 40 - r * 8;
+      ctx.strokeStyle = "rgba(255,240,180,1)";
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+
     return new THREE.CanvasTexture(c);
   }, []);
 
+  const CURTAIN_W = Math.min(iw * 0.38, 0.32);
+  const CURTAIN_H = ih + 0.38;
+
   return (
     <group position={[cx, iy + ih / 2, 0.006]}>
-      {/* Outdoor scene canvas texture */}
-      <mesh position={[0, 0, -0.22]}>
-        <planeGeometry args={[iw * 1.05, ih * 1.05]} />
+      {/* ── Outdoor scene panel (behind glass) ── */}
+      <mesh position={[0, 0, -0.24]}>
+        <planeGeometry args={[iw * 1.25, ih * 1.4]} />
         <meshBasicMaterial map={windowOutdoor} />
       </mesh>
-      {/* RectAreaLight simulating daylight from outside */}
+
+      {/* ── Strong daylight RectAreaLight from outside ── */}
       <rectAreaLight
-        position={[0, 0, -0.15]}
-        width={iw * 0.9}
-        height={ih * 0.9}
-        intensity={8}
-        color="#C8DCFF"
+        position={[0, 0, -0.12]}
+        width={iw * 0.85}
+        height={ih * 0.85}
+        intensity={14}
+        color="#D0E8FF"
         rotation={[0, Math.PI, 0]}
       />
-      {/* Window glass */}
-      <mesh position={[0, 0, 0.002]}>
-        <planeGeometry args={[iw - 0.05, ih - 0.05]} />
-        <meshStandardMaterial
-          color="#C8E8FF"
-          transparent
-          opacity={0.22}
-          roughness={0.04}
-          metalness={0.12}
+
+      {/* ── Window glass: physically accurate ── */}
+      <mesh position={[0, 0, 0.003]}>
+        <planeGeometry args={[iw - FRAME_W * 2.2, ih - FRAME_W * 2.2]} />
+        <meshPhysicalMaterial
+          color="#B5D8F2"
+          transparent opacity={0.18}
+          roughness={0.02}
+          metalness={0.05}
+          envMapIntensity={3.0}
         />
       </mesh>
-      {/* Window frame (white aluminium) */}
+
+      {/* ── Window frame: anodised aluminium ── */}
       {([-ih / 2, ih / 2] as number[]).map((fy, fi) => (
-        <mesh key={fi} position={[0, fy, 0.016]}>
-          <boxGeometry args={[iw + 0.08, FRAME_W, FRAME_W * 0.8]} />
-          <meshStandardMaterial color="#F0F0EE" roughness={0.35} metalness={0.08} />
+        <mesh key={fi} position={[0, fy, 0.018]}>
+          <boxGeometry args={[iw + FRAME_W * 1.8, FRAME_W, FRAME_W * 0.9]} />
+          <meshPhysicalMaterial color="#F2F2F0" roughness={0.22} metalness={0.08} clearcoat={0.4} />
         </mesh>
       ))}
+      {/* ── Side frames ── */}
       {([-iw / 2, iw / 2] as number[]).map((fx, fi) => (
-        <mesh key={fi + 2} position={[fx, 0, 0.016]}>
-          <boxGeometry args={[FRAME_W, ih + 0.08, FRAME_W * 0.8]} />
-          <meshStandardMaterial color="#F0F0EE" roughness={0.35} metalness={0.08} />
+        <mesh key={fi + 2} position={[fx, 0, 0.018]}>
+          <boxGeometry args={[FRAME_W, ih + FRAME_W, FRAME_W * 0.9]} />
+          <meshPhysicalMaterial color="#F2F2F0" roughness={0.22} metalness={0.08} clearcoat={0.4} />
         </mesh>
       ))}
-      <mesh position={[0, 0, 0.016]}>
-        <boxGeometry args={[iw + 0.02, FRAME_W * 0.7, FRAME_W * 0.7]} />
-        <meshStandardMaterial color="#E8E8E6" roughness={0.35} metalness={0.08} />
+
+      {/* ── Center horizontal divider ── */}
+      <mesh position={[0, 0, 0.018]}>
+        <boxGeometry args={[iw + FRAME_W, FRAME_W * 0.75, FRAME_W * 0.8]} />
+        <meshPhysicalMaterial color="#F2F2F0" roughness={0.22} metalness={0.08} clearcoat={0.4} />
       </mesh>
-      <mesh position={[0, -ih / 2 - 0.035, 0.06]}>
-        <boxGeometry args={[iw + 0.12, 0.04, 0.12]} />
-        <meshStandardMaterial color="#F5F5F3" roughness={0.3} metalness={0.06} />
+
+      {/* ── Interior window sill — white marble ── */}
+      <mesh position={[0, -ih / 2 - 0.028, 0.11]}>
+        <boxGeometry args={[iw + FRAME_W * 2.5, 0.042, 0.24]} />
+        <meshPhysicalMaterial color="#EEECEA" roughness={0.1} metalness={0} clearcoat={0.7} clearcoatRoughness={0.08} />
+      </mesh>
+
+      {/* ── Left curtain panel ── */}
+      <mesh position={[-iw / 2 - CURTAIN_W * 0.55, 0, 0.06]}>
+        <boxGeometry args={[CURTAIN_W, CURTAIN_H, 0.012]} />
+        <meshStandardMaterial color="#F7F0E6" roughness={0.94} metalness={0} side={THREE.FrontSide} />
+      </mesh>
+
+      {/* ── Right curtain panel ── */}
+      <mesh position={[iw / 2 + CURTAIN_W * 0.55, 0, 0.06]}>
+        <boxGeometry args={[CURTAIN_W, CURTAIN_H, 0.012]} />
+        <meshStandardMaterial color="#F7F0E6" roughness={0.94} metalness={0} side={THREE.FrontSide} />
+      </mesh>
+
+      {/* ── Curtain rod (brushed nickel) ── */}
+      <mesh position={[0, ih / 2 + CURTAIN_W * 0.3, 0.07]} rotation={[0, 0, Math.PI / 2]}>
+        <cylinderGeometry args={[0.015, 0.015, iw + CURTAIN_W * 2.2, 10]} />
+        <meshPhysicalMaterial color="#C8C8C5" roughness={0.18} metalness={0.75} />
       </mesh>
     </group>
   );
@@ -994,8 +1160,8 @@ function Room({
   const L = length * SCALE;
   const W = width * SCALE;
   const H = height * SCALE;
-  /* Neutral warm white walls — professional and clean */
-  const wallColor = "#EEECE8";
+  /* Warm cream white — luxury kitchen feel */
+  const wallColor = "#F3EDE6";
   const items = (idx: number) => wallItems?.[idx] || [];
 
   return (
@@ -1883,7 +2049,8 @@ function Scene3D({
       )}
 
       <CoveLighting L={scaledL} W={scaledW} H={scaledH} />
-      <Environment preset="apartment" environmentIntensity={0.6} />
+      {/* studio preset: neutral+warm IBL → PBR clearcoat/metallic surfaces look professional */}
+      <Environment preset="studio" environmentIntensity={lightMode === "day" ? 1.1 : 0.3} />
 
       <Room
         length={L} width={W} height={H}
@@ -3426,7 +3593,7 @@ export default function Scene3DPage() {
         </div>
         <div style={{ flex: 1, position: "relative" }}>
           <Canvas
-            gl={{ preserveDrawingBuffer: true }}
+            gl={{ preserveDrawingBuffer: true, antialias: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.15 }}
             camera={{ position: [dispL * SCALE * 0.7, dispH * SCALE * 0.8, dispW * SCALE * 0.9], fov: 55 }}
             style={{ width: "100%", height: "100%" }}
           >
