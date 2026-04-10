@@ -1672,11 +1672,7 @@ function Cabinet({
     : (isSelected ? "#E8C547" : hovered ? "#D4B870" : "#FFFFFF");
   const tintOpacity = hasConflict ? 0.55 : (isSelected || hovered) ? 0.28 : 0.0;
 
-  const productCode = (product.code || "").toUpperCase();
-  const productGroup = ((product.group || product.category || "")).toLowerCase();
-  const isCorner = !!product._isCorner || productCode.includes("90 90") || productCode.includes("90_90")
-    || productCode.startsWith("AK2") || productCode.includes("ZAW") || productCode.includes("COR")
-    || productGroup.includes("زاوية") || productGroup.includes("corner");
+  const isCorner = isCornerProduct(product);
   const junction = (product._cornerJunction as "start" | "end") ?? "end";
 
   return (
@@ -4408,23 +4404,16 @@ export default function Scene3DPage() {
                               })}
                               </div>
                               {/* Corner flip button — only for corner cabinets */}
-                              {(() => {
-                                const pc = (p.code || "").toUpperCase();
-                                const pg = ((p.group || p.category || "")).toLowerCase();
-                                const isCornerProd = !!p._isCorner || pc.includes("90 90") || pc.includes("90_90")
-                                  || pc.startsWith("AK2") || pc.includes("ZAW") || pc.includes("COR")
-                                  || pg.includes("زاوية") || pg.includes("corner");
-                                return isCornerProd && (
-                                  <button
-                                    onClick={() => handleLocalCornerFlip(i)}
-                                    className="mt-1 text-[9px] px-2 py-0.5 rounded border border-orange-400 text-orange-600 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-950/30 font-medium w-fit flex items-center gap-1"
-                                    data-testid={`btn-corner-flip-${i}`}
-                                    title={t("عكس اتجاه الزاوية", "Flip corner orientation")}
-                                  >
-                                    ↔ {t("عكس الزاوية", "Flip corner")}
-                                  </button>
-                                );
-                              })()}
+                              {isCornerProduct(p) && (
+                                <button
+                                  onClick={() => handleLocalCornerFlip(i)}
+                                  className="mt-1 text-[9px] px-2 py-0.5 rounded border border-orange-400 text-orange-600 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-950/30 font-medium w-fit flex items-center gap-1"
+                                  data-testid={`btn-flip-corner-${i}`}
+                                  title={t("عكس اتجاه الزاوية", "Flip corner orientation")}
+                                >
+                                  ↔ {t("عكس الجهة", "Flip")}
+                                </button>
+                              )}
                             </div>
                           )}
                         </div>
