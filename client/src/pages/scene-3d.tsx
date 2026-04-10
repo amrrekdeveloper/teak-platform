@@ -343,6 +343,31 @@ function isCornerProduct(product: any): boolean {
     || grp.includes("زاوية") || grp.includes("corner");
 }
 
+/**
+ * Parse the two arm dimensions of a corner unit from its product code.
+ * e.g. "A2K 90 90 200" or "AZK 90_90" → [90, 90]
+ * Falls back to [designW, designW] if no match found.
+ */
+function parseCornerArmDimensions(product: any): [number, number] {
+  const code = (product.code || "").toUpperCase();
+  /* Use word-boundary anchored patterns to avoid matching numeric prefixes like "A2K_90_90"
+     capturing "2_90" instead of "90_90". Require 2–3 digit groups (30–150 cm range). */
+  const spaceMatch = code.match(/\b(\d{2,3})\s+(\d{2,3})\b/);
+  const underMatch = code.match(/\b(\d{2,3})_(\d{2,3})\b/);
+  const match = spaceMatch || underMatch;
+  if (match) {
+    const a1 = parseInt(match[1]);
+    const a2 = parseInt(match[2]);
+    // Only use if both are reasonable cabinet arm dimensions (30-150 cm)
+    if (a1 >= 30 && a1 <= 150 && a2 >= 30 && a2 <= 150) {
+      return [a1, a2];
+    }
+  }
+  // Fallback: use designW for both arms
+  const w = parseFloat(product.dimensions?.w || product.designW || "90");
+  return [w, w];
+}
+
 /** Returns a cabinet's vertical tier: "wall" | "tall" | "base" */
 function getCabinetTier(product: any): "wall" | "tall" | "base" {
   if (isWallUnit(product)) return "wall";
@@ -487,13 +512,16 @@ function makeParquetTexture(L: number, W: number): THREE.DataTexture {
       const stagger = (col % 2) * Math.floor(plankH / 2);
       const py = ((y + stagger) % plankH) / plankH;
       const px = (x % plankW) / plankW;
-      const grain = Math.sin(py * 38 + col * 2.3) * 9 + Math.sin(py * 12 + col * 0.7) * 4 + Math.cos(px * 22) * 2;
-      const knot = Math.sin(py * 6 + col * 3.1) > 0.85 ? -12 : 0;
-      const border = (px < 0.015 || px > 0.985 || py < 0.003 || py > 0.997) ? -22 : 0;
-      const base = 148 + grain + knot + border;
-      data[idx] = Math.min(255, Math.max(0, base + 22));
-      data[idx + 1] = Math.min(255, Math.max(0, base - 10));
-      data[idx + 2] = Math.min(255, Math.max(0, base - 52));
+      /* Richer grain with stronger variation for warm oak contrast */
+      const grain = Math.sin(py * 38 + col * 2.3) * 14 + Math.sin(py * 12 + col * 0.7) * 7 + Math.cos(px * 22) * 3;
+      const knot = Math.sin(py * 6 + col * 3.1) > 0.82 ? -18 : 0;
+      /* Plank border (gap) — slightly darker for clear plank separation */
+      const border = (px < 0.018 || px > 0.982 || py < 0.004 || py > 0.996) ? -28 : 0;
+      /* Warm light-oak base: R=195 G=152 B=98 — richer than old neutral tan */
+      const base = 175 + grain + knot + border;
+      data[idx]     = Math.min(255, Math.max(0, base + 20));   // R: warm reddish-orange oak
+      data[idx + 1] = Math.min(255, Math.max(0, base - 23));   // G: slightly cooler mid
+      data[idx + 2] = Math.min(255, Math.max(0, base - 77));   // B: deep to push warmth
       data[idx + 3] = 255;
     }
   }
@@ -724,10 +752,12 @@ function parseItemMeasure(val: string | number | undefined, fallbackCm: number):
 
 /** A wall panel rendered with THREE.ShapeGeometry so door/window holes are actual geometry gaps. */
 function WallPanel({
-  wallLen, wallH, items, wallColor, transparent = false,
+  wallLen, wallH, items, wallColor, transparent = false, frontWallZ,
 }: {
   wallLen: number; wallH: number; items: any[];
   wallColor: string; transparent?: boolean;
+  /** If set, this is the world-space Z of the front wall — panel fades based on camera proximity */
+  frontWallZ?: number;
 }) {
   const geometry = useMemo(() => {
     const hw = wallLen / 2;
@@ -758,10 +788,29 @@ function WallPanel({
   }, [wallLen, wallH, items]);
 
   const wallTex = useMemo(() => getWallPaintTexture(), []);
+  const matRef = useRef<THREE.MeshPhysicalMaterial>(null);
+  const { camera } = useThree();
+
+  /* Dynamically fade the front wall based on camera position relative to the wall.
+     Front wall (Wall C) is at z = +frontWallZ in world space.
+     When camera.z < frontWallZ → camera is inside the room → wall fades to near-invisible.
+     When camera.z >= frontWallZ → camera is outside → wall is semi-visible (slightly opaque). */
+  useFrame(() => {
+    if (!matRef.current || frontWallZ === undefined || !transparent) return;
+    const cz = camera.position.z;
+    /* distOutside: how far outside the room the camera is. Positive = outside. */
+    const distOutside = cz - frontWallZ;
+    /* Fade in (become opaque) when camera exits the room beyond 0.5m */
+    /* Fully transparent (0.04) when inside; fade to 0.72 by 2.5m outside */
+    const t = Math.max(0, Math.min(1, (distOutside + 0.5) / 2.5));
+    matRef.current.opacity = 0.04 + t * 0.68;
+    matRef.current.needsUpdate = false;
+  });
 
   return (
     <mesh geometry={geometry}>
       <meshPhysicalMaterial
+        ref={matRef}
         map={wallTex}
         color={wallColor}
         roughness={0.82}
@@ -1189,7 +1238,7 @@ function Room({
   const W = width * SCALE;
   const H = height * SCALE;
   /* Warm cream white — luxury kitchen feel */
-  const wallColor = "#F3EDE6";
+  const wallColor = "#E8E8E6";
   const items = (idx: number) => wallItems?.[idx] || [];
 
   return (
@@ -1213,7 +1262,7 @@ function Room({
 
       {/* Wall C — front, wallIndex=2, transparent for camera but openings still visible */}
       <group position={[0, 0, W / 2]} rotation={[0, Math.PI, 0]}>
-        <WallPanel wallLen={L} wallH={H} items={items(2)} wallColor={wallColor} transparent />
+        <WallPanel wallLen={L} wallH={H} items={items(2)} wallColor={wallColor} transparent frontWallZ={W / 2} />
         <WallReveal items={items(2)} wallLen={L} wallH={H} />
         <WallElements items={items(2)} wallLen={L} wallH={H} />
       </group>
@@ -1307,9 +1356,10 @@ function ProductFrontFace({ thumbnail, W, H }: { thumbnail: string | null | unde
   );
 }
 
-/** Professional cabinet door front with stile/rail frame + recessed center panel */
-function CabinetFront({ W, H, D, frameColor, panelColor, drawerCount, isGlass, isOven, isOpenShelf, isDishwasher, isFridge, isTallOven }: {
-  W: number; H: number; D: number; frameColor: string; panelColor: string; drawerCount?: number; isGlass?: boolean; isOven?: boolean; isOpenShelf?: boolean; isDishwasher?: boolean; isFridge?: boolean; isTallOven?: boolean;
+/** Professional cabinet door front with stile/rail frame + recessed center panel.
+ *  When flatPanel=true, renders a modern slab door (no raised frame, single flush panel) — IKEA style. */
+function CabinetFront({ W, H, D, frameColor, panelColor, drawerCount, isGlass, isOven, isOpenShelf, isDishwasher, isFridge, isTallOven, flatPanel }: {
+  W: number; H: number; D: number; frameColor: string; panelColor: string; drawerCount?: number; isGlass?: boolean; isOven?: boolean; isOpenShelf?: boolean; isDishwasher?: boolean; isFridge?: boolean; isTallOven?: boolean; flatPanel?: boolean;
 }) {
   const st = Math.min(0.032, W * 0.06);   // stile width (vertical frame members — thinner for elegance)
   const rl = Math.min(0.036, H * 0.05);   // rail height (horizontal frame members)
@@ -1322,6 +1372,8 @@ function CabinetFront({ W, H, D, frameColor, panelColor, drawerCount, isGlass, i
 
   const frameMat = <meshPhysicalMaterial color={frameColor} roughness={0.45} metalness={0.05} clearcoat={0.3} clearcoatRoughness={0.4} />;
   const panelMat = <meshPhysicalMaterial color={panelColor} roughness={0.55} metalness={0.03} clearcoat={0.2} clearcoatRoughness={0.5} />;
+  /* Flat-panel slab material: smooth, slightly sheen — matches IKEA AXSTAD/BODARP white doors */
+  const flatPanelMat = <meshPhysicalMaterial color={panelColor} roughness={0.30} metalness={0.02} clearcoat={0.55} clearcoatRoughness={0.25} />;
   const handleMat = <meshPhysicalMaterial color="#B2B2AE" roughness={0.12} metalness={0.92} clearcoat={0.8} clearcoatRoughness={0.1} />;
 
   /* ── Oven column unit: dark stainless panel + rectangular oven window ── */
@@ -1550,6 +1602,35 @@ function CabinetFront({ W, H, D, frameColor, panelColor, drawerCount, isGlass, i
     );
   }
 
+  /* ── Flat-panel (slab) door: single flush face, thin gap lines, bar handle ── */
+  if (flatPanel) {
+    const numDoors = W > 0.60 ? 2 : 1;
+    const gapW = 0.003;   // narrow gap between doors (visible seam, not a raised frame)
+    const doorSW = (W - gapW * (numDoors + 1)) / numDoors;
+    const FPD = 0.012;    // flat panel depth (slightly proud of carcass face)
+    return (
+      <group position={[0, 0, z]}>
+        {Array.from({ length: numDoors }).map((_, di) => {
+          const px = numDoors === 2
+            ? (di === 0 ? -(doorSW / 2 + gapW / 2) : doorSW / 2 + gapW / 2)
+            : 0;
+          return (
+            <group key={di}>
+              {/* Slab door face */}
+              <mesh position={[px, 0, FPD / 2]}>
+                <boxGeometry args={[doorSW, H - gapW * 2, FPD]} />{flatPanelMat}
+              </mesh>
+              {/* Handle: slim horizontal bar centered in lower third */}
+              <mesh position={[px, -H * 0.22, FPD + 0.014]}>
+                <boxGeometry args={[Math.min(doorSW * 0.55, 0.18), 0.012, 0.012]} />{handleMat}
+              </mesh>
+            </group>
+          );
+        })}
+      </group>
+    );
+  }
+
   // Standard door front: frame + recessed center panel
   const numDoors = W > 0.60 ? 2 : 1;
   const doorW = panelW / numDoors - (numDoors > 1 ? st / 2 : 0);
@@ -1654,9 +1735,11 @@ function Cabinet({
 
   const y = H / 2 + wallOff;
   const isSelected = selected;
-  const cabinetDesignColor = product._cabinetColor || product.colorHex || "#BFA880";
+  const cabinetDesignColor = product._cabinetColor || product.colorHex || "#F5F5F3";
+  /* Use flat-panel (slab) style when no custom color is set — default white IKEA look */
+  const useFlatPanel = !product._cabinetColor && !product.colorHex;
   const frameColor = isSelected ? "#C8A030" : (hasConflict ? "#CC3333" : cabinetDesignColor);
-  const basePanelColor = isSelected ? "#D4B870" : (hasConflict ? "#FF6666" : shadeColor(cabinetDesignColor, -12));
+  const basePanelColor = isSelected ? "#D4B870" : (hasConflict ? "#FF6666" : shadeColor(cabinetDesignColor, -8));
 
   const graniteTexture = useMemo(() => isBaseUnit(product) ? makeGraniteTexture() : null, []);
   /* Wood texture for cabinet carcass body */
@@ -1675,6 +1758,13 @@ function Cabinet({
   const isCorner = isCornerProduct(product);
   const junction = (product._cornerJunction as "start" | "end") ?? "end";
 
+  /* Corner arm dimensions: parse from product code (e.g. "A2K 90 90" → arm1=90, arm2=90) */
+  const [arm1Cm, arm2Cm] = isCorner ? parseCornerArmDimensions(product) : [0, 0];
+  const arm1W = arm1Cm * SCALE;  // width of primary arm (along main wall)
+  const arm2W = arm2Cm * SCALE;  // width of secondary arm (along adjacent wall)
+  /* Depth of each arm = the cabinet's depth (typically 60 cm) */
+  const armD = D;
+
   return (
     <group
       position={[x, y, z]}
@@ -1691,38 +1781,31 @@ function Cabinet({
       }}
     >
       {isCorner ? (
-        /* ── Corner unit: two perpendicular arm boxes forming an L-shape ── */
+        /* ── Corner unit: L-shape built from two separate arms, each arm sized
+           by the parsed dimensions from the product code (e.g. A2K 90 90 → 90cm×90cm) ── */
         <>
-          {/* Primary arm along the main wall (full width W, depth D) */}
+          {/* Primary arm: arm1W wide × armD deep, centered at origin along main wall */}
           <mesh position={[0, 0, 0]}>
-            <boxGeometry args={[W, H, D]} />
+            <boxGeometry args={[arm1W, H, armD]} />
             <meshStandardMaterial
               map={hasConflict ? undefined : woodTexture}
               roughness={0.62} metalness={0.04}
               color={hasConflict ? "#CC2222" : tintColor}
             />
           </mesh>
-          {/* Secondary arm along adjacent wall — extends into the corner */}
-          {/* Offset along -Z so it forms the perpendicular L leg */}
+          {/* Secondary arm: armD wide × arm2W deep, extends INTO the room (+Z) from the corner.
+              The arm is nested inside the corner, flush with the back wall face.
+              For junction="end" (right-end corner):
+                arm1 right edge is at local X = arm1W/2 → this is the corner
+                arm2 sits at local X = arm1W/2 - armD/2 (one depth inside from corner)
+                arm2 Z-center = (arm2W - armD)/2 (spans from back-wall to arm2W deep)
+              Mirror for junction="start" (left-end corner). */}
           <mesh position={[
-            junction === "end" ? W / 2 + D / 2 : -W / 2 - D / 2,
+            junction === "end" ? arm1W / 2 - armD / 2 : -arm1W / 2 + armD / 2,
             0,
-            -D / 2
+            (arm2W - armD) / 2
           ]}>
-            <boxGeometry args={[D, H, W]} />
-            <meshStandardMaterial
-              map={hasConflict ? undefined : woodTexture}
-              roughness={0.62} metalness={0.04}
-              color={hasConflict ? "#CC2222" : tintColor}
-            />
-          </mesh>
-          {/* Corner inner filler block — closes the inner-corner seam */}
-          <mesh position={[
-            junction === "end" ? W / 2 + D / 2 : -W / 2 - D / 2,
-            0,
-            -D / 2 - D / 2
-          ]}>
-            <boxGeometry args={[D, H, D]} />
+            <boxGeometry args={[armD, H, arm2W]} />
             <meshStandardMaterial
               map={hasConflict ? undefined : woodTexture}
               roughness={0.62} metalness={0.04}
@@ -1731,25 +1814,27 @@ function Cabinet({
           </mesh>
           {/* Front face on primary arm */}
           <CabinetFront
-            W={W} H={H} D={D}
+            W={arm1W} H={H} D={armD}
             frameColor={frameColor}
             panelColor={basePanelColor}
+            flatPanel={useFlatPanel}
             isOven={isOvenUnit(product)}
             isOpenShelf={isOpenShelfUnit(product)}
             isDishwasher={isDishwasherUnit(product)}
             isFridge={isFridgeUnit(product)}
             isTallOven={isTallOvenUnit(product)}
           />
-          {/* Front face on secondary arm */}
+          {/* Front face on secondary arm — rotated ±90° so it faces the adjacent wall */}
           <group position={[
-            junction === "end" ? W / 2 + D / 2 : -W / 2 - D / 2,
+            junction === "end" ? arm1W / 2 - armD / 2 : -arm1W / 2 + armD / 2,
             0,
-            -D / 2
+            (arm2W - armD) / 2
           ]} rotation={[0, junction === "end" ? -Math.PI / 2 : Math.PI / 2, 0]}>
             <CabinetFront
-              W={D} H={H} D={W}
+              W={arm2W} H={H} D={armD}
               frameColor={frameColor}
               panelColor={basePanelColor}
+              flatPanel={useFlatPanel}
               isOven={isOvenUnit(product)}
               isOpenShelf={isOpenShelfUnit(product)}
               isDishwasher={isDishwasherUnit(product)}
@@ -1760,7 +1845,7 @@ function Cabinet({
           {/* Selection overlay */}
           {(isSelected || hovered || hasConflict) && (
             <mesh>
-              <boxGeometry args={[W + 0.004, H + 0.004, D + 0.004]} />
+              <boxGeometry args={[arm1W + 0.004, H + 0.004, armD + 0.004]} />
               <meshBasicMaterial color={tintColor} transparent opacity={tintOpacity} depthWrite={false} />
             </mesh>
           )}
@@ -1792,6 +1877,7 @@ function Cabinet({
             D={D}
             frameColor={frameColor}
             panelColor={basePanelColor}
+            flatPanel={useFlatPanel}
             drawerCount={isDrawerUnit(product) ? 3 : undefined}
             isGlass={isGlassCabinet(product)}
             isOven={isOvenUnit(product)}
@@ -3600,24 +3686,46 @@ export default function Scene3DPage() {
     onError: () => { toast({ title: t("حدث خطأ في الاستبدال", "Replacement error"), variant: "destructive" }); },
   });
 
-  /* ── Check whether any two same-tier cabinets on the same wall overlap (for save validation) ── */
+  /* ── Check whether any two same-tier cabinets on the same wall/space overlap (for save validation).
+     Uses the same sequential layout logic as Scene3D so offsets are consistent. ── */
   const hasCabinetCabinetConflict = useCallback((prods: any[]): boolean => {
     const wallLetterMap: Record<string, number> = { A: 0, B: 1, C: 2, D: 3 };
-    /* Group by wall + tier — base/wall/tall must not overlap within same tier only */
-    const byWallTier: Record<string, { start: number; end: number }[]> = {};
+    /* Build positioned intervals, grouped by space + wall + tier to avoid cross-space false conflicts */
+    const byKey: Record<string, { start: number; end: number }[]> = {};
+
+    /* Sequential offset tracking per [spaceId, wallIdx] for products without a manual offset */
+    const seqOffsets: Record<string, number> = {};
+
     for (const p of prods) {
+      const spaceId = p.spaceId ?? "_default";
       const letter = (p.wallId || "").slice(-1).toUpperCase();
       const wIdx: number = wallLetterMap[letter] ?? p._wallIndex ?? 0;
       const tier = getCabinetTier(p);
-      const key = `${wIdx}:${tier}`;
       const pW = parseFloat(p.designW || p.dimensions?.w || "60");
-      const xOff: number = p._manualXOffset ?? p._xOffset ?? pW / 2 + 10;
+
+      let xOff: number;
+      if (p._manualXOffset !== undefined) {
+        /* Explicitly placed cabinet — use its stored position */
+        xOff = p._manualXOffset;
+      } else if (p._xOffset !== undefined) {
+        /* Already computed position (e.g. corner cabinet) */
+        xOff = p._xOffset;
+      } else {
+        /* Sequential layout: place at next available slot on this wall */
+        const seqKey = `${spaceId}:${wIdx}:${tier}`;
+        const cur = seqOffsets[seqKey] ?? 10;
+        xOff = cur + pW / 2;
+        seqOffsets[seqKey] = cur + pW + 5;
+      }
+
       const start = xOff - pW / 2;
       const end = xOff + pW / 2;
-      if (!byWallTier[key]) byWallTier[key] = [];
-      byWallTier[key].push({ start, end });
+      const key = `${spaceId}:${wIdx}:${tier}`;
+      if (!byKey[key]) byKey[key] = [];
+      byKey[key].push({ start, end });
     }
-    for (const items of Object.values(byWallTier)) {
+
+    for (const items of Object.values(byKey)) {
       for (let i = 0; i < items.length; i++) {
         for (let j = i + 1; j < items.length; j++) {
           if (items[i].start < items[j].end - 2 && items[i].end > items[j].start + 2) return true;
