@@ -332,6 +332,23 @@ function CoveLighting({ L, W, H }: { L: number; W: number; H: number }) {
   );
 }
 
+/** Returns a cabinet's vertical tier: "wall" | "tall" | "base" */
+function getCabinetTier(product: any): "wall" | "tall" | "base" {
+  if (isWallUnit(product)) return "wall";
+  if (isTallUnit(product)) return "tall";
+  return "base";
+}
+
+/** Lighten (+) or darken (-) a hex color by an amount in [0..255] */
+function shadeColor(hex: string, amount: number): string {
+  const c = hex.replace("#", "");
+  const num = parseInt(c.length === 3 ? c.split("").map(x => x + x).join("") : c, 16);
+  const r = Math.min(255, Math.max(0, (num >> 16) + amount));
+  const g = Math.min(255, Math.max(0, ((num >> 8) & 0xff) + amount));
+  const b = Math.min(255, Math.max(0, (num & 0xff) + amount));
+  return `#${((1 << 24) | (r << 16) | (g << 8) | b).toString(16).slice(1)}`;
+}
+
 function KitchenIsland({ L, W, cabinetColor }: { L: number; W: number; cabinetColor: string }) {
   if (L < 3.5 || W < 3.5) return null;
 
@@ -1626,8 +1643,9 @@ function Cabinet({
 
   const y = H / 2 + wallOff;
   const isSelected = selected;
-  /* Warm wood frame color — matches professional kitchen cabinet style */
-  const frameColor = isSelected ? "#C8A030" : "#8B6914";
+  const cabinetDesignColor = product._cabinetColor || product.colorHex || "#BFA880";
+  const frameColor = isSelected ? "#C8A030" : (hasConflict ? "#CC3333" : cabinetDesignColor);
+  const basePanelColor = isSelected ? "#D4B870" : (hasConflict ? "#FF6666" : shadeColor(cabinetDesignColor, -12));
 
   const graniteTexture = useMemo(() => isBaseUnit(product) ? makeGraniteTexture() : null, []);
   /* Wood texture for cabinet carcass body */
@@ -1695,7 +1713,7 @@ function Cabinet({
           <CabinetFront
             W={W} H={H} D={D}
             frameColor={frameColor}
-            panelColor={isSelected ? "#D4B870" : "#D8C9A0"}
+            panelColor={basePanelColor}
             isOven={isOvenUnit(product)}
             isOpenShelf={isOpenShelfUnit(product)}
             isDishwasher={isDishwasherUnit(product)}
@@ -1711,7 +1729,7 @@ function Cabinet({
             <CabinetFront
               W={D} H={H} D={W}
               frameColor={frameColor}
-              panelColor={isSelected ? "#D4B870" : "#D8C9A0"}
+              panelColor={basePanelColor}
               isOven={isOvenUnit(product)}
               isOpenShelf={isOpenShelfUnit(product)}
               isDishwasher={isDishwasherUnit(product)}
@@ -1753,7 +1771,7 @@ function Cabinet({
             H={H}
             D={D}
             frameColor={frameColor}
-            panelColor={isSelected ? "#D4B870" : "#D8C9A0"}
+            panelColor={basePanelColor}
             drawerCount={isDrawerUnit(product) ? 3 : undefined}
             isGlass={isGlassCabinet(product)}
             isOven={isOvenUnit(product)}
@@ -2132,29 +2150,33 @@ function Scene3D({
     return acc;
   }, []);
 
-  /* ── Cabinet-to-cabinet overlap detection (post-pass) ── */
-  const cabinetConflictSet = (() => {
+  /* ── Cabinet-to-cabinet overlap detection (post-pass, tier-aware) ── */
+  const cabinetConflictSet: Set<number> = (() => {
     const conflicts = new Set<number>();
-    const byWall: Record<number, { start: number; end: number; idx: number; isUpper: boolean }[]> = {};
-    for (const p of productsWithPos) {
+    /* Group by wall + tier so base/wall/tall units on the same wall only conflict with same-tier units */
+    const byWallTier: Record<string, { start: number; end: number; srcIdx: number }[]> = {};
+    productsWithPos.forEach((p: any) => {
       const wIdx: number = p._wallIndex ?? 0;
+      const tier = getCabinetTier(p);
+      const key = `${wIdx}:${tier}`;
       const pW = parseFloat(p.designW || p.dimensions?.w || "60");
-      const xOff: number = p._xOffset ?? 30;
-      if (!byWall[wIdx]) byWall[wIdx] = [];
-      byWall[wIdx].push({ start: xOff - pW / 2, end: xOff + pW / 2, idx: p._sourceIndex, isUpper: isWallUnit(p) });
-    }
-    for (const items of Object.values(byWall)) {
+      const xOff: number = p._xOffset ?? pW / 2 + 10;
+      const start = xOff - pW / 2;
+      const end = xOff + pW / 2;
+      if (!byWallTier[key]) byWallTier[key] = [];
+      byWallTier[key].push({ start, end, srcIdx: p._sourceIndex });
+    });
+    Object.values(byWallTier).forEach(items => {
       for (let i = 0; i < items.length; i++) {
         for (let j = i + 1; j < items.length; j++) {
           const a = items[i], b = items[j];
-          if (a.isUpper !== b.isUpper) continue;
           if (a.start < b.end - 2 && a.end > b.start + 2) {
-            conflicts.add(a.idx);
-            conflicts.add(b.idx);
+            conflicts.add(a.srcIdx);
+            conflicts.add(b.srcIdx);
           }
         }
       }
-    }
+    });
     return conflicts;
   })();
 
@@ -3558,6 +3580,33 @@ export default function Scene3DPage() {
     onError: () => { toast({ title: t("حدث خطأ في الاستبدال", "Replacement error"), variant: "destructive" }); },
   });
 
+  /* ── Check whether any two same-tier cabinets on the same wall overlap (for save validation) ── */
+  const hasCabinetCabinetConflict = useCallback((prods: any[]): boolean => {
+    const wallLetterMap: Record<string, number> = { A: 0, B: 1, C: 2, D: 3 };
+    /* Group by wall + tier — base/wall/tall must not overlap within same tier only */
+    const byWallTier: Record<string, { start: number; end: number }[]> = {};
+    for (const p of prods) {
+      const letter = (p.wallId || "").slice(-1).toUpperCase();
+      const wIdx: number = wallLetterMap[letter] ?? p._wallIndex ?? 0;
+      const tier = getCabinetTier(p);
+      const key = `${wIdx}:${tier}`;
+      const pW = parseFloat(p.designW || p.dimensions?.w || "60");
+      const xOff: number = p._manualXOffset ?? p._xOffset ?? pW / 2 + 10;
+      const start = xOff - pW / 2;
+      const end = xOff + pW / 2;
+      if (!byWallTier[key]) byWallTier[key] = [];
+      byWallTier[key].push({ start, end });
+    }
+    for (const items of Object.values(byWallTier)) {
+      for (let i = 0; i < items.length; i++) {
+        for (let j = i + 1; j < items.length; j++) {
+          if (items[i].start < items[j].end - 2 && items[i].end > items[j].start + 2) return true;
+        }
+      }
+    }
+    return false;
+  }, []);
+
   /* ── Save Design mutation ── */
   const saveDesignMutation = useMutation({
     mutationFn: async () => {
@@ -3659,6 +3708,46 @@ export default function Scene3DPage() {
     toast({ title: t("تم نقل الخزانة", "Cabinet moved") });
   }, [activeSpace, localProducts, selectedProducts, makeWallId, wallLenCmByIdx, t, toast]);
 
+  /* ── Snap and clamp dragged cabinet: snap to edge within 8 cm, hard-stop on overlap ── */
+  const snapToNearestEdge = useCallback((
+    draggedIdx: number, rawOffset: number, prods: any[], wallIdx: number, pW: number
+  ): number => {
+    const wallLetterMap: Record<string, number> = { A: 0, B: 1, C: 2, D: 3 };
+    const draggedProdForTier = prods[draggedIdx];
+    const draggedTier = draggedProdForTier ? getCabinetTier(draggedProdForTier) : "base";
+    const others = prods.filter((p: any, i: number) => {
+      if (i === draggedIdx) return false;
+      /* Derive wall index from wallId letter when _wallIndex is absent */
+      const letter = (p.wallId || "").slice(-1).toUpperCase();
+      const wIdxOther = (letter && wallLetterMap[letter] !== undefined)
+        ? wallLetterMap[letter]
+        : (p._wallIndex ?? -1);
+      if (wIdxOther !== wallIdx) return false;
+      /* Only snap/clamp against same-tier cabinets */
+      return getCabinetTier(p) === draggedTier;
+    });
+    let result = rawOffset;
+    for (const other of others) {
+      const oW = parseFloat(other.designW || other.dimensions?.w || "60");
+      const oX = other._manualXOffset ?? other._xOffset ?? oW / 2 + 10;
+      const leftEdge = oX - oW / 2;
+      const rightEdge = oX + oW / 2;
+      const myLeft = result - pW / 2;
+      const myRight = result + pW / 2;
+      /* Snap within 8 cm of a neighbor edge */
+      if (Math.abs(result - pW / 2 - rightEdge) < 8) return rightEdge + pW / 2;
+      if (Math.abs(result + pW / 2 - leftEdge) < 8) return leftEdge - pW / 2;
+      /* Hard clamp: prevent crossing into neighbor (stop at boundary) */
+      if (myLeft < rightEdge && myRight > leftEdge) {
+        /* Determine which side the cabinet was coming from */
+        const distFromRight = Math.abs(result - (rightEdge + pW / 2));
+        const distFromLeft  = Math.abs(result - (leftEdge  - pW / 2));
+        result = distFromRight < distFromLeft ? rightEdge + pW / 2 : leftEdge - pW / 2;
+      }
+    }
+    return result;
+  }, []);
+
   /* ── Drag live update: capture pre-drag snapshot on first call, then reposition ── */
   const handleDragMove = useCallback((sourceIdx: number, newXOffset: number) => {
     setLocalProducts(prev => {
@@ -3667,11 +3756,19 @@ export default function Scene3DPage() {
       if (preDragSnapshot.current === null) {
         preDragSnapshot.current = prev;
       }
+      const draggedProd = prev[sourceIdx];
+      const wallLetterMap2: Record<string, number> = { A: 0, B: 1, C: 2, D: 3 };
+      const letter2 = (draggedProd?.wallId || "").slice(-1).toUpperCase();
+      const wallIdx: number = (letter2 && wallLetterMap2[letter2] !== undefined)
+        ? wallLetterMap2[letter2]
+        : (draggedProd?._wallIndex ?? 0);
+      const pW = parseFloat(draggedProd?.designW || draggedProd?.dimensions?.w || "60");
+      const snappedOffset = snapToNearestEdge(sourceIdx, newXOffset, prev, wallIdx, pW);
       return prev.map((p: any, i: number) =>
-        i === sourceIdx ? { ...p, _manualXOffset: newXOffset } : p
+        i === sourceIdx ? { ...p, _manualXOffset: snappedOffset } : p
       );
     });
-  }, []);
+  }, [snapToNearestEdge]);
 
   /* ── Drag commit: push pre-drag snapshot into history so undo returns to pre-drag ── */
   const handleDragCommit = useCallback((sourceIdx: number, newXOffset: number) => {
@@ -3682,12 +3779,21 @@ export default function Scene3DPage() {
       /* History entry is the state before drag started */
       const historyEntry = snapshot !== null ? snapshot : base;
       setLocalHistory(h => [...h, historyEntry]);
+      /* Apply the same snap/clamp logic used during drag so commit matches live preview */
+      const draggedProd = base[sourceIdx];
+      const wallLetterMap3: Record<string, number> = { A: 0, B: 1, C: 2, D: 3 };
+      const letter3 = (draggedProd?.wallId || "").slice(-1).toUpperCase();
+      const wallIdx: number = (letter3 && wallLetterMap3[letter3] !== undefined)
+        ? wallLetterMap3[letter3]
+        : (draggedProd?._wallIndex ?? 0);
+      const pW = parseFloat(draggedProd?.designW || draggedProd?.dimensions?.w || "60");
+      const snappedOffset = snapToNearestEdge(sourceIdx, newXOffset, base, wallIdx, pW);
       return base.map((p: any, i: number) =>
-        i === sourceIdx ? { ...p, _manualXOffset: newXOffset } : p
+        i === sourceIdx ? { ...p, _manualXOffset: snappedOffset } : p
       );
     });
     setDesignSaved(false);
-  }, [selectedProducts]);
+  }, [selectedProducts, snapToNearestEdge]);
 
   /* ── Undo last placement ── */
   const handleUndo = useCallback(() => {
@@ -3921,7 +4027,13 @@ export default function Scene3DPage() {
                 data-testid="btn-undo-placement" title={t("تراجع","Undo")}>
                 <RotateCcw className="h-3.5 w-3.5 me-1" />{t("تراجع","Undo")}
               </Button>
-              <Button size="sm" onClick={() => saveDesignMutation.mutate()}
+              <Button size="sm" onClick={() => {
+                  if (localProducts && hasCabinetCabinetConflict(localProducts)) {
+                    toast({ title: t("لا يمكن الحفظ: خزائن متداخلة", "Cannot save: overlapping cabinets"), variant: "destructive" });
+                    return;
+                  }
+                  saveDesignMutation.mutate();
+                }}
                 disabled={saveDesignMutation.isPending}
                 data-testid="btn-save-design">
                 {saveDesignMutation.isPending
