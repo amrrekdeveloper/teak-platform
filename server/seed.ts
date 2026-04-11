@@ -138,6 +138,10 @@ async function seedRealUsers() {
   }
   if (seeded > 0) console.log(`Seeded ${seeded} new real users`);
   if (updated > 0) console.log(`Updated ${updated} existing real users (profile/role only, password preserved)`);
+
+  const adminPwd = await hashPassword("1400");
+  await db.update(users).set({ password: adminPwd }).where(eq(users.username, "jabran"));
+  console.log("Admin (jabran) password ensured");
 }
 
 export async function seedDatabase() {

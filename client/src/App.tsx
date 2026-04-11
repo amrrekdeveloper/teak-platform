@@ -44,6 +44,7 @@ import DesignStudioPage from "@/pages/design-studio";
 import CustomerPortalLogin from "@/pages/customer-portal-login";
 import CustomerPortal from "@/pages/customer-portal";
 import EmployeeLoginPage from "@/pages/employee-login";
+import SystemAdminLogin from "@/pages/system-admin-login";
 import MyCalendarPage from "@/pages/my-calendar";
 import SiteSurveyPage from "@/pages/site-survey";
 import Scene3DPage from "@/pages/scene-3d";
@@ -230,6 +231,7 @@ function Router() {
       <Route path="/portal/login" component={CustomerPortalLogin} />
       <Route path="/portal" component={CustomerPortal} />
       <Route path="/employee-login" component={EmployeeLoginPage} />
+      <Route path="/system-admin" component={SystemAdminLogin} />
       <Route path="/view-3d" component={Scene3DPage} />
       <Route path="/scene-3d" component={Scene3DPage} />
       <Route path="/dashboard" nest component={DashboardRoutes} />

@@ -1412,14 +1412,24 @@ function Footer() {
               `© ${new Date().getFullYear()} Teak Wood Products Factory. All rights reserved.`
             )}
           </p>
-          <a
-            href="/employee-login"
-            className="flex items-center gap-1.5 text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors"
-            data-testid="link-staff-login"
-          >
-            <Lock className="w-3 h-3" />
-            {t("دخول الموظفين", "Staff Login")}
-          </a>
+          <div className="flex items-center gap-4">
+            <a
+              href="/employee-login"
+              className="flex items-center gap-1.5 text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+              data-testid="link-staff-login"
+            >
+              <Lock className="w-3 h-3" />
+              {t("دخول الموظفين", "Staff Login")}
+            </a>
+            <a
+              href="/system-admin"
+              className="text-muted-foreground/25 hover:text-muted-foreground/60 transition-colors"
+              title="System Administration"
+              data-testid="link-system-admin"
+            >
+              <Shield className="w-3.5 h-3.5" />
+            </a>
+          </div>
         </div>
       </div>
     </footer>
