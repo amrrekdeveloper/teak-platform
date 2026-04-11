@@ -113,19 +113,26 @@ async function seedRealUsers() {
     { username: "sedad", fullNameAr: "سادات", fullNameEn: "Sadat", role: "installation" as const, phone: "0553158216", email: "sedad@teak.sa" },
     { username: "m.sobri", fullNameAr: "عائض", fullNameEn: "Aydh", role: "delivery" as const, phone: "0557580888", email: "m.sobri@teak.sa" },
     { username: "noura", fullNameAr: "أيمن", fullNameEn: "Ayman", role: "hr" as const, phone: "0566626916", email: "ayman.hr@teak.sa" },
+    { username: "khaled_admin", fullNameAr: "خالد", fullNameEn: "Khaled", role: "owner" as const, phone: "0553053995", email: "khaled.admin@teak.sa" },
   ];
 
   const realPassword = await hashPassword("14001400");
   let seeded = 0;
   let updated = 0;
   for (const u of realUsers) {
-    const existing = await db.select().from(users).where(eq(users.username, u.username)).limit(1);
-    if (existing.length === 0) {
-      await db.insert(users).values({ ...u, password: realPassword, active: true });
-      seeded++;
-    } else {
+    const byUsername = await db.select().from(users).where(eq(users.username, u.username)).limit(1);
+    if (byUsername.length > 0) {
       await db.update(users).set({ fullNameAr: u.fullNameAr, fullNameEn: u.fullNameEn, role: u.role, phone: u.phone, email: u.email, active: true }).where(eq(users.username, u.username));
       updated++;
+    } else {
+      const byPhone = await db.select().from(users).where(eq(users.phone, u.phone)).limit(1);
+      if (byPhone.length > 0) {
+        await db.update(users).set({ fullNameAr: u.fullNameAr, fullNameEn: u.fullNameEn, role: u.role, email: u.email, active: true }).where(eq(users.phone, u.phone));
+        updated++;
+      } else {
+        await db.insert(users).values({ ...u, password: realPassword, active: true });
+        seeded++;
+      }
     }
   }
   if (seeded > 0) console.log(`Seeded ${seeded} new real users`);
