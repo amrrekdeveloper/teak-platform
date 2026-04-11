@@ -1,5 +1,6 @@
 import { db } from "./db";
 import { hashPassword } from "./auth";
+import { randomBytes } from "crypto";
 import {
   users, customers, products, woodTypes, doorTypes,
   inventory, suppliers, employees, companySettings,
@@ -116,7 +117,6 @@ async function seedRealUsers() {
     { username: "khaled_admin", fullNameAr: "خالد", fullNameEn: "Khaled", role: "owner" as const, phone: "0553053995", email: "khaled.admin@teak.sa" },
   ];
 
-  const realPassword = await hashPassword("14001400");
   let seeded = 0;
   let updated = 0;
   for (const u of realUsers) {
@@ -130,7 +130,8 @@ async function seedRealUsers() {
         await db.update(users).set({ fullNameAr: u.fullNameAr, fullNameEn: u.fullNameEn, role: u.role, email: u.email, active: true }).where(eq(users.phone, u.phone));
         updated++;
       } else {
-        await db.insert(users).values({ ...u, password: realPassword, active: true });
+        const randomPwd = await hashPassword(randomBytes(32).toString("hex"));
+        await db.insert(users).values({ ...u, password: randomPwd, active: true });
         seeded++;
       }
     }
