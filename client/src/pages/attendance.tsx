@@ -32,8 +32,11 @@ interface AttendanceRecord {
   type: "check_in" | "check_out";
   checkTime: string;
   locationName: string | null;
+  latitude: string | null;
+  longitude: string | null;
   isOutOfZone: boolean;
   isManualEdit: boolean;
+  notes: string | null;
 }
 
 function getDeviceInfo() {
@@ -189,6 +192,9 @@ export default function AttendancePage() {
   const [employee, setEmployee] = useState<EmployeeInfo | null>(null);
   const [actionType, setActionType] = useState<"check_in" | "check_out">("check_in");
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [locationPermDenied, setLocationPermDenied] = useState(false);
+  const [locationReady, setLocationReady] = useState(false);
+  const [fingerprintDone, setFingerprintDone] = useState(false);
   const [permissionDialog, setPermissionDialog] = useState(false);
   const [permReason, setPermReason] = useState("");
   const [permType, setPermType] = useState("permission");
@@ -267,22 +273,38 @@ export default function AttendancePage() {
   }, [employeesList]);
 
   const requestLocation = useCallback(() => {
+    setLocationReady(false);
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
-        pos => setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-        () => setLocation(null),
-        { timeout: 5000 }
+        pos => {
+          setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+          setLocationPermDenied(false);
+          setLocationReady(true);
+        },
+        (err) => {
+          setLocation(null);
+          setLocationPermDenied(err.code === err.PERMISSION_DENIED);
+          setLocationReady(true);
+        },
+        { timeout: 6000 }
       );
+    } else {
+      setLocationReady(true);
     }
   }, []);
 
   const handleProceedToFingerprint = useCallback(() => {
+    setFingerprintDone(false);
     requestLocation();
     setStep("fingerprint");
   }, [requestLocation]);
 
   const handleFingerprintComplete = useCallback(() => {
-    if (!employee) return;
+    setFingerprintDone(true);
+  }, []);
+
+  useEffect(() => {
+    if (!fingerprintDone || !locationReady || !employee) return;
     recordMutation.mutate({
       employeeId: employee.id,
       employeePhone: employee.phone,
@@ -293,8 +315,9 @@ export default function AttendancePage() {
       longitude: location?.lng ?? null,
       deviceInfo: deviceInfo.current,
       deviceFingerprint: deviceFingerprint.current,
+      notes: locationPermDenied ? "رُفض الإذن" : null,
     });
-  }, [employee, actionType, location, recordMutation]);
+  }, [fingerprintDone, locationReady]);
 
   const handleReset = useCallback(() => {
     setStep("lookup");
@@ -302,6 +325,9 @@ export default function AttendancePage() {
     setPhone("");
     setSelectedEmployeeId("");
     setLocation(null);
+    setLocationPermDenied(false);
+    setLocationReady(false);
+    setFingerprintDone(false);
   }, []);
 
   return (
@@ -524,15 +550,29 @@ export default function AttendancePage() {
                     </h2>
                     <p className="text-muted-foreground text-sm mt-1">{employee?.nameAr}</p>
                   </div>
-                  {location && (
-                    <div className="flex items-center justify-center gap-1.5 text-xs text-green-600 bg-green-50 dark:bg-green-950/30 rounded-lg py-2">
-                      <MapPin className="w-3.5 h-3.5" />
-                      <span>تم تحديد موقعك الجغرافي</span>
+                  {locationReady ? (
+                    location ? (
+                      <div className="flex items-center justify-center gap-1.5 text-xs text-green-600 bg-green-50 dark:bg-green-950/30 rounded-lg py-2">
+                        <MapPin className="w-3.5 h-3.5" />
+                        <span>تم تحديد موقعك الجغرافي</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-center gap-1.5 text-xs text-orange-600 bg-orange-50 dark:bg-orange-950/30 rounded-lg py-2">
+                        <MapPin className="w-3.5 h-3.5" />
+                        <span>لم يتم تحديد الموقع — سيُسجَّل بدون إحداثيات</span>
+                      </div>
+                    )
+                  ) : (
+                    <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground bg-muted/30 rounded-lg py-2">
+                      <MapPin className="w-3.5 h-3.5 animate-pulse" />
+                      <span>للدقة في تسجيل موقع البصمة، اسمح للمتصفح بتحديد موقعك</span>
                     </div>
                   )}
                   <FingerprintAnimation onComplete={handleFingerprintComplete} />
-                  {recordMutation.isPending && (
-                    <p className="text-center text-sm text-muted-foreground animate-pulse">جاري حفظ البيانات...</p>
+                  {(recordMutation.isPending || (fingerprintDone && !locationReady)) && (
+                    <p className="text-center text-sm text-muted-foreground animate-pulse">
+                      {fingerprintDone && !locationReady ? "جاري تحديد الموقع..." : "جاري حفظ البيانات..."}
+                    </p>
                   )}
                 </div>
               </motion.div>
@@ -641,17 +681,23 @@ export default function AttendancePage() {
                                 <p className="text-sm font-medium">
                                   {rec.type === "check_in" ? "تسجيل دخول" : "تسجيل خروج"}
                                 </p>
-                                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
                                   <Clock className="w-3 h-3" />
                                   {formatTime(rec.checkTime)}
                                   {rec.locationName && <> · {rec.locationName}</>}
                                   {rec.isManualEdit && <Badge variant="outline" className="text-[9px] h-4">تعديل يدوي</Badge>}
+                                  {rec.notes && <Badge variant="secondary" className="text-[9px] h-4">{rec.notes}</Badge>}
                                 </p>
                               </div>
-                              {rec.isOutOfZone && (
-                                <span title="خارج النطاق الجغرافي">
-                                  <MapPin className="w-4 h-4 text-orange-500" />
+                              {rec.isOutOfZone ? (
+                                <span title="خارج النطاق الجغرافي" className="flex items-center gap-0.5 text-orange-500 text-xs">
+                                  <MapPin className="w-3.5 h-3.5" />
+                                  ⚠️
                                 </span>
+                              ) : rec.latitude ? (
+                                <span title="داخل النطاق الجغرافي" className="text-green-500 text-sm">✅</span>
+                              ) : (
+                                <span title="لا توجد بيانات موقع" className="text-muted-foreground text-sm">➖</span>
                               )}
                             </div>
                           ))}

@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -12,9 +12,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Users, Clock, LogIn, LogOut, AlertTriangle, CheckCircle2, XCircle, MapPin,
-  Pencil, Monitor, Factory, Building2, RefreshCw, Download, Filter,
+  Pencil, Monitor, Factory, Building2, RefreshCw, Download, Filter, Map,
 } from "lucide-react";
 import { useLanguage } from "@/components/language-provider";
+import AttendanceZonesMap from "@/components/attendance-zones-map";
+import { setOptions, importLibrary } from "@googlemaps/js-api-loader";
 
 interface AttendanceRecord {
   id: number;
@@ -66,7 +68,7 @@ function getTodayRange() {
 
 function getDayStatus(records: AttendanceRecord[], employeeId: number) {
   const empRecords = records.filter(r => r.employeeId === employeeId);
-  if (!empRecords.length) return { status: "absent", in: null, out: null, duration: null };
+  if (!empRecords.length) return { status: "absent", in: null, out: null, duration: null, outOfZone: false };
   const checkIn = empRecords.filter(r => r.type === "check_in").sort((a, b) => new Date(a.checkTime).getTime() - new Date(b.checkTime).getTime())[0];
   const checkOut = empRecords.filter(r => r.type === "check_out").sort((a, b) => new Date(b.checkTime).getTime() - new Date(a.checkTime).getTime())[0];
   let status = "present";
@@ -103,9 +105,41 @@ export default function AttendanceMonitorPage() {
   const qc = useQueryClient();
   const [dateRange, setDateRange] = useState(getTodayRange());
   const [locationFilter, setLocationFilter] = useState("all");
+  const [outOfZoneOnly, setOutOfZoneOnly] = useState(false);
   const [editRecord, setEditRecord] = useState<AttendanceRecord | null>(null);
   const [editTime, setEditTime] = useState("");
   const [editNotes, setEditNotes] = useState("");
+  const [locationPopup, setLocationPopup] = useState<{ lat: string; lng: string; name: string | null; isOutOfZone: boolean } | null>(null);
+  const miniMapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!locationPopup || !miniMapRef.current) return;
+    const lat = parseFloat(locationPopup.lat);
+    const lng = parseFloat(locationPopup.lng);
+    const mapsKey = import.meta.env.VITE_GOOGLE_MAPS_KEY as string;
+    const container = miniMapRef.current;
+    if (!mapsKey) {
+      container.innerHTML = `<p class="text-muted-foreground text-xs p-4 text-center">مفتاح الخرائط غير مضبوط</p>`;
+      return;
+    }
+    container.innerHTML = "";
+    setOptions({ key: mapsKey, v: "weekly" });
+    importLibrary("maps").then((mapsLib: google.maps.MapsLibrary) => {
+      const map = new mapsLib.Map(container, {
+        center: { lat, lng },
+        zoom: 16,
+        disableDefaultUI: true,
+        zoomControl: true,
+      });
+      importLibrary("marker").then((markerLib: google.maps.MarkerLibrary) => {
+        new markerLib.Marker({ position: { lat, lng }, map });
+      }).catch(() => {
+        new google.maps.Marker({ position: { lat, lng }, map });
+      });
+    }).catch(() => {
+      container.innerHTML = `<p class="text-muted-foreground text-xs p-4 text-center">تعذّر تحميل الخريطة</p>`;
+    });
+  }, [locationPopup]);
 
   const { data, isLoading, refetch } = useQuery<MonitorData>({
     queryKey: ["/api/attendance/monitor", dateRange.from, dateRange.to, locationFilter],
@@ -136,9 +170,15 @@ export default function AttendanceMonitorPage() {
   const employees = data?.employees || [];
 
   const filteredEmployees = useMemo(() => {
-    if (locationFilter === "all") return employees;
-    return employees.filter(e => e.locationName === locationFilter);
-  }, [employees, locationFilter]);
+    let result = locationFilter === "all" ? employees : employees.filter(e => e.locationName === locationFilter);
+    if (outOfZoneOnly) result = result.filter(e => records.some(r => r.employeeId === e.id && r.isOutOfZone));
+    return result;
+  }, [employees, locationFilter, outOfZoneOnly, records]);
+
+  const filteredRecords = useMemo(() => {
+    if (!outOfZoneOnly) return records;
+    return records.filter(r => r.isOutOfZone);
+  }, [records, outOfZoneOnly]);
 
   const summary = useMemo(() => {
     const present = filteredEmployees.filter(e => getDayStatus(records, e.id).status === "present").length;
@@ -258,6 +298,16 @@ export default function AttendanceMonitorPage() {
             <SelectItem value="معرض">المعرض</SelectItem>
           </SelectContent>
         </Select>
+        <Button
+          size="sm"
+          variant={outOfZoneOnly ? "destructive" : "outline"}
+          onClick={() => setOutOfZoneOnly(v => !v)}
+          data-testid="button-filter-out-of-zone"
+          className="gap-1"
+        >
+          <MapPin className="w-3.5 h-3.5" />
+          خارج النطاق فقط
+        </Button>
       </div>
 
       {/* Summary Cards */}
@@ -310,7 +360,7 @@ export default function AttendanceMonitorPage() {
 
       {/* Main Content */}
       <Tabs defaultValue="daily">
-        <TabsList className="mb-4">
+        <TabsList className="mb-4 flex-wrap h-auto gap-1">
           <TabsTrigger value="daily" data-testid="tab-daily">
             <Users className="w-4 h-4 me-1" />
             الحضور اليومي
@@ -318,6 +368,10 @@ export default function AttendanceMonitorPage() {
           <TabsTrigger value="records" data-testid="tab-records">
             <Clock className="w-4 h-4 me-1" />
             السجلات التفصيلية
+          </TabsTrigger>
+          <TabsTrigger value="zones" data-testid="tab-zones">
+            <Map className="w-4 h-4 me-1" />
+            مناطق الدوام
           </TabsTrigger>
           {deviceReport.length > 0 && (
             <TabsTrigger value="devices" data-testid="tab-devices">
@@ -369,10 +423,45 @@ export default function AttendanceMonitorPage() {
                               </div>
                             </td>
                             <td className="px-4 py-3">
-                              <div className="flex items-center gap-1 text-muted-foreground">
-                                {emp.locationName === "معرض" ? <Building2 className="w-3.5 h-3.5" /> : <Factory className="w-3.5 h-3.5" />}
-                                <span className="text-xs">{emp.locationName}</span>
-                              </div>
+                              {!s.in ? (
+                                <div className="flex items-center gap-1 text-muted-foreground">
+                                  {emp.locationName === "معرض" ? <Building2 className="w-3.5 h-3.5" /> : <Factory className="w-3.5 h-3.5" />}
+                                  <span className="text-xs">{emp.locationName}</span>
+                                </div>
+                              ) : !s.in.latitude ? (
+                                <span className="text-muted-foreground text-xs flex items-center gap-1">
+                                  <MapPin className="w-3.5 h-3.5" />
+                                  ➖ بلا موقع
+                                </span>
+                              ) : s.in.isOutOfZone ? (
+                                <button
+                                  className="flex items-center gap-1 text-orange-600 text-xs hover:underline"
+                                  onClick={() => s.in?.latitude && s.in?.longitude && setLocationPopup({
+                                    lat: s.in.latitude,
+                                    lng: s.in.longitude,
+                                    name: s.in.locationName,
+                                    isOutOfZone: true,
+                                  })}
+                                  data-testid={`button-daily-location-${emp.id}`}
+                                >
+                                  <MapPin className="w-3.5 h-3.5" />
+                                  خارج النطاق ⚠️
+                                </button>
+                              ) : (
+                                <button
+                                  className="flex items-center gap-1 text-green-600 text-xs hover:underline"
+                                  onClick={() => s.in?.latitude && s.in?.longitude && setLocationPopup({
+                                    lat: s.in.latitude,
+                                    lng: s.in.longitude,
+                                    name: s.in.locationName,
+                                    isOutOfZone: false,
+                                  })}
+                                  data-testid={`button-daily-location-in-${emp.id}`}
+                                >
+                                  <MapPin className="w-3.5 h-3.5" />
+                                  {s.in.locationName || "✅ داخل النطاق"}
+                                </button>
+                              )}
                             </td>
                             <td className="px-4 py-3">
                               {s.in ? (
@@ -380,7 +469,7 @@ export default function AttendanceMonitorPage() {
                                   <LogIn className="w-3.5 h-3.5 text-green-500" />
                                   <span>{formatTime(s.in.checkTime)}</span>
                                   {s.in.isManualEdit && <Pencil className="w-3 h-3 text-muted-foreground" />}
-                                  {s.in.isOutOfZone && <MapPin className="w-3 h-3 text-orange-500" title="خارج النطاق" />}
+                                  {s.in.isOutOfZone && <span title="خارج النطاق"><MapPin className="w-3 h-3 text-orange-500" /></span>}
                                 </div>
                               ) : <span className="text-muted-foreground">—</span>}
                             </td>
@@ -417,7 +506,10 @@ export default function AttendanceMonitorPage() {
         <TabsContent value="records">
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-base">السجلات التفصيلية ({records.length})</CardTitle>
+              <CardTitle className="text-base">
+                السجلات التفصيلية ({filteredRecords.length})
+                {outOfZoneOnly && <span className="ms-2 text-xs font-normal text-orange-600">• خارج النطاق فقط</span>}
+              </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
               <div className="overflow-x-auto">
@@ -433,7 +525,7 @@ export default function AttendanceMonitorPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y">
-                    {records.map(rec => (
+                    {filteredRecords.map(rec => (
                       <tr key={rec.id} className="hover:bg-muted/20" data-testid={`row-record-${rec.id}`}>
                         <td className="px-4 py-3">
                           <p className="font-medium">{rec.employeeNameAr || rec.employeePhone || `#${rec.employeeId}`}</p>
@@ -452,24 +544,40 @@ export default function AttendanceMonitorPage() {
                           {rec.isManualEdit && <Badge variant="outline" className="text-[9px] h-4 mt-0.5">تعديل يدوي</Badge>}
                         </td>
                         <td className="px-4 py-3">
-                          <div className="flex items-center gap-1">
-                            {rec.locationName || "—"}
-                            {rec.isOutOfZone && <MapPin className="w-3.5 h-3.5 text-orange-500" title="خارج النطاق" />}
+                          <div className="flex items-center gap-1 flex-wrap">
+                            {rec.isOutOfZone ? (
+                              <span className="inline-flex items-center gap-0.5 text-orange-600 text-xs font-medium">
+                                <MapPin className="w-3.5 h-3.5" />
+                                خارج النطاق ⚠️
+                              </span>
+                            ) : rec.latitude && rec.longitude ? (
+                              <span className="inline-flex items-center gap-0.5 text-green-600 text-xs">
+                                <MapPin className="w-3.5 h-3.5" />
+                                {rec.locationName || "داخل النطاق"}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground text-xs">{rec.locationName || "—"}</span>
+                            )}
                           </div>
                           {rec.latitude && rec.longitude && (
-                            <a
-                              href={`https://maps.google.com/?q=${rec.latitude},${rec.longitude}`}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-xs text-primary hover:underline"
+                            <button
+                              onClick={() => setLocationPopup({
+                                lat: rec.latitude!,
+                                lng: rec.longitude!,
+                                name: rec.locationName,
+                                isOutOfZone: rec.isOutOfZone,
+                              })}
+                              className="text-xs text-primary hover:underline mt-0.5"
+                              data-testid={`button-show-location-${rec.id}`}
                             >
-                              عرض الموقع
-                            </a>
+                              عرض الموقع الدقيق
+                            </button>
                           )}
                         </td>
                         <td className="px-4 py-3 text-xs text-muted-foreground">
                           {rec.deviceInfo?.type && <p>{rec.deviceInfo.type} · {rec.deviceInfo.browser}</p>}
                           {rec.deviceInfo?.os && <p>{rec.deviceInfo.os}</p>}
+                          {rec.notes && <p className="text-orange-600 mt-0.5">{rec.notes}</p>}
                         </td>
                         <td className="px-4 py-3">
                           <Button size="sm" variant="ghost" onClick={() => openEditDialog(rec)} data-testid={`button-edit-record-${rec.id}`}>
@@ -478,12 +586,23 @@ export default function AttendanceMonitorPage() {
                         </td>
                       </tr>
                     ))}
-                    {records.length === 0 && (
-                      <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">لا توجد سجلات في هذه الفترة</td></tr>
+                    {filteredRecords.length === 0 && (
+                      <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                        {outOfZoneOnly ? "لا توجد بصمات خارج النطاق في هذه الفترة" : "لا توجد سجلات في هذه الفترة"}
+                      </td></tr>
                     )}
                   </tbody>
                 </table>
               </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Zones Management Tab */}
+        <TabsContent value="zones">
+          <Card>
+            <CardContent className="p-4 md:p-6">
+              <AttendanceZonesMap />
             </CardContent>
           </Card>
         </TabsContent>
@@ -519,6 +638,45 @@ export default function AttendanceMonitorPage() {
           </TabsContent>
         )}
       </Tabs>
+
+      {/* Location Mini-Map Popup */}
+      <Dialog open={!!locationPopup} onOpenChange={open => !open && setLocationPopup(null)}>
+        <DialogContent dir="rtl" className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <MapPin className={`w-4 h-4 ${locationPopup?.isOutOfZone ? "text-orange-500" : "text-green-500"}`} />
+              {locationPopup?.isOutOfZone ? "موقع خارج النطاق الجغرافي" : "موقع البصمة"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            {locationPopup?.isOutOfZone && (
+              <div className="flex items-center gap-2 bg-orange-50 dark:bg-orange-950/30 text-orange-700 dark:text-orange-400 rounded-lg px-3 py-2 text-xs">
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+                <span>هذه البصمة سُجّلت من موقع خارج نطاقات الدوام المحددة</span>
+              </div>
+            )}
+            {locationPopup?.name && (
+              <p className="text-sm"><span className="font-medium">الموقع:</span> {locationPopup.name}</p>
+            )}
+            <div ref={miniMapRef} className="w-full rounded-lg overflow-hidden border min-h-[220px] bg-muted/20 flex items-center justify-center">
+              <p className="text-muted-foreground text-xs animate-pulse">جاري تحميل الخريطة...</p>
+            </div>
+            <div className="flex justify-between items-center">
+              <p className="text-xs text-muted-foreground font-mono">
+                {locationPopup?.lat}, {locationPopup?.lng}
+              </p>
+              <a
+                href={`https://maps.google.com/?q=${locationPopup?.lat},${locationPopup?.lng}`}
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs text-primary hover:underline"
+              >
+                فتح في Google Maps
+              </a>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Edit Record Dialog */}
       <Dialog open={!!editRecord} onOpenChange={open => !open && setEditRecord(null)}>

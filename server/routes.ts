@@ -5920,41 +5920,59 @@ export async function registerRoutes(
   });
 
   app.post("/api/attendance/record", requireAttendanceAuth, async (req, res) => {
-    const { employeeId, employeePhone, employeeNameAr, type, locationName, latitude, longitude, deviceInfo, deviceFingerprint } = req.body;
+    const { employeeId, employeePhone, employeeNameAr, type, locationName: clientLocationName, latitude, longitude, deviceInfo, deviceFingerprint, notes } = req.body;
     if (!type || !["check_in", "check_out"].includes(type)) return res.status(400).json({ message: "نوع السجل غير صالح" });
+    const lat2Num = latitude !== undefined && latitude !== null ? parseFloat(latitude) : NaN;
+    const lng2Num = longitude !== undefined && longitude !== null ? parseFloat(longitude) : NaN;
+    const hasValidCoords = !isNaN(lat2Num) && !isNaN(lng2Num) && lat2Num >= -90 && lat2Num <= 90 && lng2Num >= -180 && lng2Num <= 180;
     try {
       const zones = await storage.getLocationZones();
       let isOutOfZone = false;
-      if (latitude && longitude && zones.length > 0) {
+      let resolvedLocationName: string | null = clientLocationName || null;
+      if (hasValidCoords && zones.length > 0) {
         const R = 6371000;
-        const inAnyZone = zones.some(z => {
+        const lat2 = lat2Num;
+        const lon2 = lng2Num;
+        const matchedZone = zones.filter(z => z.isActive).find(z => {
           if (!z.centerLat || !z.centerLng) return false;
+          const polyCoords = Array.isArray(z.polygonCoords) ? z.polygonCoords as { lat: number; lng: number }[] : [];
+          const isRect = polyCoords.length === 4 && !z.radiusMeters;
+          if (isRect) {
+            const north = Math.max(...polyCoords.map((p: { lat: number }) => p.lat));
+            const south = Math.min(...polyCoords.map((p: { lat: number }) => p.lat));
+            const east = Math.max(...polyCoords.map((p: { lng: number }) => p.lng));
+            const west = Math.min(...polyCoords.map((p: { lng: number }) => p.lng));
+            return lat2 >= south && lat2 <= north && lon2 >= west && lon2 <= east;
+          }
           const lat1 = parseFloat(z.centerLat);
           const lon1 = parseFloat(z.centerLng);
-          const lat2 = parseFloat(latitude);
-          const lon2 = parseFloat(longitude);
           const dLat = (lat2 - lat1) * Math.PI / 180;
           const dLon = (lon2 - lon1) * Math.PI / 180;
           const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
           const dist = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
           return dist <= (z.radiusMeters || 200);
         });
-        isOutOfZone = !inAnyZone;
+        if (matchedZone) {
+          resolvedLocationName = matchedZone.nameAr;
+        } else {
+          isOutOfZone = true;
+          resolvedLocationName = null;
+        }
       }
       const record = await storage.createAttendanceRecord({
         employeeId: employeeId || null,
         employeePhone: employeePhone || null,
         employeeNameAr: employeeNameAr || null,
         type,
-        locationName: locationName || null,
-        latitude: latitude ? String(latitude) : null,
-        longitude: longitude ? String(longitude) : null,
+        locationName: resolvedLocationName,
+        latitude: hasValidCoords ? String(lat2Num) : null,
+        longitude: hasValidCoords ? String(lng2Num) : null,
         isOutOfZone,
         deviceInfo: deviceInfo || {},
         deviceFingerprint: deviceFingerprint || null,
         isManualEdit: false,
         editedBy: null,
-        notes: null,
+        notes: notes || null,
       });
       res.json(record);
     } catch (error) {
@@ -6042,7 +6060,26 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/attendance/zones", async (_req, res) => {
+  app.get("/api/attendance/zones/public", async (_req, res) => {
+    try {
+      const zones = await storage.getLocationZones();
+      const publicZones = zones
+        .filter(z => z.isActive)
+        .map(z => ({
+          id: z.id,
+          nameAr: z.nameAr,
+          type: z.type,
+          centerLat: z.centerLat,
+          centerLng: z.centerLng,
+          radiusMeters: z.radiusMeters,
+        }));
+      res.json(publicZones);
+    } catch {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  app.get("/api/attendance/zones", requireRole("owner", "it", "hr"), async (_req, res) => {
     try {
       const zones = await storage.getLocationZones();
       res.json(zones);
