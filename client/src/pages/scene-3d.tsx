@@ -1085,7 +1085,7 @@ function InteractiveDoor({ startX, iw, ih }: { startX: number; iw: number; ih: n
   const [hovered, setHovered] = useState(false);
   const doorRef = useRef<THREE.Group>(null);
   const doorAngle = useRef(0);
-  const FRAME_COLOR = "#2C1A0E";
+  const FRAME_COLOR = "#8B6914";
   const FRAME_W = 0.055;
 
   useFrame((_, delta) => {
@@ -1183,7 +1183,7 @@ function WallElements({ items, wallLen, wallH }: { items: any[]; wallLen: number
         const ih   = parseItemMeasure(item.height, item.type === "door" ? 210 : 120);
         const startX = -hw + dist;
         const cx     = startX + iw / 2;
-        const FRAME_COLOR = "#2C1A0E";
+        const FRAME_COLOR = "#8B6914";
         const FRAME_W = 0.055;
 
         if (item.type === "door") {

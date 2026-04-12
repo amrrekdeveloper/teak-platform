@@ -5839,16 +5839,39 @@ export async function registerRoutes(
 
   // ============ ATTENDANCE SYSTEM ============
 
+  // In-memory rate limiter for attendance password endpoint
+  const attendanceRateLimit = new Map<string, { count: number; resetAt: number }>();
+  const ATTENDANCE_MAX_ATTEMPTS = 10;
+  const ATTENDANCE_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+
+  function requireAttendanceAuth(req: Request, res: Response, next: NextFunction) {
+    const session = (req as any).session;
+    if (session?.attendanceAuth) return next();
+    return res.status(401).json({ message: "يجب تسجيل الدخول لبوابة الدوام أولاً" });
+  }
+
   app.post("/api/attendance/verify-password", async (req, res) => {
-    const { password } = req.body;
-    if (password === "1400") {
-      res.json({ success: true });
-    } else {
-      res.status(401).json({ success: false, message: "كلمة المرور غير صحيحة" });
+    const ip = req.ip || "unknown";
+    const now = Date.now();
+    const limiter = attendanceRateLimit.get(ip) || { count: 0, resetAt: now + ATTENDANCE_WINDOW_MS };
+    if (now > limiter.resetAt) { limiter.count = 0; limiter.resetAt = now + ATTENDANCE_WINDOW_MS; }
+    if (limiter.count >= ATTENDANCE_MAX_ATTEMPTS) {
+      return res.status(429).json({ success: false, message: "تجاوزت عدد المحاولات المسموحة. حاول بعد 15 دقيقة." });
     }
+    limiter.count++;
+    attendanceRateLimit.set(ip, limiter);
+
+    const { password } = req.body;
+    const portalPassword = process.env.ATTENDANCE_PORTAL_PASSWORD || "1400";
+    if (password === portalPassword) {
+      (req as any).session.attendanceAuth = true;
+      limiter.count = 0;
+      return res.json({ success: true });
+    }
+    return res.status(401).json({ success: false, message: "كلمة المرور غير صحيحة" });
   });
 
-  app.get("/api/attendance/employees-list", async (_req, res) => {
+  app.get("/api/attendance/employees-list", requireAttendanceAuth, async (_req, res) => {
     try {
       const allEmployees = await storage.getEmployees();
       const allUsers = await storage.getUsers();
@@ -5870,7 +5893,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/attendance/employee-lookup", async (req, res) => {
+  app.get("/api/attendance/employee-lookup", requireAttendanceAuth, async (req, res) => {
     const { phone } = req.query as { phone?: string };
     if (!phone) return res.status(400).json({ message: "رقم الجوال مطلوب" });
     try {
@@ -5896,7 +5919,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/attendance/record", async (req, res) => {
+  app.post("/api/attendance/record", requireAttendanceAuth, async (req, res) => {
     const { employeeId, employeePhone, employeeNameAr, type, locationName, latitude, longitude, deviceInfo, deviceFingerprint } = req.body;
     if (!type || !["check_in", "check_out"].includes(type)) return res.status(400).json({ message: "نوع السجل غير صالح" });
     try {
@@ -5940,7 +5963,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/attendance/my-records", async (req, res) => {
+  app.get("/api/attendance/my-records", requireAttendanceAuth, async (req, res) => {
     const { employeeId, employeePhone, from, to } = req.query as Record<string, string>;
     try {
       const records = await storage.getAttendanceRecords({
@@ -5955,7 +5978,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/attendance/permission", async (req, res) => {
+  app.post("/api/attendance/permission", requireAttendanceAuth, async (req, res) => {
     const { employeeId, employeePhone, date, type, startTime, endTime, hoursRequested, reason } = req.body;
     if (!date || !type) return res.status(400).json({ message: "البيانات غير مكتملة" });
     try {
