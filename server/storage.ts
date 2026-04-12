@@ -220,6 +220,20 @@ export interface IStorage {
   getDailySalesLog(date: string, salesRepId: number): Promise<DailySalesLog | undefined>;
   getDailySalesLogs(filters?: { salesRepId?: number; startDate?: string; endDate?: string }): Promise<DailySalesLog[]>;
   upsertDailySalesLog(data: InsertDailySalesLog): Promise<DailySalesLog>;
+
+  // Attendance System (Task #61)
+  createAttendanceRecord(data: InsertAttendanceRecord): Promise<AttendanceRecord>;
+  getAttendanceRecords(filters?: { employeeId?: number; employeePhone?: string; from?: string; to?: string; locationName?: string }): Promise<AttendanceRecord[]>;
+  getAttendanceRecord(id: number): Promise<AttendanceRecord | undefined>;
+  updateAttendanceRecord(id: number, data: Partial<InsertAttendanceRecord>): Promise<AttendanceRecord | undefined>;
+  getLastAttendanceRecord(employeeId?: number, employeePhone?: string): Promise<AttendanceRecord | undefined>;
+  createAttendancePermission(data: InsertAttendancePermission): Promise<AttendancePermission>;
+  getAttendancePermissions(filters?: { employeeId?: number; employeePhone?: string; date?: string }): Promise<AttendancePermission[]>;
+  updateAttendancePermission(id: number, data: Partial<InsertAttendancePermission>): Promise<AttendancePermission | undefined>;
+  getLocationZones(): Promise<LocationZone[]>;
+  createLocationZone(data: InsertLocationZone): Promise<LocationZone>;
+  updateLocationZone(id: number, data: Partial<InsertLocationZone>): Promise<LocationZone | undefined>;
+  deleteLocationZone(id: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
