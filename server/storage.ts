@@ -36,6 +36,9 @@ import {
   siteSurveys, type SiteSurvey, type InsertSiteSurvey,
   passwordResetRequests, type PasswordResetRequest, type InsertPasswordResetRequest,
   dailySalesLogs, type DailySalesLog, type InsertDailySalesLog,
+  attendanceRecords, type AttendanceRecord, type InsertAttendanceRecord,
+  attendancePermissions, type AttendancePermission, type InsertAttendancePermission,
+  locationZones, type LocationZone, type InsertLocationZone,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -942,6 +945,80 @@ export class DatabaseStorage implements IStorage {
     }
     const [created] = await db.insert(dailySalesLogs).values(data).returning();
     return created;
+  }
+
+  async createAttendanceRecord(data: InsertAttendanceRecord): Promise<AttendanceRecord> {
+    const [record] = await db.insert(attendanceRecords).values(data).returning();
+    return record;
+  }
+
+  async getAttendanceRecords(filters?: { employeeId?: number; employeePhone?: string; from?: string; to?: string; locationName?: string }): Promise<AttendanceRecord[]> {
+    const conditions = [];
+    if (filters?.employeeId) conditions.push(eq(attendanceRecords.employeeId, filters.employeeId));
+    if (filters?.employeePhone) conditions.push(eq(attendanceRecords.employeePhone, filters.employeePhone));
+    if (filters?.locationName) conditions.push(eq(attendanceRecords.locationName, filters.locationName));
+    if (filters?.from) conditions.push(gte(attendanceRecords.checkTime, new Date(filters.from)));
+    if (filters?.to) conditions.push(lte(attendanceRecords.checkTime, new Date(filters.to)));
+    return conditions.length
+      ? db.select().from(attendanceRecords).where(and(...conditions)).orderBy(desc(attendanceRecords.checkTime))
+      : db.select().from(attendanceRecords).orderBy(desc(attendanceRecords.checkTime));
+  }
+
+  async getAttendanceRecord(id: number): Promise<AttendanceRecord | undefined> {
+    const [record] = await db.select().from(attendanceRecords).where(eq(attendanceRecords.id, id));
+    return record;
+  }
+
+  async updateAttendanceRecord(id: number, data: Partial<InsertAttendanceRecord>): Promise<AttendanceRecord | undefined> {
+    const [updated] = await db.update(attendanceRecords).set(data).where(eq(attendanceRecords.id, id)).returning();
+    return updated;
+  }
+
+  async getLastAttendanceRecord(employeeId?: number, employeePhone?: string): Promise<AttendanceRecord | undefined> {
+    const conditions = [];
+    if (employeeId) conditions.push(eq(attendanceRecords.employeeId, employeeId));
+    if (employeePhone) conditions.push(eq(attendanceRecords.employeePhone, employeePhone));
+    if (!conditions.length) return undefined;
+    const [record] = await db.select().from(attendanceRecords).where(and(...conditions)).orderBy(desc(attendanceRecords.checkTime)).limit(1);
+    return record;
+  }
+
+  async createAttendancePermission(data: InsertAttendancePermission): Promise<AttendancePermission> {
+    const [perm] = await db.insert(attendancePermissions).values(data).returning();
+    return perm;
+  }
+
+  async getAttendancePermissions(filters?: { employeeId?: number; employeePhone?: string; date?: string }): Promise<AttendancePermission[]> {
+    const conditions = [];
+    if (filters?.employeeId) conditions.push(eq(attendancePermissions.employeeId, filters.employeeId));
+    if (filters?.employeePhone) conditions.push(eq(attendancePermissions.employeePhone, filters.employeePhone));
+    if (filters?.date) conditions.push(eq(attendancePermissions.date, filters.date));
+    return conditions.length
+      ? db.select().from(attendancePermissions).where(and(...conditions)).orderBy(desc(attendancePermissions.createdAt))
+      : db.select().from(attendancePermissions).orderBy(desc(attendancePermissions.createdAt));
+  }
+
+  async updateAttendancePermission(id: number, data: Partial<InsertAttendancePermission>): Promise<AttendancePermission | undefined> {
+    const [updated] = await db.update(attendancePermissions).set(data).where(eq(attendancePermissions.id, id)).returning();
+    return updated;
+  }
+
+  async getLocationZones(): Promise<LocationZone[]> {
+    return db.select().from(locationZones).where(eq(locationZones.isActive, true)).orderBy(locationZones.id);
+  }
+
+  async createLocationZone(data: InsertLocationZone): Promise<LocationZone> {
+    const [zone] = await db.insert(locationZones).values(data).returning();
+    return zone;
+  }
+
+  async updateLocationZone(id: number, data: Partial<InsertLocationZone>): Promise<LocationZone | undefined> {
+    const [updated] = await db.update(locationZones).set(data).where(eq(locationZones.id, id)).returning();
+    return updated;
+  }
+
+  async deleteLocationZone(id: number): Promise<void> {
+    await db.update(locationZones).set({ isActive: false }).where(eq(locationZones.id, id));
   }
 }
 

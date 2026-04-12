@@ -54,6 +54,8 @@ import DailySalesEntryPage from "@/pages/daily-sales-entry";
 import SalesPerformancePage from "@/pages/sales-performance";
 import MyMapPage from "@/pages/my-map";
 import SalesMapPage from "@/pages/sales-map";
+import AttendancePage from "@/pages/attendance";
+import AttendanceMonitorPage from "@/pages/attendance-monitor";
 import AppLayout from "@/components/app-layout";
 import NotFound from "@/pages/not-found";
 
@@ -211,6 +213,7 @@ function DashboardRoutes() {
         <Route path="/sales-performance" component={SalesPerformancePage} />
         <Route path="/my-map" component={GuardedMyMapPage} />
         <Route path="/sales-map" component={GuardedSalesMapPage} />
+        <Route path="/attendance-monitor" component={AttendanceMonitorPage} />
         <Route path="/settings/users" component={GuardedSettingsUsersPage} />
         <Route path="/settings/products" component={SettingsProductsPage} />
         <Route path="/settings" component={SettingsPage} />
@@ -231,6 +234,7 @@ function Router() {
       <Route path="/portal/login" component={CustomerPortalLogin} />
       <Route path="/portal" component={CustomerPortal} />
       <Route path="/employee-login" component={EmployeeLoginPage} />
+      <Route path="/attendance" component={AttendancePage} />
       <Route path="/system-admin" component={SystemAdminLogin} />
       <Route path="/view-3d" component={Scene3DPage} />
       <Route path="/scene-3d" component={Scene3DPage} />
@@ -246,6 +250,7 @@ function FloatingContactWrapper() {
     !location.startsWith("/dashboard") &&
     !location.startsWith("/login") &&
     !location.startsWith("/employee-login") &&
+    !location.startsWith("/attendance") &&
     !location.startsWith("/scene-3d") &&
     !location.startsWith("/site-survey");
   if (!isPublicPage) return null;

@@ -1165,3 +1165,76 @@ export const osmBuildingsCache = pgTable("osm_buildings_cache", {
   fetchedAt: timestamp("fetched_at").notNull().defaultNow(),
 });
 export type OsmBuildingsCache = typeof osmBuildingsCache.$inferSelect;
+
+export const attendanceRecordTypeEnum = pgEnum("attendance_record_type", ["check_in", "check_out"]);
+export const attendancePermissionTypeEnum = pgEnum("attendance_permission_type", ["leave", "permission", "sick", "official", "remote"]);
+export const attendancePermissionStatusEnum = pgEnum("attendance_permission_status", ["pending", "auto_approved", "approved", "rejected"]);
+export const locationZoneTypeEnum = pgEnum("location_zone_type", ["factory", "showroom", "other"]);
+
+export const attendanceRecords = pgTable("attendance_records", {
+  id: serial("id").primaryKey(),
+  employeeId: integer("employee_id").references(() => employees.id),
+  employeePhone: text("employee_phone"),
+  employeeNameAr: text("employee_name_ar"),
+  type: attendanceRecordTypeEnum("type").notNull(),
+  checkTime: timestamp("check_time").notNull().defaultNow(),
+  locationName: text("location_name"),
+  latitude: decimal("latitude", { precision: 10, scale: 7 }),
+  longitude: decimal("longitude", { precision: 10, scale: 7 }),
+  isOutOfZone: boolean("is_out_of_zone").notNull().default(false),
+  deviceInfo: jsonb("device_info").$default(() => ({})),
+  deviceFingerprint: text("device_fingerprint"),
+  notes: text("notes"),
+  isManualEdit: boolean("is_manual_edit").notNull().default(false),
+  editedBy: integer("edited_by").references(() => users.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertAttendanceRecordSchema = createInsertSchema(attendanceRecords).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertAttendanceRecord = z.infer<typeof insertAttendanceRecordSchema>;
+export type AttendanceRecord = typeof attendanceRecords.$inferSelect;
+
+export const attendancePermissions = pgTable("attendance_permissions", {
+  id: serial("id").primaryKey(),
+  employeeId: integer("employee_id").references(() => employees.id),
+  employeePhone: text("employee_phone"),
+  date: date("date").notNull(),
+  type: attendancePermissionTypeEnum("type").notNull(),
+  startTime: text("start_time"),
+  endTime: text("end_time"),
+  hoursRequested: decimal("hours_requested", { precision: 4, scale: 2 }),
+  reason: text("reason"),
+  status: attendancePermissionStatusEnum("status").notNull().default("pending"),
+  reviewedBy: integer("reviewed_by").references(() => users.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertAttendancePermissionSchema = createInsertSchema(attendancePermissions).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertAttendancePermission = z.infer<typeof insertAttendancePermissionSchema>;
+export type AttendancePermission = typeof attendancePermissions.$inferSelect;
+
+export const locationZones = pgTable("location_zones", {
+  id: serial("id").primaryKey(),
+  nameAr: text("name_ar").notNull(),
+  nameEn: text("name_en").notNull(),
+  type: locationZoneTypeEnum("type").notNull(),
+  centerLat: decimal("center_lat", { precision: 10, scale: 7 }),
+  centerLng: decimal("center_lng", { precision: 10, scale: 7 }),
+  radiusMeters: integer("radius_meters").default(200),
+  polygonCoords: jsonb("polygon_coords").$default(() => []),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertLocationZoneSchema = createInsertSchema(locationZones).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertLocationZone = z.infer<typeof insertLocationZoneSchema>;
+export type LocationZone = typeof locationZones.$inferSelect;

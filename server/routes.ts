@@ -5837,5 +5837,245 @@ export async function registerRoutes(
     }
   });
 
+  // ============ ATTENDANCE SYSTEM ============
+
+  app.post("/api/attendance/verify-password", async (req, res) => {
+    const { password } = req.body;
+    if (password === "1400") {
+      res.json({ success: true });
+    } else {
+      res.status(401).json({ success: false, message: "كلمة المرور غير صحيحة" });
+    }
+  });
+
+  app.get("/api/attendance/employees-list", async (_req, res) => {
+    try {
+      const allEmployees = await storage.getEmployees();
+      const allUsers = await storage.getUsers();
+      const activeEmployees = allEmployees
+        .filter(e => e.status === "active" && e.attendanceEnabled)
+        .map(e => {
+          const user = allUsers.find(u => u.id === e.userId);
+          return {
+            id: e.id,
+            employeeNumber: e.employeeNumber,
+            nameAr: user?.fullNameAr || e.phone || e.employeeNumber,
+            phone: user?.phone || e.phone,
+            locationName: e.fingerprintLocation || e.fingerScanLocation || "غير محدد",
+          };
+        });
+      res.json(activeEmployees);
+    } catch {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  app.get("/api/attendance/employee-lookup", async (req, res) => {
+    const { phone } = req.query as { phone?: string };
+    if (!phone) return res.status(400).json({ message: "رقم الجوال مطلوب" });
+    try {
+      const allEmployees = await storage.getEmployees();
+      const allUsers = await storage.getUsers();
+      const user = allUsers.find(u => u.phone === phone);
+      let employee = user ? allEmployees.find(e => e.userId === user.id) : undefined;
+      if (!employee) employee = allEmployees.find(e => e.phone === phone);
+      if (!employee) return res.status(404).json({ message: "لم يُعثَر على موظف بهذا الرقم" });
+      const empUser = allUsers.find(u => u.id === employee!.userId);
+      const lastRecord = await storage.getLastAttendanceRecord(employee.id, phone);
+      return res.json({
+        id: employee.id,
+        employeeNumber: employee.employeeNumber,
+        nameAr: empUser?.fullNameAr || employee.phone || employee.employeeNumber,
+        phone: empUser?.phone || employee.phone || phone,
+        locationName: employee.fingerprintLocation || employee.fingerScanLocation || "غير محدد",
+        attendanceEnabled: employee.attendanceEnabled,
+        lastRecord: lastRecord ? { type: lastRecord.type, checkTime: lastRecord.checkTime } : null,
+      });
+    } catch {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  app.post("/api/attendance/record", async (req, res) => {
+    const { employeeId, employeePhone, employeeNameAr, type, locationName, latitude, longitude, deviceInfo, deviceFingerprint } = req.body;
+    if (!type || !["check_in", "check_out"].includes(type)) return res.status(400).json({ message: "نوع السجل غير صالح" });
+    try {
+      const zones = await storage.getLocationZones();
+      let isOutOfZone = false;
+      if (latitude && longitude && zones.length > 0) {
+        const R = 6371000;
+        const inAnyZone = zones.some(z => {
+          if (!z.centerLat || !z.centerLng) return false;
+          const lat1 = parseFloat(z.centerLat);
+          const lon1 = parseFloat(z.centerLng);
+          const lat2 = parseFloat(latitude);
+          const lon2 = parseFloat(longitude);
+          const dLat = (lat2 - lat1) * Math.PI / 180;
+          const dLon = (lon2 - lon1) * Math.PI / 180;
+          const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+          const dist = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+          return dist <= (z.radiusMeters || 200);
+        });
+        isOutOfZone = !inAnyZone;
+      }
+      const record = await storage.createAttendanceRecord({
+        employeeId: employeeId || null,
+        employeePhone: employeePhone || null,
+        employeeNameAr: employeeNameAr || null,
+        type,
+        locationName: locationName || null,
+        latitude: latitude ? String(latitude) : null,
+        longitude: longitude ? String(longitude) : null,
+        isOutOfZone,
+        deviceInfo: deviceInfo || {},
+        deviceFingerprint: deviceFingerprint || null,
+        isManualEdit: false,
+        editedBy: null,
+        notes: null,
+      });
+      res.json(record);
+    } catch (error) {
+      console.error("Attendance record error:", error);
+      res.status(500).json({ message: "حدث خطأ أثناء تسجيل الحضور" });
+    }
+  });
+
+  app.get("/api/attendance/my-records", async (req, res) => {
+    const { employeeId, employeePhone, from, to } = req.query as Record<string, string>;
+    try {
+      const records = await storage.getAttendanceRecords({
+        employeeId: employeeId ? parseInt(employeeId) : undefined,
+        employeePhone: employeePhone || undefined,
+        from: from || undefined,
+        to: to || undefined,
+      });
+      res.json(records);
+    } catch {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  app.post("/api/attendance/permission", async (req, res) => {
+    const { employeeId, employeePhone, date, type, startTime, endTime, hoursRequested, reason } = req.body;
+    if (!date || !type) return res.status(400).json({ message: "البيانات غير مكتملة" });
+    try {
+      const perm = await storage.createAttendancePermission({
+        employeeId: employeeId || null,
+        employeePhone: employeePhone || null,
+        date,
+        type,
+        startTime: startTime || null,
+        endTime: endTime || null,
+        hoursRequested: hoursRequested ? String(hoursRequested) : null,
+        reason: reason || null,
+        status: "auto_approved",
+        reviewedBy: null,
+      });
+      res.json(perm);
+    } catch {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  app.get("/api/attendance/monitor", requireRole("owner", "it"), async (req, res) => {
+    const { from, to, locationName, employeeId } = req.query as Record<string, string>;
+    try {
+      const records = await storage.getAttendanceRecords({
+        from: from || undefined,
+        to: to || undefined,
+        locationName: locationName || undefined,
+        employeeId: employeeId ? parseInt(employeeId) : undefined,
+      });
+      const permissions = await storage.getAttendancePermissions();
+      const allEmployees = await storage.getEmployees();
+      const allUsers = await storage.getUsers();
+      const employeesWithInfo = allEmployees
+        .filter(e => e.status === "active" && e.attendanceEnabled)
+        .map(e => {
+          const user = allUsers.find(u => u.id === e.userId);
+          return {
+            id: e.id,
+            employeeNumber: e.employeeNumber,
+            nameAr: user?.fullNameAr || e.phone || e.employeeNumber,
+            phone: user?.phone || e.phone,
+            locationName: e.fingerprintLocation || e.fingerScanLocation || "غير محدد",
+          };
+        });
+      res.json({ records, permissions, employees: employeesWithInfo });
+    } catch {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  app.patch("/api/attendance/record/:id", requireRole("owner", "it"), async (req, res) => {
+    const id = parseInt(req.params.id);
+    const userId = (req as any).user?.id;
+    try {
+      const updated = await storage.updateAttendanceRecord(id, { ...req.body, isManualEdit: true, editedBy: userId });
+      if (!updated) return res.status(404).json({ message: "السجل غير موجود" });
+      res.json(updated);
+    } catch {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  app.get("/api/attendance/zones", async (_req, res) => {
+    try {
+      const zones = await storage.getLocationZones();
+      res.json(zones);
+    } catch {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  app.post("/api/attendance/zones", requireRole("owner", "it"), async (req, res) => {
+    try {
+      const zone = await storage.createLocationZone(req.body);
+      res.json(zone);
+    } catch {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  app.patch("/api/attendance/zones/:id", requireRole("owner", "it"), async (req, res) => {
+    try {
+      const zone = await storage.updateLocationZone(parseInt(req.params.id), req.body);
+      res.json(zone);
+    } catch {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  app.delete("/api/attendance/zones/:id", requireRole("owner", "it"), async (req, res) => {
+    try {
+      await storage.deleteLocationZone(parseInt(req.params.id));
+      res.json({ success: true });
+    } catch {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  app.get("/api/attendance/device-report", requireRole("owner", "it"), async (_req, res) => {
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const records = await storage.getAttendanceRecords({ from: today.toISOString() });
+      const deviceMap = new Map<string, string[]>();
+      records.forEach(r => {
+        if (!r.deviceFingerprint) return;
+        const existing = deviceMap.get(r.deviceFingerprint) || [];
+        const name = r.employeeNameAr || r.employeePhone || String(r.employeeId);
+        if (!existing.includes(name)) existing.push(name);
+        deviceMap.set(r.deviceFingerprint, existing);
+      });
+      const sharedDevices = Array.from(deviceMap.entries())
+        .filter(([, names]) => names.length > 1)
+        .map(([fingerprint, employees]) => ({ fingerprint, employees }));
+      res.json(sharedDevices);
+    } catch {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
   return httpServer;
 }

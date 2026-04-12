@@ -31,6 +31,7 @@ import {
   Globe2,
   HeartHandshake,
   Lock,
+  Fingerprint,
 } from "lucide-react";
 import { SiWhatsapp } from "react-icons/si";
 import { Button } from "@/components/ui/button";
@@ -1420,6 +1421,14 @@ function Footer() {
             >
               <Lock className="w-3 h-3" />
               {t("دخول الموظفين", "Staff Login")}
+            </a>
+            <a
+              href="/attendance"
+              className="flex items-center gap-1.5 text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+              data-testid="link-attendance-portal"
+            >
+              <Fingerprint className="w-3 h-3" />
+              {t("تسجيل الدوام", "Attendance")}
             </a>
             <a
               href="/system-admin"
