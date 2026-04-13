@@ -48,27 +48,20 @@ function getDeviceInfo() {
   return { ua, type: isTablet ? "tablet" : isMobile ? "mobile" : "desktop", browser, os };
 }
 
-function getCanvasFingerprint(): string {
+function getDeviceId(): string {
+  const KEY = "teak_device_id";
   try {
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return "no-canvas";
-    ctx.textBaseline = "top";
-    ctx.font = "14px Arial";
-    ctx.fillStyle = "#f60";
-    ctx.fillRect(125, 1, 62, 20);
-    ctx.fillStyle = "#069";
-    ctx.fillText("تيك للتصنيع 2024", 2, 15);
-    ctx.fillStyle = "rgba(102,204,0,0.7)";
-    ctx.fillText("attendance", 4, 45);
-    const data = canvas.toDataURL();
-    let hash = 0;
-    for (let i = 0; i < data.length; i++) {
-      hash = (hash << 5) - hash + data.charCodeAt(i);
-      hash |= 0;
+    let id = localStorage.getItem(KEY);
+    if (!id) {
+      id = "dev-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10)
+        + "-" + (navigator.hardwareConcurrency || 0)
+        + "-" + screen.width + "x" + screen.height;
+      localStorage.setItem(KEY, id);
     }
-    return String(Math.abs(hash));
-  } catch { return "error"; }
+    return id;
+  } catch {
+    return "dev-" + navigator.userAgent.length + "-" + screen.width + "x" + screen.height;
+  }
 }
 
 function FingerprintAnimation({ onComplete }: { onComplete: () => void }) {
@@ -204,7 +197,7 @@ export default function AttendancePage() {
   const { toast } = useToast();
   const qc = useQueryClient();
   const deviceInfo = useRef(getDeviceInfo());
-  const deviceFingerprint = useRef(getCanvasFingerprint());
+  const deviceFingerprint = useRef(getDeviceId());
 
   const { data: employeesList = [] } = useQuery<EmployeeInfo[]>({
     queryKey: ["/api/attendance/employees-list"],
