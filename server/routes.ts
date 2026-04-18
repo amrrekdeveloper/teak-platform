@@ -798,7 +798,12 @@ export async function registerRoutes(
         if (!user) return res.status(404).json({ message: "المستخدم غير موجود" });
 
         const valid = await comparePasswords(currentPassword, user.password);
-        if (!valid) {
+        /* For accountants who log in via finance-PIN portal and don't know their
+           bcrypt password, allow their financePin (or the default "1400") as an
+           alternative "current password" so they can set a real bcrypt password. */
+        const effectivePin = user.financePin || "1400";
+        const validViaPin = !valid && user.role === "accountant" && currentPassword === effectivePin;
+        if (!valid && !validViaPin) {
           return res.status(400).json({ message: "كلمة المرور الحالية غير صحيحة", messageEn: "Current password is incorrect" });
         }
         updateData.password = await hashPassword(newPassword);
