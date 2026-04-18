@@ -13,6 +13,19 @@ import { useQueryClient } from "@tanstack/react-query";
 
 type Step = "phone" | "pin" | "done";
 
+/** Extract Arabic message from API errors like "403: {"message":"..."}" */
+function extractApiError(err: unknown, fallback: string): string {
+  const raw = (err as Error)?.message || "";
+  const jsonStart = raw.indexOf("{");
+  if (jsonStart !== -1) {
+    try {
+      const parsed = JSON.parse(raw.slice(jsonStart));
+      if (parsed?.message) return parsed.message;
+    } catch { /* ignore */ }
+  }
+  return fallback;
+}
+
 export default function FinanceLoginPage() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -37,9 +50,8 @@ export default function FinanceLoginPage() {
       setStep("pin");
       setError("");
     },
-    onError: (err: any) => {
-      const msg = err?.message || "رقم الجوال غير مسجّل كمحاسب في النظام";
-      setError(msg);
+    onError: (err: unknown) => {
+      setError(extractApiError(err, "رقم الجوال غير مسجّل كمحاسب في النظام"));
     },
   });
 
@@ -49,11 +61,10 @@ export default function FinanceLoginPage() {
     onSuccess: async () => {
       setStep("done");
       await qc.invalidateQueries({ queryKey: ["/api/auth/me"] });
-      setTimeout(() => setLocation("/finance"), 1200);
+      setTimeout(() => setLocation("/dashboard/finance"), 1200);
     },
-    onError: (err: any) => {
-      const msg = err?.message || "كلمة المرور غير صحيحة";
-      setError(msg);
+    onError: (err: unknown) => {
+      setError(extractApiError(err, "كلمة المرور غير صحيحة"));
     },
   });
 
