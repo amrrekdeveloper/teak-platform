@@ -5,15 +5,13 @@ import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useToast } from "@/hooks/use-toast";
-import { Eye, EyeOff, Loader2, Phone, Lock, ChevronLeft, CheckCircle2 } from "lucide-react";
+import { Eye, EyeOff, Loader2, Phone, ChevronLeft, CheckCircle2 } from "lucide-react";
 import teakLogo from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQueryClient } from "@tanstack/react-query";
 
 type Step = "phone" | "pin" | "done";
 
-/** Extract Arabic message from API errors like "403: {"message":"..."}" */
 function extractApiError(err: unknown, fallback: string): string {
   const raw = (err as Error)?.message || "";
   const jsonStart = raw.indexOf("{");
@@ -28,25 +26,22 @@ function extractApiError(err: unknown, fallback: string): string {
 
 export default function FinanceLoginPage() {
   const [, setLocation] = useLocation();
-  const { toast } = useToast();
   const qc = useQueryClient();
 
   const [step, setStep] = useState<Step>("phone");
   const [phone, setPhone] = useState("");
   const [nameAr, setNameAr] = useState("");
-  const [fetchedPin, setFetchedPin] = useState("");
-  const [showPin, setShowPin] = useState(false);
   const [pinInput, setPinInput] = useState("");
+  const [showPin, setShowPin] = useState(false);
   const [error, setError] = useState("");
 
   const lookupMutation = useMutation({
     mutationFn: async (phone: string) => {
       const res = await apiRequest("POST", "/api/finance-auth/lookup", { phone });
-      return res.json() as Promise<{ nameAr: string; pin: string }>;
+      return res.json() as Promise<{ nameAr: string }>;
     },
     onSuccess: (data) => {
       setNameAr(data.nameAr);
-      setFetchedPin(data.pin);
       setStep("pin");
       setError("");
     },
@@ -89,6 +84,7 @@ export default function FinanceLoginPage() {
       dir="rtl"
     >
       <div className="w-full max-w-sm">
+        {/* Logo + title */}
         <div className="text-center mb-8">
           <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center ring-2 ring-primary/20">
             <img
@@ -106,6 +102,8 @@ export default function FinanceLoginPage() {
 
         <div className="bg-card border rounded-2xl shadow-sm p-6 space-y-5">
           <AnimatePresence mode="wait">
+
+            {/* ── Step 1: Phone number ── */}
             {step === "phone" && (
               <motion.div
                 key="phone"
@@ -146,15 +144,14 @@ export default function FinanceLoginPage() {
                     disabled={lookupMutation.isPending || !phone.trim()}
                     data-testid="btn-finance-lookup"
                   >
-                    {lookupMutation.isPending ? (
-                      <Loader2 className="h-4 w-4 animate-spin ml-2" />
-                    ) : null}
+                    {lookupMutation.isPending && <Loader2 className="h-4 w-4 animate-spin ml-2" />}
                     متابعة
                   </Button>
                 </form>
               </motion.div>
             )}
 
+            {/* ── Step 2: Password input only ── */}
             {step === "pin" && (
               <motion.div
                 key="pin"
@@ -163,11 +160,10 @@ export default function FinanceLoginPage() {
                 exit={{ opacity: 0, y: -12 }}
               >
                 <form onSubmit={handlePinSubmit} className="space-y-4">
+                  {/* Name badge */}
                   <div className="bg-primary/5 border border-primary/20 rounded-xl p-3 flex items-center gap-3">
                     <div className="w-9 h-9 rounded-full bg-primary/15 flex items-center justify-center shrink-0">
-                      <span className="text-primary font-bold text-sm">
-                        {nameAr.slice(0, 1)}
-                      </span>
+                      <span className="text-primary font-bold text-sm">{nameAr.slice(0, 1)}</span>
                     </div>
                     <div>
                       <p className="font-semibold text-sm" data-testid="text-finance-name">{nameAr}</p>
@@ -175,47 +171,31 @@ export default function FinanceLoginPage() {
                     </div>
                   </div>
 
+                  {/* Password input — no current-PIN display */}
                   <div className="space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <Label className="text-sm font-medium">كلمة المرور الحالية</Label>
+                    <Label htmlFor="finance-pin" className="text-sm font-medium">
+                      كلمة المرور
+                    </Label>
+                    <div className="relative">
+                      <Input
+                        id="finance-pin"
+                        type={showPin ? "text" : "password"}
+                        value={pinInput}
+                        onChange={(e) => setPinInput(e.target.value)}
+                        placeholder="أدخل كلمة المرور"
+                        className="h-11 font-mono tracking-widest text-center pl-10"
+                        autoFocus
+                        data-testid="input-finance-pin"
+                      />
                       <button
                         type="button"
                         onClick={() => setShowPin(!showPin)}
-                        className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
+                        className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
                         data-testid="btn-toggle-pin-visibility"
                       >
-                        {showPin ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
-                        {showPin ? "إخفاء" : "إظهار"}
+                        {showPin ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </button>
                     </div>
-                    <div className="flex items-center gap-2 bg-muted/60 border rounded-lg px-3 py-2.5">
-                      <Lock className="h-4 w-4 text-muted-foreground shrink-0" />
-                      <span
-                        className="font-mono text-sm tracking-widest flex-1"
-                        data-testid="text-current-pin"
-                      >
-                        {showPin ? fetchedPin : "•".repeat(fetchedPin.length)}
-                      </span>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      يمكنك تغيير كلمة المرور من داخل لوحتك بعد الدخول
-                    </p>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label htmlFor="finance-pin" className="text-sm font-medium">
-                      أدخل كلمة المرور
-                    </Label>
-                    <Input
-                      id="finance-pin"
-                      type="password"
-                      value={pinInput}
-                      onChange={(e) => setPinInput(e.target.value)}
-                      placeholder="أدخل كلمة المرور"
-                      className="h-11 font-mono tracking-widest text-center"
-                      autoFocus
-                      data-testid="input-finance-pin"
-                    />
                   </div>
 
                   {error && (
@@ -240,9 +220,7 @@ export default function FinanceLoginPage() {
                       disabled={loginMutation.isPending || !pinInput.trim()}
                       data-testid="btn-finance-login"
                     >
-                      {loginMutation.isPending ? (
-                        <Loader2 className="h-4 w-4 animate-spin ml-2" />
-                      ) : null}
+                      {loginMutation.isPending && <Loader2 className="h-4 w-4 animate-spin ml-2" />}
                       دخول النظام المالي
                     </Button>
                   </div>
@@ -250,6 +228,7 @@ export default function FinanceLoginPage() {
               </motion.div>
             )}
 
+            {/* ── Step 3: Success ── */}
             {step === "done" && (
               <motion.div
                 key="done"
@@ -262,13 +241,14 @@ export default function FinanceLoginPage() {
                 <p className="text-sm text-muted-foreground">جاري الانتقال إلى النظام المالي...</p>
               </motion.div>
             )}
+
           </AnimatePresence>
         </div>
 
         <p className="text-center text-xs text-muted-foreground mt-4">
           للدخول عبر حسابك الرئيسي{" "}
           <button
-            onClick={() => setLocation("/login")}
+            onClick={() => setLocation("/employee-login")}
             className="text-primary hover:underline"
             data-testid="link-main-login"
           >

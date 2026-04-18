@@ -6074,10 +6074,7 @@ export async function registerRoutes(
         return res.status(403).json({ message: "رقم الجوال غير مسجّل كمحاسب في النظام" });
       }
       if (!user.active) return res.status(403).json({ message: "الحساب معطّل" });
-      return res.json({
-        nameAr: user.fullNameAr,
-        pin: user.financePin || "1400",
-      });
+      return res.json({ nameAr: user.fullNameAr });
     } catch {
       return res.status(500).json({ message: "حدث خطأ" });
     }
