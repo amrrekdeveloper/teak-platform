@@ -56,6 +56,7 @@ import MyMapPage from "@/pages/my-map";
 import SalesMapPage from "@/pages/sales-map";
 import AttendancePage from "@/pages/attendance";
 import AttendanceMonitorPage from "@/pages/attendance-monitor";
+import FinanceLoginPage from "@/pages/finance-login";
 import AppLayout from "@/components/app-layout";
 import NotFound from "@/pages/not-found";
 
@@ -235,6 +236,7 @@ function Router() {
       <Route path="/portal" component={CustomerPortal} />
       <Route path="/employee-login" component={EmployeeLoginPage} />
       <Route path="/attendance" component={AttendancePage} />
+      <Route path="/finance-login" component={FinanceLoginPage} />
       <Route path="/system-admin" component={SystemAdminLogin} />
       <Route path="/view-3d" component={Scene3DPage} />
       <Route path="/scene-3d" component={Scene3DPage} />
@@ -251,6 +253,7 @@ function FloatingContactWrapper() {
     !location.startsWith("/login") &&
     !location.startsWith("/employee-login") &&
     !location.startsWith("/attendance") &&
+    !location.startsWith("/finance-login") &&
     !location.startsWith("/scene-3d") &&
     !location.startsWith("/site-survey");
   if (!isPublicPage) return null;

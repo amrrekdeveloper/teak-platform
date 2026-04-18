@@ -45,6 +45,7 @@ export const users = pgTable("users", {
   profileImage: text("profile_image"),
   active: boolean("active").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  financePin: text("finance_pin"),
 });
 
 export const insertUserSchema = createInsertSchema(users).omit({

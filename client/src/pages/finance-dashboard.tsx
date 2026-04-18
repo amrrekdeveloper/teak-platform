@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { FileText, CreditCard, CheckCircle, Plus, Trash2 } from "lucide-react";
+import { FileText, CreditCard, CheckCircle, Plus, Trash2, KeyRound, Eye, EyeOff } from "lucide-react";
 
 import { Link } from "wouter";
 import { format } from "date-fns";
@@ -31,6 +31,28 @@ export default function FinanceDashboardPage() {
 
   const [showScheduleDialog, setShowScheduleDialog] = useState(false);
   const [selectedContract, setSelectedContract] = useState<any>(null);
+
+  const [showPinDialog, setShowPinDialog] = useState(false);
+  const [newPin, setNewPin] = useState("");
+  const [confirmPin, setConfirmPin] = useState("");
+  const [showCurrentPin, setShowCurrentPin] = useState(false);
+
+  const { data: pinData } = useQuery<{ pin: string }>({
+    queryKey: ["/api/finance-auth/my-pin"],
+    retry: false,
+  });
+
+  const changePinMutation = useMutation({
+    mutationFn: (pin: string) => apiRequest("POST", "/api/finance-auth/change-pin", { newPin: pin }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/finance-auth/my-pin"] });
+      setShowPinDialog(false);
+      setNewPin("");
+      setConfirmPin("");
+      toast({ title: t("تم تغيير كلمة المرور بنجاح", "Password changed successfully") });
+    },
+    onError: () => toast({ title: t("حدث خطأ", "Error"), variant: "destructive" }),
+  });
   const [schedule, setSchedule] = useState<PaymentScheduleItem[]>([
     { label: t("دفعة أولى", "First Payment"), amount: "", dueDate: "" },
     { label: t("دفعة ثانية", "Second Payment"), amount: "", dueDate: "" },
@@ -107,6 +129,43 @@ export default function FinanceDashboardPage() {
         <h1 className="text-2xl font-bold">{t("لوحة المدير المالي", "Finance Dashboard")}</h1>
         <p className="text-muted-foreground text-sm">{t("إدارة العقود والفواتير ومتابعة المدفوعات", "Manage contracts, invoices and payments")}</p>
       </div>
+
+      {/* PIN management card — shown only when my-pin is accessible (accountant role) */}
+      {pinData && (
+        <Card className="border-primary/20 bg-primary/5">
+          <CardContent className="p-4 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-full bg-primary/15 flex items-center justify-center shrink-0">
+                <KeyRound className="h-4 w-4 text-primary" />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">{t("كلمة مرور الدخول السريع", "Quick Login PIN")}</p>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className="font-mono text-sm tracking-widest" data-testid="text-dashboard-pin">
+                    {showCurrentPin ? pinData.pin : "•".repeat(pinData.pin.length)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowCurrentPin(!showCurrentPin)}
+                    className="text-muted-foreground hover:text-foreground transition-colors"
+                    data-testid="btn-toggle-dashboard-pin"
+                  >
+                    {showCurrentPin ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                  </button>
+                </div>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setShowPinDialog(true)}
+              data-testid="btn-change-pin"
+            >
+              {t("تغيير", "Change")}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -277,6 +336,71 @@ export default function FinanceDashboardPage() {
           </Link>
         ))}
       </div>
+
+      {/* Change PIN Dialog */}
+      <Dialog open={showPinDialog} onOpenChange={setShowPinDialog}>
+        <DialogContent className="max-w-sm" dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <KeyRound className="h-4 w-4" />
+              {t("تغيير كلمة مرور الدخول السريع", "Change Quick Login PIN")}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-sm">{t("كلمة المرور الجديدة", "New PIN")}</Label>
+              <Input
+                type="password"
+                value={newPin}
+                onChange={(e) => setNewPin(e.target.value)}
+                placeholder={t("أدخل كلمة المرور الجديدة", "Enter new PIN")}
+                className="font-mono"
+                data-testid="input-new-pin"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-sm">{t("تأكيد كلمة المرور", "Confirm PIN")}</Label>
+              <Input
+                type="password"
+                value={confirmPin}
+                onChange={(e) => setConfirmPin(e.target.value)}
+                placeholder={t("أعد إدخال كلمة المرور", "Re-enter PIN")}
+                className="font-mono"
+                data-testid="input-confirm-pin"
+              />
+            </div>
+            {newPin && confirmPin && newPin !== confirmPin && (
+              <p className="text-sm text-destructive" data-testid="text-pin-mismatch">
+                {t("كلمتا المرور غير متطابقتين", "PINs do not match")}
+              </p>
+            )}
+            {newPin.length > 0 && newPin.length < 4 && (
+              <p className="text-sm text-amber-600" data-testid="text-pin-short">
+                {t("كلمة المرور يجب أن تكون 4 أحرف على الأقل", "PIN must be at least 4 characters")}
+              </p>
+            )}
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => { setShowPinDialog(false); setNewPin(""); setConfirmPin(""); }}>
+              {t("إلغاء", "Cancel")}
+            </Button>
+            <Button
+              onClick={() => changePinMutation.mutate(newPin)}
+              disabled={
+                changePinMutation.isPending ||
+                !newPin || !confirmPin ||
+                newPin !== confirmPin ||
+                newPin.length < 4
+              }
+              data-testid="btn-confirm-change-pin"
+            >
+              {changePinMutation.isPending
+                ? t("جاري الحفظ...", "Saving...")
+                : t("حفظ", "Save")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Payment Schedule Dialog */}
       <Dialog open={showScheduleDialog} onOpenChange={setShowScheduleDialog}>

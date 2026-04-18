@@ -5837,6 +5837,91 @@ export async function registerRoutes(
     }
   });
 
+  // ============ FINANCE QUICK LOGIN ============
+
+  function makeRateLimiter(maxAttempts: number, windowMs: number) {
+    const map = new Map<string, { count: number; resetAt: number }>();
+    return (ip: string): boolean => {
+      const now = Date.now();
+      const entry = map.get(ip) || { count: 0, resetAt: now + windowMs };
+      if (now > entry.resetAt) { entry.count = 0; entry.resetAt = now + windowMs; }
+      entry.count++;
+      map.set(ip, entry);
+      return entry.count <= maxAttempts;
+    };
+  }
+  const financeLookupRateLimit = makeRateLimiter(15, 60 * 1000);
+  const financeLoginRateLimit = makeRateLimiter(5, 60 * 1000);
+
+  app.post("/api/finance-auth/lookup", async (req, res) => {
+    const ip = req.ip || "unknown";
+    if (!financeLookupRateLimit(ip)) {
+      return res.status(429).json({ message: "تجاوزت عدد المحاولات. انتظر دقيقة ثم أعد المحاولة." });
+    }
+    const { phone } = req.body;
+    if (!phone) return res.status(400).json({ message: "رقم الجوال مطلوب" });
+    try {
+      const user = await storage.getUserByPhone(String(phone).trim());
+      if (!user || user.role !== "accountant") {
+        return res.status(403).json({ message: "رقم الجوال غير مسجّل كمحاسب في النظام" });
+      }
+      if (!user.active) return res.status(403).json({ message: "الحساب معطّل" });
+      return res.json({
+        nameAr: user.fullNameAr,
+        pin: user.financePin || "1400",
+      });
+    } catch {
+      return res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  app.post("/api/finance-auth/login", async (req, res) => {
+    const ip = req.ip || "unknown";
+    if (!financeLoginRateLimit(ip)) {
+      return res.status(429).json({ message: "تجاوزت عدد المحاولات. انتظر دقيقة ثم أعد المحاولة." });
+    }
+    const { phone, pin } = req.body;
+    if (!phone || !pin) return res.status(400).json({ message: "البيانات غير مكتملة" });
+    try {
+      const user = await storage.getUserByPhone(String(phone).trim());
+      if (!user || user.role !== "accountant" || !user.active) {
+        return res.status(401).json({ message: "بيانات الدخول غير صحيحة" });
+      }
+      const expectedPin = user.financePin || "1400";
+      if (String(pin) !== expectedPin) {
+        return res.status(401).json({ message: "كلمة المرور غير صحيحة" });
+      }
+      (req as any).session.userId = user.id;
+      const { password: _, financePin: __, ...safeUser } = user;
+      return res.json(safeUser);
+    } catch {
+      return res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  app.post("/api/finance-auth/change-pin", requireRole("accountant"), async (req, res) => {
+    const { newPin } = req.body;
+    if (!newPin || String(newPin).length < 4) {
+      return res.status(400).json({ message: "كلمة المرور يجب أن تكون 4 أحرف على الأقل" });
+    }
+    try {
+      await storage.updateUser((req as any).session.userId, { financePin: String(newPin) } as any);
+      return res.json({ success: true });
+    } catch {
+      return res.status(500).json({ message: "حدث خطأ أثناء تحديث كلمة المرور" });
+    }
+  });
+
+  app.get("/api/finance-auth/my-pin", requireRole("accountant"), async (req, res) => {
+    try {
+      const user = await storage.getUser((req as any).session.userId);
+      if (!user) return res.status(404).json({ message: "المستخدم غير موجود" });
+      return res.json({ pin: user.financePin || "1400" });
+    } catch {
+      return res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
   // ============ ATTENDANCE SYSTEM ============
 
   // In-memory rate limiter for attendance password endpoint
