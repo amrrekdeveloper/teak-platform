@@ -27,9 +27,11 @@ export default function FinanceLoginPage() {
   const [error, setError] = useState("");
 
   const lookupMutation = useMutation({
-    mutationFn: (phone: string) =>
-      apiRequest("POST", "/api/finance-auth/lookup", { phone }),
-    onSuccess: (data: any) => {
+    mutationFn: async (phone: string) => {
+      const res = await apiRequest("POST", "/api/finance-auth/lookup", { phone });
+      return res.json() as Promise<{ nameAr: string; pin: string }>;
+    },
+    onSuccess: (data) => {
       setNameAr(data.nameAr);
       setFetchedPin(data.pin);
       setStep("pin");

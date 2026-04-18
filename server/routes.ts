@@ -5850,7 +5850,7 @@ export async function registerRoutes(
       return entry.count <= maxAttempts;
     };
   }
-  const financeLookupRateLimit = makeRateLimiter(15, 60 * 1000);
+  const financeLookupRateLimit = makeRateLimiter(5, 60 * 1000);
   const financeLoginRateLimit = makeRateLimiter(5, 60 * 1000);
 
   app.post("/api/finance-auth/lookup", async (req, res) => {
@@ -5891,7 +5891,7 @@ export async function registerRoutes(
       if (String(pin) !== expectedPin) {
         return res.status(401).json({ message: "كلمة المرور غير صحيحة" });
       }
-      (req as any).session.userId = user.id;
+      req.session.userId = user.id;
       const { password: _, financePin: __, ...safeUser } = user;
       return res.json(safeUser);
     } catch {
@@ -5905,7 +5905,7 @@ export async function registerRoutes(
       return res.status(400).json({ message: "كلمة المرور يجب أن تكون 4 أحرف على الأقل" });
     }
     try {
-      await storage.updateUser((req as any).session.userId, { financePin: String(newPin) } as any);
+      await storage.updateUser(req.session.userId!, { financePin: String(newPin) });
       return res.json({ success: true });
     } catch {
       return res.status(500).json({ message: "حدث خطأ أثناء تحديث كلمة المرور" });
@@ -5914,7 +5914,7 @@ export async function registerRoutes(
 
   app.get("/api/finance-auth/my-pin", requireRole("accountant"), async (req, res) => {
     try {
-      const user = await storage.getUser((req as any).session.userId);
+      const user = await storage.getUser(req.session.userId!);
       if (!user) return res.status(404).json({ message: "المستخدم غير موجود" });
       return res.json({ pin: user.financePin || "1400" });
     } catch {
