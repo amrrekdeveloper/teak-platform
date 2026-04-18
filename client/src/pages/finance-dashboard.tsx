@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { FileText, CreditCard, CheckCircle, Plus, Trash2, KeyRound, Eye, EyeOff } from "lucide-react";
+import { FileText, CreditCard, CheckCircle, Plus, Trash2, KeyRound, Eye, EyeOff, Bell, Clock, AlertTriangle, MessageSquare } from "lucide-react";
 
 import { Link } from "wouter";
 import { format } from "date-fns";
@@ -61,6 +61,37 @@ export default function FinanceDashboardPage() {
   const { data: financeData, isLoading } = useQuery<any>({
     queryKey: ["/api/finance/ready-to-invoice"],
     staleTime: 30000,
+  });
+
+  interface UpcomingPayment {
+    contractId: number;
+    contractNumber: string;
+    customerName: string;
+    installmentLabel: string;
+    amount: number;
+    dueDate: string;
+    daysRemaining: number;
+    isOverdue: boolean;
+  }
+
+  const { data: upcomingPayments = [] } = useQuery<UpcomingPayment[]>({
+    queryKey: ["/api/finance/upcoming-payments"],
+    staleTime: 60000,
+  });
+
+  const checkRemindersMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/finance/check-payment-reminders", {});
+      return res.json() as Promise<{ message: string; count: number }>;
+    },
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["/api/finance/upcoming-payments"] });
+      toast({
+        title: t("تم إرسال التذكيرات", "Reminders Sent"),
+        description: t(`تم إرسال ${data.count} إشعار`, `${data.count} notifications sent`),
+      });
+    },
+    onError: () => toast({ title: t("حدث خطأ", "Error"), variant: "destructive" }),
   });
 
   const createContractMutation = useMutation({
@@ -218,6 +249,109 @@ export default function FinanceDashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Upcoming Payments Section */}
+      {upcomingPayments.length > 0 && (
+        <Card className="border-orange-200 dark:border-orange-800">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Bell className="h-4 w-4 text-orange-500" />
+              {t("دفعات قادمة (خلال 30 يوم)", "Upcoming Payments (within 30 days)")}
+              <Badge variant="secondary" className="bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300">
+                {upcomingPayments.length}
+              </Badge>
+              <div className="ms-auto">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-xs gap-1"
+                  onClick={() => checkRemindersMutation.mutate()}
+                  disabled={checkRemindersMutation.isPending}
+                  data-testid="btn-send-payment-reminders"
+                >
+                  <MessageSquare className="h-3.5 w-3.5" />
+                  {checkRemindersMutation.isPending
+                    ? t("جاري الإرسال...", "Sending...")
+                    : t("إرسال تذكيرات", "Send Reminders")}
+                </Button>
+              </div>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {upcomingPayments.map((pmt, idx) => {
+                const isOverdue = pmt.isOverdue;
+                const isUrgent = !isOverdue && pmt.daysRemaining <= 3;
+                const isSoon = !isOverdue && !isUrgent && pmt.daysRemaining <= 7;
+                return (
+                  <div
+                    key={`${pmt.contractId}-${idx}`}
+                    className={`flex items-center justify-between p-3 rounded-lg border gap-3 ${
+                      isOverdue
+                        ? "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/30"
+                        : isUrgent
+                        ? "border-orange-200 bg-orange-50 dark:border-orange-800 dark:bg-orange-950/30"
+                        : isSoon
+                        ? "border-yellow-200 bg-yellow-50 dark:border-yellow-800 dark:bg-yellow-950/30"
+                        : "border-border"
+                    }`}
+                    data-testid={`upcoming-payment-${pmt.contractId}-${idx}`}
+                  >
+                    <div className="flex items-start gap-3 min-w-0">
+                      <div className={`mt-0.5 shrink-0 ${isOverdue ? "text-red-500" : isUrgent ? "text-orange-500" : "text-yellow-500"}`}>
+                        {isOverdue ? <AlertTriangle className="h-4 w-4" /> : <Clock className="h-4 w-4" />}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="font-medium text-sm">{pmt.contractNumber}</span>
+                          <span className="text-xs text-muted-foreground">—</span>
+                          <span className="text-xs text-muted-foreground truncate">{pmt.installmentLabel}</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground">{pmt.customerName}</p>
+                        <p className="text-sm font-bold text-primary mt-0.5">
+                          {pmt.amount.toLocaleString()} ر.س
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {t("تاريخ الدفعة:", "Due Date:")} {pmt.dueDate}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="shrink-0 text-center">
+                      <div
+                        className={`text-2xl font-bold tabular-nums ${
+                          isOverdue ? "text-red-600" : isUrgent ? "text-orange-600" : isSoon ? "text-yellow-600" : "text-foreground"
+                        }`}
+                        data-testid={`days-remaining-${pmt.contractId}-${idx}`}
+                      >
+                        {isOverdue ? Math.abs(pmt.daysRemaining) : pmt.daysRemaining}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {isOverdue
+                          ? t("يوم تأخر", "days overdue")
+                          : pmt.daysRemaining === 0
+                          ? t("اليوم", "today")
+                          : t("يوم متبقي", "days left")}
+                      </div>
+                      <Link href={`/contracts/${pmt.contractId}`}>
+                        <Button size="sm" variant="ghost" className="mt-1 text-xs h-7 px-2" data-testid={`btn-upcoming-contract-${pmt.contractId}`}>
+                          {t("عرض", "View")}
+                        </Button>
+                      </Link>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <p className="text-xs text-muted-foreground mt-3 flex items-center gap-1">
+              <Bell className="h-3 w-3" />
+              {t(
+                "يُرسل النظام تذكيراً تلقائياً للمحاسبين قبل 3 أيام من موعد كل دفعة",
+                "System automatically sends reminders to accountants 3 days before each payment due date"
+              )}
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Section 1: Ready for Contract */}
       <Card>

@@ -5837,6 +5837,209 @@ export async function registerRoutes(
     }
   });
 
+  // ── Finance: Upcoming Payments (with days remaining) ─────────────────────
+
+  app.get("/api/finance/upcoming-payments", requireRole("owner", "assistant", "accountant"), async (_req, res) => {
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const allContracts = await storage.getContracts();
+      const upcoming: Array<{
+        contractId: number;
+        contractNumber: string;
+        customerName: string;
+        installmentLabel: string;
+        amount: number;
+        dueDate: string;
+        daysRemaining: number;
+        isOverdue: boolean;
+      }> = [];
+
+      for (const contract of allContracts) {
+        if (contract.status !== "active") continue;
+        const schedule = (contract.paymentSchedule as Array<{ label: string; amount: string; dueDate: string }>) || [];
+        if (!Array.isArray(schedule)) continue;
+        const customer = contract.customerId ? await storage.getCustomer(contract.customerId) : null;
+        for (const item of schedule) {
+          if (!item.dueDate) continue;
+          // Normalize to date-only string (handles both "YYYY-MM-DD" and ISO timestamps)
+          const dueDateKey = String(item.dueDate).slice(0, 10);
+          const due = new Date(`${dueDateKey}T00:00:00`);
+          const diffMs = due.getTime() - today.getTime();
+          const daysRemaining = Math.ceil(diffMs / (1000 * 3600 * 24));
+          // Show overdue (up to 7 days past) and upcoming (up to 30 days ahead)
+          if (daysRemaining >= -7 && daysRemaining <= 30) {
+            upcoming.push({
+              contractId: contract.id,
+              contractNumber: contract.contractNumber,
+              customerName: customer?.fullName || "",
+              installmentLabel: item.label || "",
+              amount: parseFloat(item.amount || "0"),
+              dueDate: dueDateKey,
+              daysRemaining,
+              isOverdue: daysRemaining < 0,
+            });
+          }
+        }
+      }
+
+      upcoming.sort((a, b) => a.daysRemaining - b.daysRemaining);
+      res.json(upcoming);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  // ── Finance: Manual trigger for payment reminders ────────────────────────
+
+  app.post("/api/finance/check-payment-reminders", requireRole("owner", "assistant", "accountant"), async (_req, res) => {
+    try {
+      const sent = await sendPaymentReminders(storage);
+      res.json({ message: "تم إرسال التذكيرات", count: sent });
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  // ── Schedule daily payment reminders (runs at startup + every 24h) ───────
+
+  function toLocalDateKey(d: Date): string {
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  }
+
+  async function sendPaymentReminders(st: typeof storage): Promise<number> {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const target = new Date(today);
+    target.setDate(today.getDate() + 3);
+    // Use local date components to avoid UTC off-by-one in non-UTC timezones (e.g. KSA = UTC+3)
+    const targetKey = toLocalDateKey(target);
+
+    const allContracts = await st.getContracts();
+    const accountantUsers = (await st.getUsers()).filter(
+      u => ["owner", "assistant", "accountant"].includes(u.role) && u.active
+    );
+
+    // Pre-build deduplication set: keys of already-sent reminders today
+    // Key format: `${userId}|${contractId}|${dateKey}|${installmentLabel}`
+    const alreadySentToday = new Set<string>();
+    for (const u of accountantUsers) {
+      const notifs = await st.getNotifications(u.id);
+      for (const n of notifs) {
+        if (
+          n.createdAt >= today &&
+          n.relatedEntity === "contract" &&
+          n.relatedId !== null &&
+          n.titleAr.startsWith("تذكير دفعة:") &&
+          n.titleAr.includes(targetKey)
+        ) {
+          // Extract installment label from title: "تذكير دفعة: {label} ({date})"
+          const labelMatch = n.titleAr.match(/^تذكير دفعة: (.+) \(\d{4}-\d{2}-\d{2}\)$/);
+          const labelPart = labelMatch ? labelMatch[1] : "";
+          alreadySentToday.add(`${u.id}|${n.relatedId}|${targetKey}|${labelPart}`);
+        }
+      }
+    }
+
+    let notifCount = 0;
+    for (const contract of allContracts) {
+      if (contract.status !== "active") continue;
+      const schedule = (contract.paymentSchedule as Array<{ label: string; amount: string; dueDate: string }>) || [];
+      if (!Array.isArray(schedule)) continue;
+      const customer = contract.customerId ? await st.getCustomer(contract.customerId) : null;
+
+      for (const item of schedule) {
+        if (!item.dueDate) continue;
+        // Normalize stored date to YYYY-MM-DD (handles ISO timestamps and date-only strings)
+        const itemDateKey = String(item.dueDate).slice(0, 10);
+        if (itemDateKey !== targetKey) continue;
+        const amountFmt = parseFloat(item.amount || "0").toLocaleString("ar-SA");
+        const labelAr = `تذكير دفعة: ${item.label || contract.contractNumber} (${itemDateKey})`;
+        const messageAr = `موعد دفعة بقيمة ${amountFmt} ر.س للعقد ${contract.contractNumber}${customer ? ` - ${customer.fullName}` : ""} بعد 3 أيام (${itemDateKey})`;
+        const messageEn = `Payment of SAR ${amountFmt} for contract ${contract.contractNumber}${customer ? ` - ${customer.fullName}` : ""} is due in 3 days (${itemDateKey})`;
+
+        const installmentLabel = item.label || contract.contractNumber;
+        for (const u of accountantUsers) {
+          const dedupKey = `${u.id}|${contract.id}|${itemDateKey}|${installmentLabel}`;
+          if (alreadySentToday.has(dedupKey)) continue;
+
+          const created = await st.createNotification({
+            userId: u.id,
+            titleAr: labelAr,
+            titleEn: `Payment Reminder: ${item.label || contract.contractNumber} (${itemDateKey})`,
+            messageAr,
+            messageEn,
+            type: "warning",
+            relatedEntity: "contract",
+            relatedId: contract.id,
+            isRead: false,
+          }).catch(() => null);
+
+          if (created) {
+            alreadySentToday.add(dedupKey); // prevent duplicates within same run
+            notifCount++;
+
+            // Attempt WhatsApp/SMS via configured webhook (optional)
+            const webhookUrl = process.env.WHATSAPP_WEBHOOK_URL;
+            if (webhookUrl && u.phone) {
+              try {
+                const whatsappRes = await fetch(webhookUrl, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    phone: u.phone,
+                    message: messageAr,
+                    contractId: contract.id,
+                  }),
+                  signal: AbortSignal.timeout ? AbortSignal.timeout(10000) : undefined,
+                });
+                if (!whatsappRes.ok) {
+                  console.warn(`[Payment Reminders] WhatsApp webhook returned ${whatsappRes.status} for user ${u.id} / contract ${contract.id}`);
+                }
+              } catch (whatsappErr) {
+                console.warn("[Payment Reminders] WhatsApp webhook non-fatal:", whatsappErr instanceof Error ? whatsappErr.message : String(whatsappErr));
+              }
+            }
+          }
+        }
+      }
+    }
+    return notifCount;
+  }
+
+  // Compute ms until next occurrence of a specific local hour (default 08:00)
+  function msUntilLocalHour(targetHour: number): number {
+    const now = new Date();
+    const next = new Date(now);
+    next.setHours(targetHour, 0, 0, 0);
+    if (next <= now) next.setDate(next.getDate() + 1);
+    return next.getTime() - now.getTime();
+  }
+
+  // Run once at startup (catches overnight deployments), then daily at 08:00 local
+  (async () => {
+    try {
+      const count = await sendPaymentReminders(storage);
+      if (count > 0) console.log(`[Payment Reminders] Sent ${count} notifications at startup`);
+    } catch (err) {
+      console.warn("[Payment Reminders] Startup check failed (non-fatal):", err instanceof Error ? err.message : String(err));
+    }
+    const scheduleDaily = () => {
+      const delay = msUntilLocalHour(8); // 08:00 local time
+      setTimeout(async () => {
+        try {
+          const count = await sendPaymentReminders(storage);
+          if (count > 0) console.log(`[Payment Reminders] Daily check sent ${count} notifications`);
+        } catch (err) {
+          console.warn("[Payment Reminders] Daily check failed (non-fatal):", err instanceof Error ? err.message : String(err));
+        }
+        scheduleDaily(); // reschedule for next day
+      }, delay);
+    };
+    scheduleDaily();
+  })();
+
   // ============ FINANCE QUICK LOGIN ============
 
   function makeRateLimiter(maxAttempts: number, windowMs: number) {
