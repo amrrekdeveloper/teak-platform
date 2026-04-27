@@ -139,9 +139,10 @@ async function seedRealUsers() {
   if (seeded > 0) console.log(`Seeded ${seeded} new real users`);
   if (updated > 0) console.log(`Updated ${updated} existing real users (profile/role only, password preserved)`);
 
-  const adminPwd = await hashPassword("1400");
-  await db.update(users).set({ password: adminPwd }).where(eq(users.username, "jabran"));
-  console.log("Admin (jabran) password ensured");
+  // NOTE: jabran's password is NOT reset here on every restart.
+  // The initial password is set only on first insert (see db-seed.ts).
+  // Removing this unconditional reset so owner-changed passwords survive deploys.
+  console.log("Admin (jabran) password preserved (no forced reset)");
 }
 
 export async function seedDatabase() {

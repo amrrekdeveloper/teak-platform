@@ -6,6 +6,7 @@ import { setupAuth, requireAuth, requireRole, comparePasswords, hashPassword } f
 import { seedDatabase } from "./seed";
 import { db, pool } from "./db";
 import { verifyFirebaseToken } from "./firebase-admin";
+import { normalizePhone } from "./utils";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -273,7 +274,7 @@ export async function registerRoutes(
       if (!phone) {
         return res.status(400).json({ message: "رقم الجوال مطلوب", messageEn: "Phone number is required" });
       }
-      const user = await storage.getUserByPhone(phone);
+      const user = await storage.getUserByPhone(normalizePhone(String(phone)));
       if (!user) {
         return res.status(404).json({ message: "رقم الجوال غير مسجل في النظام", messageEn: "Phone number not registered in system" });
       }
@@ -6278,7 +6279,8 @@ export async function registerRoutes(
     const { phone } = req.body;
     if (!phone) return res.status(400).json({ message: "رقم الجوال مطلوب" });
     try {
-      const user = await storage.getUserByPhone(String(phone).trim());
+      const normalizedPhone = normalizePhone(String(phone));
+      const user = await storage.getUserByPhone(normalizedPhone);
       if (!user || user.role !== "accountant") {
         return res.status(403).json({ message: "رقم الجوال غير مسجّل كمحاسب في النظام" });
       }
@@ -6297,7 +6299,7 @@ export async function registerRoutes(
     const { phone, pin } = req.body;
     if (!phone || !pin) return res.status(400).json({ message: "البيانات غير مكتملة" });
     try {
-      const user = await storage.getUserByPhone(String(phone).trim());
+      const user = await storage.getUserByPhone(normalizePhone(String(phone)));
       if (!user || user.role !== "accountant" || !user.active) {
         return res.status(401).json({ message: "بيانات الدخول غير صحيحة" });
       }

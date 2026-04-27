@@ -123,13 +123,16 @@ export default function FinanceLoginPage() {
                         type="tel"
                         value={phone}
                         onChange={(e) => setPhone(e.target.value)}
-                        placeholder="05XXXXXXXX"
+                        placeholder="05XXXXXXXX أو 5XXXXXXXX"
                         className="h-11 pr-10 text-left font-mono"
                         dir="ltr"
                         autoFocus
                         data-testid="input-finance-phone"
                       />
                     </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      مقبول بصيغة 05XXXXXXXX أو 5XXXXXXXX
+                    </p>
                   </div>
 
                   {error && (

@@ -83,8 +83,8 @@ export default function EmployeeLoginPage() {
     }
 
     const digits = trimmed.replace(/\D/g, "");
-    if (!/^05\d{8}$/.test(digits)) {
-      setError(t("رقم الجوال غير صحيح. يجب أن يبدأ بـ 05 ويتكون من 10 أرقام", "Invalid phone number. Must start with 05 and be 10 digits"));
+    if (!/^(05\d{8}|5\d{8})$/.test(digits)) {
+      setError(t("رقم الجوال غير صحيح. مثال: 05XXXXXXXX أو 5XXXXXXXX", "Invalid phone number. Example: 05XXXXXXXX or 5XXXXXXXX"));
       return;
     }
 
@@ -277,7 +277,7 @@ export default function EmployeeLoginPage() {
                     <Phone className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/60" />
                     <Input
                       type="tel"
-                      placeholder="05xxxxxxxx"
+                      placeholder={t("05XXXXXXXX أو 5XXXXXXXX", "05XXXXXXXX or 5XXXXXXXX")}
                       value={phone}
                       onChange={(e) => {
                         setPhone(e.target.value.replace(/\D/g, ""));
@@ -291,7 +291,7 @@ export default function EmployeeLoginPage() {
                     />
                   </div>
                   <p className="text-[11px] text-muted-foreground leading-relaxed">
-                    {t("أدخل رقم جوالك المسجل في النظام — سيصلك رمز التحقق عبر SMS", "Enter your registered phone number — you'll receive a code via SMS")}
+                    {t("أدخل رقم جوالك المسجل في النظام — بصيغة 05XXXXXXXX أو 5XXXXXXXX — سيصلك رمز التحقق عبر SMS", "Enter your registered phone — format 05XXXXXXXX or 5XXXXXXXX — you'll receive a code via SMS")}
                   </p>
                 </div>
                 <Button
