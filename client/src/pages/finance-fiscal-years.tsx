@@ -11,8 +11,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Lock, Settings2, CheckCircle2, AlertCircle, Calendar } from "lucide-react";
+import { Plus, Lock, Settings2, CheckCircle2, AlertCircle, Calendar, Printer } from "lucide-react";
 import { format } from "date-fns";
+import { exportReportPDF } from "@/lib/finance-export";
 
 export default function FinanceFiscalYearsPage() {
   const { t } = useLanguage();
@@ -31,6 +32,69 @@ export default function FinanceFiscalYearsPage() {
   const [closeConfirm, setCloseConfirm] = useState<number | null>(null);
   const [closeError, setCloseError] = useState<string | null>(null);
   const [closeWarning, setCloseWarning] = useState<string | null>(null);
+  const [printingId, setPrintingId] = useState<number | null>(null);
+
+  const handlePrintClosingReport = async (fy: any) => {
+    setPrintingId(fy.id);
+    try {
+      const data: any = await apiRequest("GET", `/api/accounting/fiscal-years/${fy.id}/closing-report`);
+      const entry = data.closingEntry;
+      const lines = entry.lines || [];
+
+      const totalDebit = lines.reduce((s: number, l: any) => s + parseFloat(l.debit || "0"), 0);
+      const totalCredit = lines.reduce((s: number, l: any) => s + parseFloat(l.credit || "0"), 0);
+
+      const retainedLine = lines.find((l: any) => l.accountCode === "3200");
+      const netProfit = retainedLine
+        ? (parseFloat(retainedLine.credit || "0") - parseFloat(retainedLine.debit || "0"))
+        : 0;
+
+      await exportReportPDF(
+        t("تقرير إقفال السنة المالية", "Year-End Closing Report"),
+        `${fy.name}  |  ${fy.startDate} — ${fy.endDate}`,
+        [
+          {
+            title: t("قيد الإقفال", "Closing Journal Entry"),
+            head: [[
+              t("الحساب", "Account"),
+              t("اسم الحساب", "Account Name"),
+              t("مدين", "Debit"),
+              t("دائن", "Credit"),
+              t("ملاحظات", "Notes"),
+            ]],
+            body: lines.map((l: any) => [
+              l.accountCode,
+              l.accountNameAr,
+              parseFloat(l.debit) > 0 ? parseFloat(l.debit).toFixed(2) : "",
+              parseFloat(l.credit) > 0 ? parseFloat(l.credit).toFixed(2) : "",
+              l.notes || "",
+            ]),
+            footRow: [
+              t("الإجمالي", "Total"),
+              "",
+              totalDebit.toFixed(2),
+              totalCredit.toFixed(2),
+              "",
+            ],
+          },
+          {
+            title: t("ملخص الإقفال", "Closing Summary"),
+            head: [[t("البيان", "Item"), t("المبلغ (ر.س)", "Amount (SAR)")]],
+            body: [
+              [t("صافي الربح / الخسارة المحوّل للأرباح المحتجزة", "Net Profit/Loss transferred to Retained Earnings"), netProfit.toFixed(2)],
+              [t("تاريخ الإقفال", "Closing Date"), entry.date],
+              [t("رقم قيد الإقفال", "Closing Entry #"), `#${entry.entryNumber}`],
+            ],
+          },
+        ],
+        `closing-report-${fy.name.replace(/\s+/g, "-")}.pdf`,
+      );
+    } catch (e: any) {
+      toast({ title: e.message || t("تعذّر تحميل تقرير الإقفال", "Failed to load closing report"), variant: "destructive" });
+    } finally {
+      setPrintingId(null);
+    }
+  };
 
   const { data: fiscalYears = [], isLoading } = useQuery<any[]>({
     queryKey: ["/api/accounting/fiscal-years"],
@@ -158,18 +222,33 @@ export default function FinanceFiscalYearsPage() {
                         </p>
                       )}
                     </div>
-                    {fy.status === "active" && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="shrink-0 text-amber-700 border-amber-300 hover:bg-amber-50 dark:text-amber-300 dark:border-amber-800 dark:hover:bg-amber-950"
-                        onClick={() => setCloseConfirm(fy.id)}
-                        data-testid={`btn-close-fy-${fy.id}`}
-                      >
-                        <Lock className="h-3.5 w-3.5 me-1.5" />
-                        {t("إقفال السنة", "Close Year")}
-                      </Button>
-                    )}
+                    <div className="flex items-center gap-2 shrink-0">
+                      {fy.status === "closed" && fy.closingEntryId && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-blue-700 border-blue-300 hover:bg-blue-50 dark:text-blue-300 dark:border-blue-800 dark:hover:bg-blue-950"
+                          onClick={() => handlePrintClosingReport(fy)}
+                          disabled={printingId === fy.id}
+                          data-testid={`btn-print-fy-close-${fy.id}`}
+                        >
+                          <Printer className="h-3.5 w-3.5 me-1.5" />
+                          {printingId === fy.id ? t("جاري التصدير...", "Exporting...") : t("طباعة الإقفال", "Print Report")}
+                        </Button>
+                      )}
+                      {fy.status === "active" && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-amber-700 border-amber-300 hover:bg-amber-50 dark:text-amber-300 dark:border-amber-800 dark:hover:bg-amber-950"
+                          onClick={() => setCloseConfirm(fy.id)}
+                          data-testid={`btn-close-fy-${fy.id}`}
+                        >
+                          <Lock className="h-3.5 w-3.5 me-1.5" />
+                          {t("إقفال السنة", "Close Year")}
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 </CardContent>
               </Card>

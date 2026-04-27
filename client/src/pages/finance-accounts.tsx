@@ -13,9 +13,10 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Trash2, Edit2, BookOpen, FileText, ChevronLeft, AlertCircle, CheckCircle2, DollarSign, ExternalLink } from "lucide-react";
+import { Plus, Trash2, Edit2, BookOpen, FileText, ChevronLeft, AlertCircle, CheckCircle2, DollarSign, ExternalLink, Printer } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { format } from "date-fns";
+import { exportReportPDF } from "@/lib/finance-export";
 
 const ACCOUNT_TYPES: Record<string, { labelAr: string; color: string }> = {
   asset:     { labelAr: "أصول",        color: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300" },
@@ -114,6 +115,48 @@ export default function FinanceAccountsPage() {
   // Opening balances state
   const [obDate, setObDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [obLines, setObLines] = useState<LineItem[]>([EMPTY_LINE()]);
+  const [printingOB, setPrintingOB] = useState(false);
+
+  const handleExportOpeningBalances = async () => {
+    if ((obData as any[]).length === 0) return;
+    setPrintingOB(true);
+    try {
+      const rows = obData as any[];
+      const totalDebit = rows.reduce((s, r) => s + parseFloat(r.debit || "0"), 0);
+      const totalCredit = rows.reduce((s, r) => s + parseFloat(r.credit || "0"), 0);
+      await exportReportPDF(
+        t("قسيمة الأرصدة الافتتاحية", "Opening Balances Voucher"),
+        obDate,
+        [
+          {
+            head: [[
+              t("الرمز", "Code"),
+              t("اسم الحساب", "Account Name"),
+              t("مدين", "Debit"),
+              t("دائن", "Credit"),
+            ]],
+            body: rows.map((r: any) => [
+              r.account_code,
+              r.account_name_ar,
+              parseFloat(r.debit) > 0 ? parseFloat(r.debit).toFixed(2) : "",
+              parseFloat(r.credit) > 0 ? parseFloat(r.credit).toFixed(2) : "",
+            ]),
+            footRow: [
+              t("الإجمالي", "Total"),
+              "",
+              totalDebit.toFixed(2),
+              totalCredit.toFixed(2),
+            ],
+          },
+        ],
+        `opening-balances-${obDate}.pdf`,
+      );
+    } catch (e: any) {
+      toast({ title: e.message || t("تعذّر تصدير الأرصدة الافتتاحية", "Failed to export opening balances"), variant: "destructive" });
+    } finally {
+      setPrintingOB(false);
+    }
+  };
 
   const { data: accounts = [] } = useQuery<any[]>({ queryKey: ["/api/accounting/accounts"] });
   const entriesUrl = typeFilter && typeFilter !== "all"
@@ -411,7 +454,20 @@ export default function FinanceAccountsPage() {
                   <p className="text-xs text-muted-foreground">{t("جاري التحميل...", "Loading...")}</p>
                 ) : (obData as any[]).length > 0 && (
                   <div>
-                    <p className="text-xs font-semibold mb-2 text-muted-foreground">{t("الأرصدة المحفوظة حالياً", "Currently saved balances")}</p>
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs font-semibold text-muted-foreground">{t("الأرصدة المحفوظة حالياً", "Currently saved balances")}</p>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs text-blue-700 border-blue-300 hover:bg-blue-50 dark:text-blue-300 dark:border-blue-800 dark:hover:bg-blue-950"
+                        onClick={handleExportOpeningBalances}
+                        disabled={printingOB}
+                        data-testid="btn-export-opening-balances"
+                      >
+                        <Printer className="h-3.5 w-3.5 me-1.5" />
+                        {printingOB ? t("جاري التصدير...", "Exporting...") : t("تصدير PDF", "Export PDF")}
+                      </Button>
+                    </div>
                     <div className="rounded border overflow-hidden">
                       <table className="w-full text-xs">
                         <thead className="bg-muted/50">

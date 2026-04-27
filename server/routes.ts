@@ -7341,6 +7341,23 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ message: e.message || "حدث خطأ" }); }
   });
 
+  // Closing report: return fiscal year info + closing entry lines for PDF generation
+  app.get("/api/accounting/fiscal-years/:id/closing-report", requireRole("owner", "assistant", "accountant"), async (req, res) => {
+    try {
+      const fyId = Number(req.params.id);
+      const fy = await storage.getFiscalYear(fyId);
+      if (!fy) return res.status(404).json({ message: "السنة المالية غير موجودة" });
+      if (!fy.closingEntryId) return res.status(400).json({ message: "لا يوجد قيد إقفال لهذه السنة المالية" });
+
+      const entry = await storage.getJournalEntry(fy.closingEntryId);
+      if (!entry) return res.status(404).json({ message: "قيد الإقفال غير موجود" });
+
+      const lines = await storage.getJournalEntryLines(fy.closingEntryId);
+
+      res.json({ fiscalYear: fy, closingEntry: { ...entry, lines } });
+    } catch (e: any) { res.status(500).json({ message: e.message || "حدث خطأ" }); }
+  });
+
   // Year-end close: create closing journal entry and mark fiscal year as closed
   app.post("/api/accounting/fiscal-years/:id/close", requireRole("owner", "assistant", "accountant"), async (req, res) => {
     try {
