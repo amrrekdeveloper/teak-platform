@@ -107,14 +107,19 @@ export default function FinanceAccountsPage() {
   const [journalDialog, setJournalDialog] = useState(false);
   const [jForm, setJForm] = useState({ date: format(new Date(), "yyyy-MM-dd"), description: "", reference: "" });
   const [lines, setLines] = useState<LineItem[]>([EMPTY_LINE(), EMPTY_LINE()]);
+  const [typeFilter, setTypeFilter] = useState("all");
 
   // Opening balances state
   const [obDate, setObDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [obLines, setObLines] = useState<LineItem[]>([EMPTY_LINE()]);
 
   const { data: accounts = [] } = useQuery<any[]>({ queryKey: ["/api/accounting/accounts"] });
+  const entriesUrl = typeFilter && typeFilter !== "all"
+    ? `/api/accounting/journal-entries?typeFilter=${typeFilter}`
+    : "/api/accounting/journal-entries";
   const { data: entries = [], isLoading: entriesLoading } = useQuery<any[]>({
-    queryKey: ["/api/accounting/journal-entries"],
+    queryKey: ["/api/accounting/journal-entries", typeFilter],
+    queryFn: () => apiRequest("GET", entriesUrl).then(r => r.json()),
   });
   const { data: obData = [], isLoading: obLoading } = useQuery<any[]>({
     queryKey: ["/api/accounting/opening-balances"],
@@ -142,7 +147,7 @@ export default function FinanceAccountsPage() {
   const createEntryMut = useMutation({
     mutationFn: (data: any) => apiRequest("POST", "/api/accounting/journal-entries", data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/accounting/journal-entries"] });
+      qc.invalidateQueries({ queryKey: ["/api/accounting/journal-entries"], exact: false });
       setJournalDialog(false);
       setLines([EMPTY_LINE(), EMPTY_LINE()]);
       setJForm({ date: format(new Date(), "yyyy-MM-dd"), description: "", reference: "" });
@@ -284,7 +289,31 @@ export default function FinanceAccountsPage() {
 
           {/* ── Journal Entries Tab ── */}
           <TabsContent value="journal" className="space-y-4">
-            <div className="flex justify-end">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Select value={typeFilter} onValueChange={setTypeFilter}>
+                  <SelectTrigger className="h-8 text-xs w-48" data-testid="select-entry-type-filter">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{t("الكل", "All Entries")}</SelectItem>
+                    <SelectItem value="manual">{t("يدوي فقط", "Manual Only")}</SelectItem>
+                    <SelectItem value="auto">{t("تلقائي فقط", "Auto-generated Only")}</SelectItem>
+                    <SelectItem value="invoice">{t("فواتير مبيعات", "Invoices")}</SelectItem>
+                    <SelectItem value="payment">{t("مدفوعات", "Payments")}</SelectItem>
+                    <SelectItem value="purchase_order">{t("أوامر شراء", "Purchase Orders")}</SelectItem>
+                  </SelectContent>
+                </Select>
+                {typeFilter !== "all" && (
+                  <button
+                    className="text-xs text-muted-foreground hover:text-foreground underline"
+                    onClick={() => setTypeFilter("all")}
+                    data-testid="btn-clear-type-filter"
+                  >
+                    {t("مسح الفلتر", "Clear filter")}
+                  </button>
+                )}
+              </div>
               <Button size="sm" onClick={() => setJournalDialog(true)} data-testid="btn-new-entry">
                 <Plus className="h-4 w-4 me-1.5" />
                 {t("قيد جديد", "New Entry")}

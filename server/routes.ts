@@ -6658,8 +6658,8 @@ export async function registerRoutes(
   // ── Journal Entries ────────────────────────────────────────────────────────
   app.get("/api/accounting/journal-entries", requireRole("owner", "assistant", "accountant"), async (req, res) => {
     try {
-      const { from, to } = req.query as { from?: string; to?: string };
-      const entries = await storage.getJournalEntries(from, to);
+      const { from, to, typeFilter } = req.query as { from?: string; to?: string; typeFilter?: string };
+      const entries = await storage.getJournalEntries(from, to, typeFilter);
       const result = await Promise.all(entries.map(async e => ({
         ...e,
         lines: await storage.getJournalEntryLines(e.id),

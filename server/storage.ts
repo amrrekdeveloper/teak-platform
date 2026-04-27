@@ -1,4 +1,4 @@
-import { eq, desc, like, and, sql, gte, lte, or, asc } from "drizzle-orm";
+import { eq, desc, like, and, sql, gte, lte, or, asc, isNull, isNotNull } from "drizzle-orm";
 import { db } from "./db";
 import {
   users, type User, type InsertUser,
@@ -250,7 +250,7 @@ export interface IStorage {
   deleteChartOfAccount(id: number): Promise<void>;
   seedChartOfAccounts(): Promise<void>;
 
-  getJournalEntries(from?: string, to?: string): Promise<JournalEntry[]>;
+  getJournalEntries(from?: string, to?: string, typeFilter?: string): Promise<JournalEntry[]>;
   getJournalEntry(id: number): Promise<JournalEntry | undefined>;
   findJournalEntryByReference(referenceType: string, referenceId: number): Promise<JournalEntry | undefined>;
   createJournalEntry(entry: InsertJournalEntry, lines: InsertJournalEntryLine[]): Promise<JournalEntry>;
@@ -1166,10 +1166,13 @@ export class DatabaseStorage implements IStorage {
 
   // ── JOURNAL ENTRIES ────────────────────────────────────────────────────────
 
-  async getJournalEntries(from?: string, to?: string): Promise<JournalEntry[]> {
+  async getJournalEntries(from?: string, to?: string, typeFilter?: string): Promise<JournalEntry[]> {
     const conditions = [];
     if (from) conditions.push(gte(journalEntries.date, from));
     if (to) conditions.push(lte(journalEntries.date, to));
+    if (typeFilter === "manual") conditions.push(isNull(journalEntries.referenceType));
+    else if (typeFilter === "auto") conditions.push(isNotNull(journalEntries.referenceType));
+    else if (typeFilter && typeFilter !== "all") conditions.push(eq(journalEntries.referenceType, typeFilter));
     const q = conditions.length > 0
       ? db.select().from(journalEntries).where(and(...conditions))
       : db.select().from(journalEntries);
