@@ -31,6 +31,12 @@ import {
   ChevronRight,
   TrendingUp,
   Clock,
+  BookOpen,
+  Scale,
+  TrendingDown,
+  Landmark,
+  FileBarChart,
+  RefreshCcw,
   type LucideIcon,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
@@ -58,6 +64,13 @@ const menuItems: MenuItem[] = [
   { titleAr: "المدفوعات", titleEn: "Payments", icon: CreditCard, path: "/payments", roles: ["owner", "assistant", "it", "accountant"], group: "finance" },
   { titleAr: "الفواتير", titleEn: "Invoices", icon: Receipt, path: "/invoices", roles: ["owner", "assistant", "it", "accountant"], group: "finance" },
   { titleAr: "لوحة المالي", titleEn: "Finance Dashboard", icon: BarChart3, path: "/finance", roles: ["owner", "assistant", "it", "accountant"], group: "finance" },
+  { titleAr: "ميزان المراجعة", titleEn: "Trial Balance", icon: Scale, path: "/finance-trial-balance", roles: ["accountant"], group: "financial_reports" },
+  { titleAr: "الميزانية العمومية", titleEn: "Balance Sheet", icon: BookOpen, path: "/finance-balance-sheet", roles: ["accountant"], group: "financial_reports" },
+  { titleAr: "قائمة الدخل", titleEn: "Income Statement", icon: TrendingDown, path: "/finance-income-statement", roles: ["accountant"], group: "financial_reports" },
+  { titleAr: "التدفق النقدي", titleEn: "Cash Flow", icon: TrendingUp, path: "/finance-cash-flow", roles: ["accountant"], group: "financial_reports" },
+  { titleAr: "دفتر الأستاذ", titleEn: "General Ledger", icon: FileBarChart, path: "/finance-ledger", roles: ["accountant"], group: "financial_reports" },
+  { titleAr: "تقرير ضريبة القيمة المضافة", titleEn: "VAT Report", icon: Landmark, path: "/finance-vat-report", roles: ["accountant"], group: "financial_reports" },
+  { titleAr: "المطابقة البنكية", titleEn: "Bank Reconciliation", icon: RefreshCcw, path: "/finance-bank-reconciliation", roles: ["accountant"], group: "financial_reports" },
   { titleAr: "أوامر العمل", titleEn: "Work Orders", icon: ClipboardCheck, path: "/work-orders", roles: ["owner", "assistant", "it", "production", "designer"], group: "manufacturing" },
   { titleAr: "الإنتاج", titleEn: "Production", icon: Factory, path: "/production", roles: ["owner", "assistant", "it", "production"], group: "manufacturing" },
   { titleAr: "المخزون", titleEn: "Inventory", icon: Package, path: "/inventory", roles: ["owner", "assistant", "it", "warehouse", "purchasing"], group: "warehouse" },
@@ -76,6 +89,18 @@ const menuItems: MenuItem[] = [
   { titleAr: "خريطة المبيعات", titleEn: "Sales Map", icon: MapPin, path: "/sales-map", roles: ["owner", "assistant", "it"], group: "main" },
 ];
 
+const GROUP_LABELS: Record<string, { ar: string; en: string }> = {
+  main: { ar: "الرئيسية", en: "Main" },
+  crm: { ar: "إدارة العملاء", en: "CRM" },
+  finance: { ar: "المالية", en: "Finance" },
+  financial_reports: { ar: "التقارير المالية", en: "Financial Reports" },
+  manufacturing: { ar: "التصنيع", en: "Manufacturing" },
+  warehouse: { ar: "المستودع والمشتريات", en: "Warehouse" },
+  services: { ar: "الخدمات الميدانية", en: "Field Services" },
+  hr: { ar: "الموارد البشرية", en: "HR" },
+  admin: { ar: "الإدارة", en: "Admin" },
+};
+
 function SidebarContent({
   items, location, t, onItemClick, newOrderCount, collapsed,
 }: {
@@ -86,46 +111,62 @@ function SidebarContent({
   newOrderCount?: number;
   collapsed?: boolean;
 }) {
-  return (
-    <nav className="flex-1 py-3 space-y-0.5 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
-      <div className={collapsed ? "px-1" : "px-2"}>
-        {items.map((item) => {
-          const isActive = location === item.path || (item.path !== "/" && location.startsWith(item.path));
-          const Icon = item.icon;
-          const showBadge = (item.path === "/order-center" || item.path === "/my-orders") && (newOrderCount || 0) > 0;
+  const groups: { groupKey: string; groupItems: MenuItem[] }[] = [];
+  const seen = new Set<string>();
+  for (const item of items) {
+    const gk = item.group || "main";
+    if (!seen.has(gk)) { seen.add(gk); groups.push({ groupKey: gk, groupItems: [] }); }
+    groups.find(g => g.groupKey === gk)!.groupItems.push(item);
+  }
 
-          return (
-            <Link key={item.path} href={item.path}>
-              <div
-                className={`flex items-center gap-3 rounded-lg cursor-pointer transition-colors mb-0.5 ${
-                  collapsed ? "px-2 py-2.5 justify-center" : "px-3 py-2.5"
-                } ${
-                  isActive
-                    ? "bg-primary/10 text-primary font-medium"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                }`}
-                onClick={onItemClick}
-                title={collapsed ? t(item.titleAr, item.titleEn) : undefined}
-                data-testid={`link-sidebar-${item.path === "/" ? "" : item.path.split("/").pop()}`}
-              >
-                <Icon className="w-5 h-5 shrink-0" />
-                {!collapsed && (
-                  <span className="text-sm truncate flex-1">
-                    {t(item.titleAr, item.titleEn)}
-                  </span>
-                )}
-                {showBadge && (
-                  <span
-                    className={`min-w-[18px] h-[18px] rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center px-1 ${collapsed ? "absolute -top-1 -end-1" : ""}`}
-                    data-testid="badge-new-orders"
+  return (
+    <nav className="flex-1 py-2 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
+      <div className={collapsed ? "px-1" : "px-2"}>
+        {groups.map(({ groupKey, groupItems }) => (
+          <div key={groupKey} className="mb-1">
+            {!collapsed && GROUP_LABELS[groupKey] && (
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60 px-3 pt-3 pb-1 select-none">
+                {t(GROUP_LABELS[groupKey].ar, GROUP_LABELS[groupKey].en)}
+              </p>
+            )}
+            {groupItems.map((item) => {
+              const isActive = location === item.path || (item.path !== "/" && location.startsWith(item.path));
+              const Icon = item.icon;
+              const showBadge = (item.path === "/order-center" || item.path === "/my-orders") && (newOrderCount || 0) > 0;
+              return (
+                <Link key={item.path} href={item.path}>
+                  <div
+                    className={`flex items-center gap-3 rounded-lg cursor-pointer transition-colors mb-0.5 ${
+                      collapsed ? "px-2 py-2.5 justify-center" : "px-3 py-2.5"
+                    } ${
+                      isActive
+                        ? "bg-primary/10 text-primary font-medium"
+                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                    }`}
+                    onClick={onItemClick}
+                    title={collapsed ? t(item.titleAr, item.titleEn) : undefined}
+                    data-testid={`link-sidebar-${item.path === "/" ? "" : item.path.split("/").pop()}`}
                   >
-                    {newOrderCount}
-                  </span>
-                )}
-              </div>
-            </Link>
-          );
-        })}
+                    <Icon className="w-5 h-5 shrink-0" />
+                    {!collapsed && (
+                      <span className="text-sm truncate flex-1">
+                        {t(item.titleAr, item.titleEn)}
+                      </span>
+                    )}
+                    {showBadge && (
+                      <span
+                        className={`min-w-[18px] h-[18px] rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center px-1 ${collapsed ? "absolute -top-1 -end-1" : ""}`}
+                        data-testid="badge-new-orders"
+                      >
+                        {newOrderCount}
+                      </span>
+                    )}
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        ))}
       </div>
     </nav>
   );

@@ -6793,29 +6793,60 @@ export async function registerRoutes(
         inflowParams
       );
 
-      // Parameterized outflows (received purchase orders = cash paid to suppliers)
-      const outflowParams: any[] = ["received"];
-      let outflowConds = "po.status = $1";
-      if (from) { outflowParams.push(from); outflowConds += ` AND po.created_at::date >= $${outflowParams.length}`; }
-      if (to)   { outflowParams.push(to);   outflowConds += ` AND po.created_at::date <= $${outflowParams.length}`; }
+      // Cash outflows — two sources:
+      // 1) Expense GL entries (journal lines debiting expense accounts 5xxx — posted entries)
+      //    These represent all recorded operational expenses in the double-entry ledger.
+      // 2) Received purchase orders (supplier cash outflows not yet journalized, i.e. procurement)
+      //    Note: this system has no standalone "expenses" table; purchase_orders IS the expenses
+      //    ledger for supplier-related outflows (materials, services). Once journalized via
+      //    journal entries they appear in source (1) above.
 
-      const outflows = await pool.query(
-        `SELECT po.id, po.total_amount AS amount, po.created_at, s.name AS supplier_name
-         FROM purchase_orders po
-         LEFT JOIN suppliers s ON po.supplier_id = s.id
-         WHERE ${outflowConds}
-         ORDER BY po.created_at DESC`,
-        outflowParams
+      const expenseGLParams: any[] = ["posted"];
+      let expenseGLConds = "je.status = $1 AND ca.code LIKE '5%'";
+      if (from) { expenseGLParams.push(from); expenseGLConds += ` AND je.date >= $${expenseGLParams.length}::date`; }
+      if (to)   { expenseGLParams.push(to);   expenseGLConds += ` AND je.date <= $${expenseGLParams.length}::date`; }
+
+      const expenseGL = await pool.query(
+        `SELECT jel.id::text, jel.debit AS amount, je.date AS created_at,
+                ca.name_ar AS description, je.reference
+         FROM journal_entry_lines jel
+         JOIN journal_entries je ON jel.entry_id = je.id
+         JOIN chart_of_accounts ca ON ca.code = jel.account_code
+         WHERE ${expenseGLConds} AND jel.debit > 0
+         ORDER BY je.date DESC`,
+        expenseGLParams
       );
 
+      // Supplier purchase orders (received) as operational outflow proxy
+      const poParams: any[] = ["received"];
+      let poConds = "po.status = $1";
+      if (from) { poParams.push(from); poConds += ` AND po.created_at::date >= $${poParams.length}`; }
+      if (to)   { poParams.push(to);   poConds += ` AND po.created_at::date <= $${poParams.length}`; }
+
+      const poOutflows = await pool.query(
+        `SELECT po.id::text, po.total_amount AS amount, po.created_at, s.name AS supplier_name
+         FROM purchase_orders po
+         LEFT JOIN suppliers s ON po.supplier_id = s.id
+         WHERE ${poConds}
+         ORDER BY po.created_at DESC`,
+        poParams
+      );
+
+      // Merge GL expense entries + PO outflows (de-dup by preferring GL when available)
+      const glTotal = expenseGL.rows.reduce((s: number, r: any) => s + parseFloat(r.amount || 0), 0);
+      const poTotal = poOutflows.rows.reduce((s: number, r: any) => s + parseFloat(r.amount || 0), 0);
+      // If GL expense entries exist, use them as the authoritative outflow; otherwise use PO proxy
+      const outflowRows = expenseGL.rows.length > 0 ? expenseGL.rows : poOutflows.rows;
+      const totalOutflows = expenseGL.rows.length > 0 ? glTotal : poTotal;
+
       const totalInflows = inflows.rows.reduce((s: number, r: any) => s + parseFloat(r.amount || 0), 0);
-      const totalOutflows = outflows.rows.reduce((s: number, r: any) => s + parseFloat(r.amount || 0), 0);
       res.json({
         inflows: inflows.rows,
-        outflows: outflows.rows,
+        outflows: outflowRows,
         totalInflows,
         totalOutflows,
         netCashFlow: totalInflows - totalOutflows,
+        outflowSource: expenseGL.rows.length > 0 ? "gl_expenses" : "purchase_orders",
       });
     } catch (e: any) { res.status(500).json({ message: e.message || "حدث خطأ" }); }
   });
@@ -6889,12 +6920,21 @@ export async function registerRoutes(
   });
 
   // ── Bank Reconciliation ────────────────────────────────────────────────────
-  // Book-side balance is derived from GL account 1112 (Bank - Current Account)
+  // Book-side balance is derived from GL account 1112 (Bank - Current Account).
+  // Unmatched items: bank-transfer payments pending (not yet journalized) +
+  //   GL bank entries in last 30 days without a bank reference number.
   app.get("/api/accounting/bank-reconciliation", requireRole("owner", "assistant", "accountant"), async (req, res) => {
     try {
-      const { from, to } = req.query as { from?: string; to?: string };
+      let { from, to } = req.query as { from?: string; to?: string };
       const { pool } = await import("./db");
       const BANK_ACCOUNT = "1112";
+      // Default to last 30 days if no date range provided
+      if (!from && !to) {
+        const today = new Date();
+        to = today.toISOString().split("T")[0];
+        today.setDate(today.getDate() - 30);
+        from = today.toISOString().split("T")[0];
+      }
 
       // Opening balance: GL bank account movements BEFORE `from`
       let openingBalance = 0;
@@ -6937,15 +6977,21 @@ export async function registerRoutes(
       const periodCredits = lines.reduce((s: number, l: any) => s + parseFloat(l.credit || 0), 0);
       const closingBookBalance = openingBalance + periodDebits - periodCredits;
 
-      // Unmatched (in-transit) bank-transfer payments not yet journalized
+      // Unmatched items — two types:
+      // 1) Bank-transfer payments with status 'pending': received by bank but not yet posted to GL
       const pendingParams: any[] = ["pending", "bank_transfer"];
       let pendingDateConds = "";
-      if (from) { pendingParams.push(from); pendingDateConds += ` AND p.created_at::date >= $${pendingParams.length}`; }
-      if (to)   { pendingParams.push(to);   pendingDateConds += ` AND p.created_at::date <= $${pendingParams.length}`; }
+      // Last-30-days explicit window for unmatched items
+      const thirtyDaysAgo = new Date(); thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      const last30From = from || thirtyDaysAgo.toISOString().split("T")[0];
+      const last30To   = to   || new Date().toISOString().split("T")[0];
+      pendingParams.push(last30From); pendingDateConds += ` AND p.created_at::date >= $${pendingParams.length}`;
+      pendingParams.push(last30To);   pendingDateConds += ` AND p.created_at::date <= $${pendingParams.length}`;
 
       const pendingResult = await pool.query(
         `SELECT p.id, p.amount, p.method, p.bank_reference, p.created_at,
-                c.full_name AS customer_name, ct.contract_number
+                c.full_name AS customer_name, ct.contract_number,
+                'pending_payment' AS unmatched_type
          FROM payments p
          LEFT JOIN customers c ON p.customer_id = c.id
          LEFT JOIN contracts ct ON p.contract_id = ct.id
@@ -6954,16 +7000,37 @@ export async function registerRoutes(
         pendingParams
       );
 
+      // 2) GL bank-account lines without a bank reference (likely to be outstanding/unreconciled)
+      const unreconciledGLParams: any[] = [BANK_ACCOUNT, last30From, last30To];
+      const unreconciledGL = await pool.query(
+        `SELECT jel.id, jel.debit, jel.credit, jel.notes, je.date AS entry_date,
+                je.entry_number, je.description AS entry_description, je.reference,
+                'gl_unmatched' AS unmatched_type
+         FROM journal_entry_lines jel
+         INNER JOIN journal_entries je ON jel.entry_id = je.id
+         WHERE je.status = 'posted'
+           AND jel.account_code = $1
+           AND je.date >= $2::date AND je.date <= $3::date
+           AND (je.reference IS NULL OR je.reference = '')
+         ORDER BY je.date DESC`,
+        unreconciledGLParams
+      );
+
+      const unmatchedItems = [...pendingResult.rows, ...unreconciledGL.rows];
       const totalPending = pendingResult.rows.reduce((s: number, r: any) => s + parseFloat(r.amount || 0), 0);
 
       res.json({
+        period: { from: from || last30From, to: to || last30To },
         openingBalance,
         glLines: lines,
         periodDebits,
         periodCredits,
         closingBookBalance,
+        unmatchedItems,
         pendingPayments: pendingResult.rows,
+        unreconciledGLEntries: unreconciledGL.rows,
         totalPending,
+        adjustedBookBalance: closingBookBalance + totalPending,
       });
     } catch (e: any) { res.status(500).json({ message: e.message || "حدث خطأ" }); }
   });
