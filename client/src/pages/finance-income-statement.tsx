@@ -6,8 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { TrendingUp, Printer } from "lucide-react";
+import { TrendingUp, Printer, FileText, FileSpreadsheet } from "lucide-react";
 import { format, startOfYear } from "date-fns";
+import { exportReportPDF, exportReportExcel } from "@/lib/finance-export";
+import { useToast } from "@/hooks/use-toast";
 
 function StatRow({ label, amount, indent, bold, separator, color }: {
   label: string; amount: number; indent?: boolean; bold?: boolean; separator?: boolean; color?: string;
@@ -28,6 +30,9 @@ export default function FinanceIncomeStatementPage() {
   const [from, setFrom] = useState(format(startOfYear(new Date()), "yyyy-MM-dd"));
   const [to, setTo] = useState(format(new Date(), "yyyy-MM-dd"));
   const [applied, setApplied] = useState({ from, to });
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const [exportingXlsx, setExportingXlsx] = useState(false);
+  const { toast } = useToast();
 
   const { data, isLoading } = useQuery<any>({
     queryKey: ["/api/accounting/income-statement", applied.from, applied.to],
@@ -36,6 +41,117 @@ export default function FinanceIncomeStatementPage() {
       return res.json();
     },
   });
+
+  const periodLabel = `${applied.from} — ${applied.to}`;
+  const fmt2 = (n: number) => `${Math.abs(n).toLocaleString("ar-SA", { minimumFractionDigits: 2 })} ر.س`;
+
+  const handleExportPdf = async () => {
+    if (!data) return;
+    setExportingPdf(true);
+    try {
+      const revenueBody = (data.revenue || []).map((r: any) => [`${r.code}`, r.nameAr, fmt2(r.amount)]);
+      const costBody = (data.cost || []).map((r: any) => [`${r.code}`, r.nameAr, fmt2(r.amount)]);
+      const expBody = (data.expense || []).map((r: any) => [`${r.code}`, r.nameAr, fmt2(Math.abs(r.amount))]);
+
+      await exportReportPDF(
+        "Income Statement - قائمة الدخل",
+        periodLabel,
+        [
+          {
+            title: "الإيرادات",
+            head: [["الرمز", "الحساب", "المبلغ"]],
+            body: revenueBody,
+            footRow: ["", "إجمالي الإيرادات", fmt2(data.totalRevenue || 0)],
+          },
+          {
+            title: "تكلفة المبيعات",
+            head: [["الرمز", "الحساب", "المبلغ"]],
+            body: costBody,
+            footRow: ["", "إجمالي تكلفة المبيعات", fmt2(data.totalCost || 0)],
+          },
+          {
+            title: "المصروفات التشغيلية",
+            head: [["الرمز", "الحساب", "المبلغ"]],
+            body: expBody,
+            footRow: ["", "إجمالي المصروفات", fmt2(Math.abs(data.totalExpense || 0))],
+          },
+          {
+            title: (data.netProfit || 0) >= 0 ? "صافي الربح" : "صافي الخسارة",
+            head: [["البيان", "المبلغ"]],
+            body: [
+              ["مجمل الربح", fmt2(data.grossProfit || 0)],
+              ["إجمالي المصروفات التشغيلية", fmt2(Math.abs(data.totalExpense || 0))],
+            ],
+            footRow: [(data.netProfit || 0) >= 0 ? "صافي الربح" : "صافي الخسارة", fmt2(data.netProfit || 0)],
+          },
+        ],
+        `income-statement-${applied.from}-${applied.to}.pdf`,
+      );
+    } catch {
+      toast({ title: t("فشل تصدير PDF", "PDF export failed"), variant: "destructive" });
+    } finally {
+      setExportingPdf(false);
+    }
+  };
+
+  const handleExportExcel = async () => {
+    if (!data) return;
+    setExportingXlsx(true);
+    try {
+      const accountCols = [
+        { header: "الرمز", key: "code", width: 12 },
+        { header: "اسم الحساب", key: "name", width: 40 },
+        { header: "المبلغ (ر.س)", key: "amount", width: 20 },
+      ];
+
+      await exportReportExcel(
+        "Income Statement - قائمة الدخل",
+        periodLabel,
+        [
+          {
+            name: "الإيرادات",
+            columns: accountCols,
+            rows: (data.revenue || []).map((r: any) => ({ code: r.code, name: r.nameAr, amount: r.amount })),
+            totalsRow: { code: "", name: "إجمالي الإيرادات", amount: data.totalRevenue || 0 },
+          },
+          {
+            name: "تكلفة المبيعات",
+            columns: accountCols,
+            rows: (data.cost || []).map((r: any) => ({ code: r.code, name: r.nameAr, amount: r.amount })),
+            totalsRow: { code: "", name: "إجمالي تكلفة المبيعات", amount: data.totalCost || 0 },
+          },
+          {
+            name: "المصروفات",
+            columns: accountCols,
+            rows: (data.expense || []).map((r: any) => ({ code: r.code, name: r.nameAr, amount: Math.abs(r.amount) })),
+            totalsRow: { code: "", name: "إجمالي المصروفات", amount: Math.abs(data.totalExpense || 0) },
+          },
+          {
+            name: "الملخص",
+            columns: [
+              { header: "البيان", key: "item", width: 40 },
+              { header: "المبلغ (ر.س)", key: "amount", width: 20 },
+            ],
+            rows: [
+              { item: "إجمالي الإيرادات", amount: data.totalRevenue || 0 },
+              { item: "إجمالي تكلفة المبيعات", amount: data.totalCost || 0 },
+              { item: "مجمل الربح", amount: data.grossProfit || 0 },
+              { item: "إجمالي المصروفات التشغيلية", amount: Math.abs(data.totalExpense || 0) },
+            ],
+            totalsRow: {
+              item: (data.netProfit || 0) >= 0 ? "صافي الربح" : "صافي الخسارة",
+              amount: data.netProfit || 0,
+            },
+          },
+        ],
+        `income-statement-${applied.from}-${applied.to}.xlsx`,
+      );
+    } catch {
+      toast({ title: t("فشل تصدير Excel", "Excel export failed"), variant: "destructive" });
+    } finally {
+      setExportingXlsx(false);
+    }
+  };
 
   return (
     <FinanceLayout>
@@ -48,10 +164,32 @@ export default function FinanceIncomeStatementPage() {
             </h1>
             <p className="text-sm text-muted-foreground">{t("الإيرادات والمصروفات وصافي الربح", "Revenue, expenses and net profit")}</p>
           </div>
-          <Button variant="outline" size="sm" onClick={() => window.print()} data-testid="btn-print-income">
-            <Printer className="h-4 w-4 me-1.5" />
-            {t("طباعة", "Print")}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportPdf}
+              disabled={!data || exportingPdf}
+              data-testid="btn-export-pdf-is"
+            >
+              <FileText className="h-4 w-4 me-1.5" />
+              {exportingPdf ? t("جاري التصدير...", "Exporting...") : t("تصدير PDF", "Export PDF")}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportExcel}
+              disabled={!data || exportingXlsx}
+              data-testid="btn-export-excel-is"
+            >
+              <FileSpreadsheet className="h-4 w-4 me-1.5" />
+              {exportingXlsx ? t("جاري التصدير...", "Exporting...") : t("تصدير Excel", "Export Excel")}
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => window.print()} data-testid="btn-print-income">
+              <Printer className="h-4 w-4 me-1.5" />
+              {t("طباعة", "Print")}
+            </Button>
+          </div>
         </div>
 
         <Card className="print:hidden">

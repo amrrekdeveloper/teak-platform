@@ -6,7 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Receipt, Printer } from "lucide-react";
+import { Receipt, Printer, FileText, FileSpreadsheet } from "lucide-react";
+import { exportReportPDF, exportReportExcel, type PdfSection, type ExcelSheet } from "@/lib/finance-export";
+import { useToast } from "@/hooks/use-toast";
 
 export default function FinanceVatReportPage() {
   const { t } = useLanguage();
@@ -16,6 +18,9 @@ export default function FinanceVatReportPage() {
   const [quarter, setQuarter] = useState(String(currentQ));
   const [year, setYear] = useState(String(currentYear));
   const [applied, setApplied] = useState({ quarter, year });
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const [exportingXlsx, setExportingXlsx] = useState(false);
+  const { toast } = useToast();
 
   const { data, isLoading } = useQuery<any>({
     queryKey: ["/api/accounting/vat-report", applied.quarter, applied.year],
@@ -26,6 +31,128 @@ export default function FinanceVatReportPage() {
   });
 
   const fmt = (n: number) => n.toLocaleString("ar-SA", { minimumFractionDigits: 2 });
+
+  const periodLabel = `Q${applied.quarter} — ${applied.year}${data?.period ? ` (${data.period.from} - ${data.period.to})` : ""}`;
+
+  const handleExportPdf = async () => {
+    if (!data) return;
+    setExportingPdf(true);
+    try {
+      const summaryBody: (string | number)[][] = [
+        ["إجمالي المبيعات الخاضعة للضريبة (شامل ض.ق.م)", `${fmt(data.output?.taxableSales || 0)} ر.س`],
+        ["عدد الفواتير الصادرة", `${data.output?.invoiceCount || 0} فاتورة`],
+        ["ضريبة المخرجات المستحقة (15%)", `${fmt(data.output?.outputVat || 0)} ر.س`],
+        ["إجمالي المشتريات الخاضعة للضريبة", `${fmt(data.input?.taxablePurchases || 0)} ر.س`],
+        ["عدد فواتير الشراء", `${data.input?.poCount || 0} فاتورة`],
+        ["ضريبة المدخلات القابلة للاسترداد (15%)", `${fmt(data.input?.inputVat || 0)} ر.س`],
+      ];
+
+      const invoiceBody: (string | number)[][] = (data.invoices || []).map((inv: any) => [
+        `#${inv.invoice_number}`,
+        inv.issued_at?.slice(0, 10) || "",
+        inv.buyer_name || "",
+        `${parseFloat(inv.subtotal || 0).toLocaleString("ar-SA")} ر.س`,
+        `${parseFloat(inv.vat_amount || 0).toLocaleString("ar-SA")} ر.س`,
+        `${parseFloat(inv.total_with_vat || 0).toLocaleString("ar-SA")} ر.س`,
+      ]);
+
+      const sections: PdfSection[] = [
+        {
+          title: "ملخص ضريبة القيمة المضافة",
+          head: [["البيان", "المبلغ"]],
+          body: summaryBody,
+          footRow: [
+            (data.netVat || 0) >= 0 ? "صافي الضريبة المستحقة للسداد" : "ضريبة مستردة",
+            `${fmt(Math.abs(data.netVat || 0))} ر.س`,
+          ],
+        },
+      ];
+
+      if (invoiceBody.length > 0) {
+        sections.push({
+          title: "تفاصيل الفواتير الصادرة",
+          head: [["رقم الفاتورة", "التاريخ", "العميل", "قبل الضريبة", "الضريبة", "الإجمالي"]],
+          body: invoiceBody,
+        });
+      }
+
+      await exportReportPDF(
+        "VAT Report - تقرير ض.ق.م",
+        periodLabel,
+        sections,
+        `vat-report-Q${applied.quarter}-${applied.year}.pdf`,
+      );
+    } catch {
+      toast({ title: t("فشل تصدير PDF", "PDF export failed"), variant: "destructive" });
+    } finally {
+      setExportingPdf(false);
+    }
+  };
+
+  const handleExportExcel = async () => {
+    if (!data) return;
+    setExportingXlsx(true);
+    try {
+      const summaryRows = [
+        { item: "إجمالي المبيعات الخاضعة للضريبة (شامل ض.ق.م)", amount: data.output?.taxableSales || 0, note: "" },
+        { item: "عدد الفواتير الصادرة", amount: data.output?.invoiceCount || 0, note: "فاتورة" },
+        { item: "ضريبة المخرجات المستحقة (15%)", amount: data.output?.outputVat || 0, note: "" },
+        { item: "إجمالي المشتريات الخاضعة للضريبة", amount: data.input?.taxablePurchases || 0, note: "" },
+        { item: "عدد فواتير الشراء", amount: data.input?.poCount || 0, note: "فاتورة" },
+        { item: "ضريبة المدخلات القابلة للاسترداد (15%)", amount: data.input?.inputVat || 0, note: "" },
+      ];
+
+      const sheets: ExcelSheet[] = [
+        {
+          name: "الملخص",
+          columns: [
+            { header: "البيان", key: "item", width: 50 },
+            { header: "المبلغ (ر.س)", key: "amount", width: 20 },
+            { header: "ملاحظة", key: "note", width: 15 },
+          ],
+          rows: summaryRows,
+          totalsRow: {
+            item: (data.netVat || 0) >= 0 ? "صافي الضريبة المستحقة للسداد" : "ضريبة مستردة",
+            amount: Math.abs(data.netVat || 0),
+            note: "ر.س",
+          },
+        },
+      ];
+
+      if ((data.invoices || []).length > 0) {
+        sheets.push({
+          name: "تفاصيل الفواتير",
+          columns: [
+            { header: "رقم الفاتورة", key: "invoice_number", width: 18 },
+            { header: "التاريخ", key: "issued_at", width: 15 },
+            { header: "العميل", key: "buyer_name", width: 30 },
+            { header: "قبل الضريبة", key: "subtotal", width: 18 },
+            { header: "الضريبة", key: "vat_amount", width: 18 },
+            { header: "الإجمالي", key: "total_with_vat", width: 18 },
+          ],
+          rows: (data.invoices || []).map((inv: any) => ({
+            invoice_number: `#${inv.invoice_number}`,
+            issued_at: inv.issued_at?.slice(0, 10) || "",
+            buyer_name: inv.buyer_name || "",
+            subtotal: parseFloat(inv.subtotal || 0),
+            vat_amount: parseFloat(inv.vat_amount || 0),
+            total_with_vat: parseFloat(inv.total_with_vat || 0),
+          })),
+        });
+      }
+
+      await exportReportExcel(
+        "VAT Report - تقرير ض.ق.م",
+        periodLabel,
+        sheets,
+        `vat-report-Q${applied.quarter}-${applied.year}.xlsx`,
+      );
+    } catch {
+      toast({ title: t("فشل تصدير Excel", "Excel export failed"), variant: "destructive" });
+    } finally {
+      setExportingXlsx(false);
+    }
+  };
 
   return (
     <FinanceLayout>
@@ -38,10 +165,32 @@ export default function FinanceVatReportPage() {
             </h1>
             <p className="text-sm text-muted-foreground">{t("ملخص ضريبة المخرجات والمدخلات للإقرار الضريبي ربع السنوي — ZATCA", "Output & input VAT summary for quarterly filing — ZATCA")}</p>
           </div>
-          <Button variant="outline" size="sm" onClick={() => window.print()} data-testid="btn-print-vat">
-            <Printer className="h-4 w-4 me-1.5" />
-            {t("طباعة", "Print")}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportPdf}
+              disabled={!data || exportingPdf}
+              data-testid="btn-export-pdf-vat"
+            >
+              <FileText className="h-4 w-4 me-1.5" />
+              {exportingPdf ? t("جاري التصدير...", "Exporting...") : t("تصدير PDF", "Export PDF")}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportExcel}
+              disabled={!data || exportingXlsx}
+              data-testid="btn-export-excel-vat"
+            >
+              <FileSpreadsheet className="h-4 w-4 me-1.5" />
+              {exportingXlsx ? t("جاري التصدير...", "Exporting...") : t("تصدير Excel", "Export Excel")}
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => window.print()} data-testid="btn-print-vat">
+              <Printer className="h-4 w-4 me-1.5" />
+              {t("طباعة", "Print")}
+            </Button>
+          </div>
         </div>
 
         <Card className="print:hidden">

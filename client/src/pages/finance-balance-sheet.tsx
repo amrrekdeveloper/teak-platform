@@ -6,8 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { BarChart3, Printer } from "lucide-react";
+import { BarChart3, Printer, FileText, FileSpreadsheet } from "lucide-react";
 import { format } from "date-fns";
+import { exportReportPDF, exportReportExcel } from "@/lib/finance-export";
+import { useToast } from "@/hooks/use-toast";
 
 function SectionTable({ title, groups, total, colorClass }: { title: string; groups: any[]; total: number; colorClass: string }) {
   if (!groups || groups.length === 0) return null;
@@ -19,7 +21,6 @@ function SectionTable({ title, groups, total, colorClass }: { title: string; gro
         <tbody className="divide-y">
           {groups.map((group: any, gi: number) => (
             <>
-              {/* Parent row (shown if it has children) */}
               {group.children && group.children.length > 0 ? (
                 <>
                   <tr key={`g-${gi}`} className="bg-muted/20">
@@ -71,10 +72,28 @@ function SectionTable({ title, groups, total, colorClass }: { title: string; gro
   );
 }
 
+function flattenGroups(groups: any[]): { code: string; name: string; balance: number }[] {
+  const rows: { code: string; name: string; balance: number }[] = [];
+  for (const g of groups || []) {
+    if (g.children && g.children.length > 0) {
+      for (const c of g.children) {
+        rows.push({ code: c.code, name: c.nameAr, balance: Math.abs(c.balance) });
+      }
+      rows.push({ code: "", name: `مجموع ${g.nameAr}`, balance: Math.abs(g.subTotal) });
+    } else {
+      rows.push({ code: g.code, name: g.nameAr, balance: Math.abs(g.balance) });
+    }
+  }
+  return rows;
+}
+
 export default function FinanceBalanceSheetPage() {
   const { t } = useLanguage();
   const [asOf, setAsOf] = useState(format(new Date(), "yyyy-MM-dd"));
   const [applied, setApplied] = useState(asOf);
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const [exportingXlsx, setExportingXlsx] = useState(false);
+  const { toast } = useToast();
 
   const { data, isLoading } = useQuery<any>({
     queryKey: ["/api/accounting/balance-sheet", applied],
@@ -85,6 +104,94 @@ export default function FinanceBalanceSheetPage() {
   });
 
   const isBalanced = data ? Math.abs(data.totalAssets - (data.totalLiabilities + data.totalEquity)) < 1 : true;
+
+  const handleExportPdf = async () => {
+    if (!data) return;
+    setExportingPdf(true);
+    try {
+      const fmt2 = (n: number) => `${Math.abs(n).toLocaleString("ar-SA", { minimumFractionDigits: 2 })} ر.س`;
+
+      const assetsBody = flattenGroups(data.assets).map(r => [r.code, r.name, fmt2(r.balance)]);
+      const liabBody = flattenGroups(data.liabilities).map(r => [r.code, r.name, fmt2(r.balance)]);
+      const equityBody = flattenGroups(data.equity).map(r => [r.code, r.name, fmt2(r.balance)]);
+
+      await exportReportPDF(
+        "Balance Sheet - الميزانية العمومية",
+        `كما في ${applied}`,
+        [
+          {
+            title: "الأصول",
+            head: [["الرمز", "الحساب", "الرصيد"]],
+            body: assetsBody,
+            footRow: ["", "إجمالي الأصول", fmt2(data.totalAssets || 0)],
+          },
+          {
+            title: "الخصوم",
+            head: [["الرمز", "الحساب", "الرصيد"]],
+            body: liabBody,
+            footRow: ["", "إجمالي الخصوم", fmt2(data.totalLiabilities || 0)],
+          },
+          {
+            title: "حقوق الملكية",
+            head: [["الرمز", "الحساب", "الرصيد"]],
+            body: equityBody,
+            footRow: ["", "إجمالي حقوق الملكية", fmt2(data.totalEquity || 0)],
+          },
+        ],
+        `balance-sheet-${applied}.pdf`,
+      );
+    } catch {
+      toast({ title: t("فشل تصدير PDF", "PDF export failed"), variant: "destructive" });
+    } finally {
+      setExportingPdf(false);
+    }
+  };
+
+  const handleExportExcel = async () => {
+    if (!data) return;
+    setExportingXlsx(true);
+    try {
+      const cols = [
+        { header: "الرمز", key: "code", width: 12 },
+        { header: "اسم الحساب", key: "name", width: 40 },
+        { header: "الرصيد (ر.س)", key: "balance", width: 20 },
+      ];
+
+      const assetsRows = flattenGroups(data.assets);
+      const liabRows = flattenGroups(data.liabilities);
+      const equityRows = flattenGroups(data.equity);
+
+      await exportReportExcel(
+        "Balance Sheet - الميزانية العمومية",
+        `كما في ${applied}`,
+        [
+          {
+            name: "الأصول",
+            columns: cols,
+            rows: assetsRows,
+            totalsRow: { code: "", name: "إجمالي الأصول", balance: data.totalAssets || 0 },
+          },
+          {
+            name: "الخصوم",
+            columns: cols,
+            rows: liabRows,
+            totalsRow: { code: "", name: "إجمالي الخصوم", balance: data.totalLiabilities || 0 },
+          },
+          {
+            name: "حقوق الملكية",
+            columns: cols,
+            rows: equityRows,
+            totalsRow: { code: "", name: "إجمالي حقوق الملكية", balance: data.totalEquity || 0 },
+          },
+        ],
+        `balance-sheet-${applied}.xlsx`,
+      );
+    } catch {
+      toast({ title: t("فشل تصدير Excel", "Excel export failed"), variant: "destructive" });
+    } finally {
+      setExportingXlsx(false);
+    }
+  };
 
   return (
     <FinanceLayout>
@@ -97,10 +204,32 @@ export default function FinanceBalanceSheetPage() {
             </h1>
             <p className="text-sm text-muted-foreground">{t("الأصول = الخصوم + حقوق الملكية", "Assets = Liabilities + Equity")}</p>
           </div>
-          <Button variant="outline" size="sm" onClick={() => window.print()} data-testid="btn-print-balance-sheet">
-            <Printer className="h-4 w-4 me-1.5" />
-            {t("طباعة", "Print")}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportPdf}
+              disabled={!data || exportingPdf}
+              data-testid="btn-export-pdf-bs"
+            >
+              <FileText className="h-4 w-4 me-1.5" />
+              {exportingPdf ? t("جاري التصدير...", "Exporting...") : t("تصدير PDF", "Export PDF")}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportExcel}
+              disabled={!data || exportingXlsx}
+              data-testid="btn-export-excel-bs"
+            >
+              <FileSpreadsheet className="h-4 w-4 me-1.5" />
+              {exportingXlsx ? t("جاري التصدير...", "Exporting...") : t("تصدير Excel", "Export Excel")}
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => window.print()} data-testid="btn-print-balance-sheet">
+              <Printer className="h-4 w-4 me-1.5" />
+              {t("طباعة", "Print")}
+            </Button>
+          </div>
         </div>
 
         <Card className="print:hidden">

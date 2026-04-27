@@ -7,8 +7,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Scale, Printer, CheckCircle2, AlertCircle } from "lucide-react";
+import { Scale, Printer, CheckCircle2, AlertCircle, FileText, FileSpreadsheet } from "lucide-react";
 import { format, startOfYear } from "date-fns";
+import { exportReportPDF, exportReportExcel } from "@/lib/finance-export";
+import { useToast } from "@/hooks/use-toast";
 
 const TYPE_LABELS: Record<string, string> = {
   asset: "أصول", liability: "خصوم", equity: "حقوق ملكية",
@@ -20,6 +22,9 @@ export default function FinanceTrialBalancePage() {
   const [from, setFrom] = useState(format(startOfYear(new Date()), "yyyy-MM-dd"));
   const [to, setTo] = useState(format(new Date(), "yyyy-MM-dd"));
   const [applied, setApplied] = useState({ from, to });
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const [exportingXlsx, setExportingXlsx] = useState(false);
+  const { toast } = useToast();
 
   const { data, isLoading } = useQuery<any>({
     queryKey: ["/api/accounting/trial-balance", applied.from, applied.to],
@@ -28,6 +33,93 @@ export default function FinanceTrialBalancePage() {
       return res.json();
     },
   });
+
+  const periodLabel = `${applied.from} — ${applied.to}`;
+  const fmtN = (n: number) => n.toLocaleString("ar-SA", { minimumFractionDigits: 2 });
+
+  const handleExportPdf = async () => {
+    if (!data) return;
+    setExportingPdf(true);
+    try {
+      const body = (data.rows || []).map((row: any) => [
+        row.account_code,
+        row.account_name_ar,
+        TYPE_LABELS[row.type] || row.type,
+        `${fmtN(row.total_debit)} ر.س`,
+        `${fmtN(row.total_credit)} ر.س`,
+        `${fmtN(Math.abs(row.balance))} ر.س${row.balance < 0 ? " (د)" : ""}`,
+      ]);
+
+      await exportReportPDF(
+        "Trial Balance - ميزان المراجعة",
+        periodLabel,
+        [
+          {
+            head: [["الرمز", "اسم الحساب", "النوع", "مجموع المدين", "مجموع الدائن", "الرصيد"]],
+            body,
+            footRow: [
+              "",
+              "الإجمالي",
+              "",
+              `${fmtN(data.totalDebit || 0)} ر.س`,
+              `${fmtN(data.totalCredit || 0)} ر.س`,
+              `${fmtN(Math.abs((data.totalDebit || 0) - (data.totalCredit || 0)))} ر.س`,
+            ],
+          },
+        ],
+        `trial-balance-${applied.from}-${applied.to}.pdf`,
+      );
+    } catch {
+      toast({ title: t("فشل تصدير PDF", "PDF export failed"), variant: "destructive" });
+    } finally {
+      setExportingPdf(false);
+    }
+  };
+
+  const handleExportExcel = async () => {
+    if (!data) return;
+    setExportingXlsx(true);
+    try {
+      await exportReportExcel(
+        "Trial Balance - ميزان المراجعة",
+        periodLabel,
+        [
+          {
+            name: "ميزان المراجعة",
+            columns: [
+              { header: "الرمز", key: "account_code", width: 12 },
+              { header: "اسم الحساب", key: "account_name_ar", width: 35 },
+              { header: "النوع", key: "type_label", width: 18 },
+              { header: "مجموع المدين (ر.س)", key: "total_debit", width: 22 },
+              { header: "مجموع الدائن (ر.س)", key: "total_credit", width: 22 },
+              { header: "الرصيد (ر.س)", key: "balance", width: 18 },
+            ],
+            rows: (data.rows || []).map((row: any) => ({
+              account_code: row.account_code,
+              account_name_ar: row.account_name_ar,
+              type_label: TYPE_LABELS[row.type] || row.type,
+              total_debit: row.total_debit,
+              total_credit: row.total_credit,
+              balance: Math.abs(row.balance),
+            })),
+            totalsRow: {
+              account_code: "",
+              account_name_ar: "الإجمالي",
+              type_label: "",
+              total_debit: data.totalDebit || 0,
+              total_credit: data.totalCredit || 0,
+              balance: Math.abs((data.totalDebit || 0) - (data.totalCredit || 0)),
+            },
+          },
+        ],
+        `trial-balance-${applied.from}-${applied.to}.xlsx`,
+      );
+    } catch {
+      toast({ title: t("فشل تصدير Excel", "Excel export failed"), variant: "destructive" });
+    } finally {
+      setExportingXlsx(false);
+    }
+  };
 
   return (
     <FinanceLayout>
@@ -40,10 +132,32 @@ export default function FinanceTrialBalancePage() {
             </h1>
             <p className="text-sm text-muted-foreground">{t("مجموع المدين والدائن لكل الحسابات", "Total debit and credit for all accounts")}</p>
           </div>
-          <Button variant="outline" size="sm" onClick={() => window.print()} data-testid="btn-print-trial-balance">
-            <Printer className="h-4 w-4 me-1.5" />
-            {t("طباعة", "Print")}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportPdf}
+              disabled={!data || exportingPdf}
+              data-testid="btn-export-pdf-tb"
+            >
+              <FileText className="h-4 w-4 me-1.5" />
+              {exportingPdf ? t("جاري التصدير...", "Exporting...") : t("تصدير PDF", "Export PDF")}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportExcel}
+              disabled={!data || exportingXlsx}
+              data-testid="btn-export-excel-tb"
+            >
+              <FileSpreadsheet className="h-4 w-4 me-1.5" />
+              {exportingXlsx ? t("جاري التصدير...", "Exporting...") : t("تصدير Excel", "Export Excel")}
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => window.print()} data-testid="btn-print-trial-balance">
+              <Printer className="h-4 w-4 me-1.5" />
+              {t("طباعة", "Print")}
+            </Button>
+          </div>
         </div>
 
         <Card className="print:hidden">
