@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Plus, Package, AlertTriangle, ArrowUpCircle, ArrowDownCircle, Search, Pencil } from "lucide-react";
+import { Loader2, Plus, Package, AlertTriangle, ArrowUpCircle, ArrowDownCircle, Search, Pencil, Trash2, AlertCircle } from "lucide-react";
 
 const unitLabels: Record<string, { ar: string; en: string }> = {
   piece: { ar: "قطعة", en: "Piece" },
@@ -29,6 +29,7 @@ export default function InventoryPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [txOpen, setTxOpen] = useState<InventoryItem | null>(null);
   const [editItem, setEditItem] = useState<InventoryItem | null>(null);
+  const [deleteItem, setDeleteItem] = useState<InventoryItem | null>(null);
 
   const [newItem, setNewItem] = useState({
     materialNameAr: "", materialNameEn: "", sku: "", category: "",
@@ -67,6 +68,18 @@ export default function InventoryPage() {
       setTxOpen(null);
       setTxData({ type: "stock_in", quantity: "", reason: "" });
       toast({ title: t("تم تسجيل الحركة بنجاح", "Transaction recorded") });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/inventory/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory"] });
+      setDeleteItem(null);
+      toast({ title: t("تم حذف المادة بنجاح", "Item deleted"), variant: "default" });
+    },
+    onError: () => {
+      toast({ title: t("خطأ في الحذف", "Delete failed"), variant: "destructive" });
     },
   });
 
@@ -222,6 +235,15 @@ export default function InventoryPage() {
                       >
                         <Pencil className="w-3.5 h-3.5" />
                       </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
+                        onClick={() => setDeleteItem(item)}
+                        data-testid={`button-delete-inventory-${item.id}`}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
                       {isLow && <Badge variant="destructive" className="text-[10px]">{t("منخفض", "Low")}</Badge>}
                     </div>
                   </div>
@@ -290,6 +312,41 @@ export default function InventoryPage() {
               {txMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : t("تأكيد", "Confirm")}
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={!!deleteItem} onOpenChange={(open) => { if (!open) setDeleteItem(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertCircle className="w-5 h-5" />
+              {t("تأكيد الحذف", "Confirm Delete")}
+            </DialogTitle>
+          </DialogHeader>
+          {deleteItem && (
+            <div className="space-y-4">
+              <p className="text-muted-foreground text-sm">
+                {t(
+                  `هل أنت متأكد من حذف "${deleteItem.materialNameAr}"؟ سيتم حذف جميع حركات هذه المادة أيضاً ولا يمكن التراجع.`,
+                  `Are you sure you want to delete "${deleteItem.materialNameEn}"? All transactions will also be deleted. This cannot be undone.`
+                )}
+              </p>
+              <div className="flex gap-2 justify-end">
+                <Button variant="outline" onClick={() => setDeleteItem(null)} data-testid="button-cancel-delete">
+                  {t("إلغاء", "Cancel")}
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={() => deleteMutation.mutate(deleteItem.id)}
+                  disabled={deleteMutation.isPending}
+                  data-testid="button-confirm-delete"
+                >
+                  {deleteMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : t("حذف نهائي", "Delete")}
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 

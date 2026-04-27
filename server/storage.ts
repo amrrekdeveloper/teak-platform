@@ -109,6 +109,8 @@ export interface IStorage {
   getInventoryItem(id: number): Promise<InventoryItem | undefined>;
   createInventoryItem(item: InsertInventory): Promise<InventoryItem>;
   updateInventoryItem(id: number, data: Partial<InsertInventory>): Promise<InventoryItem | undefined>;
+  deleteInventoryItem(id: number): Promise<void>;
+  deleteUser(id: number): Promise<void>;
 
   createInventoryTransaction(tx: InsertInventoryTransaction): Promise<InventoryTransaction>;
 
@@ -151,6 +153,7 @@ export interface IStorage {
   getEmployee(id: number): Promise<Employee | undefined>;
   createEmployee(employee: InsertEmployee): Promise<Employee>;
   updateEmployee(id: number, data: Partial<InsertEmployee>): Promise<Employee | undefined>;
+  deleteEmployee(id: number): Promise<void>;
 
   getJobTitles(): Promise<JobTitle[]>;
   createJobTitle(jt: InsertJobTitle): Promise<JobTitle>;
@@ -248,9 +251,14 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getUserByPhone(phone: string): Promise<User | undefined> {
-    const normalized = phone.replace(/^(\+966|00966|966)/, "0");
+    const clean = phone.replace(/[\s\-().]/g, "");
+    const normalized = clean.replace(/^(\+966|00966|966)/, "0");
     const allUsers = await db.select().from(users);
-    return allUsers.find(u => u.phone && u.phone.replace(/^(\+966|00966|966)/, "0") === normalized);
+    return allUsers.find(u => {
+      if (!u.phone) return false;
+      const uNorm = u.phone.replace(/[\s\-().]/g, "").replace(/^(\+966|00966|966)/, "0");
+      return uNorm === normalized;
+    });
   }
 
   async createUser(user: InsertUser): Promise<User> {
@@ -523,6 +531,15 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
+  async deleteInventoryItem(id: number): Promise<void> {
+    await db.delete(inventoryTransactions).where(eq(inventoryTransactions.inventoryId, id));
+    await db.delete(inventory).where(eq(inventory.id, id));
+  }
+
+  async deleteUser(id: number): Promise<void> {
+    await db.delete(users).where(eq(users.id, id));
+  }
+
   async createInventoryTransaction(tx: InsertInventoryTransaction): Promise<InventoryTransaction> {
     const [created] = await db.insert(inventoryTransactions).values(tx).returning();
     return created;
@@ -668,6 +685,12 @@ export class DatabaseStorage implements IStorage {
   async updateEmployee(id: number, data: Partial<InsertEmployee>): Promise<Employee | undefined> {
     const [updated] = await db.update(employees).set(data).where(eq(employees.id, id)).returning();
     return updated;
+  }
+
+  async deleteEmployee(id: number): Promise<void> {
+    await db.delete(employeeAssets).where(eq(employeeAssets.employeeId, id));
+    await db.delete(hrAuditLog).where(eq(hrAuditLog.employeeId, id));
+    await db.delete(employees).where(eq(employees.id, id));
   }
 
   async getJobTitles(): Promise<JobTitle[]> {

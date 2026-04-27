@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Textarea } from "@/components/ui/textarea";
 import {
   Fingerprint, LogIn, LogOut, Clock, CheckCircle2, AlertCircle, ChevronRight,
-  Building2, Factory, MapPin, Calendar, RotateCcw, FileText, Shield,
+  Building2, Factory, MapPin, Calendar, RotateCcw, FileText, Shield, Loader2,
 } from "lucide-react";
 import teakLogo from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
 
@@ -286,11 +286,21 @@ export default function AttendancePage() {
     }
   }, []);
 
+  useEffect(() => {
+    if (step === "action") {
+      setLocation(null);
+      setLocationPermDenied(false);
+      setLocationReady(false);
+      requestLocation();
+    }
+  }, [step]);
+
   const handleProceedToFingerprint = useCallback(() => {
+    if (locationPermDenied) return;
+    if (!locationReady) return;
     setFingerprintDone(false);
-    requestLocation();
     setStep("fingerprint");
-  }, [requestLocation]);
+  }, [locationPermDenied, locationReady]);
 
   const handleFingerprintComplete = useCallback(() => {
     setFingerprintDone(true);
@@ -503,10 +513,43 @@ export default function AttendancePage() {
                     </button>
                   </div>
 
+                  {/* Location status - mandatory */}
+                  {!locationReady && (
+                    <div className="flex items-center gap-2 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-xl p-3 text-sm text-blue-700 dark:text-blue-300">
+                      <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                      <span>جاري تحديد موقعك الجغرافي...</span>
+                    </div>
+                  )}
+                  {locationReady && location && (
+                    <div className="flex items-center gap-2 bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-xl p-3 text-sm text-green-700 dark:text-green-300">
+                      <MapPin className="w-4 h-4 shrink-0" />
+                      <span>تم تحديد موقعك بنجاح ✓</span>
+                    </div>
+                  )}
+                  {locationReady && locationPermDenied && (
+                    <div className="bg-red-50 dark:bg-red-950/30 border border-red-300 dark:border-red-800 rounded-xl p-4 space-y-2">
+                      <div className="flex items-center gap-2 text-red-700 dark:text-red-400 font-semibold">
+                        <AlertCircle className="w-5 h-5 shrink-0" />
+                        <span>مخالفة: رُفض الإذن بتحديد الموقع</span>
+                      </div>
+                      <p className="text-sm text-red-600 dark:text-red-300">
+                        لقد رفضت السماح بتحديد الموقع. هذا يُعدّ مخالفة لشروط العمل. لا يقبل النظام تسجيل الدوام بدون تحديد الموقع الجغرافي. يجب السماح بتحديد الموقع من إعدادات المتصفح ثم إعادة المحاولة.
+                      </p>
+                      <Button size="sm" variant="outline" className="border-red-400 text-red-700 hover:bg-red-100" onClick={requestLocation} data-testid="button-retry-location">
+                        <MapPin className="w-4 h-4 me-1" /> إعادة المحاولة
+                      </Button>
+                    </div>
+                  )}
+
                   <div className="flex gap-2">
-                    <Button className="flex-1 h-12 text-base" onClick={handleProceedToFingerprint} data-testid="button-proceed-fingerprint">
+                    <Button
+                      className="flex-1 h-12 text-base"
+                      onClick={handleProceedToFingerprint}
+                      disabled={!locationReady || locationPermDenied || !location}
+                      data-testid="button-proceed-fingerprint"
+                    >
+                      {!locationReady ? <Loader2 className="w-4 h-4 animate-spin ms-2" /> : <Fingerprint className="w-5 h-5 ms-2" />}
                       متابعة للبصمة
-                      <Fingerprint className="w-5 h-5 ms-2" />
                     </Button>
                     <Button variant="outline" onClick={handleReset} data-testid="button-reset-lookup">
                       <RotateCcw className="w-4 h-4" />

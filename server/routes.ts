@@ -778,6 +778,24 @@ export async function registerRoutes(
     }
   });
 
+  app.delete("/api/users/:id", requireRole("owner", "it", "hr"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "معرف غير صالح" });
+      const user = await storage.getUser(id);
+      if (!user) return res.status(404).json({ message: "المستخدم غير موجود" });
+      if (user.role === "owner") return res.status(403).json({ message: "لا يمكن حذف حساب المالك" });
+      const requestingUser = await storage.getUser(req.session.userId!);
+      if (requestingUser?.role === "hr" && (user.role === "it" || user.role === "owner")) {
+        return res.status(403).json({ message: "لا تملك صلاحية حذف هذا الحساب" });
+      }
+      await storage.deleteUser(id);
+      return res.json({ message: "تم حذف الحساب بنجاح" });
+    } catch {
+      return res.status(500).json({ message: "حدث خطأ أثناء الحذف" });
+    }
+  });
+
   app.patch("/api/users/profile/me", requireAuth, async (req, res) => {
     try {
       const userId = req.session.userId!;
@@ -2507,6 +2525,17 @@ export async function registerRoutes(
     }
   });
 
+  app.delete("/api/inventory/:id", requireRole("owner", "assistant", "warehouse"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "معرف غير صالح" });
+      await storage.deleteInventoryItem(id);
+      return res.json({ message: "تم حذف المادة بنجاح" });
+    } catch {
+      return res.status(500).json({ message: "حدث خطأ أثناء الحذف" });
+    }
+  });
+
   app.patch("/api/inventory/:id", requireRole("owner", "assistant", "warehouse"), async (req, res) => {
     try {
       const updated = await storage.updateInventoryItem(parseInt(req.params.id), req.body);
@@ -2685,6 +2714,19 @@ export async function registerRoutes(
       res.json(updated);
     } catch (error) {
       res.status(500).json({ message: "حدث خطأ في تحديث الموظف", messageEn: "Error updating employee" });
+    }
+  });
+
+  app.delete("/api/employees/:id", requireRole("owner", "assistant", "hr", "it"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "معرف غير صالح" });
+      const emp = await storage.getEmployee(id);
+      if (!emp) return res.status(404).json({ message: "الموظف غير موجود" });
+      await storage.deleteEmployee(id);
+      return res.json({ message: "تم حذف سجل الموظف بنجاح" });
+    } catch {
+      return res.status(500).json({ message: "حدث خطأ أثناء الحذف" });
     }
   });
 

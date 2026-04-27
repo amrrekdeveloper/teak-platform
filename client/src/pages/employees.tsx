@@ -1120,10 +1120,12 @@ function JobTitlesManager() {
 export default function EmployeesPage() {
   const { t } = useLanguage();
   const { toast } = useToast();
+  const { user: currentUser } = useAuth();
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
+  const [deleteEmpConfirm, setDeleteEmpConfirm] = useState<Employee | null>(null);
   const [form, setForm] = useState<EmployeeForm>(emptyForm);
   const [sortKey, setSortKey] = useState<SortKey>("employeeNumber");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -1148,6 +1150,18 @@ export default function EmployeesPage() {
       } catch {
         toast({ title: t("حدث خطأ في إضافة الموظف", "Error adding employee"), variant: "destructive" });
       }
+    },
+  });
+
+  const deleteEmpMutation = useMutation({
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/employees/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/employees"] });
+      setDeleteEmpConfirm(null);
+      toast({ title: t("تم حذف سجل الموظف بنجاح", "Employee record deleted") });
+    },
+    onError: () => {
+      toast({ title: t("خطأ في الحذف", "Delete failed"), variant: "destructive" });
     },
   });
 
@@ -1389,10 +1403,20 @@ export default function EmployeesPage() {
                       </Badge>
                     </td>
                     <td className="px-3 py-3 text-center">
-                      <Button size="icon" variant="ghost" className="h-7 w-7"
-                        onClick={() => setSelectedEmployee(emp)} data-testid={`button-edit-employee-${emp.id}`}>
-                        <Pencil className="w-3.5 h-3.5" />
-                      </Button>
+                      <div className="flex items-center justify-center gap-1">
+                        <Button size="icon" variant="ghost" className="h-7 w-7"
+                          onClick={() => setSelectedEmployee(emp)} data-testid={`button-edit-employee-${emp.id}`}>
+                          <Pencil className="w-3.5 h-3.5" />
+                        </Button>
+                        {(currentUser?.role === "owner" || currentUser?.role === "hr" || currentUser?.role === "it" || currentUser?.role === "assistant") && (
+                          <Button size="icon" variant="ghost"
+                            className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
+                            onClick={() => setDeleteEmpConfirm(emp)}
+                            data-testid={`button-delete-employee-${emp.id}`}>
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -1422,6 +1446,41 @@ export default function EmployeesPage() {
         <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
           <DialogHeader><DialogTitle>{t("إدارة المسميات الوظيفية", "Manage Job Titles")}</DialogTitle></DialogHeader>
           <JobTitlesManager />
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Employee Confirmation Dialog */}
+      <Dialog open={!!deleteEmpConfirm} onOpenChange={(open) => { if (!open) setDeleteEmpConfirm(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="w-5 h-5" />
+              {t("تأكيد حذف سجل الموظف", "Confirm Employee Record Deletion")}
+            </DialogTitle>
+          </DialogHeader>
+          {deleteEmpConfirm && (
+            <div className="space-y-4">
+              <p className="text-muted-foreground text-sm">
+                {t(
+                  `سيتم حذف سجل الموظف رقم #${deleteEmpConfirm.employeeNumber} نهائياً بما يشمل وثائقه وسجل التدقيق. هذا الإجراء لا يمكن التراجع عنه.`,
+                  `Employee record #${deleteEmpConfirm.employeeNumber} and all associated documents will be permanently deleted. This cannot be undone.`
+                )}
+              </p>
+              <div className="flex gap-2 justify-end">
+                <Button variant="outline" onClick={() => setDeleteEmpConfirm(null)} data-testid="button-cancel-delete-emp">
+                  {t("إلغاء", "Cancel")}
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={() => deleteEmpMutation.mutate(deleteEmpConfirm.id)}
+                  disabled={deleteEmpMutation.isPending}
+                  data-testid="button-confirm-delete-emp"
+                >
+                  {deleteEmpMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : t("حذف نهائي", "Delete")}
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>
