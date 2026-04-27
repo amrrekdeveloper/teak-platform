@@ -10,20 +10,6 @@ import { Label } from "@/components/ui/label";
 import { Wallet, Printer, TrendingUp, TrendingDown } from "lucide-react";
 import { format, startOfYear } from "date-fns";
 
-const METHOD_AR: Record<string, string> = {
-  bank_transfer: "تحويل بنكي",
-  cash: "نقداً",
-  card: "بطاقة",
-};
-
-const STAGE_AR: Record<string, string> = {
-  deposit: "عربون",
-  pre_manufacturing: "قبل التصنيع",
-  delivery: "عند التوصيل",
-  final: "نهائية",
-  other: "أخرى",
-};
-
 export default function FinanceCashFlowPage() {
   const { t } = useLanguage();
   const [from, setFrom] = useState(format(startOfYear(new Date()), "yyyy-MM-dd"));
@@ -33,7 +19,10 @@ export default function FinanceCashFlowPage() {
   const { data, isLoading } = useQuery<any>({
     queryKey: ["/api/accounting/cash-flow", applied.from, applied.to],
     queryFn: async () => {
-      const res = await fetch(`/api/accounting/cash-flow?from=${applied.from}&to=${applied.to}`, { credentials: "include" });
+      const params = new URLSearchParams();
+      if (applied.from) params.set("from", applied.from);
+      if (applied.to) params.set("to", applied.to);
+      const res = await fetch(`/api/accounting/cash-flow?${params}`, { credentials: "include" });
       return res.json();
     },
   });
@@ -47,7 +36,9 @@ export default function FinanceCashFlowPage() {
               <Wallet className="h-5 w-5 text-primary" />
               {t("قائمة التدفقات النقدية", "Cash Flow Statement")}
             </h1>
-            <p className="text-sm text-muted-foreground">{t("التدفقات الداخلة والخارجة من الأنشطة التشغيلية", "Operating cash inflows and outflows")}</p>
+            <p className="text-sm text-muted-foreground">
+              {t("مستخرج من حركات حسابات النقدية والبنك (1111, 1112)", "Derived from GL cash/bank accounts (1111, 1112)")}
+            </p>
           </div>
           <Button variant="outline" size="sm" onClick={() => window.print()} data-testid="btn-print-cashflow">
             <Printer className="h-4 w-4 me-1.5" />
@@ -126,9 +117,9 @@ export default function FinanceCashFlowPage() {
               <CardHeader className="pb-2">
                 <CardTitle className="text-base text-green-700 dark:text-green-300 flex items-center gap-2">
                   <TrendingUp className="h-4 w-4" />
-                  {t("التدفقات الداخلة — مدفوعات العملاء المؤكدة", "Cash Inflows — Confirmed Customer Payments")}
+                  {t("التدفقات الداخلة (مدين لحسابات النقد)", "Cash Inflows (Debits to cash accounts)")}
                   <Badge className="bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300 ms-auto">
-                    {(data.inflows || []).length} معاملة
+                    {(data.inflows || []).length} قيد
                   </Badge>
                 </CardTitle>
               </CardHeader>
@@ -141,23 +132,21 @@ export default function FinanceCashFlowPage() {
                       <thead className="bg-muted/50 text-xs">
                         <tr>
                           <th className="text-right px-3 py-2">التاريخ</th>
-                          <th className="text-right px-3 py-2">العميل</th>
-                          <th className="text-right px-3 py-2">رقم العقد</th>
-                          <th className="text-right px-3 py-2">المرحلة</th>
-                          <th className="text-right px-3 py-2">طريقة الدفع</th>
+                          <th className="text-right px-3 py-2">رقم القيد</th>
+                          <th className="text-right px-3 py-2">البيان</th>
+                          <th className="text-right px-3 py-2">الحساب</th>
                           <th className="text-right px-3 py-2 w-32">المبلغ</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y">
                         {(data.inflows || []).map((r: any, i: number) => (
-                          <tr key={i} className="hover:bg-accent/30">
-                            <td className="px-3 py-2 text-muted-foreground text-xs">{r.created_at?.slice(0, 10)}</td>
-                            <td className="px-3 py-2">{r.customer_name || "—"}</td>
-                            <td className="px-3 py-2 font-mono text-xs">{r.contract_number || "—"}</td>
-                            <td className="px-3 py-2 text-xs">{STAGE_AR[r.payment_stage] || r.payment_stage}</td>
-                            <td className="px-3 py-2 text-xs">{METHOD_AR[r.method] || r.method}</td>
+                          <tr key={i} className="hover:bg-accent/30" data-testid={`cf-inflow-${i}`}>
+                            <td className="px-3 py-2 text-muted-foreground text-xs">{r.entry_date}</td>
+                            <td className="px-3 py-2 font-mono text-xs">#{r.entry_number}</td>
+                            <td className="px-3 py-2">{r.entry_description}</td>
+                            <td className="px-3 py-2 text-xs text-muted-foreground">{r.account_name_ar}</td>
                             <td className="px-3 py-2 tabular-nums text-green-700 dark:text-green-400 font-medium">
-                              {parseFloat(r.amount).toLocaleString("ar-SA", { minimumFractionDigits: 2 })} ر.س
+                              {parseFloat(r.debit).toLocaleString("ar-SA", { minimumFractionDigits: 2 })} ر.س
                             </td>
                           </tr>
                         ))}
@@ -173,9 +162,9 @@ export default function FinanceCashFlowPage() {
               <CardHeader className="pb-2">
                 <CardTitle className="text-base text-red-700 dark:text-red-300 flex items-center gap-2">
                   <TrendingDown className="h-4 w-4" />
-                  {t("التدفقات الخارجة — أوامر شراء مستلمة", "Cash Outflows — Received Purchase Orders")}
+                  {t("التدفقات الخارجة (دائن لحسابات النقد)", "Cash Outflows (Credits to cash accounts)")}
                   <Badge className="bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300 ms-auto">
-                    {(data.outflows || []).length} معاملة
+                    {(data.outflows || []).length} قيد
                   </Badge>
                 </CardTitle>
               </CardHeader>
@@ -188,17 +177,21 @@ export default function FinanceCashFlowPage() {
                       <thead className="bg-muted/50 text-xs">
                         <tr>
                           <th className="text-right px-3 py-2">التاريخ</th>
-                          <th className="text-right px-3 py-2">المورد</th>
+                          <th className="text-right px-3 py-2">رقم القيد</th>
+                          <th className="text-right px-3 py-2">البيان</th>
+                          <th className="text-right px-3 py-2">الحساب</th>
                           <th className="text-right px-3 py-2 w-32">المبلغ</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y">
                         {(data.outflows || []).map((r: any, i: number) => (
-                          <tr key={i} className="hover:bg-accent/30">
-                            <td className="px-3 py-2 text-muted-foreground text-xs">{r.created_at?.slice(0, 10)}</td>
-                            <td className="px-3 py-2">{r.supplier_name || "—"}</td>
+                          <tr key={i} className="hover:bg-accent/30" data-testid={`cf-outflow-${i}`}>
+                            <td className="px-3 py-2 text-muted-foreground text-xs">{r.entry_date}</td>
+                            <td className="px-3 py-2 font-mono text-xs">#{r.entry_number}</td>
+                            <td className="px-3 py-2">{r.entry_description}</td>
+                            <td className="px-3 py-2 text-xs text-muted-foreground">{r.account_name_ar}</td>
                             <td className="px-3 py-2 tabular-nums text-red-700 dark:text-red-400 font-medium">
-                              {parseFloat(r.amount).toLocaleString("ar-SA", { minimumFractionDigits: 2 })} ر.س
+                              {parseFloat(r.credit).toLocaleString("ar-SA", { minimumFractionDigits: 2 })} ر.س
                             </td>
                           </tr>
                         ))}

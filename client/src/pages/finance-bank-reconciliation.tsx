@@ -6,14 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Building2, Printer, AlertCircle, CheckCircle2 } from "lucide-react";
+import { Building2, Printer, CheckCircle2, AlertCircle } from "lucide-react";
 import { format, startOfMonth } from "date-fns";
-
-const METHOD_AR: Record<string, string> = {
-  bank_transfer: "تحويل بنكي",
-  cash: "نقداً",
-  card: "بطاقة",
-};
 
 export default function FinanceBankReconciliationPage() {
   const { t } = useLanguage();
@@ -33,11 +27,12 @@ export default function FinanceBankReconciliationPage() {
     },
   });
 
-  const ledgerBalance = data?.totalReceipts || 0;
+  const closingBookBalance = data?.closingBookBalance || 0;
   const totalPending = data?.totalPending || 0;
   const bankBalanceNum = parseFloat(bankBalance || "0");
+  // Adjusted bank balance = bank statement + in-transit items
   const adjustedBankBalance = bankBalanceNum + totalPending;
-  const difference = adjustedBankBalance - ledgerBalance;
+  const difference = adjustedBankBalance - closingBookBalance;
   const isReconciled = Math.abs(difference) < 1;
 
   return (
@@ -49,7 +44,9 @@ export default function FinanceBankReconciliationPage() {
               <Building2 className="h-5 w-5 text-primary" />
               {t("مطابقة البنك", "Bank Reconciliation")}
             </h1>
-            <p className="text-sm text-muted-foreground">{t("مقارنة رصيد الدفتر برصيد كشف الحساب البنكي", "Compare book balance with bank statement balance")}</p>
+            <p className="text-sm text-muted-foreground">
+              {t("مقارنة رصيد حساب البنك (1112) برصيد كشف الحساب البنكي", "Compare GL bank account (1112) balance with bank statement balance")}
+            </p>
           </div>
           <Button variant="outline" size="sm" onClick={() => window.print()} data-testid="btn-print-bank-rec">
             <Printer className="h-4 w-4 me-1.5" />
@@ -79,14 +76,19 @@ export default function FinanceBankReconciliationPage() {
           <p className="text-center py-8 text-muted-foreground">{t("جاري التحميل...", "Loading...")}</p>
         ) : data && (
           <>
-            {/* Reconciliation Summary */}
+            {/* Summary Cards */}
             <div className="grid md:grid-cols-3 gap-3">
               <Card>
                 <CardContent className="p-4">
-                  <p className="text-xs text-muted-foreground">{t("رصيد الدفتر (إيصالات بنكية مؤكدة)", "Book Balance (confirmed bank transfers)")}</p>
+                  <p className="text-xs text-muted-foreground">{t("رصيد الدفتر (حساب البنك 1112)", "Book Balance (GL account 1112)")}</p>
                   <p className="text-2xl font-bold tabular-nums mt-1">
-                    {ledgerBalance.toLocaleString("ar-SA", { minimumFractionDigits: 2 })} ر.س
+                    {closingBookBalance.toLocaleString("ar-SA", { minimumFractionDigits: 2 })} ر.س
                   </p>
+                  {data.openingBalance !== 0 && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      رصيد افتتاحي: {parseFloat(data.openingBalance).toLocaleString("ar-SA", { minimumFractionDigits: 2 })} ر.س
+                    </p>
+                  )}
                 </CardContent>
               </Card>
               <Card>
@@ -102,6 +104,11 @@ export default function FinanceBankReconciliationPage() {
                     className="mt-1 text-xl font-bold h-10"
                     data-testid="input-bank-statement-balance"
                   />
+                  {totalPending > 0 && (
+                    <p className="text-xs text-yellow-600 mt-1">
+                      + قيد التسوية: {totalPending.toLocaleString("ar-SA", { minimumFractionDigits: 2 })} ر.س
+                    </p>
+                  )}
                 </CardContent>
               </Card>
               <Card className={bankBalance ? (isReconciled ? "border-green-200 dark:border-green-800" : "border-red-200 dark:border-red-800") : ""}>
@@ -130,47 +137,68 @@ export default function FinanceBankReconciliationPage() {
               </Card>
             </div>
 
-            {/* Confirmed Transactions */}
+            {/* GL Bank Account Movements */}
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm flex items-center gap-2">
-                  {t("معاملات التحويل البنكي المؤكدة", "Confirmed Bank Transfer Transactions")}
+                  {t("حركات حساب البنك (دفتر الأستاذ 1112)", "GL Bank Account Movements (1112)")}
                   <span className="text-muted-foreground font-normal">({applied.from} → {applied.to})</span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-0">
-                {(data.payments || []).length === 0 ? (
-                  <p className="text-center py-8 text-muted-foreground text-sm">لا توجد تحويلات بنكية مؤكدة في هذه الفترة</p>
+                {(data.glLines || []).length === 0 ? (
+                  <p className="text-center py-8 text-muted-foreground text-sm">لا توجد حركات على حساب البنك في هذه الفترة</p>
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead className="bg-muted/50 text-xs">
                         <tr>
                           <th className="text-right px-3 py-2">التاريخ</th>
-                          <th className="text-right px-3 py-2">العميل</th>
-                          <th className="text-right px-3 py-2">رقم العقد</th>
-                          <th className="text-right px-3 py-2">رقم المرجع البنكي</th>
-                          <th className="text-right px-3 py-2 w-32">المبلغ</th>
+                          <th className="text-right px-3 py-2">رقم القيد</th>
+                          <th className="text-right px-3 py-2">البيان</th>
+                          <th className="text-right px-3 py-2 w-28">مدين</th>
+                          <th className="text-right px-3 py-2 w-28">دائن</th>
+                          <th className="text-right px-3 py-2 w-28">الرصيد</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y">
-                        {(data.payments || []).map((r: any, i: number) => (
-                          <tr key={i} className="hover:bg-accent/30" data-testid={`bank-txn-${r.id}`}>
-                            <td className="px-3 py-2 text-muted-foreground text-xs">{r.created_at?.slice(0, 10)}</td>
-                            <td className="px-3 py-2">{r.customer_name || "—"}</td>
-                            <td className="px-3 py-2 font-mono text-xs">{r.contract_number || "—"}</td>
-                            <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{r.bank_reference || "—"}</td>
-                            <td className="px-3 py-2 tabular-nums font-medium text-primary">
-                              {parseFloat(r.amount).toLocaleString("ar-SA", { minimumFractionDigits: 2 })} ر.س
+                        {data.openingBalance !== undefined && (
+                          <tr className="bg-yellow-50/50 dark:bg-yellow-950/20 italic">
+                            <td colSpan={5} className="px-3 py-2 text-muted-foreground text-xs">الرصيد الافتتاحي</td>
+                            <td className="px-3 py-2 tabular-nums font-semibold">
+                              {parseFloat(data.openingBalance).toLocaleString("ar-SA", { minimumFractionDigits: 2 })}
+                            </td>
+                          </tr>
+                        )}
+                        {(data.glLines || []).map((r: any, i: number) => (
+                          <tr key={i} className="hover:bg-accent/30" data-testid={`bank-gl-${r.id}`}>
+                            <td className="px-3 py-2 text-muted-foreground text-xs">{r.entry_date}</td>
+                            <td className="px-3 py-2 font-mono text-xs">#{r.entry_number}</td>
+                            <td className="px-3 py-2">{r.entry_description}</td>
+                            <td className="px-3 py-2 tabular-nums text-blue-700 dark:text-blue-400">
+                              {parseFloat(r.debit) > 0 ? parseFloat(r.debit).toLocaleString("ar-SA", { minimumFractionDigits: 2 }) : ""}
+                            </td>
+                            <td className="px-3 py-2 tabular-nums text-red-600 dark:text-red-400">
+                              {parseFloat(r.credit) > 0 ? parseFloat(r.credit).toLocaleString("ar-SA", { minimumFractionDigits: 2 }) : ""}
+                            </td>
+                            <td className={`px-3 py-2 tabular-nums font-medium ${r.runningBalance >= 0 ? "text-foreground" : "text-red-600"}`}>
+                              {Math.abs(r.runningBalance).toLocaleString("ar-SA", { minimumFractionDigits: 2 })}
+                              {r.runningBalance < 0 && " (م)"}
                             </td>
                           </tr>
                         ))}
                       </tbody>
                       <tfoot className="bg-muted/30 font-bold border-t-2">
                         <tr>
-                          <td colSpan={4} className="px-3 py-2">إجمالي التحويلات البنكية المؤكدة</td>
+                          <td colSpan={3} className="px-3 py-2">رصيد الإغلاق</td>
+                          <td className="px-3 py-2 tabular-nums text-blue-700 dark:text-blue-400">
+                            {(data.periodDebits || 0).toLocaleString("ar-SA", { minimumFractionDigits: 2 })}
+                          </td>
+                          <td className="px-3 py-2 tabular-nums text-red-600 dark:text-red-400">
+                            {(data.periodCredits || 0).toLocaleString("ar-SA", { minimumFractionDigits: 2 })}
+                          </td>
                           <td className="px-3 py-2 tabular-nums">
-                            {ledgerBalance.toLocaleString("ar-SA", { minimumFractionDigits: 2 })} ر.س
+                            {closingBookBalance.toLocaleString("ar-SA", { minimumFractionDigits: 2 })} ر.س
                           </td>
                         </tr>
                       </tfoot>
@@ -185,7 +213,7 @@ export default function FinanceBankReconciliationPage() {
               <Card className="border-yellow-200 dark:border-yellow-800">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm text-yellow-700 dark:text-yellow-300">
-                    {t("مدفوعات قيد التسوية (لم تظهر في البنك بعد)", "In-Transit Payments (not yet cleared by bank)")}
+                    {t("مدفوعات قيد التسوية (لم تُقيَّد في الدفتر بعد)", "In-Transit Payments (not yet journalized)")}
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="p-0">
