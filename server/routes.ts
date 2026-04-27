@@ -6667,22 +6667,52 @@ export async function registerRoutes(
 
       const accounts = await storage.getChartOfAccounts();
       const accountMap = new Map(accounts.map(a => [a.code, a]));
-      const rows = result.rows.map((r: any) => ({
-        code: r.account_code,
-        nameAr: r.account_name_ar,
-        type: accountMap.get(r.account_code)?.type || "asset",
-        parentCode: accountMap.get(r.account_code)?.parentCode,
-        balance: parseFloat(r.balance),
-      }));
-      const byType = (type: string) => rows.filter((r: any) => r.type === type);
-      const sum = (arr: any[]) => arr.reduce((s, r) => s + r.balance, 0);
+      const activityMap = new Map(result.rows.map((r: any) => [r.account_code, parseFloat(r.balance)]));
+
+      // Sign normalisation: assets debit-nature (debit-credit=positive);
+      //   liabilities/equity credit-nature (credit-debit=positive → negate stored value)
+      const rows = accounts
+        .filter(a => ["asset", "liability", "equity"].includes(a.type))
+        .map(a => {
+          const rawBalance = activityMap.get(a.code) ?? 0;
+          const balance = (a.type === "liability" || a.type === "equity") ? -rawBalance : rawBalance;
+          return {
+            code: a.code,
+            nameAr: a.nameAr,
+            type: a.type,
+            parentCode: a.parentCode ?? null,
+            balance,
+          };
+        });
+
+      // Build hierarchical groups with subtotals
+      const buildHierarchy = (type: string) => {
+        const typeRows = rows.filter(r => r.type === type);
+        // Roots: accounts with no parent, or parent not in same type
+        const roots = typeRows.filter(r => !r.parentCode || !typeRows.find(p => p.code === r.parentCode));
+        const groups: any[] = [];
+        for (const root of roots) {
+          const children = typeRows.filter(r => r.parentCode === root.code);
+          const subTotal = children.length
+            ? children.reduce((s, c) => s + c.balance, 0)
+            : root.balance;
+          groups.push({ ...root, children, subTotal });
+        }
+        return groups;
+      };
+
+      const sum = (arr: any[]) => arr.reduce((s, r) => s + (r.children?.length ? r.subTotal : r.balance), 0);
+      const assetGroups = buildHierarchy("asset");
+      const liabilityGroups = buildHierarchy("liability");
+      const equityGroups = buildHierarchy("equity");
+
       res.json({
-        assets: byType("asset"),
-        liabilities: byType("liability"),
-        equity: byType("equity"),
-        totalAssets: sum(byType("asset")),
-        totalLiabilities: sum(byType("liability")),
-        totalEquity: sum(byType("equity")),
+        assets: assetGroups,
+        liabilities: liabilityGroups,
+        equity: equityGroups,
+        totalAssets: sum(assetGroups),
+        totalLiabilities: sum(liabilityGroups),
+        totalEquity: sum(equityGroups),
       });
     } catch (e: any) { res.status(500).json({ message: e.message || "حدث خطأ" }); }
   });
@@ -6713,12 +6743,15 @@ export async function registerRoutes(
 
       const accounts = await storage.getChartOfAccounts();
       const accountMap = new Map(accounts.map(a => [a.code, a]));
-      const rows = result.rows.map((r: any) => ({
-        code: r.account_code,
-        nameAr: r.account_name_ar,
-        type: accountMap.get(r.account_code)?.type || "expense",
-        amount: parseFloat(r.amount),
-      }));
+      const rows = result.rows.map((r: any) => {
+        const type = accountMap.get(r.account_code)?.type || "expense";
+        // Revenue: credit-nature → (credit - debit) gives positive when earned
+        // Cost/Expense: debit-nature → (debit - credit) gives positive when incurred
+        //   raw query computes (credit - debit), so negate for cost/expense
+        const rawAmount = parseFloat(r.amount);
+        const amount = (type === "cost" || type === "expense") ? -rawAmount : rawAmount;
+        return { code: r.account_code, nameAr: r.account_name_ar, type, amount };
+      });
       const revenue = rows.filter((r: any) => r.type === "revenue");
       const cost = rows.filter((r: any) => r.type === "cost");
       const expense = rows.filter((r: any) => r.type === "expense");
@@ -6934,6 +6967,22 @@ export async function registerRoutes(
       });
     } catch (e: any) { res.status(500).json({ message: e.message || "حدث خطأ" }); }
   });
+
+  // ── /api/finance/* aliases (backward-compatible redirects) ─────────────────
+  const ACCOUNTING_ENDPOINTS = [
+    "accounts", "journal-entries", "ledger", "trial-balance",
+    "balance-sheet", "income-statement", "cash-flow", "vat-report", "bank-reconciliation",
+  ];
+  for (const ep of ACCOUNTING_ENDPOINTS) {
+    app.get(`/api/finance/${ep}`, (req, res) => {
+      req.url = req.url.replace(`/api/finance/${ep}`, `/api/accounting/${ep}`);
+      (app as any)._router.handle(
+        Object.assign(req, { url: `/api/accounting/${ep}${req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : ""}` }),
+        res,
+        () => res.status(404).json({ message: "Not found" })
+      );
+    });
+  }
 
   return httpServer;
 }

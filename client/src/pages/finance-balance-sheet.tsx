@@ -9,28 +9,60 @@ import { Label } from "@/components/ui/label";
 import { BarChart3, Printer } from "lucide-react";
 import { format } from "date-fns";
 
-function SectionTable({ title, rows, total, colorClass }: { title: string; rows: any[]; total: number; colorClass: string }) {
-  if (rows.length === 0) return null;
+function SectionTable({ title, groups, total, colorClass }: { title: string; groups: any[]; total: number; colorClass: string }) {
+  if (!groups || groups.length === 0) return null;
+  const fmt = (n: number) => Math.abs(n).toLocaleString("ar-SA", { minimumFractionDigits: 2 });
   return (
     <div className="mb-4">
       <h3 className={`font-bold text-sm px-3 py-2 ${colorClass} rounded-t`}>{title}</h3>
       <table className="w-full text-sm border border-t-0 rounded-b overflow-hidden">
         <tbody className="divide-y">
-          {rows.map((r: any, i: number) => (
-            <tr key={i} className="hover:bg-accent/30">
-              <td className="px-3 py-2">
-                <span className="font-mono text-xs text-muted-foreground me-2">{r.code}</span>
-                {r.nameAr}
-              </td>
-              <td className={`px-3 py-2 text-right tabular-nums w-36 ${r.balance < 0 ? "text-red-600" : ""}`}>
-                {Math.abs(r.balance).toLocaleString("ar-SA", { minimumFractionDigits: 2 })} ر.س
-              </td>
-            </tr>
+          {groups.map((group: any, gi: number) => (
+            <>
+              {/* Parent row (shown if it has children) */}
+              {group.children && group.children.length > 0 ? (
+                <>
+                  <tr key={`g-${gi}`} className="bg-muted/20">
+                    <td className="px-3 py-1.5 font-semibold text-xs text-muted-foreground">
+                      <span className="font-mono me-2">{group.code}</span>{group.nameAr}
+                    </td>
+                    <td className="px-3 py-1.5 text-right tabular-nums w-36 text-muted-foreground text-xs"></td>
+                  </tr>
+                  {group.children.map((child: any, ci: number) => (
+                    <tr key={`c-${gi}-${ci}`} className="hover:bg-accent/30">
+                      <td className="px-6 py-1.5">
+                        <span className="font-mono text-xs text-muted-foreground me-2">{child.code}</span>
+                        {child.nameAr}
+                      </td>
+                      <td className={`px-3 py-1.5 text-right tabular-nums w-36 ${child.balance < 0 ? "text-red-600" : ""}`}>
+                        {fmt(child.balance)} ر.س
+                      </td>
+                    </tr>
+                  ))}
+                  <tr key={`st-${gi}`} className="bg-muted/10 border-t">
+                    <td className="px-3 py-1 text-xs text-muted-foreground">مجموع {group.nameAr}</td>
+                    <td className={`px-3 py-1 text-right tabular-nums text-sm font-medium ${group.subTotal < 0 ? "text-red-600" : ""}`}>
+                      {fmt(group.subTotal)} ر.س
+                    </td>
+                  </tr>
+                </>
+              ) : (
+                <tr key={`g-${gi}`} className="hover:bg-accent/30">
+                  <td className="px-3 py-2">
+                    <span className="font-mono text-xs text-muted-foreground me-2">{group.code}</span>
+                    {group.nameAr}
+                  </td>
+                  <td className={`px-3 py-2 text-right tabular-nums w-36 ${group.balance < 0 ? "text-red-600" : ""}`}>
+                    {fmt(group.balance)} ر.س
+                  </td>
+                </tr>
+              )}
+            </>
           ))}
           <tr className="bg-muted/30 font-bold border-t-2">
             <td className="px-3 py-2">إجمالي {title}</td>
             <td className="px-3 py-2 text-right tabular-nums">
-              {Math.abs(total).toLocaleString("ar-SA", { minimumFractionDigits: 2 })} ر.س
+              {fmt(total)} ر.س
             </td>
           </tr>
         </tbody>
@@ -101,7 +133,7 @@ export default function FinanceBalanceSheetPage() {
                   <CardTitle className="text-base text-blue-700 dark:text-blue-300">الأصول</CardTitle>
                 </CardHeader>
                 <CardContent className="p-0">
-                  <SectionTable title="الأصول" rows={data.assets || []} total={data.totalAssets || 0} colorClass="bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-300" />
+                  <SectionTable title="الأصول" groups={data.assets || []} total={data.totalAssets || 0} colorClass="bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-300" />
                   <div className="px-3 py-3 border-t-2 bg-blue-50 dark:bg-blue-950/20">
                     <div className="flex justify-between font-bold text-blue-700 dark:text-blue-300">
                       <span>إجمالي الأصول</span>
@@ -117,8 +149,8 @@ export default function FinanceBalanceSheetPage() {
                   <CardTitle className="text-base text-red-700 dark:text-red-300">الخصوم وحقوق الملكية</CardTitle>
                 </CardHeader>
                 <CardContent className="p-0">
-                  <SectionTable title="الخصوم" rows={data.liabilities || []} total={data.totalLiabilities || 0} colorClass="bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-300" />
-                  <SectionTable title="حقوق الملكية" rows={data.equity || []} total={data.totalEquity || 0} colorClass="bg-purple-50 text-purple-700 dark:bg-purple-950/30 dark:text-purple-300" />
+                  <SectionTable title="الخصوم" groups={data.liabilities || []} total={data.totalLiabilities || 0} colorClass="bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-300" />
+                  <SectionTable title="حقوق الملكية" groups={data.equity || []} total={data.totalEquity || 0} colorClass="bg-purple-50 text-purple-700 dark:bg-purple-950/30 dark:text-purple-300" />
                   <div className="px-3 py-3 border-t-2 bg-red-50 dark:bg-red-950/20">
                     <div className="flex justify-between font-bold text-red-700 dark:text-red-300">
                       <span>إجمالي الخصوم وحقوق الملكية</span>
