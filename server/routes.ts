@@ -6737,39 +6737,49 @@ export async function registerRoutes(
   });
 
   // ── Cash Flow ──────────────────────────────────────────────────────────────
-  // Derived directly from GL journal lines on cash/bank accounts (1111, 1112)
-  // Debits to cash accounts = inflows; Credits to cash accounts = outflows
+  // Inflows: confirmed customer payments; Outflows: received purchase orders
   app.get("/api/accounting/cash-flow", requireRole("owner", "assistant", "accountant"), async (req, res) => {
     try {
       const { from, to } = req.query as { from?: string; to?: string };
       const { pool } = await import("./db");
 
-      const cashAccountCodes = ["1111", "1112"];
-      const params: any[] = [cashAccountCodes];
-      let dateConds = "";
-      if (from) { params.push(from); dateConds += ` AND je.date >= $${params.length}`; }
-      if (to)   { params.push(to);   dateConds += ` AND je.date <= $${params.length}`; }
+      // Parameterized inflows (confirmed customer payments)
+      const inflowParams: any[] = ["confirmed"];
+      let inflowConds = "p.payment_status = $1";
+      if (from) { inflowParams.push(from); inflowConds += ` AND p.created_at::date >= $${inflowParams.length}`; }
+      if (to)   { inflowParams.push(to);   inflowConds += ` AND p.created_at::date <= $${inflowParams.length}`; }
 
-      // All GL movements on cash/bank accounts in the period
-      const cashLines = await pool.query(
-        `SELECT jel.id, jel.account_code, jel.account_name_ar,
-                jel.debit, jel.credit, jel.notes,
-                je.entry_number, je.date AS entry_date, je.description AS entry_description,
-                je.reference, je.reference_type
-         FROM journal_entry_lines jel
-         INNER JOIN journal_entries je ON jel.entry_id = je.id
-         WHERE je.status = 'posted' AND jel.account_code = ANY($1)${dateConds}
-         ORDER BY je.date, je.id`,
-        params
+      const inflows = await pool.query(
+        `SELECT p.id, p.amount, p.method, p.payment_stage, p.created_at,
+                c.full_name AS customer_name, ct.contract_number
+         FROM payments p
+         LEFT JOIN customers c ON p.customer_id = c.id
+         LEFT JOIN contracts ct ON p.contract_id = ct.id
+         WHERE ${inflowConds}
+         ORDER BY p.created_at DESC`,
+        inflowParams
       );
 
-      const inflows = cashLines.rows.filter((r: any) => parseFloat(r.debit) > 0);
-      const outflows = cashLines.rows.filter((r: any) => parseFloat(r.credit) > 0);
-      const totalInflows = inflows.reduce((s: number, r: any) => s + parseFloat(r.debit || 0), 0);
-      const totalOutflows = outflows.reduce((s: number, r: any) => s + parseFloat(r.credit || 0), 0);
+      // Parameterized outflows (received purchase orders = cash paid to suppliers)
+      const outflowParams: any[] = ["received"];
+      let outflowConds = "po.status = $1";
+      if (from) { outflowParams.push(from); outflowConds += ` AND po.created_at::date >= $${outflowParams.length}`; }
+      if (to)   { outflowParams.push(to);   outflowConds += ` AND po.created_at::date <= $${outflowParams.length}`; }
+
+      const outflows = await pool.query(
+        `SELECT po.id, po.total_amount AS amount, po.created_at, s.name AS supplier_name
+         FROM purchase_orders po
+         LEFT JOIN suppliers s ON po.supplier_id = s.id
+         WHERE ${outflowConds}
+         ORDER BY po.created_at DESC`,
+        outflowParams
+      );
+
+      const totalInflows = inflows.rows.reduce((s: number, r: any) => s + parseFloat(r.amount || 0), 0);
+      const totalOutflows = outflows.rows.reduce((s: number, r: any) => s + parseFloat(r.amount || 0), 0);
       res.json({
-        inflows,
-        outflows,
+        inflows: inflows.rows,
+        outflows: outflows.rows,
         totalInflows,
         totalOutflows,
         netCashFlow: totalInflows - totalOutflows,
@@ -6802,8 +6812,8 @@ export async function registerRoutes(
       `, [from, to]);
       const inputVat = await pool.query(`
         SELECT
-          COALESCE(SUM(total_amount::numeric), 0) AS taxable_purchases,
-          COALESCE(SUM((total_amount::numeric * 0.15 / 1.15)), 0) AS input_vat,
+          COALESCE(SUM(total_amount::numeric - vat_amount::numeric), 0) AS taxable_purchases,
+          COALESCE(SUM(vat_amount::numeric), 0) AS input_vat,
           COUNT(*) AS po_count
         FROM purchase_orders
         WHERE status IN ('received', 'ordered', 'partially_received')
@@ -6817,7 +6827,7 @@ export async function registerRoutes(
         ORDER BY i.issued_at DESC
       `, [from, to]);
       const purchases = await pool.query(`
-        SELECT po.order_number, po.created_at, po.total_amount, s.name AS supplier_name
+        SELECT po.order_number, po.created_at, po.total_amount, po.vat_amount, s.name AS supplier_name
         FROM purchase_orders po
         LEFT JOIN suppliers s ON po.supplier_id = s.id
         WHERE po.status IN ('received', 'ordered', 'partially_received')

@@ -8,7 +8,7 @@ EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
 DO $$ BEGIN
-  CREATE TYPE journal_entry_status AS ENUM ('draft','posted','void');
+  CREATE TYPE journal_entry_status AS ENUM ('draft','posted','reversed');
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
@@ -54,6 +54,12 @@ CREATE TABLE IF NOT EXISTS journal_entry_lines (
   credit          NUMERIC(15,2) NOT NULL DEFAULT 0,
   notes           TEXT
 );
+
+-- ── Add vat_amount column to purchase_orders (if not present) ─────────────────
+ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS vat_amount NUMERIC(12,2) DEFAULT 0;
+-- Back-fill from existing total_amount (assumes 15% VAT inclusive pricing)
+UPDATE purchase_orders SET vat_amount = ROUND((total_amount * 0.15 / 1.15)::numeric, 2)
+WHERE vat_amount = 0 OR vat_amount IS NULL;
 
 -- ── Seed: Chart of Accounts (41 standard accounts for Saudi manufacturing) ────
 INSERT INTO chart_of_accounts (code, name_ar, name_en, type, parent_code, is_system)
