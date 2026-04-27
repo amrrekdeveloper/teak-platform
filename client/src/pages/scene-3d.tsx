@@ -2457,7 +2457,9 @@ function Scene3D({
             let rawOffset: number;
             if (axis === "x") rawOffset = (localPt.x - axisBase * SCALE) * axisSign / SCALE;
             else              rawOffset = (localPt.z - axisBase * SCALE) * axisSign / SCALE;
-            const clampedOffset = Math.max(5, Math.min(rawOffset, (axis === "x" ? L : W) - 5));
+            const pHalfW = parseFloat(placingProduct.designW?.toString() || placingProduct.manufacturingW?.toString() || "60") / 2;
+            const wallLen2 = axis === "x" ? L : W;
+            const clampedOffset = Math.max(pHalfW + 2, Math.min(rawOffset, wallLen2 - pHalfW - 2));
             onWallPlace(wallIdx, clampedOffset);
           }}
           onPointerMove={(e) => {
@@ -4130,23 +4132,38 @@ export default function Scene3DPage() {
     [activeSelectedProducts, activeSpace]
   );
 
-  /** Set of spaceProduct indices (0-based in activeSpaceProducts) that overlap a door/window opening */
+  /** Set of spaceProduct indices (0-based in activeSpaceProducts) that conflict with openings OR other cabinets */
   const conflictIndices = useMemo<Set<number>>(() => {
     const result = new Set<number>();
     const walls: any[] = activeSpace?.walls || [];
-    if (walls.length === 0) return result;
-    const openings = buildWallOpenings(walls);
+    const openings = walls.length > 0 ? buildWallOpenings(walls) : {} as Record<number, Array<{start:number;end:number}>>;
     const offsets: Record<number, number> = { 0: 10, 1: 10, 2: 10, 3: 10 };
+    /* Resolve actual xOffset for each product (manual or sequential) */
+    type Placed = { idx: number; wIdx: number; tier: string; start: number; end: number };
+    const placed: Placed[] = [];
     activeSpaceProducts.forEach((p: any, idx: number) => {
       const letter = (p.wallId || "").slice(-1).toUpperCase();
       const wIdx = WALL_LETTER_IDX[letter] ?? 0;
       const pW = parseFloat(p.designW || p.dimensions?.w || "60");
-      const pStart = offsets[wIdx];
-      const pEnd = pStart + pW;
-      offsets[wIdx] = pEnd + 5;
-      const hasConflict = (openings[wIdx] || []).some(op => pStart < op.end && pEnd > op.start);
-      if (hasConflict) result.add(idx);
+      const xOff = p._manualXOffset ?? (offsets[wIdx] + pW / 2);
+      offsets[wIdx] = Math.max(offsets[wIdx], xOff + pW / 2 + 5);
+      const pStart = xOff - pW / 2;
+      const pEnd = xOff + pW / 2;
+      /* Opening conflict */
+      if ((openings[wIdx] || []).some(op => pStart < op.end && pEnd > op.start)) result.add(idx);
+      placed.push({ idx, wIdx, tier: getCabinetTier(p), start: pStart, end: pEnd });
     });
+    /* Cabinet-to-cabinet conflict (same wall, same tier) */
+    for (let i = 0; i < placed.length; i++) {
+      for (let j = i + 1; j < placed.length; j++) {
+        const a = placed[i], b = placed[j];
+        if (a.wIdx !== b.wIdx || a.tier !== b.tier) continue;
+        if (a.start < b.end - 2 && a.end > b.start + 2) {
+          result.add(a.idx);
+          result.add(b.idx);
+        }
+      }
+    }
     return result;
   }, [activeSpace, activeSpaceProducts]);
 
@@ -4525,8 +4542,11 @@ export default function Scene3DPage() {
         result = distFromRight < distFromLeft ? rightEdge + pW / 2 : leftEdge - pW / 2;
       }
     }
+    /* Clamp to wall boundaries so cabinet never exits the room */
+    const wallLen = wallLenCmByIdx(wallIdx);
+    result = Math.max(pW / 2 + 2, Math.min(result, wallLen - pW / 2 - 2));
     return result;
-  }, []);
+  }, [wallLenCmByIdx]);
 
   /* ── Drag live update: capture pre-drag snapshot on first call, then reposition ── */
   const handleDragMove = useCallback((sourceIdx: number, newXOffset: number) => {
