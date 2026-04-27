@@ -2372,7 +2372,15 @@ export async function registerRoutes(
 
   app.put("/api/company-settings", requireRole("owner", "it"), async (req, res) => {
     try {
-      const settings = await storage.upsertCompanySettings(req.body);
+      const body = { ...req.body };
+      // Normalize and validate the retained earnings account code
+      if (body.retainedEarningsAccountCode !== undefined) {
+        body.retainedEarningsAccountCode = String(body.retainedEarningsAccountCode).trim();
+        if (!body.retainedEarningsAccountCode) {
+          return res.status(400).json({ message: "رمز حساب الأرباح المحتجزة لا يمكن أن يكون فارغاً" });
+        }
+      }
+      const settings = await storage.upsertCompanySettings(body);
       res.json(settings);
     } catch (error) {
       res.status(500).json({ message: "حدث خطأ" });
@@ -7343,14 +7351,17 @@ export async function registerRoutes(
 
       const { pool } = await import("./db");
 
-      // Validate that the retained earnings account (3200) exists before proceeding
-      const RETAINED_EARNINGS = "3200";
+      // Read configured retained earnings account code from company settings (default: 3200)
+      const companySettingsRow = await storage.getCompanySettings();
+      const RETAINED_EARNINGS = (companySettingsRow?.retainedEarningsAccountCode || "3200").trim();
+
+      // Validate that the retained earnings account exists before proceeding
       const reCheck = await pool.query(
         `SELECT id FROM chart_of_accounts WHERE code = $1 AND is_active = true`,
         [RETAINED_EARNINGS]
       );
       if (reCheck.rows.length === 0) {
-        return res.status(400).json({ message: "لم يتم العثور على حساب الأرباح المحتجزة (3200)" });
+        return res.status(400).json({ message: `لم يتم العثور على حساب الأرباح المحتجزة (${RETAINED_EARNINGS})` });
       }
 
       // Pre-flight: warn if no active revenue or expense accounts exist in the chart of accounts at all
@@ -7414,7 +7425,7 @@ export async function registerRoutes(
         return res.json({ fiscalYear: updated, message: "لا توجد إيرادات أو مصروفات للإقفال" });
       }
 
-      // Transfer net profit/loss to retained earnings (account 3200)
+      // Transfer net profit/loss to the configured retained earnings account
       const [reAccount] = (await pool.query(
         `SELECT name_ar FROM chart_of_accounts WHERE code = $1`, [RETAINED_EARNINGS]
       )).rows;

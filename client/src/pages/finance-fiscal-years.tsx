@@ -36,6 +36,11 @@ export default function FinanceFiscalYearsPage() {
     queryKey: ["/api/accounting/fiscal-years"],
   });
 
+  const { data: companySettings } = useQuery<any>({
+    queryKey: ["/api/company-settings"],
+  });
+  const retainedEarningsCode = companySettings?.retainedEarningsAccountCode || "3200";
+
   const createMut = useMutation({
     mutationFn: (data: any) => apiRequest("POST", "/api/accounting/fiscal-years", data),
     onSuccess: () => {
@@ -179,7 +184,7 @@ export default function FinanceFiscalYearsPage() {
               <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
               <div className="text-xs text-muted-foreground space-y-1">
                 <p className="font-semibold text-foreground">{t("كيف يعمل إقفال السنة المالية؟", "How does year-end closing work?")}</p>
-                <p>{t("عند إقفال السنة المالية، يتم إنشاء قيد محاسبي آلي يُصفّر حسابات الإيرادات والمصروفات ويُحوّل صافي الربح أو الخسارة إلى حساب الأرباح المحتجزة (3200).", "When closing a fiscal year, an automatic journal entry is created that zeros out revenue and expense accounts and transfers the net profit or loss to the retained earnings account (3200).")}</p>
+                <p>{t(`عند إقفال السنة المالية، يتم إنشاء قيد محاسبي آلي يُصفّر حسابات الإيرادات والمصروفات ويُحوّل صافي الربح أو الخسارة إلى حساب الأرباح المحتجزة (${retainedEarningsCode}).`, `When closing a fiscal year, an automatic journal entry is created that zeros out revenue and expense accounts and transfers the net profit or loss to the retained earnings account (${retainedEarningsCode}).`)}</p>
                 <p>{t("لا يمكن إلغاء هذا الإجراء بعد التنفيذ.", "This action cannot be undone.")}</p>
               </div>
             </div>
@@ -278,8 +283,8 @@ export default function FinanceFiscalYearsPage() {
             <p className="text-sm" data-testid="text-close-error">{closeError}</p>
             <p className="text-xs text-muted-foreground">
               {t(
-                "يرجى إضافة حساب الأرباح المحتجزة برمز 3200 في دليل الحسابات ثم إعادة المحاولة.",
-                "Please add the retained earnings account with code 3200 in the chart of accounts, then try again."
+                `يرجى إضافة حساب الأرباح المحتجزة برمز ${retainedEarningsCode} في دليل الحسابات ثم إعادة المحاولة. يمكن تغيير الرمز المستخدم من إعدادات الشركة.`,
+                `Please add the retained earnings account with code ${retainedEarningsCode} in the chart of accounts, then try again. The code can be changed in company settings.`
               )}
             </p>
           </div>

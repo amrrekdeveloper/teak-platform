@@ -855,6 +855,7 @@ export const companySettings = pgTable("company_settings", {
   email: text("email"),
   logo: text("logo"),
   stampImage: text("stamp_image"),
+  retainedEarningsAccountCode: text("retained_earnings_account_code").notNull().default("3200"),
 });
 
 export const insertCompanySettingsSchema = createInsertSchema(companySettings).omit({

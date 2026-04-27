@@ -225,6 +225,16 @@ export default function SettingsPage({ initialTab }: { initialTab?: string }) {
                     <Label>{t("العنوان", "Address")}</Label>
                     <Input value={companyForm.address || ""} onChange={e => setCompanyForm({ ...companyForm, address: e.target.value })} data-testid="input-company-address" />
                   </div>
+                  <div className="space-y-1.5">
+                    <Label>{t("رمز حساب الأرباح المحتجزة", "Retained Earnings Account Code")}</Label>
+                    <Input
+                      value={companyForm.retainedEarningsAccountCode || "3200"}
+                      onChange={e => setCompanyForm({ ...companyForm, retainedEarningsAccountCode: e.target.value })}
+                      placeholder="3200"
+                      data-testid="input-retained-earnings-code"
+                    />
+                    <p className="text-xs text-muted-foreground">{t("رمز الحساب المستخدم لنقل صافي الربح/الخسارة عند إقفال السنة المالية", "Account code used to transfer net profit/loss when closing a fiscal year")}</p>
+                  </div>
                 </div>
                 <Button onClick={() => settingsMutation.mutate(companyForm)} disabled={settingsMutation.isPending} data-testid="button-save-settings">
                   {settingsMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin me-2" /> : <Save className="w-4 h-4 me-2" />}
