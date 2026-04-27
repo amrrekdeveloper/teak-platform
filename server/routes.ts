@@ -6694,7 +6694,8 @@ export async function registerRoutes(
         if (!self) return 0;
         const directChildren = rows.filter(r => r.parentCode === code);
         if (directChildren.length === 0) return self.balance;
-        return directChildren.reduce((s, c) => s + sumDescendants(c.code), 0);
+        // Include parent's own balance + all descendants (handles postings at any level)
+        return self.balance + directChildren.reduce((s, c) => s + sumDescendants(c.code), 0);
       };
 
       const buildHierarchy = (type: string) => {
