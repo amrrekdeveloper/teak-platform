@@ -6552,14 +6552,44 @@ export async function registerRoutes(
     try {
       const { accountCode, from, to } = req.query as { accountCode?: string; from?: string; to?: string };
       if (!accountCode) return res.status(400).json({ message: "يجب تحديد الحساب" });
-      const lines = await storage.getJournalEntryLinesForAccount(accountCode, from, to);
-      let runningBalance = 0;
-      const linesWithBalance = lines.map(l => {
+      const { pool } = await import("./db");
+
+      // Opening balance: sum of all lines BEFORE `from` date
+      let openingBalance = 0;
+      if (from) {
+        const obResult = await pool.query(
+          `SELECT COALESCE(SUM(jel.debit), 0) - COALESCE(SUM(jel.credit), 0) AS ob
+           FROM journal_entry_lines jel
+           INNER JOIN journal_entries je ON jel.entry_id = je.id
+           WHERE je.status = 'posted' AND jel.account_code = $1 AND je.date < $2`,
+          [accountCode, from]
+        );
+        openingBalance = parseFloat(obResult.rows[0]?.ob || 0);
+      }
+
+      // Period lines
+      const params: any[] = [accountCode];
+      let dateConds = "";
+      if (from) { params.push(from); dateConds += ` AND je.date >= $${params.length}`; }
+      if (to)   { params.push(to);   dateConds += ` AND je.date <= $${params.length}`; }
+
+      const result = await pool.query(
+        `SELECT jel.id, jel.debit, jel.credit, jel.notes,
+                je.id AS entry_id, je.entry_number, je.date AS entry_date, je.description AS entry_description
+         FROM journal_entry_lines jel
+         INNER JOIN journal_entries je ON jel.entry_id = je.id
+         WHERE je.status = 'posted' AND jel.account_code = $1${dateConds}
+         ORDER BY je.date, je.id`,
+        params
+      );
+
+      let runningBalance = openingBalance;
+      const linesWithBalance = result.rows.map((l: any) => {
         runningBalance += parseFloat(String(l.debit || 0)) - parseFloat(String(l.credit || 0));
         return { ...l, runningBalance };
       });
-      res.json(linesWithBalance);
-    } catch { res.status(500).json({ message: "حدث خطأ" }); }
+      res.json({ openingBalance, lines: linesWithBalance });
+    } catch (e: any) { res.status(500).json({ message: e.message || "حدث خطأ" }); }
   });
 
   // ── Trial Balance ──────────────────────────────────────────────────────────
@@ -6567,57 +6597,74 @@ export async function registerRoutes(
     try {
       const { from, to } = req.query as { from?: string; to?: string };
       const accounts = await storage.getChartOfAccounts();
-      const conditions: string[] = [];
-      if (from) conditions.push(`je.date >= '${from}'`);
-      if (to) conditions.push(`je.date <= '${to}'`);
-      const whereClause = conditions.length > 0 ? `AND ${conditions.join(" AND ")}` : "";
       const { pool } = await import("./db");
-      const result = await pool.query(`
-        SELECT
-          jel.account_code,
-          jel.account_name_ar,
-          COALESCE(SUM(jel.debit), 0) AS total_debit,
-          COALESCE(SUM(jel.credit), 0) AS total_credit,
-          COALESCE(SUM(jel.debit), 0) - COALESCE(SUM(jel.credit), 0) AS balance
-        FROM journal_entry_lines jel
-        INNER JOIN journal_entries je ON jel.entry_id = je.id
-        WHERE je.status = 'posted'
-        ${whereClause}
-        GROUP BY jel.account_code, jel.account_name_ar
-        ORDER BY jel.account_code
-      `);
+
+      // Parameterized date conditions
+      const params: any[] = [];
+      let dateConds = "";
+      if (from) { params.push(from); dateConds += ` AND je.date >= $${params.length}`; }
+      if (to)   { params.push(to);   dateConds += ` AND je.date <= $${params.length}`; }
+
+      const result = await pool.query(
+        `SELECT
+           jel.account_code,
+           jel.account_name_ar,
+           COALESCE(SUM(jel.debit), 0)::numeric AS total_debit,
+           COALESCE(SUM(jel.credit), 0)::numeric AS total_credit,
+           (COALESCE(SUM(jel.debit), 0) - COALESCE(SUM(jel.credit), 0))::numeric AS balance
+         FROM journal_entry_lines jel
+         INNER JOIN journal_entries je ON jel.entry_id = je.id
+         WHERE je.status = 'posted'${dateConds}
+         GROUP BY jel.account_code, jel.account_name_ar
+         ORDER BY jel.account_code`,
+        params
+      );
+
+      const activityMap = new Map(result.rows.map((r: any) => [r.account_code, r]));
       const accountMap = new Map(accounts.map(a => [a.code, a]));
-      const rows = result.rows.map((r: any) => ({
-        ...r,
-        type: accountMap.get(r.account_code)?.type || "expense",
-        total_debit: parseFloat(r.total_debit),
-        total_credit: parseFloat(r.total_credit),
-        balance: parseFloat(r.balance),
-      }));
-      const totalDebit = rows.reduce((s: number, r: any) => s + r.total_debit, 0);
-      const totalCredit = rows.reduce((s: number, r: any) => s + r.total_credit, 0);
+
+      // Include ALL accounts (zero-activity accounts show zeros)
+      const rows = accounts.map(a => {
+        const activity = activityMap.get(a.code);
+        return {
+          account_code: a.code,
+          account_name_ar: a.nameAr,
+          type: a.type,
+          total_debit: activity ? parseFloat(activity.total_debit) : 0,
+          total_credit: activity ? parseFloat(activity.total_credit) : 0,
+          balance: activity ? parseFloat(activity.balance) : 0,
+        };
+      });
+
+      const totalDebit = rows.reduce((s, r) => s + r.total_debit, 0);
+      const totalCredit = rows.reduce((s, r) => s + r.total_credit, 0);
       res.json({ rows, totalDebit, totalCredit, isBalanced: Math.abs(totalDebit - totalCredit) < 0.01 });
-    } catch { res.status(500).json({ message: "حدث خطأ" }); }
+    } catch (e: any) { res.status(500).json({ message: e.message || "حدث خطأ" }); }
   });
 
   // ── Balance Sheet ──────────────────────────────────────────────────────────
   app.get("/api/accounting/balance-sheet", requireRole("owner", "assistant", "accountant"), async (req, res) => {
     try {
       const { asOf } = req.query as { asOf?: string };
-      const whereClause = asOf ? `AND je.date <= '${asOf}'` : "";
       const { pool } = await import("./db");
-      const result = await pool.query(`
-        SELECT
-          jel.account_code,
-          jel.account_name_ar,
-          COALESCE(SUM(jel.debit), 0) - COALESCE(SUM(jel.credit), 0) AS balance
-        FROM journal_entry_lines jel
-        INNER JOIN journal_entries je ON jel.entry_id = je.id
-        WHERE je.status = 'posted'
-        ${whereClause}
-        GROUP BY jel.account_code, jel.account_name_ar
-        ORDER BY jel.account_code
-      `);
+
+      const params: any[] = [];
+      let dateCond = "";
+      if (asOf) { params.push(asOf); dateCond = ` AND je.date <= $${params.length}`; }
+
+      const result = await pool.query(
+        `SELECT
+           jel.account_code,
+           jel.account_name_ar,
+           (COALESCE(SUM(jel.debit), 0) - COALESCE(SUM(jel.credit), 0))::numeric AS balance
+         FROM journal_entry_lines jel
+         INNER JOIN journal_entries je ON jel.entry_id = je.id
+         WHERE je.status = 'posted'${dateCond}
+         GROUP BY jel.account_code, jel.account_name_ar
+         ORDER BY jel.account_code`,
+        params
+      );
+
       const accounts = await storage.getChartOfAccounts();
       const accountMap = new Map(accounts.map(a => [a.code, a]));
       const rows = result.rows.map((r: any) => ({
@@ -6637,29 +6684,33 @@ export async function registerRoutes(
         totalLiabilities: sum(byType("liability")),
         totalEquity: sum(byType("equity")),
       });
-    } catch { res.status(500).json({ message: "حدث خطأ" }); }
+    } catch (e: any) { res.status(500).json({ message: e.message || "حدث خطأ" }); }
   });
 
   // ── Income Statement ───────────────────────────────────────────────────────
   app.get("/api/accounting/income-statement", requireRole("owner", "assistant", "accountant"), async (req, res) => {
     try {
       const { from, to } = req.query as { from?: string; to?: string };
-      const conditions: string[] = ["je.status = 'posted'"];
-      if (from) conditions.push(`je.date >= '${from}'`);
-      if (to) conditions.push(`je.date <= '${to}'`);
-      const where = conditions.join(" AND ");
       const { pool } = await import("./db");
-      const result = await pool.query(`
-        SELECT
-          jel.account_code,
-          jel.account_name_ar,
-          COALESCE(SUM(jel.credit), 0) - COALESCE(SUM(jel.debit), 0) AS amount
-        FROM journal_entry_lines jel
-        INNER JOIN journal_entries je ON jel.entry_id = je.id
-        WHERE ${where}
-        GROUP BY jel.account_code, jel.account_name_ar
-        ORDER BY jel.account_code
-      `);
+
+      const params: any[] = [];
+      let dateConds = "";
+      if (from) { params.push(from); dateConds += ` AND je.date >= $${params.length}`; }
+      if (to)   { params.push(to);   dateConds += ` AND je.date <= $${params.length}`; }
+
+      const result = await pool.query(
+        `SELECT
+           jel.account_code,
+           jel.account_name_ar,
+           (COALESCE(SUM(jel.credit), 0) - COALESCE(SUM(jel.debit), 0))::numeric AS amount
+         FROM journal_entry_lines jel
+         INNER JOIN journal_entries je ON jel.entry_id = je.id
+         WHERE je.status = 'posted'${dateConds}
+         GROUP BY jel.account_code, jel.account_name_ar
+         ORDER BY jel.account_code`,
+        params
+      );
+
       const accounts = await storage.getChartOfAccounts();
       const accountMap = new Map(accounts.map(a => [a.code, a]));
       const rows = result.rows.map((r: any) => ({
@@ -6682,7 +6733,7 @@ export async function registerRoutes(
         totalExpense,
         netProfit: totalRevenue - totalCost - totalExpense,
       });
-    } catch { res.status(500).json({ message: "حدث خطأ" }); }
+    } catch (e: any) { res.status(500).json({ message: e.message || "حدث خطأ" }); }
   });
 
   // ── Cash Flow ──────────────────────────────────────────────────────────────
@@ -6690,30 +6741,39 @@ export async function registerRoutes(
     try {
       const { from, to } = req.query as { from?: string; to?: string };
       const { pool } = await import("./db");
-      const pConds: string[] = ["p.payment_status = 'confirmed'"];
-      if (from) pConds.push(`p.created_at::date >= '${from}'`);
-      if (to) pConds.push(`p.created_at::date <= '${to}'`);
-      const inflows = await pool.query(`
-        SELECT
-          p.id, p.amount, p.method, p.payment_stage, p.created_at,
-          c.full_name AS customer_name, ct.contract_number
-        FROM payments p
-        LEFT JOIN customers c ON p.customer_id = c.id
-        LEFT JOIN contracts ct ON p.contract_id = ct.id
-        WHERE ${pConds.join(" AND ")}
-        ORDER BY p.created_at DESC
-      `);
-      const poConds: string[] = ["po.status = 'received'"];
-      if (from) poConds.push(`po.created_at::date >= '${from}'`);
-      if (to) poConds.push(`po.created_at::date <= '${to}'`);
-      const outflows = await pool.query(`
-        SELECT
-          po.id, po.total_amount AS amount, po.created_at, s.name AS supplier_name
-        FROM purchase_orders po
-        LEFT JOIN suppliers s ON po.supplier_id = s.id
-        WHERE ${poConds.join(" AND ")}
-        ORDER BY po.created_at DESC
-      `);
+
+      // Build parameterized inflows query
+      const inflowParams: any[] = ["confirmed"];
+      let inflowConds = "p.payment_status = $1";
+      if (from) { inflowParams.push(from); inflowConds += ` AND p.created_at::date >= $${inflowParams.length}`; }
+      if (to)   { inflowParams.push(to);   inflowConds += ` AND p.created_at::date <= $${inflowParams.length}`; }
+
+      const inflows = await pool.query(
+        `SELECT p.id, p.amount, p.method, p.payment_stage, p.created_at,
+                c.full_name AS customer_name, ct.contract_number
+         FROM payments p
+         LEFT JOIN customers c ON p.customer_id = c.id
+         LEFT JOIN contracts ct ON p.contract_id = ct.id
+         WHERE ${inflowConds}
+         ORDER BY p.created_at DESC`,
+        inflowParams
+      );
+
+      // Build parameterized outflows query
+      const outflowParams: any[] = ["received"];
+      let outflowConds = "po.status = $1";
+      if (from) { outflowParams.push(from); outflowConds += ` AND po.created_at::date >= $${outflowParams.length}`; }
+      if (to)   { outflowParams.push(to);   outflowConds += ` AND po.created_at::date <= $${outflowParams.length}`; }
+
+      const outflows = await pool.query(
+        `SELECT po.id, po.total_amount AS amount, po.created_at, s.name AS supplier_name
+         FROM purchase_orders po
+         LEFT JOIN suppliers s ON po.supplier_id = s.id
+         WHERE ${outflowConds}
+         ORDER BY po.created_at DESC`,
+        outflowParams
+      );
+
       const totalInflows = inflows.rows.reduce((s: number, r: any) => s + parseFloat(r.amount || 0), 0);
       const totalOutflows = outflows.rows.reduce((s: number, r: any) => s + parseFloat(r.amount || 0), 0);
       res.json({
@@ -6723,7 +6783,7 @@ export async function registerRoutes(
         totalOutflows,
         netCashFlow: totalInflows - totalOutflows,
       });
-    } catch { res.status(500).json({ message: "حدث خطأ" }); }
+    } catch (e: any) { res.status(500).json({ message: e.message || "حدث خطأ" }); }
   });
 
   // ── VAT Report ─────────────────────────────────────────────────────────────
@@ -6798,26 +6858,51 @@ export async function registerRoutes(
   app.get("/api/accounting/bank-reconciliation", requireRole("owner", "assistant", "accountant"), async (req, res) => {
     try {
       const { from, to } = req.query as { from?: string; to?: string };
-      const pConds: string[] = ["p.payment_status = 'confirmed'", "p.method = 'bank_transfer'"];
-      if (from) pConds.push(`p.created_at::date >= '${from}'`);
-      if (to) pConds.push(`p.created_at::date <= '${to}'`);
       const { pool } = await import("./db");
-      const payments = await pool.query(`
-        SELECT
-          p.id, p.amount, p.method, p.bank_reference, p.created_at,
-          c.full_name AS customer_name, ct.contract_number
-        FROM payments p
-        LEFT JOIN customers c ON p.customer_id = c.id
-        LEFT JOIN contracts ct ON p.contract_id = ct.id
-        WHERE ${pConds.join(" AND ")}
-        ORDER BY p.created_at DESC
-      `);
-      const totalReceipts = payments.rows.reduce((s: number, r: any) => s + parseFloat(r.amount || 0), 0);
+
+      // Confirmed bank-transfer payments (book-side receipts)
+      const params: any[] = ["confirmed", "bank_transfer"];
+      let dateConds = "";
+      if (from) { params.push(from); dateConds += ` AND p.created_at::date >= $${params.length}`; }
+      if (to)   { params.push(to);   dateConds += ` AND p.created_at::date <= $${params.length}`; }
+
+      const paymentsResult = await pool.query(
+        `SELECT p.id, p.amount, p.method, p.bank_reference, p.created_at,
+                c.full_name AS customer_name, ct.contract_number
+         FROM payments p
+         LEFT JOIN customers c ON p.customer_id = c.id
+         LEFT JOIN contracts ct ON p.contract_id = ct.id
+         WHERE p.payment_status = $1 AND p.method = $2${dateConds}
+         ORDER BY p.created_at DESC`,
+        params
+      );
+
+      // Pending (unconfirmed) bank-transfer payments — in-transit items
+      const pendingParams: any[] = ["pending", "bank_transfer"];
+      let pendingDateConds = "";
+      if (from) { pendingParams.push(from); pendingDateConds += ` AND p.created_at::date >= $${pendingParams.length}`; }
+      if (to)   { pendingParams.push(to);   pendingDateConds += ` AND p.created_at::date <= $${pendingParams.length}`; }
+
+      const pendingResult = await pool.query(
+        `SELECT p.id, p.amount, p.method, p.bank_reference, p.created_at,
+                c.full_name AS customer_name, ct.contract_number
+         FROM payments p
+         LEFT JOIN customers c ON p.customer_id = c.id
+         LEFT JOIN contracts ct ON p.contract_id = ct.id
+         WHERE p.payment_status = $1 AND p.method = $2${pendingDateConds}
+         ORDER BY p.created_at DESC`,
+        pendingParams
+      );
+
+      const totalReceipts = paymentsResult.rows.reduce((s: number, r: any) => s + parseFloat(r.amount || 0), 0);
+      const totalPending = pendingResult.rows.reduce((s: number, r: any) => s + parseFloat(r.amount || 0), 0);
       res.json({
-        payments: payments.rows,
+        payments: paymentsResult.rows,
+        pendingPayments: pendingResult.rows,
         totalReceipts,
+        totalPending,
       });
-    } catch { res.status(500).json({ message: "حدث خطأ" }); }
+    } catch (e: any) { res.status(500).json({ message: e.message || "حدث خطأ" }); }
   });
 
   return httpServer;

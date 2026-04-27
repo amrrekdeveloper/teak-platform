@@ -25,14 +25,19 @@ export default function FinanceBankReconciliationPage() {
   const { data, isLoading } = useQuery<any>({
     queryKey: ["/api/accounting/bank-reconciliation", applied.from, applied.to],
     queryFn: async () => {
-      const res = await fetch(`/api/accounting/bank-reconciliation?from=${applied.from}&to=${applied.to}`, { credentials: "include" });
+      const params = new URLSearchParams();
+      if (applied.from) params.set("from", applied.from);
+      if (applied.to) params.set("to", applied.to);
+      const res = await fetch(`/api/accounting/bank-reconciliation?${params}`, { credentials: "include" });
       return res.json();
     },
   });
 
   const ledgerBalance = data?.totalReceipts || 0;
+  const totalPending = data?.totalPending || 0;
   const bankBalanceNum = parseFloat(bankBalance || "0");
-  const difference = bankBalanceNum - ledgerBalance;
+  const adjustedBankBalance = bankBalanceNum + totalPending;
+  const difference = adjustedBankBalance - ledgerBalance;
   const isReconciled = Math.abs(difference) < 1;
 
   return (
@@ -125,7 +130,7 @@ export default function FinanceBankReconciliationPage() {
               </Card>
             </div>
 
-            {/* Transactions */}
+            {/* Confirmed Transactions */}
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm flex items-center gap-2">
@@ -163,7 +168,7 @@ export default function FinanceBankReconciliationPage() {
                       </tbody>
                       <tfoot className="bg-muted/30 font-bold border-t-2">
                         <tr>
-                          <td colSpan={4} className="px-3 py-2">إجمالي التحويلات البنكية</td>
+                          <td colSpan={4} className="px-3 py-2">إجمالي التحويلات البنكية المؤكدة</td>
                           <td className="px-3 py-2 tabular-nums">
                             {ledgerBalance.toLocaleString("ar-SA", { minimumFractionDigits: 2 })} ر.س
                           </td>
@@ -174,6 +179,53 @@ export default function FinanceBankReconciliationPage() {
                 )}
               </CardContent>
             </Card>
+
+            {/* In-Transit / Pending Items */}
+            {(data.pendingPayments || []).length > 0 && (
+              <Card className="border-yellow-200 dark:border-yellow-800">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm text-yellow-700 dark:text-yellow-300">
+                    {t("مدفوعات قيد التسوية (لم تظهر في البنك بعد)", "In-Transit Payments (not yet cleared by bank)")}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-yellow-50/50 dark:bg-yellow-950/20 text-xs">
+                        <tr>
+                          <th className="text-right px-3 py-2">التاريخ</th>
+                          <th className="text-right px-3 py-2">العميل</th>
+                          <th className="text-right px-3 py-2">رقم العقد</th>
+                          <th className="text-right px-3 py-2">رقم المرجع البنكي</th>
+                          <th className="text-right px-3 py-2 w-32">المبلغ</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {(data.pendingPayments || []).map((r: any, i: number) => (
+                          <tr key={i} className="hover:bg-yellow-50/30 dark:hover:bg-yellow-950/20" data-testid={`bank-pending-${r.id}`}>
+                            <td className="px-3 py-2 text-muted-foreground text-xs">{r.created_at?.slice(0, 10)}</td>
+                            <td className="px-3 py-2">{r.customer_name || "—"}</td>
+                            <td className="px-3 py-2 font-mono text-xs">{r.contract_number || "—"}</td>
+                            <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{r.bank_reference || "—"}</td>
+                            <td className="px-3 py-2 tabular-nums font-medium text-yellow-700 dark:text-yellow-300">
+                              {parseFloat(r.amount).toLocaleString("ar-SA", { minimumFractionDigits: 2 })} ر.س
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot className="bg-yellow-50/30 dark:bg-yellow-950/20 font-bold border-t-2">
+                        <tr>
+                          <td colSpan={4} className="px-3 py-2">إجمالي البنود قيد التسوية</td>
+                          <td className="px-3 py-2 tabular-nums text-yellow-700 dark:text-yellow-300">
+                            {totalPending.toLocaleString("ar-SA", { minimumFractionDigits: 2 })} ر.س
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </>
         )}
       </div>

@@ -18,15 +18,20 @@ export default function FinanceLedgerPage() {
   const [applied, setApplied] = useState({ accountCode: "", from, to });
 
   const { data: accounts = [] } = useQuery<any[]>({ queryKey: ["/api/accounting/accounts"] });
-  const { data: lines = [], isLoading } = useQuery<any[]>({
+  const { data: ledgerData, isLoading } = useQuery<{ openingBalance: number; lines: any[] }>({
     queryKey: ["/api/accounting/ledger", applied.accountCode, applied.from, applied.to],
     queryFn: async () => {
-      if (!applied.accountCode) return [];
-      const res = await fetch(`/api/accounting/ledger?accountCode=${applied.accountCode}&from=${applied.from}&to=${applied.to}`, { credentials: "include" });
+      if (!applied.accountCode) return { openingBalance: 0, lines: [] };
+      const params = new URLSearchParams({ accountCode: applied.accountCode });
+      if (applied.from) params.set("from", applied.from);
+      if (applied.to) params.set("to", applied.to);
+      const res = await fetch(`/api/accounting/ledger?${params}`, { credentials: "include" });
       return res.json();
     },
     enabled: !!applied.accountCode,
   });
+  const lines = ledgerData?.lines || [];
+  const openingBalance = ledgerData?.openingBalance ?? 0;
 
   const selectedAccount = (accounts as any[]).find((a: any) => a.code === applied.accountCode);
 
@@ -92,8 +97,6 @@ export default function FinanceLedgerPage() {
             <CardContent className="p-0">
               {isLoading ? (
                 <p className="text-center py-8 text-muted-foreground">{t("جاري التحميل...", "Loading...")}</p>
-              ) : (lines as any[]).length === 0 ? (
-                <p className="text-center py-8 text-muted-foreground">{t("لا توجد حركات لهذا الحساب في الفترة المحددة", "No movements for this account in the selected period")}</p>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
@@ -108,11 +111,28 @@ export default function FinanceLedgerPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y">
-                      {(lines as any[]).map((line: any, i: number) => (
+                      {applied.from && (
+                        <tr className="bg-yellow-50/50 dark:bg-yellow-950/20 italic">
+                          <td colSpan={5} className="px-3 py-2 text-muted-foreground text-xs">
+                            {t(`الرصيد الافتتاحي حتى ${applied.from}`, `Opening balance as of ${applied.from}`)}
+                          </td>
+                          <td className={`px-3 py-2 tabular-nums font-semibold ${openingBalance < 0 ? "text-red-600" : "text-foreground"}`}>
+                            {Math.abs(openingBalance).toLocaleString("ar-SA", { minimumFractionDigits: 2 })}
+                            {openingBalance < 0 && " (د)"}
+                          </td>
+                        </tr>
+                      )}
+                      {lines.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="px-3 py-6 text-center text-muted-foreground">
+                            {t("لا توجد حركات في الفترة المحددة", "No movements in selected period")}
+                          </td>
+                        </tr>
+                      ) : lines.map((line: any, i: number) => (
                         <tr key={i} className="hover:bg-accent/30">
-                          <td className="px-3 py-2 text-muted-foreground">{line.entryDate}</td>
-                          <td className="px-3 py-2 font-mono text-xs">#{line.entryNumber}</td>
-                          <td className="px-3 py-2">{line.entryDescription}</td>
+                          <td className="px-3 py-2 text-muted-foreground">{line.entry_date}</td>
+                          <td className="px-3 py-2 font-mono text-xs">#{line.entry_number}</td>
+                          <td className="px-3 py-2">{line.entry_description}</td>
                           <td className="px-3 py-2 tabular-nums text-blue-700 dark:text-blue-400">
                             {parseFloat(line.debit) > 0 ? parseFloat(line.debit).toLocaleString("ar-SA", { minimumFractionDigits: 2 }) : ""}
                           </td>
@@ -128,15 +148,17 @@ export default function FinanceLedgerPage() {
                     </tbody>
                     <tfoot className="bg-muted/30 font-semibold text-sm border-t-2">
                       <tr>
-                        <td colSpan={3} className="px-3 py-2">{t("المجموع", "Total")}</td>
+                        <td colSpan={3} className="px-3 py-2">{t("مجموع الفترة", "Period Total")}</td>
                         <td className="px-3 py-2 tabular-nums text-blue-700 dark:text-blue-400">
-                          {(lines as any[]).reduce((s: number, l: any) => s + parseFloat(l.debit || 0), 0).toLocaleString("ar-SA", { minimumFractionDigits: 2 })}
+                          {lines.reduce((s: number, l: any) => s + parseFloat(l.debit || 0), 0).toLocaleString("ar-SA", { minimumFractionDigits: 2 })}
                         </td>
                         <td className="px-3 py-2 tabular-nums text-green-700 dark:text-green-400">
-                          {(lines as any[]).reduce((s: number, l: any) => s + parseFloat(l.credit || 0), 0).toLocaleString("ar-SA", { minimumFractionDigits: 2 })}
+                          {lines.reduce((s: number, l: any) => s + parseFloat(l.credit || 0), 0).toLocaleString("ar-SA", { minimumFractionDigits: 2 })}
                         </td>
                         <td className="px-3 py-2 tabular-nums">
-                          {(lines as any[]).length > 0 ? parseFloat((lines as any[])[lines.length - 1].runningBalance).toLocaleString("ar-SA", { minimumFractionDigits: 2 }) : "0.00"}
+                          {lines.length > 0
+                            ? parseFloat(lines[lines.length - 1].runningBalance).toLocaleString("ar-SA", { minimumFractionDigits: 2 })
+                            : openingBalance.toLocaleString("ar-SA", { minimumFractionDigits: 2 })}
                         </td>
                       </tr>
                     </tfoot>
