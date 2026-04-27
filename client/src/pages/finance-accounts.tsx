@@ -215,6 +215,11 @@ export default function FinanceAccountsPage() {
                           {entry.reference && <span className="text-xs text-muted-foreground">({entry.reference})</span>}
                         </div>
                         <div className="flex items-center gap-2">
+                          {entry.referenceType && (
+                            <Badge variant="secondary" className="text-[10px] bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300" data-testid={`badge-auto-${entry.id}`}>
+                              تلقائي / Auto
+                            </Badge>
+                          )}
                           <Badge variant="outline" className="text-[10px]">{entry.date}</Badge>
                           <Badge className="text-[10px] bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">مرحّل</Badge>
                         </div>
