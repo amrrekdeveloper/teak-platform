@@ -32,6 +32,7 @@ import {
   HeartHandshake,
   Lock,
   Fingerprint,
+  Calculator,
 } from "lucide-react";
 import { SiWhatsapp } from "react-icons/si";
 import { Button } from "@/components/ui/button";
@@ -1343,6 +1344,7 @@ function Footer() {
     { href: "/track-order", labelAr: "تتبع طلبك", labelEn: "Track Order" },
     { href: "/portal/login", labelAr: "بوابة العملاء", labelEn: "Customer Portal" },
     { href: "/employee-login", labelAr: "دخول الموظفين", labelEn: "Employee Login" },
+    { href: "/finance-login", labelAr: "النظام المالي", labelEn: "Finance System" },
   ];
 
   return (
@@ -1414,6 +1416,15 @@ function Footer() {
             )}
           </p>
           <div className="flex items-center gap-4">
+            <a
+              href="/finance-login"
+              className="flex items-center gap-1.5 text-xs font-medium text-primary/70 hover:text-primary border border-primary/20 hover:border-primary/50 bg-primary/5 hover:bg-primary/10 px-2.5 py-1 rounded-full transition-all"
+              data-testid="link-finance-login"
+              title={t("دخول المحاسبين — النظام المالي", "Accountant Login — Finance System")}
+            >
+              <Calculator className="w-3 h-3" />
+              {t("النظام المالي", "Finance System")}
+            </a>
             <a
               href="/employee-login"
               className="flex items-center gap-1.5 text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors"
