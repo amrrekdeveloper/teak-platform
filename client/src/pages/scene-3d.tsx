@@ -2457,7 +2457,7 @@ function Scene3D({
             let rawOffset: number;
             if (axis === "x") rawOffset = (localPt.x - axisBase * SCALE) * axisSign / SCALE;
             else              rawOffset = (localPt.z - axisBase * SCALE) * axisSign / SCALE;
-            const pHalfW = parseFloat(placingProduct.designW?.toString() || placingProduct.manufacturingW?.toString() || "60") / 2;
+            const pHalfW = parseFloat(placingProduct.designW?.toString() || placingProduct.dimensions?.w?.toString() || placingProduct.manufacturingW?.toString() || "60") / 2;
             const wallLen2 = axis === "x" ? L : W;
             const clampedOffset = Math.max(pHalfW + 2, Math.min(rawOffset, wallLen2 - pHalfW - 2));
             onWallPlace(wallIdx, clampedOffset);
