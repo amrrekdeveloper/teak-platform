@@ -33,6 +33,8 @@ const EMPTY_LINE = (): LineItem => ({ accountCode: "", accountNameAr: "", debit:
 function getSourceDocumentUrl(referenceType: string, referenceId: number | null | undefined): string | null {
   if (!referenceId) return null;
   if (referenceType === "invoice") return `/invoices/${referenceId}`;
+  if (referenceType === "payment") return `/payments/${referenceId}`;
+  if (referenceType === "purchase_order") return `/purchases/${referenceId}`;
   return null;
 }
 

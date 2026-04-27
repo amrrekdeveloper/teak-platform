@@ -1935,6 +1935,16 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/payments/:id", requireAuth, async (req, res) => {
+    try {
+      const payment = await storage.getPayment(parseInt(req.params.id));
+      if (!payment) return res.status(404).json({ message: "الدفعة غير موجودة" });
+      res.json(payment);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
   app.get("/api/contracts/:id/payments", requireAuth, async (req, res) => {
     try {
       res.json(await storage.getPaymentsByContract(parseInt(req.params.id)));
@@ -2777,7 +2787,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/purchase-orders/:id", requireRole("owner", "assistant", "purchasing", "warehouse"), async (req, res) => {
+  app.get("/api/purchase-orders/:id", requireRole("owner", "assistant", "purchasing", "warehouse", "accountant"), async (req, res) => {
     try {
       const po = await storage.getPurchaseOrder(parseInt(req.params.id));
       if (!po) return res.status(404).json({ message: "أمر الشراء غير موجود", messageEn: "Purchase order not found" });

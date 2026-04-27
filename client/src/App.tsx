@@ -21,6 +21,7 @@ import QuotationViewPage from "@/pages/quotation-view";
 import ContractsPage from "@/pages/contracts";
 import ContractDetailPage from "@/pages/contract-detail";
 import PaymentsPage from "@/pages/payments";
+import PaymentDetailPage from "@/pages/payment-detail";
 import InvoicesPage from "@/pages/invoices";
 import InvoiceViewPage from "@/pages/invoice-view";
 import WorkOrdersPage from "@/pages/work-orders";
@@ -29,6 +30,7 @@ import ProductionPage from "@/pages/production";
 import InventoryPage from "@/pages/inventory";
 import SuppliersPage from "@/pages/suppliers";
 import PurchasesPage from "@/pages/purchases";
+import PurchaseDetailPage from "@/pages/purchase-detail";
 import EmployeesPage from "@/pages/employees";
 import DeliveriesPage from "@/pages/deliveries";
 import InstallationsPage from "@/pages/installations";
@@ -196,6 +198,7 @@ function DashboardRoutes() {
         <Route path="/quotations" component={QuotationsPage} />
         <Route path="/contracts/:id" component={ContractDetailPage} />
         <Route path="/contracts" component={ContractsPage} />
+        <Route path="/payments/:id" component={PaymentDetailPage} />
         <Route path="/payments" component={PaymentsPage} />
         <Route path="/invoices/:id" component={InvoiceViewPage} />
         <Route path="/invoices" component={InvoicesPage} />
@@ -204,6 +207,7 @@ function DashboardRoutes() {
         <Route path="/production" component={ProductionPage} />
         <Route path="/inventory" component={InventoryPage} />
         <Route path="/suppliers" component={SuppliersPage} />
+        <Route path="/purchases/:id" component={PurchaseDetailPage} />
         <Route path="/purchases" component={PurchasesPage} />
         <Route path="/deliveries" component={DeliveriesPage} />
         <Route path="/installations" component={InstallationsPage} />
