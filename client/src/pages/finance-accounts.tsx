@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
 import { useLanguage } from "@/components/language-provider";
 import { apiRequest } from "@/lib/queryClient";
 import { FinanceLayout } from "@/components/finance-layout";
@@ -13,7 +13,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Trash2, Edit2, BookOpen, FileText, ChevronLeft, AlertCircle, CheckCircle2, DollarSign } from "lucide-react";
+import { Plus, Trash2, Edit2, BookOpen, FileText, ChevronLeft, AlertCircle, CheckCircle2, DollarSign, ExternalLink } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { format } from "date-fns";
 
 const ACCOUNT_TYPES: Record<string, { labelAr: string; color: string }> = {
@@ -28,6 +29,69 @@ const ACCOUNT_TYPES: Record<string, { labelAr: string; color: string }> = {
 type LineItem = { accountCode: string; accountNameAr: string; debit: string; credit: string; notes: string };
 
 const EMPTY_LINE = (): LineItem => ({ accountCode: "", accountNameAr: "", debit: "", credit: "", notes: "" });
+
+function getSourceDocumentUrl(referenceType: string, referenceId: number | null | undefined): string | null {
+  if (!referenceId) return null;
+  if (referenceType === "invoice") return `/invoices/${referenceId}`;
+  return null;
+}
+
+function getSourceDocumentLabel(referenceType: string): string {
+  if (referenceType === "invoice") return "فاتورة / Invoice";
+  if (referenceType === "payment") return "دفعة / Payment";
+  if (referenceType === "purchase_order") return "أمر شراء / Purchase Order";
+  return referenceType;
+}
+
+function SourceDocumentBadge({ referenceType, referenceId, reference, entryId }: {
+  referenceType: string;
+  referenceId?: number | null;
+  reference?: string | null;
+  entryId: number;
+}) {
+  const url = getSourceDocumentUrl(referenceType, referenceId);
+  const label = getSourceDocumentLabel(referenceType);
+  const badgeClass = "text-[10px] bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 cursor-pointer hover:bg-blue-200 dark:hover:bg-blue-800 transition-colors";
+
+  if (url) {
+    return (
+      <Link href={url}>
+        <Badge
+          variant="secondary"
+          className={`${badgeClass} inline-flex items-center gap-1`}
+          data-testid={`badge-auto-${entryId}`}
+        >
+          تلقائي / Auto
+          <ExternalLink className="w-2.5 h-2.5" />
+        </Badge>
+      </Link>
+    );
+  }
+
+  const tooltipText = reference
+    ? `${label} — ${reference}`
+    : `${label}${referenceId ? ` #${referenceId}` : ""}`;
+
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Badge
+            variant="secondary"
+            className={`${badgeClass} inline-flex items-center gap-1`}
+            data-testid={`badge-auto-${entryId}`}
+          >
+            تلقائي / Auto
+            <ExternalLink className="w-2.5 h-2.5 opacity-50" />
+          </Badge>
+        </TooltipTrigger>
+        <TooltipContent side="top">
+          <p className="text-xs">{tooltipText}</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
 
 export default function FinanceAccountsPage() {
   const { t } = useLanguage();
@@ -243,9 +307,12 @@ export default function FinanceAccountsPage() {
                         </div>
                         <div className="flex items-center gap-2">
                           {entry.referenceType && (
-                            <Badge variant="secondary" className="text-[10px] bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300" data-testid={`badge-auto-${entry.id}`}>
-                              تلقائي / Auto
-                            </Badge>
+                            <SourceDocumentBadge
+                              referenceType={entry.referenceType}
+                              referenceId={entry.referenceId}
+                              reference={entry.reference}
+                              entryId={entry.id}
+                            />
                           )}
                           <Badge variant="outline" className="text-[10px]">{entry.date}</Badge>
                           <Badge className="text-[10px] bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">مرحّل</Badge>
