@@ -1197,11 +1197,11 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(journalEntryLines).where(eq(journalEntryLines.entryId, entryId));
   }
 
-  async getJournalEntryLinesForAccount(accountCode: string, from?: string, to?: string): Promise<(JournalEntryLine & { entryDate: string; entryDescription: string; entryNumber: number })[]> {
-    const conditions: any[] = [eq(journalEntryLines.accountCode, accountCode)];
-    if (from) conditions.push(gte(journalEntries.date, from));
-    if (to) conditions.push(lte(journalEntries.date, to));
-    const rows = await db
+  async getJournalEntryLinesForAccount(accountCode: string, from?: string, to?: string) {
+    const conditions = [eq(journalEntryLines.accountCode, accountCode)];
+    if (from) conditions.push(gte(journalEntries.date, from) as any);
+    if (to)   conditions.push(lte(journalEntries.date, to) as any);
+    return db
       .select({
         id: journalEntryLines.id,
         entryId: journalEntryLines.entryId,
@@ -1218,7 +1218,6 @@ export class DatabaseStorage implements IStorage {
       .innerJoin(journalEntries, eq(journalEntryLines.entryId, journalEntries.id))
       .where(and(...conditions))
       .orderBy(asc(journalEntries.date), asc(journalEntries.id));
-    return rows as any;
   }
 }
 

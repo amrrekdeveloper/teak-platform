@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { useLanguage } from "@/components/language-provider";
 import { apiRequest } from "@/lib/queryClient";
 import { FinanceLayout } from "@/components/finance-layout";
@@ -32,6 +33,8 @@ export default function FinanceAccountsPage() {
   const { t } = useLanguage();
   const { toast } = useToast();
   const qc = useQueryClient();
+  const [location] = useLocation();
+  const defaultTab = location === "/finance/journal" ? "journal" : "accounts";
 
   const [accountDialog, setAccountDialog] = useState(false);
   const [editingAccount, setEditingAccount] = useState<any>(null);
@@ -125,7 +128,7 @@ export default function FinanceAccountsPage() {
           </div>
         </div>
 
-        <Tabs defaultValue="accounts">
+        <Tabs defaultValue={defaultTab}>
           <TabsList className="mb-4">
             <TabsTrigger value="accounts" data-testid="tab-accounts">
               <BookOpen className="h-4 w-4 me-1.5" />
