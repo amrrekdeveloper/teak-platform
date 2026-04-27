@@ -22,7 +22,7 @@ export default function FinanceTrialBalancePage() {
   const { t } = useLanguage();
   const [from, setFrom] = useState(format(startOfYear(new Date()), "yyyy-MM-dd"));
   const [to, setTo] = useState(format(new Date(), "yyyy-MM-dd"));
-  const [applied, setApplied] = useState({ from, to });
+  const [applied, setApplied] = useState({ from, to, fiscalYearId: "custom" });
   const [exportingPdf, setExportingPdf] = useState(false);
   const [exportingXlsx, setExportingXlsx] = useState(false);
   const { toast } = useToast();
@@ -31,15 +31,20 @@ export default function FinanceTrialBalancePage() {
   const { data: fiscalYears = [] } = useQuery<any[]>({ queryKey: ["/api/accounting/fiscal-years"] });
 
   const { data, isLoading } = useQuery<any>({
-    queryKey: ["/api/accounting/trial-balance", applied.from, applied.to],
+    queryKey: ["/api/accounting/trial-balance", applied.from, applied.to, applied.fiscalYearId],
     queryFn: async () => {
-      const res = await fetch(`/api/accounting/trial-balance?from=${applied.from}&to=${applied.to}`, { credentials: "include" });
+      const params = new URLSearchParams({ from: applied.from, to: applied.to });
+      if (applied.fiscalYearId && applied.fiscalYearId !== "custom") {
+        params.set("fiscalYearId", applied.fiscalYearId);
+      }
+      const res = await fetch(`/api/accounting/trial-balance?${params.toString()}`, { credentials: "include" });
       return res.json();
     },
   });
 
   const periodLabel = `${applied.from} — ${applied.to}`;
   const fmtN = (n: number) => n.toLocaleString("ar-SA", { minimumFractionDigits: 2 });
+  const fmtBalance = (n: number) => `${fmtN(Math.abs(n))}${n < 0 ? " (د)" : ""}`;
 
   const handleExportPdf = async () => {
     if (!data) return;
@@ -49,6 +54,7 @@ export default function FinanceTrialBalancePage() {
         row.account_code,
         row.account_name_ar,
         TYPE_LABELS[row.type] || row.type,
+        `${fmtN(Math.abs(row.opening_balance))} ر.س${row.opening_balance < 0 ? " (د)" : ""}`,
         `${fmtN(row.total_debit)} ر.س`,
         `${fmtN(row.total_credit)} ر.س`,
         `${fmtN(Math.abs(row.balance))} ر.س${row.balance < 0 ? " (د)" : ""}`,
@@ -59,15 +65,16 @@ export default function FinanceTrialBalancePage() {
         periodLabel,
         [
           {
-            head: [["الرمز", "اسم الحساب", "النوع", "مجموع المدين", "مجموع الدائن", "الرصيد"]],
+            head: [["الرمز", "اسم الحساب", "النوع", "رصيد الافتتاح", "مدين الفترة", "دائن الفترة", "رصيد الإقفال"]],
             body,
             footRow: [
               "",
               "الإجمالي",
               "",
+              `${fmtN(Math.abs(data.totalOpeningBalance || 0))} ر.س`,
               `${fmtN(data.totalDebit || 0)} ر.س`,
               `${fmtN(data.totalCredit || 0)} ر.س`,
-              `${fmtN(Math.abs((data.totalDebit || 0) - (data.totalCredit || 0)))} ر.س`,
+              `${fmtN(Math.abs(data.totalClosingBalance || 0))} ر.س`,
             ],
           },
         ],
@@ -94,25 +101,28 @@ export default function FinanceTrialBalancePage() {
               { header: "الرمز", key: "account_code", width: 12 },
               { header: "اسم الحساب", key: "account_name_ar", width: 35 },
               { header: "النوع", key: "type_label", width: 18 },
-              { header: "مجموع المدين (ر.س)", key: "total_debit", width: 22 },
-              { header: "مجموع الدائن (ر.س)", key: "total_credit", width: 22 },
-              { header: "الرصيد (ر.س)", key: "balance", width: 18 },
+              { header: "رصيد الافتتاح (ر.س)", key: "opening_balance", width: 22 },
+              { header: "مدين الفترة (ر.س)", key: "total_debit", width: 22 },
+              { header: "دائن الفترة (ر.س)", key: "total_credit", width: 22 },
+              { header: "رصيد الإقفال (ر.س)", key: "closing_balance", width: 22 },
             ],
             rows: (data.rows || []).map((row: any) => ({
               account_code: row.account_code,
               account_name_ar: row.account_name_ar,
               type_label: TYPE_LABELS[row.type] || row.type,
+              opening_balance: row.opening_balance,
               total_debit: row.total_debit,
               total_credit: row.total_credit,
-              balance: Math.abs(row.balance),
+              closing_balance: row.balance,
             })),
             totalsRow: {
               account_code: "",
               account_name_ar: "الإجمالي",
               type_label: "",
+              opening_balance: data.totalOpeningBalance || 0,
               total_debit: data.totalDebit || 0,
               total_credit: data.totalCredit || 0,
-              balance: Math.abs((data.totalDebit || 0) - (data.totalCredit || 0)),
+              closing_balance: data.totalClosingBalance || 0,
             },
           },
         ],
@@ -133,6 +143,10 @@ export default function FinanceTrialBalancePage() {
     }
   };
 
+  const handleApply = () => {
+    setApplied({ from, to, fiscalYearId: selectedFy });
+  };
+
   return (
     <FinanceLayout>
       <div className="space-y-4">
@@ -142,7 +156,7 @@ export default function FinanceTrialBalancePage() {
               <Scale className="h-5 w-5 text-primary" />
               {t("ميزان المراجعة", "Trial Balance")}
             </h1>
-            <p className="text-sm text-muted-foreground">{t("مجموع المدين والدائن لكل الحسابات", "Total debit and credit for all accounts")}</p>
+            <p className="text-sm text-muted-foreground">{t("رصيد الافتتاح وحركة الفترة ورصيد الإقفال لكل الحسابات", "Opening balance, period movements, and closing balance for all accounts")}</p>
           </div>
           <div className="flex items-center gap-2">
             <Button
@@ -199,7 +213,7 @@ export default function FinanceTrialBalancePage() {
                 <Label className="text-xs">{t("إلى", "To")}</Label>
                 <Input type="date" value={to} onChange={e => { setTo(e.target.value); setSelectedFy("custom"); }} className="w-40" data-testid="input-tb-to" />
               </div>
-              <Button size="sm" onClick={() => setApplied({ from, to })} data-testid="btn-apply-tb">
+              <Button size="sm" onClick={handleApply} data-testid="btn-apply-tb">
                 {t("عرض", "Show")}
               </Button>
             </div>
@@ -233,26 +247,33 @@ export default function FinanceTrialBalancePage() {
                       <th className="text-right px-3 py-2">{t("رمز الحساب", "Code")}</th>
                       <th className="text-right px-3 py-2">{t("اسم الحساب", "Account Name")}</th>
                       <th className="text-right px-3 py-2">{t("النوع", "Type")}</th>
-                      <th className="text-right px-3 py-2 w-32">{t("مجموع المدين", "Total Debit")}</th>
-                      <th className="text-right px-3 py-2 w-32">{t("مجموع الدائن", "Total Credit")}</th>
-                      <th className="text-right px-3 py-2 w-32">{t("الرصيد", "Balance")}</th>
+                      <th className="text-right px-3 py-2 w-32 bg-amber-50 dark:bg-amber-950/30 border-x border-amber-200 dark:border-amber-800" data-testid="col-header-opening-balance">
+                        {t("رصيد الافتتاح", "Opening Balance")}
+                      </th>
+                      <th className="text-right px-3 py-2 w-32">{t("مدين الفترة", "Period Debit")}</th>
+                      <th className="text-right px-3 py-2 w-32">{t("دائن الفترة", "Period Credit")}</th>
+                      <th className="text-right px-3 py-2 w-32 bg-blue-50 dark:bg-blue-950/30 border-x border-blue-200 dark:border-blue-800" data-testid="col-header-closing-balance">
+                        {t("رصيد الإقفال", "Closing Balance")}
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
                     {(data.rows || []).map((row: any, i: number) => (
-                      <tr key={i} className="hover:bg-accent/30">
+                      <tr key={i} className="hover:bg-accent/30" data-testid={`row-account-${row.account_code}`}>
                         <td className="px-3 py-2 font-mono text-xs">{row.account_code}</td>
                         <td className="px-3 py-2">{row.account_name_ar}</td>
                         <td className="px-3 py-2 text-xs text-muted-foreground">{TYPE_LABELS[row.type] || row.type}</td>
+                        <td className={`px-3 py-2 tabular-nums bg-amber-50 dark:bg-amber-950/30 border-x border-amber-200 dark:border-amber-800 font-medium ${row.opening_balance < 0 ? "text-red-600" : ""}`} data-testid={`opening-balance-${row.account_code}`}>
+                          {fmtBalance(row.opening_balance)}
+                        </td>
                         <td className="px-3 py-2 tabular-nums text-blue-700 dark:text-blue-400">
                           {row.total_debit.toLocaleString("ar-SA", { minimumFractionDigits: 2 })}
                         </td>
                         <td className="px-3 py-2 tabular-nums text-green-700 dark:text-green-400">
                           {row.total_credit.toLocaleString("ar-SA", { minimumFractionDigits: 2 })}
                         </td>
-                        <td className={`px-3 py-2 tabular-nums font-medium ${row.balance < 0 ? "text-red-600" : ""}`}>
-                          {Math.abs(row.balance).toLocaleString("ar-SA", { minimumFractionDigits: 2 })}
-                          {row.balance < 0 && " (د)"}
+                        <td className={`px-3 py-2 tabular-nums bg-blue-50 dark:bg-blue-950/30 border-x border-blue-200 dark:border-blue-800 font-medium ${row.balance < 0 ? "text-red-600" : ""}`} data-testid={`closing-balance-${row.account_code}`}>
+                          {fmtBalance(row.balance)}
                         </td>
                       </tr>
                     ))}
@@ -260,14 +281,17 @@ export default function FinanceTrialBalancePage() {
                   <tfoot className="bg-muted/30 font-bold border-t-2 text-sm">
                     <tr>
                       <td colSpan={3} className="px-3 py-2">{t("الإجمالي", "Total")}</td>
+                      <td className="px-3 py-2 tabular-nums bg-amber-50 dark:bg-amber-950/30 border-x border-amber-200 dark:border-amber-800">
+                        {fmtBalance(data.totalOpeningBalance || 0)}
+                      </td>
                       <td className="px-3 py-2 tabular-nums text-blue-700 dark:text-blue-400">
                         {(data.totalDebit || 0).toLocaleString("ar-SA", { minimumFractionDigits: 2 })}
                       </td>
                       <td className="px-3 py-2 tabular-nums text-green-700 dark:text-green-400">
                         {(data.totalCredit || 0).toLocaleString("ar-SA", { minimumFractionDigits: 2 })}
                       </td>
-                      <td className="px-3 py-2 tabular-nums">
-                        {Math.abs((data.totalDebit || 0) - (data.totalCredit || 0)).toLocaleString("ar-SA", { minimumFractionDigits: 2 })}
+                      <td className="px-3 py-2 tabular-nums bg-blue-50 dark:bg-blue-950/30 border-x border-blue-200 dark:border-blue-800">
+                        {fmtBalance(data.totalClosingBalance || 0)}
                       </td>
                     </tr>
                   </tfoot>

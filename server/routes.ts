@@ -6744,50 +6744,101 @@ export async function registerRoutes(
   // ── Trial Balance ──────────────────────────────────────────────────────────
   app.get("/api/accounting/trial-balance", requireRole("owner", "assistant", "accountant"), async (req, res) => {
     try {
-      const { from, to } = req.query as { from?: string; to?: string };
+      const { from, to, fiscalYearId } = req.query as { from?: string; to?: string; fiscalYearId?: string };
       const accounts = await storage.getChartOfAccounts();
       const { pool } = await import("./db");
 
-      // Parameterized date conditions
-      const params: any[] = [];
-      let dateConds = "";
-      if (from) { params.push(from); dateConds += ` AND je.date >= $${params.length}`; }
-      if (to)   { params.push(to);   dateConds += ` AND je.date <= $${params.length}`; }
+      // Resolve fiscal year dates if provided
+      let fyStartDate: string | undefined;
+      let fyEndDate: string | undefined;
+      if (fiscalYearId && fiscalYearId !== "custom") {
+        const fy = await storage.getFiscalYear(Number(fiscalYearId));
+        if (fy) { fyStartDate = fy.startDate; fyEndDate = fy.endDate; }
+      }
 
-      const result = await pool.query(
+      // Opening balance: entries with reference_type='opening_balance'
+      // If fiscal year selected: opening entries whose date falls within the fiscal year (typically the start date)
+      // If custom range: opening entries whose date is before or on the 'from' date
+      const openingParams: any[] = [];
+      let openingDateCond = "";
+      if (fyStartDate && fyEndDate) {
+        openingParams.push(fyStartDate, fyEndDate);
+        openingDateCond = ` AND je.date >= $${openingParams.length - 1} AND je.date <= $${openingParams.length}`;
+      } else if (from) {
+        openingParams.push(from);
+        openingDateCond = ` AND je.date <= $${openingParams.length}`;
+      }
+
+      const openingResult = await pool.query(
         `SELECT
            jel.account_code,
-           jel.account_name_ar,
-           COALESCE(SUM(jel.debit), 0)::numeric AS total_debit,
-           COALESCE(SUM(jel.credit), 0)::numeric AS total_credit,
-           (COALESCE(SUM(jel.debit), 0) - COALESCE(SUM(jel.credit), 0))::numeric AS balance
+           COALESCE(SUM(jel.debit), 0)::numeric  AS opening_debit,
+           COALESCE(SUM(jel.credit), 0)::numeric AS opening_credit
          FROM journal_entry_lines jel
          INNER JOIN journal_entries je ON jel.entry_id = je.id
-         WHERE je.status = 'posted'${dateConds}
-         GROUP BY jel.account_code, jel.account_name_ar
-         ORDER BY jel.account_code`,
-        params
+         WHERE je.status = 'posted'
+           AND je.reference_type = 'opening_balance'${openingDateCond}
+         GROUP BY jel.account_code`,
+        openingParams
       );
 
-      const activityMap = new Map(result.rows.map((r: any) => [r.account_code, r]));
-      const accountMap = new Map(accounts.map(a => [a.code, a]));
+      // Period movements: posted entries NOT opening_balance, within the from-to date range
+      const periodParams: any[] = [];
+      let periodDateConds = "";
+      const periodFrom = fyStartDate || from;
+      const periodTo = fyEndDate || to;
+      if (periodFrom) { periodParams.push(periodFrom); periodDateConds += ` AND je.date >= $${periodParams.length}`; }
+      if (periodTo)   { periodParams.push(periodTo);   periodDateConds += ` AND je.date <= $${periodParams.length}`; }
+
+      const periodResult = await pool.query(
+        `SELECT
+           jel.account_code,
+           COALESCE(SUM(jel.debit), 0)::numeric  AS period_debit,
+           COALESCE(SUM(jel.credit), 0)::numeric AS period_credit
+         FROM journal_entry_lines jel
+         INNER JOIN journal_entries je ON jel.entry_id = je.id
+         WHERE je.status = 'posted'
+           AND (je.reference_type IS NULL OR je.reference_type <> 'opening_balance')${periodDateConds}
+         GROUP BY jel.account_code`,
+        periodParams
+      );
+
+      const openingMap = new Map(openingResult.rows.map((r: any) => [r.account_code, r]));
+      const periodMap  = new Map(periodResult.rows.map((r: any) => [r.account_code, r]));
 
       // Include ALL accounts (zero-activity accounts show zeros)
       const rows = accounts.map(a => {
-        const activity = activityMap.get(a.code);
+        const ob  = openingMap.get(a.code);
+        const per = periodMap.get(a.code);
+        const openingDebit  = ob  ? parseFloat(ob.opening_debit)  : 0;
+        const openingCredit = ob  ? parseFloat(ob.opening_credit) : 0;
+        const openingBalance = openingDebit - openingCredit;
+        const periodDebit   = per ? parseFloat(per.period_debit)  : 0;
+        const periodCredit  = per ? parseFloat(per.period_credit) : 0;
+        const closingBalance = openingBalance + periodDebit - periodCredit;
         return {
           account_code: a.code,
           account_name_ar: a.nameAr,
           type: a.type,
-          total_debit: activity ? parseFloat(activity.total_debit) : 0,
-          total_credit: activity ? parseFloat(activity.total_credit) : 0,
-          balance: activity ? parseFloat(activity.balance) : 0,
+          opening_balance: openingBalance,
+          total_debit: periodDebit,
+          total_credit: periodCredit,
+          balance: closingBalance,
         };
       });
 
-      const totalDebit = rows.reduce((s, r) => s + r.total_debit, 0);
+      const totalDebit  = rows.reduce((s, r) => s + r.total_debit, 0);
       const totalCredit = rows.reduce((s, r) => s + r.total_credit, 0);
-      res.json({ rows, totalDebit, totalCredit, isBalanced: Math.abs(totalDebit - totalCredit) < 0.01 });
+      const totalOpeningBalance = rows.reduce((s, r) => s + r.opening_balance, 0);
+      const totalClosingBalance = rows.reduce((s, r) => s + r.balance, 0);
+      res.json({
+        rows,
+        totalDebit,
+        totalCredit,
+        totalOpeningBalance,
+        totalClosingBalance,
+        isBalanced: Math.abs(totalDebit - totalCredit) < 0.01,
+      });
     } catch (e: any) { res.status(500).json({ message: e.message || "حدث خطأ" }); }
   });
 
