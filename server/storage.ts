@@ -251,6 +251,7 @@ export interface IStorage {
 
   getJournalEntries(from?: string, to?: string): Promise<JournalEntry[]>;
   getJournalEntry(id: number): Promise<JournalEntry | undefined>;
+  findJournalEntryByReference(referenceType: string, referenceId: number): Promise<JournalEntry | undefined>;
   createJournalEntry(entry: InsertJournalEntry, lines: InsertJournalEntryLine[]): Promise<JournalEntry>;
   updateJournalEntry(id: number, data: Partial<InsertJournalEntry>): Promise<JournalEntry | undefined>;
   getJournalEntryLines(entryId: number): Promise<JournalEntryLine[]>;
@@ -1171,6 +1172,13 @@ export class DatabaseStorage implements IStorage {
 
   async getJournalEntry(id: number): Promise<JournalEntry | undefined> {
     const [row] = await db.select().from(journalEntries).where(eq(journalEntries.id, id));
+    return row;
+  }
+
+  async findJournalEntryByReference(referenceType: string, referenceId: number): Promise<JournalEntry | undefined> {
+    const [row] = await db.select().from(journalEntries).where(
+      and(eq(journalEntries.referenceType, referenceType), eq(journalEntries.referenceId, referenceId))
+    );
     return row;
   }
 

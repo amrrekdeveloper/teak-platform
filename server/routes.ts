@@ -177,6 +177,89 @@ function generateQRData(invoice: any): string {
   return Buffer.concat(tlvBuffers).toString("base64");
 }
 
+async function autoCreateJournalEntry(params: {
+  type: "invoice_issued" | "payment_confirmed" | "po_received";
+  referenceId: number;
+  referenceNumber?: string | null;
+  date: string;
+  amount: number;
+  subtotal?: number;
+  vatAmount?: number;
+  paymentMethod?: string | null;
+  createdBy?: number | null;
+}): Promise<void> {
+  const { type, referenceId, referenceNumber, date, amount, subtotal, vatAmount, paymentMethod, createdBy } = params;
+  const referenceTypeMap = {
+    invoice_issued: "invoice",
+    payment_confirmed: "payment",
+    po_received: "purchase_order",
+  };
+  const refType = referenceTypeMap[type];
+  try {
+    const existing = await storage.findJournalEntryByReference(refType, referenceId);
+    if (existing) {
+      console.log(`Auto journal entry already exists for ${refType} #${referenceId}, skipping`);
+      return;
+    }
+    if (type === "invoice_issued") {
+      const sub = subtotal ?? amount / 1.15;
+      const vat = vatAmount ?? (amount - sub);
+      await storage.createJournalEntry(
+        {
+          date,
+          description: `فاتورة مبيعات رقم ${referenceNumber || referenceId}`,
+          reference: referenceNumber || String(referenceId),
+          referenceType: "invoice",
+          referenceId,
+          status: "posted",
+          createdBy: createdBy || null,
+        },
+        [
+          { entryId: 0, accountCode: "1121", accountNameAr: "ذمم العملاء", debit: amount.toFixed(2), credit: "0" },
+          { entryId: 0, accountCode: "4100", accountNameAr: "إيرادات المبيعات", debit: "0", credit: sub.toFixed(2) },
+          { entryId: 0, accountCode: "2121", accountNameAr: "ضريبة المخرجات", debit: "0", credit: vat.toFixed(2) },
+        ]
+      );
+    } else if (type === "payment_confirmed") {
+      const cashCode = paymentMethod === "cash" ? "1111" : "1112";
+      const cashNameAr = paymentMethod === "cash" ? "الصندوق" : "البنك";
+      await storage.createJournalEntry(
+        {
+          date,
+          description: `تحصيل دفعة - ${referenceNumber || referenceId}`,
+          reference: referenceNumber || String(referenceId),
+          referenceType: "payment",
+          referenceId,
+          status: "posted",
+          createdBy: createdBy || null,
+        },
+        [
+          { entryId: 0, accountCode: cashCode, accountNameAr: cashNameAr, debit: amount.toFixed(2), credit: "0" },
+          { entryId: 0, accountCode: "1121", accountNameAr: "ذمم العملاء", debit: "0", credit: amount.toFixed(2) },
+        ]
+      );
+    } else if (type === "po_received") {
+      await storage.createJournalEntry(
+        {
+          date,
+          description: `استلام أمر شراء رقم ${referenceNumber || referenceId}`,
+          reference: referenceNumber || String(referenceId),
+          referenceType: "purchase_order",
+          referenceId,
+          status: "posted",
+          createdBy: createdBy || null,
+        },
+        [
+          { entryId: 0, accountCode: "5100", accountNameAr: "تكلفة المواد الخام", debit: amount.toFixed(2), credit: "0" },
+          { entryId: 0, accountCode: "2111", accountNameAr: "ذمم الموردين", debit: "0", credit: amount.toFixed(2) },
+        ]
+      );
+    }
+  } catch (err) {
+    console.error("Auto journal entry creation failed:", err);
+  }
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -1925,6 +2008,37 @@ export async function registerRoutes(
           const invoice = await storage.createInvoice(invoiceData);
 
           await storage.updatePayment(payment.id, { invoiceId: invoice.id } as any).catch(() => {});
+
+          const today = new Date().toISOString().split("T")[0];
+          autoCreateJournalEntry({
+            type: "invoice_issued",
+            referenceId: invoice.id,
+            referenceNumber: invoice.invoiceNumber ? String(invoice.invoiceNumber) : null,
+            date: today,
+            amount: parseFloat(String(invoiceData.totalWithVat)),
+            subtotal: parseFloat(String(invoiceData.subtotal)),
+            vatAmount: parseFloat(String(invoiceData.vatAmount)),
+            createdBy: req.session.userId ?? null,
+          });
+          autoCreateJournalEntry({
+            type: "payment_confirmed",
+            referenceId: payment.id,
+            referenceNumber: String(payment.id),
+            date: today,
+            amount: parseFloat(String(payment.amount)),
+            paymentMethod: payment.method,
+            createdBy: req.session.userId ?? null,
+          });
+        } else {
+          autoCreateJournalEntry({
+            type: "payment_confirmed",
+            referenceId: payment.id,
+            referenceNumber: String(payment.id),
+            date: new Date().toISOString().split("T")[0],
+            amount: parseFloat(String(payment.amount)),
+            paymentMethod: payment.method,
+            createdBy: req.session.userId ?? null,
+          });
         }
       }
 
@@ -2091,6 +2205,16 @@ export async function registerRoutes(
         });
       }
 
+      autoCreateJournalEntry({
+        type: "payment_confirmed",
+        referenceId: payment.id,
+        referenceNumber: String(payment.id),
+        date: new Date().toISOString().split("T")[0],
+        amount: parseFloat(String(payment.amount)),
+        paymentMethod: payment.method,
+        createdBy: req.session.userId ?? null,
+      });
+
       res.json({ message: "تم تأكيد الدفعة بنجاح", messageEn: "Payment confirmed", payment: updated });
     } catch (error) { console.error("Confirm payment error:", error); res.status(500).json({ message: "حدث خطأ" }); }
   });
@@ -2200,6 +2324,17 @@ export async function registerRoutes(
         vatAmount: invoiceData.vatAmount,
       });
       const updated = await storage.updateInvoice(invoice.id, { qrCodeData: qrData });
+
+      autoCreateJournalEntry({
+        type: "invoice_issued",
+        referenceId: invoice.id,
+        referenceNumber: invoice.invoiceNumber ? String(invoice.invoiceNumber) : null,
+        date: new Date().toISOString().split("T")[0],
+        amount: parseFloat(invoiceData.totalWithVat),
+        subtotal: parseFloat(invoiceData.subtotal),
+        vatAmount: parseFloat(invoiceData.vatAmount),
+        createdBy: req.session.userId ?? null,
+      });
 
       res.status(201).json(updated || invoice);
     } catch (error) {
@@ -2663,10 +2798,24 @@ export async function registerRoutes(
 
   app.patch("/api/purchase-orders/:id", requireRole("owner", "assistant", "purchasing"), async (req, res) => {
     try {
+      const poId = parseInt(req.params.id);
       const data = { ...req.body };
       if (data.status === "approved") data.approvedBy = req.session.userId;
-      const updated = await storage.updatePurchaseOrder(parseInt(req.params.id), data);
+      const existingPO = await storage.getPurchaseOrder(poId);
+      const updated = await storage.updatePurchaseOrder(poId, data);
       if (!updated) return res.status(404).json({ message: "أمر الشراء غير موجود", messageEn: "Purchase order not found" });
+
+      if (data.status === "received" && existingPO && existingPO.status !== "received") {
+        autoCreateJournalEntry({
+          type: "po_received",
+          referenceId: updated.id,
+          referenceNumber: updated.orderNumber ? String(updated.orderNumber) : null,
+          date: new Date().toISOString().split("T")[0],
+          amount: parseFloat(String(updated.totalAmount)),
+          createdBy: req.session.userId ?? null,
+        });
+      }
+
       res.json(updated);
     } catch (error) {
       res.status(500).json({ message: "حدث خطأ في تحديث أمر الشراء", messageEn: "Error updating purchase order" });
