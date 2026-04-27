@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { FileText, CreditCard, CheckCircle, Plus, Trash2, KeyRound, Eye, EyeOff, Bell, Clock, AlertTriangle, MessageSquare } from "lucide-react";
+import { FileText, CreditCard, CheckCircle, Plus, Trash2, KeyRound, Eye, EyeOff, Bell, Clock, AlertTriangle, MessageSquare, BookOpen, Scale, BarChart3, TrendingUp, Wallet, Receipt, Building2, BookText } from "lucide-react";
 
 import { Link } from "wouter";
 import { format } from "date-fns";
@@ -248,6 +248,32 @@ export default function FinanceDashboardPage() {
             </div>
           </CardContent>
         </Card>
+      </div>
+
+      {/* Accounting Quick Links */}
+      <div>
+        <h2 className="text-sm font-bold text-muted-foreground mb-3 uppercase tracking-wide">الوحدة المحاسبية</h2>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {[
+            { href: "/finance/accounts", icon: BookOpen, label: "شجرة الحسابات والقيود", color: "text-blue-500" },
+            { href: "/finance/ledger", icon: BookText, label: "دفتر الأستاذ العام", color: "text-indigo-500" },
+            { href: "/finance/trial-balance", icon: Scale, label: "ميزان المراجعة", color: "text-purple-500" },
+            { href: "/finance/balance-sheet", icon: BarChart3, label: "الميزانية العمومية", color: "text-green-500" },
+            { href: "/finance/income-statement", icon: TrendingUp, label: "قائمة الدخل", color: "text-emerald-500" },
+            { href: "/finance/cash-flow", icon: Wallet, label: "التدفقات النقدية", color: "text-cyan-500" },
+            { href: "/finance/vat-report", icon: Receipt, label: "ضريبة القيمة المضافة", color: "text-orange-500" },
+            { href: "/finance/bank-reconciliation", icon: Building2, label: "مطابقة البنك", color: "text-rose-500" },
+          ].map(item => (
+            <Link key={item.href} href={item.href}>
+              <Card className="hover:bg-accent/40 transition-colors cursor-pointer" data-testid={`quick-link${item.href.replace(/\//g, "-")}`}>
+                <CardContent className="p-3 flex items-center gap-2">
+                  <item.icon className={`h-5 w-5 shrink-0 ${item.color}`} />
+                  <span className="text-xs font-medium leading-tight">{item.label}</span>
+                </CardContent>
+              </Card>
+            </Link>
+          ))}
+        </div>
       </div>
 
       {/* Upcoming Payments Section */}

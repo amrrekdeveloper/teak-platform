@@ -6469,5 +6469,356 @@ export async function registerRoutes(
     }
   });
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // ACCOUNTING MODULE — شجرة الحسابات، القيود، التقارير المالية
+  // ══════════════════════════════════════════════════════════════════════════
+
+  // ── Seed chart of accounts on first run ──────────────────────────────────
+  storage.seedChartOfAccounts().catch(console.error);
+
+  // ── Chart of Accounts CRUD ────────────────────────────────────────────────
+  app.get("/api/accounting/accounts", requireRole("owner", "assistant", "accountant"), async (_req, res) => {
+    try {
+      res.json(await storage.getChartOfAccounts());
+    } catch { res.status(500).json({ message: "حدث خطأ" }); }
+  });
+
+  app.post("/api/accounting/accounts", requireRole("owner", "assistant", "accountant"), async (req, res) => {
+    try {
+      const account = await storage.createChartOfAccount(req.body);
+      res.json(account);
+    } catch (e: any) {
+      res.status(400).json({ message: e.message || "حدث خطأ" });
+    }
+  });
+
+  app.patch("/api/accounting/accounts/:id", requireRole("owner", "assistant", "accountant"), async (req, res) => {
+    try {
+      const account = await storage.updateChartOfAccount(Number(req.params.id), req.body);
+      res.json(account);
+    } catch { res.status(500).json({ message: "حدث خطأ" }); }
+  });
+
+  app.delete("/api/accounting/accounts/:id", requireRole("owner", "assistant", "accountant"), async (req, res) => {
+    try {
+      await storage.deleteChartOfAccount(Number(req.params.id));
+      res.json({ ok: true });
+    } catch { res.status(500).json({ message: "حدث خطأ" }); }
+  });
+
+  // ── Journal Entries ────────────────────────────────────────────────────────
+  app.get("/api/accounting/journal-entries", requireRole("owner", "assistant", "accountant"), async (req, res) => {
+    try {
+      const { from, to } = req.query as { from?: string; to?: string };
+      const entries = await storage.getJournalEntries(from, to);
+      const result = await Promise.all(entries.map(async e => ({
+        ...e,
+        lines: await storage.getJournalEntryLines(e.id),
+      })));
+      res.json(result);
+    } catch { res.status(500).json({ message: "حدث خطأ" }); }
+  });
+
+  app.post("/api/accounting/journal-entries", requireRole("owner", "assistant", "accountant"), async (req, res) => {
+    try {
+      const { lines, ...entryData } = req.body;
+      if (!lines || lines.length < 2) return res.status(400).json({ message: "يجب أن يحتوي القيد على سطرين على الأقل" });
+      const totalDebit = lines.reduce((s: number, l: any) => s + parseFloat(l.debit || 0), 0);
+      const totalCredit = lines.reduce((s: number, l: any) => s + parseFloat(l.credit || 0), 0);
+      if (Math.abs(totalDebit - totalCredit) > 0.01) {
+        return res.status(400).json({ message: `القيد غير متوازن: مجموع المدين (${totalDebit.toFixed(2)}) لا يساوي مجموع الدائن (${totalCredit.toFixed(2)})` });
+      }
+      const entry = await storage.createJournalEntry(
+        { ...entryData, createdBy: (req as any).userId },
+        lines
+      );
+      res.json(entry);
+    } catch (e: any) {
+      res.status(400).json({ message: e.message || "حدث خطأ" });
+    }
+  });
+
+  app.get("/api/accounting/journal-entries/:id", requireRole("owner", "assistant", "accountant"), async (req, res) => {
+    try {
+      const entry = await storage.getJournalEntry(Number(req.params.id));
+      if (!entry) return res.status(404).json({ message: "القيد غير موجود" });
+      const lines = await storage.getJournalEntryLines(entry.id);
+      res.json({ ...entry, lines });
+    } catch { res.status(500).json({ message: "حدث خطأ" }); }
+  });
+
+  // ── General Ledger ─────────────────────────────────────────────────────────
+  app.get("/api/accounting/ledger", requireRole("owner", "assistant", "accountant"), async (req, res) => {
+    try {
+      const { accountCode, from, to } = req.query as { accountCode?: string; from?: string; to?: string };
+      if (!accountCode) return res.status(400).json({ message: "يجب تحديد الحساب" });
+      const lines = await storage.getJournalEntryLinesForAccount(accountCode, from, to);
+      let runningBalance = 0;
+      const linesWithBalance = lines.map(l => {
+        runningBalance += parseFloat(String(l.debit || 0)) - parseFloat(String(l.credit || 0));
+        return { ...l, runningBalance };
+      });
+      res.json(linesWithBalance);
+    } catch { res.status(500).json({ message: "حدث خطأ" }); }
+  });
+
+  // ── Trial Balance ──────────────────────────────────────────────────────────
+  app.get("/api/accounting/trial-balance", requireRole("owner", "assistant", "accountant"), async (req, res) => {
+    try {
+      const { from, to } = req.query as { from?: string; to?: string };
+      const accounts = await storage.getChartOfAccounts();
+      const conditions: string[] = [];
+      if (from) conditions.push(`je.date >= '${from}'`);
+      if (to) conditions.push(`je.date <= '${to}'`);
+      const whereClause = conditions.length > 0 ? `AND ${conditions.join(" AND ")}` : "";
+      const { pool } = await import("./db");
+      const result = await pool.query(`
+        SELECT
+          jel.account_code,
+          jel.account_name_ar,
+          COALESCE(SUM(jel.debit), 0) AS total_debit,
+          COALESCE(SUM(jel.credit), 0) AS total_credit,
+          COALESCE(SUM(jel.debit), 0) - COALESCE(SUM(jel.credit), 0) AS balance
+        FROM journal_entry_lines jel
+        INNER JOIN journal_entries je ON jel.entry_id = je.id
+        WHERE je.status = 'posted'
+        ${whereClause}
+        GROUP BY jel.account_code, jel.account_name_ar
+        ORDER BY jel.account_code
+      `);
+      const accountMap = new Map(accounts.map(a => [a.code, a]));
+      const rows = result.rows.map((r: any) => ({
+        ...r,
+        type: accountMap.get(r.account_code)?.type || "expense",
+        total_debit: parseFloat(r.total_debit),
+        total_credit: parseFloat(r.total_credit),
+        balance: parseFloat(r.balance),
+      }));
+      const totalDebit = rows.reduce((s: number, r: any) => s + r.total_debit, 0);
+      const totalCredit = rows.reduce((s: number, r: any) => s + r.total_credit, 0);
+      res.json({ rows, totalDebit, totalCredit, isBalanced: Math.abs(totalDebit - totalCredit) < 0.01 });
+    } catch { res.status(500).json({ message: "حدث خطأ" }); }
+  });
+
+  // ── Balance Sheet ──────────────────────────────────────────────────────────
+  app.get("/api/accounting/balance-sheet", requireRole("owner", "assistant", "accountant"), async (req, res) => {
+    try {
+      const { asOf } = req.query as { asOf?: string };
+      const whereClause = asOf ? `AND je.date <= '${asOf}'` : "";
+      const { pool } = await import("./db");
+      const result = await pool.query(`
+        SELECT
+          jel.account_code,
+          jel.account_name_ar,
+          COALESCE(SUM(jel.debit), 0) - COALESCE(SUM(jel.credit), 0) AS balance
+        FROM journal_entry_lines jel
+        INNER JOIN journal_entries je ON jel.entry_id = je.id
+        WHERE je.status = 'posted'
+        ${whereClause}
+        GROUP BY jel.account_code, jel.account_name_ar
+        ORDER BY jel.account_code
+      `);
+      const accounts = await storage.getChartOfAccounts();
+      const accountMap = new Map(accounts.map(a => [a.code, a]));
+      const rows = result.rows.map((r: any) => ({
+        code: r.account_code,
+        nameAr: r.account_name_ar,
+        type: accountMap.get(r.account_code)?.type || "asset",
+        parentCode: accountMap.get(r.account_code)?.parentCode,
+        balance: parseFloat(r.balance),
+      }));
+      const byType = (type: string) => rows.filter((r: any) => r.type === type);
+      const sum = (arr: any[]) => arr.reduce((s, r) => s + r.balance, 0);
+      res.json({
+        assets: byType("asset"),
+        liabilities: byType("liability"),
+        equity: byType("equity"),
+        totalAssets: sum(byType("asset")),
+        totalLiabilities: sum(byType("liability")),
+        totalEquity: sum(byType("equity")),
+      });
+    } catch { res.status(500).json({ message: "حدث خطأ" }); }
+  });
+
+  // ── Income Statement ───────────────────────────────────────────────────────
+  app.get("/api/accounting/income-statement", requireRole("owner", "assistant", "accountant"), async (req, res) => {
+    try {
+      const { from, to } = req.query as { from?: string; to?: string };
+      const conditions: string[] = ["je.status = 'posted'"];
+      if (from) conditions.push(`je.date >= '${from}'`);
+      if (to) conditions.push(`je.date <= '${to}'`);
+      const where = conditions.join(" AND ");
+      const { pool } = await import("./db");
+      const result = await pool.query(`
+        SELECT
+          jel.account_code,
+          jel.account_name_ar,
+          COALESCE(SUM(jel.credit), 0) - COALESCE(SUM(jel.debit), 0) AS amount
+        FROM journal_entry_lines jel
+        INNER JOIN journal_entries je ON jel.entry_id = je.id
+        WHERE ${where}
+        GROUP BY jel.account_code, jel.account_name_ar
+        ORDER BY jel.account_code
+      `);
+      const accounts = await storage.getChartOfAccounts();
+      const accountMap = new Map(accounts.map(a => [a.code, a]));
+      const rows = result.rows.map((r: any) => ({
+        code: r.account_code,
+        nameAr: r.account_name_ar,
+        type: accountMap.get(r.account_code)?.type || "expense",
+        amount: parseFloat(r.amount),
+      }));
+      const revenue = rows.filter((r: any) => r.type === "revenue");
+      const cost = rows.filter((r: any) => r.type === "cost");
+      const expense = rows.filter((r: any) => r.type === "expense");
+      const totalRevenue = revenue.reduce((s: number, r: any) => s + r.amount, 0);
+      const totalCost = cost.reduce((s: number, r: any) => s + r.amount, 0);
+      const totalExpense = expense.reduce((s: number, r: any) => s + r.amount, 0);
+      res.json({
+        revenue, cost, expense,
+        totalRevenue,
+        totalCost,
+        grossProfit: totalRevenue - totalCost,
+        totalExpense,
+        netProfit: totalRevenue - totalCost - totalExpense,
+      });
+    } catch { res.status(500).json({ message: "حدث خطأ" }); }
+  });
+
+  // ── Cash Flow ──────────────────────────────────────────────────────────────
+  app.get("/api/accounting/cash-flow", requireRole("owner", "assistant", "accountant"), async (req, res) => {
+    try {
+      const { from, to } = req.query as { from?: string; to?: string };
+      const { pool } = await import("./db");
+      const pConds: string[] = ["p.payment_status = 'confirmed'"];
+      if (from) pConds.push(`p.created_at::date >= '${from}'`);
+      if (to) pConds.push(`p.created_at::date <= '${to}'`);
+      const inflows = await pool.query(`
+        SELECT
+          p.id, p.amount, p.method, p.payment_stage, p.created_at,
+          c.full_name AS customer_name, ct.contract_number
+        FROM payments p
+        LEFT JOIN customers c ON p.customer_id = c.id
+        LEFT JOIN contracts ct ON p.contract_id = ct.id
+        WHERE ${pConds.join(" AND ")}
+        ORDER BY p.created_at DESC
+      `);
+      const poConds: string[] = ["po.status = 'received'"];
+      if (from) poConds.push(`po.created_at::date >= '${from}'`);
+      if (to) poConds.push(`po.created_at::date <= '${to}'`);
+      const outflows = await pool.query(`
+        SELECT
+          po.id, po.total_amount AS amount, po.created_at, s.name AS supplier_name
+        FROM purchase_orders po
+        LEFT JOIN suppliers s ON po.supplier_id = s.id
+        WHERE ${poConds.join(" AND ")}
+        ORDER BY po.created_at DESC
+      `);
+      const totalInflows = inflows.rows.reduce((s: number, r: any) => s + parseFloat(r.amount || 0), 0);
+      const totalOutflows = outflows.rows.reduce((s: number, r: any) => s + parseFloat(r.amount || 0), 0);
+      res.json({
+        inflows: inflows.rows,
+        outflows: outflows.rows,
+        totalInflows,
+        totalOutflows,
+        netCashFlow: totalInflows - totalOutflows,
+      });
+    } catch { res.status(500).json({ message: "حدث خطأ" }); }
+  });
+
+  // ── VAT Report ─────────────────────────────────────────────────────────────
+  app.get("/api/accounting/vat-report", requireRole("owner", "assistant", "accountant"), async (req, res) => {
+    try {
+      const { quarter, year } = req.query as { quarter?: string; year?: string };
+      const q = parseInt(quarter || "1");
+      const y = parseInt(year || new Date().getFullYear().toString());
+      const monthStart = (q - 1) * 3 + 1;
+      const from = `${y}-${String(monthStart).padStart(2, "0")}-01`;
+      const toMonth = monthStart + 2;
+      const toYear = toMonth > 12 ? y + 1 : y;
+      const toMonthActual = toMonth > 12 ? toMonth - 12 : toMonth;
+      const lastDay = new Date(toYear, toMonthActual, 0).getDate();
+      const to = `${toYear}-${String(toMonthActual).padStart(2, "0")}-${lastDay}`;
+      const { pool } = await import("./db");
+      const outputVat = await pool.query(`
+        SELECT
+          COALESCE(SUM(subtotal::numeric), 0) AS taxable_sales,
+          COALESCE(SUM(vat_amount::numeric), 0) AS output_vat,
+          COUNT(*) AS invoice_count
+        FROM invoices
+        WHERE status IN ('issued', 'paid')
+          AND issued_at::date >= $1 AND issued_at::date <= $2
+      `, [from, to]);
+      const inputVat = await pool.query(`
+        SELECT
+          COALESCE(SUM(total_amount::numeric), 0) AS taxable_purchases,
+          COALESCE(SUM((total_amount::numeric * 0.15 / 1.15)), 0) AS input_vat,
+          COUNT(*) AS po_count
+        FROM purchase_orders
+        WHERE status IN ('received', 'ordered', 'partially_received')
+          AND created_at::date >= $1 AND created_at::date <= $2
+      `, [from, to]);
+      const invoices = await pool.query(`
+        SELECT i.invoice_number, i.issued_at, i.subtotal, i.vat_amount, i.total_with_vat, i.buyer_name
+        FROM invoices i
+        WHERE i.status IN ('issued', 'paid')
+          AND i.issued_at::date >= $1 AND i.issued_at::date <= $2
+        ORDER BY i.issued_at DESC
+      `, [from, to]);
+      const purchases = await pool.query(`
+        SELECT po.order_number, po.created_at, po.total_amount, s.name AS supplier_name
+        FROM purchase_orders po
+        LEFT JOIN suppliers s ON po.supplier_id = s.id
+        WHERE po.status IN ('received', 'ordered', 'partially_received')
+          AND po.created_at::date >= $1 AND po.created_at::date <= $2
+        ORDER BY po.created_at DESC
+      `, [from, to]);
+      const outVatRow = outputVat.rows[0];
+      const inVatRow = inputVat.rows[0];
+      res.json({
+        period: { quarter: q, year: y, from, to },
+        output: {
+          taxableSales: parseFloat(outVatRow.taxable_sales),
+          outputVat: parseFloat(outVatRow.output_vat),
+          invoiceCount: parseInt(outVatRow.invoice_count),
+        },
+        input: {
+          taxablePurchases: parseFloat(inVatRow.taxable_purchases),
+          inputVat: parseFloat(inVatRow.input_vat),
+          poCount: parseInt(inVatRow.po_count),
+        },
+        netVat: parseFloat(outVatRow.output_vat) - parseFloat(inVatRow.input_vat),
+        invoices: invoices.rows,
+        purchases: purchases.rows,
+      });
+    } catch { res.status(500).json({ message: "حدث خطأ" }); }
+  });
+
+  // ── Bank Reconciliation ────────────────────────────────────────────────────
+  app.get("/api/accounting/bank-reconciliation", requireRole("owner", "assistant", "accountant"), async (req, res) => {
+    try {
+      const { from, to } = req.query as { from?: string; to?: string };
+      const pConds: string[] = ["p.payment_status = 'confirmed'", "p.method = 'bank_transfer'"];
+      if (from) pConds.push(`p.created_at::date >= '${from}'`);
+      if (to) pConds.push(`p.created_at::date <= '${to}'`);
+      const { pool } = await import("./db");
+      const payments = await pool.query(`
+        SELECT
+          p.id, p.amount, p.method, p.bank_reference, p.created_at,
+          c.full_name AS customer_name, ct.contract_number
+        FROM payments p
+        LEFT JOIN customers c ON p.customer_id = c.id
+        LEFT JOIN contracts ct ON p.contract_id = ct.id
+        WHERE ${pConds.join(" AND ")}
+        ORDER BY p.created_at DESC
+      `);
+      const totalReceipts = payments.rows.reduce((s: number, r: any) => s + parseFloat(r.amount || 0), 0);
+      res.json({
+        payments: payments.rows,
+        totalReceipts,
+      });
+    } catch { res.status(500).json({ message: "حدث خطأ" }); }
+  });
+
   return httpServer;
 }

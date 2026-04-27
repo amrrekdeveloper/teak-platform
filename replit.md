@@ -44,6 +44,8 @@ The application utilizes a modern full-stack architecture.
 -   **Role-Specific Dashboard:** Dashboard (/) shows tailored content per role — sales sees their quotations/customers/appointments; production sees WO pipeline; accountant sees finance; warehouse/purchasing see inventory; delivery/installation/quality/HR/customer_service each see their relevant KPIs and quick links. All roles now have "لوحة التحكم" link in sidebar.
 -   **Sidebar Navigation Fix:** All 14 roles now have the dashboard link in the sidebar (was missing for non-owner/assistant/it roles causing inability to return to dashboard).
 
+-   **Financial Accounting Module (Task #72):** Full double-entry accounting system for accountants (Ismail, Sultan) authenticated via `/finance-login` with PIN. Features: Chart of Accounts (41 pre-seeded Saudi-standard accounts in 6 types: asset/liability/equity/revenue/cost/expense), Journal Entries with balance validation, General Ledger, Trial Balance, Balance Sheet, Income Statement, Cash Flow Statement, VAT Report (ZATCA quarterly), Bank Reconciliation. Database tables: `chart_of_accounts`, `journal_entries`, `journal_entry_lines`. API endpoints at `/api/accounting/*`. Frontend pages under `/finance/*` with a shared `FinanceLayout` sidebar component. Finance dashboard at `/finance` shows accounting quick links.
+
 ## External Dependencies
 -   **Database:** PostgreSQL
 -   **ORM:** Drizzle ORM

@@ -1,0 +1,146 @@
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useLanguage } from "@/components/language-provider";
+import { FinanceLayout } from "@/components/finance-layout";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { BarChart3, Printer } from "lucide-react";
+import { format } from "date-fns";
+
+function SectionTable({ title, rows, total, colorClass }: { title: string; rows: any[]; total: number; colorClass: string }) {
+  if (rows.length === 0) return null;
+  return (
+    <div className="mb-4">
+      <h3 className={`font-bold text-sm px-3 py-2 ${colorClass} rounded-t`}>{title}</h3>
+      <table className="w-full text-sm border border-t-0 rounded-b overflow-hidden">
+        <tbody className="divide-y">
+          {rows.map((r: any, i: number) => (
+            <tr key={i} className="hover:bg-accent/30">
+              <td className="px-3 py-2">
+                <span className="font-mono text-xs text-muted-foreground me-2">{r.code}</span>
+                {r.nameAr}
+              </td>
+              <td className={`px-3 py-2 text-right tabular-nums w-36 ${r.balance < 0 ? "text-red-600" : ""}`}>
+                {Math.abs(r.balance).toLocaleString("ar-SA", { minimumFractionDigits: 2 })} ر.س
+              </td>
+            </tr>
+          ))}
+          <tr className="bg-muted/30 font-bold border-t-2">
+            <td className="px-3 py-2">إجمالي {title}</td>
+            <td className="px-3 py-2 text-right tabular-nums">
+              {Math.abs(total).toLocaleString("ar-SA", { minimumFractionDigits: 2 })} ر.س
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+export default function FinanceBalanceSheetPage() {
+  const { t } = useLanguage();
+  const [asOf, setAsOf] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [applied, setApplied] = useState(asOf);
+
+  const { data, isLoading } = useQuery<any>({
+    queryKey: ["/api/accounting/balance-sheet", applied],
+    queryFn: async () => {
+      const res = await fetch(`/api/accounting/balance-sheet?asOf=${applied}`, { credentials: "include" });
+      return res.json();
+    },
+  });
+
+  const isBalanced = data ? Math.abs(data.totalAssets - (data.totalLiabilities + data.totalEquity)) < 1 : true;
+
+  return (
+    <FinanceLayout>
+      <div className="space-y-4">
+        <div className="flex items-center justify-between print:hidden">
+          <div>
+            <h1 className="text-xl font-bold flex items-center gap-2">
+              <BarChart3 className="h-5 w-5 text-primary" />
+              {t("الميزانية العمومية", "Balance Sheet")}
+            </h1>
+            <p className="text-sm text-muted-foreground">{t("الأصول = الخصوم + حقوق الملكية", "Assets = Liabilities + Equity")}</p>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => window.print()} data-testid="btn-print-balance-sheet">
+            <Printer className="h-4 w-4 me-1.5" />
+            {t("طباعة", "Print")}
+          </Button>
+        </div>
+
+        <Card className="print:hidden">
+          <CardContent className="p-4">
+            <div className="flex gap-3 items-end">
+              <div className="space-y-1">
+                <Label className="text-xs">{t("كما في تاريخ", "As of Date")}</Label>
+                <Input type="date" value={asOf} onChange={e => setAsOf(e.target.value)} className="w-44" data-testid="input-bs-asof" />
+              </div>
+              <Button size="sm" onClick={() => setApplied(asOf)} data-testid="btn-apply-bs">
+                {t("عرض", "Show")}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {isLoading ? (
+          <p className="text-center py-8 text-muted-foreground">{t("جاري التحميل...", "Loading...")}</p>
+        ) : data && (
+          <>
+            <div className="print:text-center print:mb-4 hidden print:block">
+              <h1 className="text-2xl font-bold">الميزانية العمومية</h1>
+              <p className="text-lg">كما في {applied}</p>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-4">
+              {/* Assets */}
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base text-blue-700 dark:text-blue-300">الأصول</CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <SectionTable title="الأصول" rows={data.assets || []} total={data.totalAssets || 0} colorClass="bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-300" />
+                  <div className="px-3 py-3 border-t-2 bg-blue-50 dark:bg-blue-950/20">
+                    <div className="flex justify-between font-bold text-blue-700 dark:text-blue-300">
+                      <span>إجمالي الأصول</span>
+                      <span>{(data.totalAssets || 0).toLocaleString("ar-SA", { minimumFractionDigits: 2 })} ر.س</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Liabilities + Equity */}
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base text-red-700 dark:text-red-300">الخصوم وحقوق الملكية</CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <SectionTable title="الخصوم" rows={data.liabilities || []} total={data.totalLiabilities || 0} colorClass="bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-300" />
+                  <SectionTable title="حقوق الملكية" rows={data.equity || []} total={data.totalEquity || 0} colorClass="bg-purple-50 text-purple-700 dark:bg-purple-950/30 dark:text-purple-300" />
+                  <div className="px-3 py-3 border-t-2 bg-red-50 dark:bg-red-950/20">
+                    <div className="flex justify-between font-bold text-red-700 dark:text-red-300">
+                      <span>إجمالي الخصوم وحقوق الملكية</span>
+                      <span>{((data.totalLiabilities || 0) + (data.totalEquity || 0)).toLocaleString("ar-SA", { minimumFractionDigits: 2 })} ر.س</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            <Card className={isBalanced ? "border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950/20" : "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/20"}>
+              <CardContent className="p-4 text-center">
+                <p className={`font-bold ${isBalanced ? "text-green-700 dark:text-green-300" : "text-red-700 dark:text-red-300"}`}>
+                  {isBalanced
+                    ? "✓ الميزانية متوازنة — الأصول = الخصوم + حقوق الملكية"
+                    : `⚠ الميزانية غير متوازنة — الفرق: ${Math.abs(data.totalAssets - (data.totalLiabilities + data.totalEquity)).toLocaleString("ar-SA", { minimumFractionDigits: 2 })} ر.س`}
+                </p>
+              </CardContent>
+            </Card>
+          </>
+        )}
+      </div>
+    </FinanceLayout>
+  );
+}

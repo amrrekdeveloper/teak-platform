@@ -57,6 +57,14 @@ import SalesMapPage from "@/pages/sales-map";
 import AttendancePage from "@/pages/attendance";
 import AttendanceMonitorPage from "@/pages/attendance-monitor";
 import FinanceLoginPage from "@/pages/finance-login";
+import FinanceAccountsPage from "@/pages/finance-accounts";
+import FinanceLedgerPage from "@/pages/finance-ledger";
+import FinanceTrialBalancePage from "@/pages/finance-trial-balance";
+import FinanceBalanceSheetPage from "@/pages/finance-balance-sheet";
+import FinanceIncomeStatementPage from "@/pages/finance-income-statement";
+import FinanceCashFlowPage from "@/pages/finance-cash-flow";
+import FinanceVatReportPage from "@/pages/finance-vat-report";
+import FinanceBankReconciliationPage from "@/pages/finance-bank-reconciliation";
 import AppLayout from "@/components/app-layout";
 import NotFound from "@/pages/not-found";
 
@@ -207,6 +215,15 @@ function DashboardRoutes() {
         <Route path="/site-survey/:appointmentId" component={SiteSurveyPage} />
         <Route path="/scene-3d" component={Scene3DPage} />
         <Route path="/finance" component={FinanceDashboardPage} />
+        <Route path="/finance/accounts" component={FinanceAccountsPage} />
+        <Route path="/finance/journal" component={FinanceAccountsPage} />
+        <Route path="/finance/ledger" component={FinanceLedgerPage} />
+        <Route path="/finance/trial-balance" component={FinanceTrialBalancePage} />
+        <Route path="/finance/balance-sheet" component={FinanceBalanceSheetPage} />
+        <Route path="/finance/income-statement" component={FinanceIncomeStatementPage} />
+        <Route path="/finance/cash-flow" component={FinanceCashFlowPage} />
+        <Route path="/finance/vat-report" component={FinanceVatReportPage} />
+        <Route path="/finance/bank-reconciliation" component={FinanceBankReconciliationPage} />
         <Route path="/design-studio/:orderId" component={DesignStudioPage} />
         <Route path="/designer-board" component={DesignerBoardPage} />
         <Route path="/my-profile" component={MyProfilePage} />

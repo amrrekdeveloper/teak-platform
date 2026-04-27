@@ -1,4 +1,4 @@
-import { eq, desc, like, and, sql, gte, lte, or } from "drizzle-orm";
+import { eq, desc, like, and, sql, gte, lte, or, asc } from "drizzle-orm";
 import { db } from "./db";
 import {
   users, type User, type InsertUser,
@@ -39,6 +39,9 @@ import {
   attendanceRecords, type AttendanceRecord, type InsertAttendanceRecord,
   attendancePermissions, type AttendancePermission, type InsertAttendancePermission,
   locationZones, type LocationZone, type InsertLocationZone,
+  chartOfAccounts, type ChartOfAccount, type InsertChartOfAccount,
+  journalEntries, type JournalEntry, type InsertJournalEntry,
+  journalEntryLines, type JournalEntryLine, type InsertJournalEntryLine,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -237,6 +240,21 @@ export interface IStorage {
   createLocationZone(data: InsertLocationZone): Promise<LocationZone>;
   updateLocationZone(id: number, data: Partial<InsertLocationZone>): Promise<LocationZone | undefined>;
   deleteLocationZone(id: number): Promise<void>;
+
+  getChartOfAccounts(): Promise<ChartOfAccount[]>;
+  getChartOfAccount(id: number): Promise<ChartOfAccount | undefined>;
+  getChartOfAccountByCode(code: string): Promise<ChartOfAccount | undefined>;
+  createChartOfAccount(data: InsertChartOfAccount): Promise<ChartOfAccount>;
+  updateChartOfAccount(id: number, data: Partial<InsertChartOfAccount>): Promise<ChartOfAccount | undefined>;
+  deleteChartOfAccount(id: number): Promise<void>;
+  seedChartOfAccounts(): Promise<void>;
+
+  getJournalEntries(from?: string, to?: string): Promise<JournalEntry[]>;
+  getJournalEntry(id: number): Promise<JournalEntry | undefined>;
+  createJournalEntry(entry: InsertJournalEntry, lines: InsertJournalEntryLine[]): Promise<JournalEntry>;
+  updateJournalEntry(id: number, data: Partial<InsertJournalEntry>): Promise<JournalEntry | undefined>;
+  getJournalEntryLines(entryId: number): Promise<JournalEntryLine[]>;
+  getJournalEntryLinesForAccount(accountCode: string, from?: string, to?: string): Promise<(JournalEntryLine & { entryDate: string; entryDescription: string; entryNumber: number })[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1056,6 +1074,151 @@ export class DatabaseStorage implements IStorage {
 
   async deleteLocationZone(id: number): Promise<void> {
     await db.update(locationZones).set({ isActive: false }).where(eq(locationZones.id, id));
+  }
+
+  // ── CHART OF ACCOUNTS ──────────────────────────────────────────────────────
+
+  async getChartOfAccounts(): Promise<ChartOfAccount[]> {
+    return db.select().from(chartOfAccounts)
+      .where(eq(chartOfAccounts.isActive, true))
+      .orderBy(asc(chartOfAccounts.code));
+  }
+
+  async getChartOfAccount(id: number): Promise<ChartOfAccount | undefined> {
+    const [row] = await db.select().from(chartOfAccounts).where(eq(chartOfAccounts.id, id));
+    return row;
+  }
+
+  async getChartOfAccountByCode(code: string): Promise<ChartOfAccount | undefined> {
+    const [row] = await db.select().from(chartOfAccounts).where(eq(chartOfAccounts.code, code));
+    return row;
+  }
+
+  async createChartOfAccount(data: InsertChartOfAccount): Promise<ChartOfAccount> {
+    const [row] = await db.insert(chartOfAccounts).values(data).returning();
+    return row;
+  }
+
+  async updateChartOfAccount(id: number, data: Partial<InsertChartOfAccount>): Promise<ChartOfAccount | undefined> {
+    const [row] = await db.update(chartOfAccounts).set(data).where(eq(chartOfAccounts.id, id)).returning();
+    return row;
+  }
+
+  async deleteChartOfAccount(id: number): Promise<void> {
+    await db.update(chartOfAccounts).set({ isActive: false }).where(eq(chartOfAccounts.id, id));
+  }
+
+  async seedChartOfAccounts(): Promise<void> {
+    const existing = await db.select({ code: chartOfAccounts.code }).from(chartOfAccounts);
+    if (existing.length > 0) return;
+    const ACCOUNTS = [
+      { code: "1000", nameAr: "الأصول", nameEn: "Assets", type: "asset" as const, isSystem: true },
+      { code: "1100", nameAr: "الأصول المتداولة", nameEn: "Current Assets", type: "asset" as const, parentCode: "1000", isSystem: true },
+      { code: "1110", nameAr: "النقدية والبنوك", nameEn: "Cash and Banks", type: "asset" as const, parentCode: "1100", isSystem: true },
+      { code: "1111", nameAr: "الصندوق", nameEn: "Cash in Hand", type: "asset" as const, parentCode: "1110", isSystem: true },
+      { code: "1112", nameAr: "البنك", nameEn: "Bank Account", type: "asset" as const, parentCode: "1110", isSystem: true },
+      { code: "1120", nameAr: "الذمم المدينة", nameEn: "Accounts Receivable", type: "asset" as const, parentCode: "1100", isSystem: true },
+      { code: "1121", nameAr: "ذمم العملاء", nameEn: "Customer Receivables", type: "asset" as const, parentCode: "1120", isSystem: true },
+      { code: "1130", nameAr: "المخزون", nameEn: "Inventory", type: "asset" as const, parentCode: "1100", isSystem: true },
+      { code: "1200", nameAr: "الأصول الثابتة", nameEn: "Fixed Assets", type: "asset" as const, parentCode: "1000", isSystem: true },
+      { code: "1210", nameAr: "الأثاث والمعدات", nameEn: "Furniture & Equipment", type: "asset" as const, parentCode: "1200" },
+      { code: "1220", nameAr: "المركبات", nameEn: "Vehicles", type: "asset" as const, parentCode: "1200" },
+      { code: "2000", nameAr: "الخصوم", nameEn: "Liabilities", type: "liability" as const, isSystem: true },
+      { code: "2100", nameAr: "الخصوم المتداولة", nameEn: "Current Liabilities", type: "liability" as const, parentCode: "2000", isSystem: true },
+      { code: "2110", nameAr: "الذمم الدائنة", nameEn: "Accounts Payable", type: "liability" as const, parentCode: "2100", isSystem: true },
+      { code: "2111", nameAr: "ذمم الموردين", nameEn: "Supplier Payables", type: "liability" as const, parentCode: "2110", isSystem: true },
+      { code: "2120", nameAr: "ضريبة القيمة المضافة", nameEn: "VAT", type: "liability" as const, parentCode: "2100", isSystem: true },
+      { code: "2121", nameAr: "ضريبة المخرجات", nameEn: "Output VAT", type: "liability" as const, parentCode: "2120", isSystem: true },
+      { code: "2122", nameAr: "ضريبة المدخلات", nameEn: "Input VAT", type: "liability" as const, parentCode: "2120", isSystem: true },
+      { code: "2130", nameAr: "رواتب مستحقة", nameEn: "Accrued Salaries", type: "liability" as const, parentCode: "2100" },
+      { code: "2140", nameAr: "دفعات مقدمة من العملاء", nameEn: "Customer Deposits", type: "liability" as const, parentCode: "2100" },
+      { code: "3000", nameAr: "حقوق الملكية", nameEn: "Equity", type: "equity" as const, isSystem: true },
+      { code: "3100", nameAr: "رأس المال", nameEn: "Capital", type: "equity" as const, parentCode: "3000", isSystem: true },
+      { code: "3200", nameAr: "الأرباح المحتجزة", nameEn: "Retained Earnings", type: "equity" as const, parentCode: "3000", isSystem: true },
+      { code: "4000", nameAr: "الإيرادات", nameEn: "Revenue", type: "revenue" as const, isSystem: true },
+      { code: "4100", nameAr: "إيرادات المبيعات", nameEn: "Sales Revenue", type: "revenue" as const, parentCode: "4000", isSystem: true },
+      { code: "4110", nameAr: "مبيعات المطابخ", nameEn: "Kitchen Sales", type: "revenue" as const, parentCode: "4100" },
+      { code: "4120", nameAr: "مبيعات الخزائن والأبواب", nameEn: "Wardrobe & Door Sales", type: "revenue" as const, parentCode: "4100" },
+      { code: "4200", nameAr: "إيرادات أخرى", nameEn: "Other Revenue", type: "revenue" as const, parentCode: "4000" },
+      { code: "5000", nameAr: "تكلفة المبيعات", nameEn: "Cost of Sales", type: "cost" as const, isSystem: true },
+      { code: "5100", nameAr: "تكلفة المواد الخام", nameEn: "Raw Materials Cost", type: "cost" as const, parentCode: "5000", isSystem: true },
+      { code: "5200", nameAr: "تكلفة الإنتاج", nameEn: "Production Cost", type: "cost" as const, parentCode: "5000" },
+      { code: "5300", nameAr: "تكلفة التوصيل والتركيب", nameEn: "Delivery & Installation Cost", type: "cost" as const, parentCode: "5000" },
+      { code: "6000", nameAr: "المصروفات التشغيلية", nameEn: "Operating Expenses", type: "expense" as const, isSystem: true },
+      { code: "6100", nameAr: "رواتب وأجور", nameEn: "Salaries & Wages", type: "expense" as const, parentCode: "6000", isSystem: true },
+      { code: "6200", nameAr: "إيجارات", nameEn: "Rent", type: "expense" as const, parentCode: "6000" },
+      { code: "6300", nameAr: "كهرباء ومياه", nameEn: "Utilities", type: "expense" as const, parentCode: "6000" },
+      { code: "6400", nameAr: "مصروفات إدارية", nameEn: "Administrative Expenses", type: "expense" as const, parentCode: "6000" },
+      { code: "6500", nameAr: "مصروفات تسويقية", nameEn: "Marketing Expenses", type: "expense" as const, parentCode: "6000" },
+      { code: "6600", nameAr: "مصروفات نقل وتوصيل", nameEn: "Delivery Expenses", type: "expense" as const, parentCode: "6000" },
+      { code: "6700", nameAr: "صيانة وإصلاح", nameEn: "Maintenance & Repairs", type: "expense" as const, parentCode: "6000" },
+      { code: "6800", nameAr: "مصروفات أخرى", nameEn: "Other Expenses", type: "expense" as const, parentCode: "6000" },
+    ];
+    await db.insert(chartOfAccounts).values(ACCOUNTS);
+  }
+
+  // ── JOURNAL ENTRIES ────────────────────────────────────────────────────────
+
+  async getJournalEntries(from?: string, to?: string): Promise<JournalEntry[]> {
+    const conditions = [];
+    if (from) conditions.push(gte(journalEntries.date, from));
+    if (to) conditions.push(lte(journalEntries.date, to));
+    const q = conditions.length > 0
+      ? db.select().from(journalEntries).where(and(...conditions))
+      : db.select().from(journalEntries);
+    return q.orderBy(desc(journalEntries.date), desc(journalEntries.entryNumber));
+  }
+
+  async getJournalEntry(id: number): Promise<JournalEntry | undefined> {
+    const [row] = await db.select().from(journalEntries).where(eq(journalEntries.id, id));
+    return row;
+  }
+
+  async createJournalEntry(entry: InsertJournalEntry, lines: InsertJournalEntryLine[]): Promise<JournalEntry> {
+    const totalDebit = lines.reduce((s, l) => s + parseFloat(String(l.debit || 0)), 0);
+    const totalCredit = lines.reduce((s, l) => s + parseFloat(String(l.credit || 0)), 0);
+    const [created] = await db.insert(journalEntries).values({
+      ...entry,
+      totalDebit: totalDebit.toFixed(2),
+      totalCredit: totalCredit.toFixed(2),
+    }).returning();
+    if (lines.length > 0) {
+      await db.insert(journalEntryLines).values(lines.map(l => ({ ...l, entryId: created.id })));
+    }
+    return created;
+  }
+
+  async updateJournalEntry(id: number, data: Partial<InsertJournalEntry>): Promise<JournalEntry | undefined> {
+    const [row] = await db.update(journalEntries).set(data).where(eq(journalEntries.id, id)).returning();
+    return row;
+  }
+
+  async getJournalEntryLines(entryId: number): Promise<JournalEntryLine[]> {
+    return db.select().from(journalEntryLines).where(eq(journalEntryLines.entryId, entryId));
+  }
+
+  async getJournalEntryLinesForAccount(accountCode: string, from?: string, to?: string): Promise<(JournalEntryLine & { entryDate: string; entryDescription: string; entryNumber: number })[]> {
+    const conditions: any[] = [eq(journalEntryLines.accountCode, accountCode)];
+    if (from) conditions.push(gte(journalEntries.date, from));
+    if (to) conditions.push(lte(journalEntries.date, to));
+    const rows = await db
+      .select({
+        id: journalEntryLines.id,
+        entryId: journalEntryLines.entryId,
+        accountCode: journalEntryLines.accountCode,
+        accountNameAr: journalEntryLines.accountNameAr,
+        debit: journalEntryLines.debit,
+        credit: journalEntryLines.credit,
+        notes: journalEntryLines.notes,
+        entryDate: journalEntries.date,
+        entryDescription: journalEntries.description,
+        entryNumber: journalEntries.entryNumber,
+      })
+      .from(journalEntryLines)
+      .innerJoin(journalEntries, eq(journalEntryLines.entryId, journalEntries.id))
+      .where(and(...conditions))
+      .orderBy(asc(journalEntries.date), asc(journalEntries.id));
+    return rows as any;
   }
 }
 

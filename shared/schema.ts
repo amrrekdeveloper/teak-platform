@@ -1239,3 +1239,79 @@ export const insertLocationZoneSchema = createInsertSchema(locationZones).omit({
 });
 export type InsertLocationZone = z.infer<typeof insertLocationZoneSchema>;
 export type LocationZone = typeof locationZones.$inferSelect;
+
+// ── ACCOUNTING MODULE ────────────────────────────────────────────────────────
+
+export const accountTypeEnum = pgEnum("account_type", [
+  "asset",
+  "liability",
+  "equity",
+  "revenue",
+  "cost",
+  "expense",
+]);
+
+export const chartOfAccounts = pgTable("chart_of_accounts", {
+  id: serial("id").primaryKey(),
+  code: text("code").notNull().unique(),
+  nameAr: text("name_ar").notNull(),
+  nameEn: text("name_en").notNull(),
+  type: accountTypeEnum("type").notNull(),
+  parentCode: text("parent_code"),
+  isActive: boolean("is_active").notNull().default(true),
+  isSystem: boolean("is_system").notNull().default(false),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertChartOfAccountSchema = createInsertSchema(chartOfAccounts).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertChartOfAccount = z.infer<typeof insertChartOfAccountSchema>;
+export type ChartOfAccount = typeof chartOfAccounts.$inferSelect;
+
+export const journalEntryStatusEnum = pgEnum("journal_entry_status", [
+  "draft",
+  "posted",
+  "reversed",
+]);
+
+export const journalEntries = pgTable("journal_entries", {
+  id: serial("id").primaryKey(),
+  entryNumber: serial("entry_number"),
+  date: date("date").notNull(),
+  description: text("description").notNull(),
+  reference: text("reference"),
+  referenceType: text("reference_type"),
+  referenceId: integer("reference_id"),
+  status: journalEntryStatusEnum("status").notNull().default("posted"),
+  totalDebit: decimal("total_debit", { precision: 15, scale: 2 }).notNull().default("0"),
+  totalCredit: decimal("total_credit", { precision: 15, scale: 2 }).notNull().default("0"),
+  createdBy: integer("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertJournalEntrySchema = createInsertSchema(journalEntries).omit({
+  id: true,
+  entryNumber: true,
+  createdAt: true,
+});
+export type InsertJournalEntry = z.infer<typeof insertJournalEntrySchema>;
+export type JournalEntry = typeof journalEntries.$inferSelect;
+
+export const journalEntryLines = pgTable("journal_entry_lines", {
+  id: serial("id").primaryKey(),
+  entryId: integer("entry_id").references(() => journalEntries.id).notNull(),
+  accountCode: text("account_code").notNull(),
+  accountNameAr: text("account_name_ar").notNull(),
+  debit: decimal("debit", { precision: 15, scale: 2 }).notNull().default("0"),
+  credit: decimal("credit", { precision: 15, scale: 2 }).notNull().default("0"),
+  notes: text("notes"),
+});
+
+export const insertJournalEntryLineSchema = createInsertSchema(journalEntryLines).omit({
+  id: true,
+});
+export type InsertJournalEntryLine = z.infer<typeof insertJournalEntryLineSchema>;
+export type JournalEntryLine = typeof journalEntryLines.$inferSelect;
