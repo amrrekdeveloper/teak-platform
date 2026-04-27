@@ -195,6 +195,17 @@ export default function AttendanceZonesMap() {
 
   useEffect(() => {
     initMap();
+    return () => {
+      circleRefs.current.forEach(c => c.setMap(null));
+      circleRefs.current.clear();
+      rectRefs.current.forEach(r => r.setMap(null));
+      rectRefs.current.clear();
+      if (drawingManagerRef.current) {
+        drawingManagerRef.current.setMap(null);
+        drawingManagerRef.current = null;
+      }
+      mapInstanceRef.current = null;
+    };
   }, [initMap]);
 
   useEffect(() => {

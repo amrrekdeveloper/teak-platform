@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, Fragment } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLanguage } from "@/components/language-provider";
 import { FinanceLayout } from "@/components/finance-layout";
@@ -21,10 +21,10 @@ function SectionTable({ title, groups, total, colorClass }: { title: string; gro
       <table className="w-full text-sm border border-t-0 rounded-b overflow-hidden">
         <tbody className="divide-y">
           {groups.map((group: any, gi: number) => (
-            <>
+            <Fragment key={`group-${gi}`}>
               {group.children && group.children.length > 0 ? (
                 <>
-                  <tr key={`g-${gi}`} className="bg-muted/20">
+                  <tr className="bg-muted/20">
                     <td className="px-3 py-1.5 font-semibold text-xs text-muted-foreground">
                       <span className="font-mono me-2">{group.code}</span>{group.nameAr}
                     </td>
@@ -41,7 +41,7 @@ function SectionTable({ title, groups, total, colorClass }: { title: string; gro
                       </td>
                     </tr>
                   ))}
-                  <tr key={`st-${gi}`} className="bg-muted/10 border-t">
+                  <tr className="bg-muted/10 border-t">
                     <td className="px-3 py-1 text-xs text-muted-foreground">مجموع {group.nameAr}</td>
                     <td className={`px-3 py-1 text-right tabular-nums text-sm font-medium ${group.subTotal < 0 ? "text-red-600" : ""}`}>
                       {fmt(group.subTotal)} ر.س
@@ -49,7 +49,7 @@ function SectionTable({ title, groups, total, colorClass }: { title: string; gro
                   </tr>
                 </>
               ) : (
-                <tr key={`g-${gi}`} className="hover:bg-accent/30">
+                <tr className="hover:bg-accent/30">
                   <td className="px-3 py-2">
                     <span className="font-mono text-xs text-muted-foreground me-2">{group.code}</span>
                     {group.nameAr}
@@ -59,7 +59,7 @@ function SectionTable({ title, groups, total, colorClass }: { title: string; gro
                   </td>
                 </tr>
               )}
-            </>
+            </Fragment>
           ))}
           <tr className="bg-muted/30 font-bold border-t-2">
             <td className="px-3 py-2">إجمالي {title}</td>
