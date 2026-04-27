@@ -30,6 +30,7 @@ export default function FinanceFiscalYearsPage() {
 
   const [closeConfirm, setCloseConfirm] = useState<number | null>(null);
   const [closeError, setCloseError] = useState<string | null>(null);
+  const [closeWarning, setCloseWarning] = useState<string | null>(null);
 
   const { data: fiscalYears = [], isLoading } = useQuery<any[]>({
     queryKey: ["/api/accounting/fiscal-years"],
@@ -52,6 +53,10 @@ export default function FinanceFiscalYearsPage() {
       qc.invalidateQueries({ queryKey: ["/api/accounting/fiscal-years"] });
       qc.invalidateQueries({ queryKey: ["/api/accounting/journal-entries"] });
       setCloseConfirm(null);
+      if (data?.warning) {
+        setCloseWarning(t(data.warning, "No active revenue or expense accounts found in the chart of accounts. The fiscal year was closed without creating a closing entry."));
+        return;
+      }
       const netP = data?.netProfit;
       const msg = netP !== undefined
         ? t(
@@ -280,6 +285,32 @@ export default function FinanceFiscalYearsPage() {
           </div>
           <DialogFooter>
             <Button onClick={() => setCloseError(null)} data-testid="btn-close-error-dialog">
+              {t("حسناً", "OK")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* No revenue/expense accounts warning dialog */}
+      <Dialog open={closeWarning !== null} onOpenChange={open => { if (!open) setCloseWarning(null); }}>
+        <DialogContent className="max-w-sm" dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+              <AlertCircle className="h-4 w-4" />
+              {t("تنبيه: إقفال السنة المالية", "Warning: Fiscal Year Closed")}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-2 space-y-3">
+            <p className="text-sm" data-testid="text-close-warning">{closeWarning}</p>
+            <p className="text-xs text-muted-foreground">
+              {t(
+                "للحصول على قيد إقفال كامل، يرجى إضافة حسابات الإيرادات والمصروفات في دليل الحسابات قبل الإقفال.",
+                "For a complete closing entry, please add revenue and expense accounts to the chart of accounts before closing."
+              )}
+            </p>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setCloseWarning(null)} data-testid="btn-close-warning-dialog">
               {t("حسناً", "OK")}
             </Button>
           </DialogFooter>

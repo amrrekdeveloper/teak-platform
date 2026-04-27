@@ -7292,6 +7292,18 @@ export async function registerRoutes(
         return res.status(400).json({ message: "لم يتم العثور على حساب الأرباح المحتجزة (3200)" });
       }
 
+      // Pre-flight: warn if no active revenue or expense accounts exist in the chart of accounts at all
+      const acctCheck = await pool.query(
+        `SELECT COUNT(*)::int AS cnt FROM chart_of_accounts WHERE type IN ('revenue', 'cost', 'expense') AND is_active = true`
+      );
+      if (Number(acctCheck.rows[0].cnt) === 0) {
+        const updated = await storage.updateFiscalYear(fyId, { status: "closed" });
+        return res.json({
+          fiscalYear: updated,
+          warning: "لا توجد حسابات إيرادات أو مصروفات نشطة في دليل الحسابات. تم إقفال السنة المالية دون إنشاء قيد إقفال."
+        });
+      }
+
       // Get all revenue and expense/cost account balances for the period.
       // Use a subquery to INNER JOIN lines with only posted entries in the FY date range,
       // then LEFT JOIN that result to the chart of accounts so accounts with zero balance still appear.
