@@ -7282,6 +7282,16 @@ export async function registerRoutes(
 
       const { pool } = await import("./db");
 
+      // Validate that the retained earnings account (3200) exists before proceeding
+      const RETAINED_EARNINGS = "3200";
+      const reCheck = await pool.query(
+        `SELECT id FROM chart_of_accounts WHERE code = $1 AND is_active = true`,
+        [RETAINED_EARNINGS]
+      );
+      if (reCheck.rows.length === 0) {
+        return res.status(400).json({ message: "لم يتم العثور على حساب الأرباح المحتجزة (3200)" });
+      }
+
       // Get all revenue and expense/cost account balances for the period.
       // Use a subquery to INNER JOIN lines with only posted entries in the FY date range,
       // then LEFT JOIN that result to the chart of accounts so accounts with zero balance still appear.
@@ -7332,7 +7342,6 @@ export async function registerRoutes(
       }
 
       // Transfer net profit/loss to retained earnings (account 3200)
-      const RETAINED_EARNINGS = "3200";
       const [reAccount] = (await pool.query(
         `SELECT name_ar FROM chart_of_accounts WHERE code = $1`, [RETAINED_EARNINGS]
       )).rows;

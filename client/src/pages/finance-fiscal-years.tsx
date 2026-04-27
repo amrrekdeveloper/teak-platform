@@ -29,6 +29,7 @@ export default function FinanceFiscalYearsPage() {
   });
 
   const [closeConfirm, setCloseConfirm] = useState<number | null>(null);
+  const [closeError, setCloseError] = useState<string | null>(null);
 
   const { data: fiscalYears = [], isLoading } = useQuery<any[]>({
     queryKey: ["/api/accounting/fiscal-years"],
@@ -60,7 +61,15 @@ export default function FinanceFiscalYearsPage() {
         : t("تم إقفال السنة المالية", "Fiscal year closed");
       toast({ title: msg });
     },
-    onError: (e: any) => toast({ title: e.message || t("حدث خطأ", "An error occurred"), variant: "destructive" }),
+    onError: (e: any) => {
+      setCloseConfirm(null);
+      const raw: string = e.message || t("حدث خطأ", "An error occurred");
+      const colonIdx = raw.indexOf(": ");
+      const body = colonIdx !== -1 ? raw.slice(colonIdx + 2) : raw;
+      let parsed = body;
+      try { parsed = JSON.parse(body)?.message || body; } catch { /* not JSON */ }
+      setCloseError(parsed);
+    },
   });
 
   const handleCreate = () => {
@@ -247,6 +256,31 @@ export default function FinanceFiscalYearsPage() {
               data-testid="btn-confirm-close-fy"
             >
               {closeMut.isPending ? t("جاري الإقفال...", "Closing...") : t("إقفال السنة", "Close Year")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* Retained earnings missing error dialog */}
+      <Dialog open={closeError !== null} onOpenChange={open => { if (!open) setCloseError(null); }}>
+        <DialogContent className="max-w-sm" dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertCircle className="h-4 w-4" />
+              {t("تعذّر إقفال السنة المالية", "Year-End Close Failed")}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-2 space-y-3">
+            <p className="text-sm" data-testid="text-close-error">{closeError}</p>
+            <p className="text-xs text-muted-foreground">
+              {t(
+                "يرجى إضافة حساب الأرباح المحتجزة برمز 3200 في دليل الحسابات ثم إعادة المحاولة.",
+                "Please add the retained earnings account with code 3200 in the chart of accounts, then try again."
+              )}
+            </p>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setCloseError(null)} data-testid="btn-close-error-dialog">
+              {t("حسناً", "OK")}
             </Button>
           </DialogFooter>
         </DialogContent>
