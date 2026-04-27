@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Trash2, Edit2, BookOpen, FileText, ChevronLeft, AlertCircle, CheckCircle2 } from "lucide-react";
+import { Plus, Trash2, Edit2, BookOpen, FileText, ChevronLeft, AlertCircle, CheckCircle2, DollarSign } from "lucide-react";
 import { format } from "date-fns";
 
 const ACCOUNT_TYPES: Record<string, { labelAr: string; color: string }> = {
@@ -34,7 +34,7 @@ export default function FinanceAccountsPage() {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [location] = useLocation();
-  const defaultTab = location === "/finance/journal" ? "journal" : "accounts";
+  const defaultTab = location === "/finance/journal" ? "journal" : location === "/finance/opening-balances" ? "opening-balances" : "accounts";
 
   const [accountDialog, setAccountDialog] = useState(false);
   const [editingAccount, setEditingAccount] = useState<any>(null);
@@ -44,9 +44,16 @@ export default function FinanceAccountsPage() {
   const [jForm, setJForm] = useState({ date: format(new Date(), "yyyy-MM-dd"), description: "", reference: "" });
   const [lines, setLines] = useState<LineItem[]>([EMPTY_LINE(), EMPTY_LINE()]);
 
+  // Opening balances state
+  const [obDate, setObDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [obLines, setObLines] = useState<LineItem[]>([EMPTY_LINE()]);
+
   const { data: accounts = [] } = useQuery<any[]>({ queryKey: ["/api/accounting/accounts"] });
   const { data: entries = [], isLoading: entriesLoading } = useQuery<any[]>({
     queryKey: ["/api/accounting/journal-entries"],
+  });
+  const { data: obData = [], isLoading: obLoading } = useQuery<any[]>({
+    queryKey: ["/api/accounting/opening-balances"],
   });
 
   const accountMap = new Map((accounts as any[]).map((a: any) => [a.code, a]));
@@ -76,6 +83,16 @@ export default function FinanceAccountsPage() {
       setLines([EMPTY_LINE(), EMPTY_LINE()]);
       setJForm({ date: format(new Date(), "yyyy-MM-dd"), description: "", reference: "" });
       toast({ title: "تم ترحيل القيد بنجاح" });
+    },
+    onError: (e: any) => toast({ title: e.message || "حدث خطأ", variant: "destructive" }),
+  });
+
+  const saveObMut = useMutation({
+    mutationFn: (data: any) => apiRequest("POST", "/api/accounting/opening-balances", data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/accounting/opening-balances"] });
+      qc.invalidateQueries({ queryKey: ["/api/accounting/journal-entries"] });
+      toast({ title: "تم حفظ الأرصدة الافتتاحية" });
     },
     onError: (e: any) => toast({ title: e.message || "حدث خطأ", variant: "destructive" }),
   });
@@ -112,6 +129,12 @@ export default function FinanceAccountsPage() {
     createEntryMut.mutate({ ...jForm, lines: validLines });
   };
 
+  const handleSaveOpeningBalances = () => {
+    const validLines = obLines.filter(l => l.accountCode && (parseFloat(l.debit || "0") > 0 || parseFloat(l.credit || "0") > 0));
+    if (validLines.length === 0) return toast({ title: "يجب إدخال أرصدة للحسابات", variant: "destructive" });
+    saveObMut.mutate({ date: obDate, lines: validLines });
+  };
+
   const groupedAccounts = Object.entries(ACCOUNT_TYPES).map(([type, meta]) => ({
     type,
     ...meta,
@@ -137,6 +160,10 @@ export default function FinanceAccountsPage() {
             <TabsTrigger value="journal" data-testid="tab-journal">
               <FileText className="h-4 w-4 me-1.5" />
               {t("القيود اليومية", "Journal Entries")}
+            </TabsTrigger>
+            <TabsTrigger value="opening-balances" data-testid="tab-opening-balances">
+              <DollarSign className="h-4 w-4 me-1.5" />
+              {t("الأرصدة الافتتاحية", "Opening Balances")}
             </TabsTrigger>
           </TabsList>
 
@@ -261,6 +288,144 @@ export default function FinanceAccountsPage() {
                 ))}
               </div>
             )}
+          </TabsContent>
+          {/* ── Opening Balances Tab ── */}
+          <TabsContent value="opening-balances" className="space-y-4">
+            <Card>
+              <CardHeader className="py-3 px-4">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <DollarSign className="h-4 w-4 text-primary" />
+                  {t("الأرصدة الافتتاحية", "Opening Balances")}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-4 space-y-4">
+                <p className="text-xs text-muted-foreground">
+                  {t("أدخل الأرصدة الافتتاحية عند الترحيل من نظام محاسبي سابق. سيتم إنشاء قيد محاسبي خاص بالأرصدة الافتتاحية.", "Enter opening balances when migrating from a previous accounting system. A special opening balance journal entry will be created.")}
+                </p>
+
+                <div className="space-y-1 max-w-xs">
+                  <Label className="text-xs">{t("تاريخ الأرصدة الافتتاحية", "Opening Balance Date")} *</Label>
+                  <Input type="date" value={obDate} onChange={e => setObDate(e.target.value)} data-testid="input-ob-date" />
+                </div>
+
+                {/* Existing opening balances (read-only) */}
+                {obLoading ? (
+                  <p className="text-xs text-muted-foreground">{t("جاري التحميل...", "Loading...")}</p>
+                ) : (obData as any[]).length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold mb-2 text-muted-foreground">{t("الأرصدة المحفوظة حالياً", "Currently saved balances")}</p>
+                    <div className="rounded border overflow-hidden">
+                      <table className="w-full text-xs">
+                        <thead className="bg-muted/50">
+                          <tr>
+                            <th className="text-right px-3 py-1.5 w-20">{t("الرمز", "Code")}</th>
+                            <th className="text-right px-3 py-1.5">{t("الحساب", "Account")}</th>
+                            <th className="text-right px-3 py-1.5 w-28">{t("مدين", "Debit")}</th>
+                            <th className="text-right px-3 py-1.5 w-28">{t("دائن", "Credit")}</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y">
+                          {(obData as any[]).map((row: any, i: number) => (
+                            <tr key={i} className="hover:bg-accent/30">
+                              <td className="px-3 py-1.5 font-mono text-muted-foreground">{row.account_code}</td>
+                              <td className="px-3 py-1.5">{row.account_name_ar}</td>
+                              <td className="px-3 py-1.5 tabular-nums text-blue-700 dark:text-blue-400">
+                                {parseFloat(row.debit) > 0 ? parseFloat(row.debit).toLocaleString("ar-SA", { minimumFractionDigits: 2 }) : ""}
+                              </td>
+                              <td className="px-3 py-1.5 tabular-nums text-green-700 dark:text-green-400">
+                                {parseFloat(row.credit) > 0 ? parseFloat(row.credit).toLocaleString("ar-SA", { minimumFractionDigits: 2 }) : ""}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* Entry form */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-semibold">{t("إدخال أرصدة جديدة", "Enter New Balances")}</p>
+                    <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setObLines(l => [...l, EMPTY_LINE()])} data-testid="btn-ob-add-line">
+                      <Plus className="h-3 w-3 me-1" />
+                      {t("إضافة سطر", "Add Line")}
+                    </Button>
+                  </div>
+                  <div className="rounded border overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead className="bg-muted/50 text-xs">
+                        <tr>
+                          <th className="text-right px-2 py-1.5 w-36">{t("الحساب", "Account")}</th>
+                          <th className="text-right px-2 py-1.5">{t("اسم الحساب", "Account Name")}</th>
+                          <th className="text-right px-2 py-1.5 w-28">{t("مدين", "Debit")}</th>
+                          <th className="text-right px-2 py-1.5 w-28">{t("دائن", "Credit")}</th>
+                          <th className="w-8"></th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {obLines.map((line, i) => (
+                          <tr key={i}>
+                            <td className="px-1 py-1">
+                              <Select value={line.accountCode || "none"} onValueChange={v => {
+                                const acc = accountMap.get(v);
+                                setObLines(ls => ls.map((l, j) => j === i ? { ...l, accountCode: v === "none" ? "" : v, accountNameAr: acc?.nameAr || "" } : l));
+                              }}>
+                                <SelectTrigger className="h-7 text-xs font-mono" data-testid={`select-ob-account-${i}`}>
+                                  <SelectValue placeholder={t("اختر", "Select")} />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="none">{t("اختر حساباً", "Select account")}</SelectItem>
+                                  {(accounts as any[]).map((a: any) => (
+                                    <SelectItem key={a.code} value={a.code}>{a.code} - {a.nameAr}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </td>
+                            <td className="px-1 py-1 text-xs text-muted-foreground">{line.accountNameAr}</td>
+                            <td className="px-1 py-1">
+                              <Input
+                                type="number" min="0" step="0.01"
+                                className="h-7 text-xs text-blue-700 dark:text-blue-400"
+                                value={line.debit}
+                                onChange={e => setObLines(ls => ls.map((l, j) => j === i ? { ...l, debit: e.target.value, credit: e.target.value ? "" : l.credit } : l))}
+                                placeholder="0.00"
+                                data-testid={`input-ob-debit-${i}`}
+                              />
+                            </td>
+                            <td className="px-1 py-1">
+                              <Input
+                                type="number" min="0" step="0.01"
+                                className="h-7 text-xs text-green-700 dark:text-green-400"
+                                value={line.credit}
+                                onChange={e => setObLines(ls => ls.map((l, j) => j === i ? { ...l, credit: e.target.value, debit: e.target.value ? "" : l.debit } : l))}
+                                placeholder="0.00"
+                                data-testid={`input-ob-credit-${i}`}
+                              />
+                            </td>
+                            <td className="px-1 py-1">
+                              {obLines.length > 1 && (
+                                <button onClick={() => setObLines(ls => ls.filter((_, j) => j !== i))} className="text-destructive hover:text-destructive/80">
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="flex justify-between items-center mt-3">
+                    <p className="text-xs text-muted-foreground">
+                      {t("ملاحظة: حفظ أرصدة جديدة سيلغي الأرصدة المحفوظة مسبقاً.", "Note: saving new balances will replace any previously saved opening balances.")}
+                    </p>
+                    <Button onClick={handleSaveOpeningBalances} disabled={saveObMut.isPending} data-testid="btn-save-opening-balances">
+                      {saveObMut.isPending ? t("جاري الحفظ...", "Saving...") : t("حفظ الأرصدة الافتتاحية", "Save Opening Balances")}
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </TabsContent>
         </Tabs>
       </div>

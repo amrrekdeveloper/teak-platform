@@ -42,6 +42,7 @@ import {
   chartOfAccounts, type ChartOfAccount, type InsertChartOfAccount,
   journalEntries, type JournalEntry, type InsertJournalEntry,
   journalEntryLines, type JournalEntryLine, type InsertJournalEntryLine,
+  fiscalYears, type FiscalYear, type InsertFiscalYear,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -256,6 +257,11 @@ export interface IStorage {
   updateJournalEntry(id: number, data: Partial<InsertJournalEntry>): Promise<JournalEntry | undefined>;
   getJournalEntryLines(entryId: number): Promise<JournalEntryLine[]>;
   getJournalEntryLinesForAccount(accountCode: string, from?: string, to?: string): Promise<(JournalEntryLine & { entryDate: string; entryDescription: string; entryNumber: number })[]>;
+
+  getFiscalYears(): Promise<FiscalYear[]>;
+  getFiscalYear(id: number): Promise<FiscalYear | undefined>;
+  createFiscalYear(data: InsertFiscalYear): Promise<FiscalYear>;
+  updateFiscalYear(id: number, data: Partial<InsertFiscalYear>): Promise<FiscalYear | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1230,6 +1236,27 @@ export class DatabaseStorage implements IStorage {
                    codeEq;
 
     return baseQ.where(whereClause).orderBy(asc(journalEntries.date), asc(journalEntries.id));
+  }
+
+  // ── FISCAL YEARS ───────────────────────────────────────────────────────────
+
+  async getFiscalYears(): Promise<FiscalYear[]> {
+    return db.select().from(fiscalYears).orderBy(desc(fiscalYears.startDate));
+  }
+
+  async getFiscalYear(id: number): Promise<FiscalYear | undefined> {
+    const [row] = await db.select().from(fiscalYears).where(eq(fiscalYears.id, id));
+    return row;
+  }
+
+  async createFiscalYear(data: InsertFiscalYear): Promise<FiscalYear> {
+    const [row] = await db.insert(fiscalYears).values(data).returning();
+    return row;
+  }
+
+  async updateFiscalYear(id: number, data: Partial<InsertFiscalYear>): Promise<FiscalYear | undefined> {
+    const [row] = await db.update(fiscalYears).set(data).where(eq(fiscalYears.id, id)).returning();
+    return row;
   }
 }
 

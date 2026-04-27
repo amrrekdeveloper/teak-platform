@@ -1242,6 +1242,29 @@ export type LocationZone = typeof locationZones.$inferSelect;
 
 // ── ACCOUNTING MODULE ────────────────────────────────────────────────────────
 
+export const fiscalYearStatusEnum = pgEnum("fiscal_year_status", ["active", "closed"]);
+export const calendarTypeEnum = pgEnum("calendar_type", ["gregorian", "hijri"]);
+
+export const fiscalYears = pgTable("fiscal_years", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  startDate: date("start_date").notNull(),
+  endDate: date("end_date").notNull(),
+  calendarType: calendarTypeEnum("calendar_type").notNull().default("gregorian"),
+  status: fiscalYearStatusEnum("status").notNull().default("active"),
+  closingEntryId: integer("closing_entry_id"),
+  notes: text("notes"),
+  createdBy: integer("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertFiscalYearSchema = createInsertSchema(fiscalYears).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertFiscalYear = z.infer<typeof insertFiscalYearSchema>;
+export type FiscalYear = typeof fiscalYears.$inferSelect;
+
 export const accountTypeEnum = pgEnum("account_type", [
   "asset",
   "liability",

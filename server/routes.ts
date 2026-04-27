@@ -7193,6 +7193,179 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ message: e.message || "حدث خطأ" }); }
   });
 
+  // ── Opening Balances ───────────────────────────────────────────────────────
+  // GET: returns all lines from opening-balance entries
+  app.get("/api/accounting/opening-balances", requireRole("owner", "assistant", "accountant"), async (_req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const result = await pool.query(
+        `SELECT jel.account_code, jel.account_name_ar, jel.debit, jel.credit
+         FROM journal_entry_lines jel
+         INNER JOIN journal_entries je ON jel.entry_id = je.id
+         WHERE je.reference_type = 'opening_balance' AND je.status = 'posted'
+         ORDER BY jel.account_code`
+      );
+      res.json(result.rows);
+    } catch (e: any) { res.status(500).json({ message: e.message || "حدث خطأ" }); }
+  });
+
+  // POST: save opening balances (replaces existing opening-balance entry)
+  app.post("/api/accounting/opening-balances", requireRole("owner", "assistant", "accountant"), async (req, res) => {
+    try {
+      const { date, lines } = req.body as { date: string; lines: { accountCode: string; accountNameAr: string; debit: string; credit: string }[] };
+      if (!date) return res.status(400).json({ message: "التاريخ مطلوب" });
+      if (!lines || lines.length === 0) return res.status(400).json({ message: "يجب إدخال سطر واحد على الأقل" });
+      const validLines = lines.filter(l => parseFloat(l.debit || "0") > 0 || parseFloat(l.credit || "0") > 0);
+      if (validLines.length === 0) return res.status(400).json({ message: "يجب إدخال مبالغ للأرصدة الافتتاحية" });
+
+      const totalDebitCheck = validLines.reduce((s, l) => s + parseFloat(l.debit || "0"), 0);
+      const totalCreditCheck = validLines.reduce((s, l) => s + parseFloat(l.credit || "0"), 0);
+      if (Math.abs(totalDebitCheck - totalCreditCheck) > 0.01) {
+        return res.status(400).json({ message: `مجموع المدين (${totalDebitCheck.toFixed(2)}) لا يساوي مجموع الدائن (${totalCreditCheck.toFixed(2)}). يجب أن تكون الأرصدة الافتتاحية متوازنة.` });
+      }
+
+      const { pool } = await import("./db");
+
+      // Void any existing opening balance entries
+      await pool.query(
+        `UPDATE journal_entries SET status = 'reversed' WHERE reference_type = 'opening_balance' AND status = 'posted'`
+      );
+
+      const totalDebit = validLines.reduce((s, l) => s + parseFloat(l.debit || "0"), 0);
+      const totalCredit = validLines.reduce((s, l) => s + parseFloat(l.credit || "0"), 0);
+
+      const entry = await storage.createJournalEntry(
+        {
+          date,
+          description: "أرصدة افتتاحية",
+          reference: "OPENING",
+          referenceType: "opening_balance",
+          totalDebit: totalDebit.toFixed(2),
+          totalCredit: totalCredit.toFixed(2),
+          status: "posted",
+          createdBy: (req as any).userId,
+        },
+        validLines.map(l => ({ ...l, notes: "" }))
+      );
+      res.json(entry);
+    } catch (e: any) { res.status(400).json({ message: e.message || "حدث خطأ" }); }
+  });
+
+  // ── Fiscal Years ────────────────────────────────────────────────────────────
+  app.get("/api/accounting/fiscal-years", requireRole("owner", "assistant", "accountant"), async (_req, res) => {
+    try {
+      res.json(await storage.getFiscalYears());
+    } catch (e: any) { res.status(500).json({ message: e.message || "حدث خطأ" }); }
+  });
+
+  app.post("/api/accounting/fiscal-years", requireRole("owner", "assistant", "accountant"), async (req, res) => {
+    try {
+      const fy = await storage.createFiscalYear({ ...req.body, createdBy: (req as any).userId });
+      res.json(fy);
+    } catch (e: any) { res.status(400).json({ message: e.message || "حدث خطأ" }); }
+  });
+
+  app.patch("/api/accounting/fiscal-years/:id", requireRole("owner", "assistant", "accountant"), async (req, res) => {
+    try {
+      const fy = await storage.updateFiscalYear(Number(req.params.id), req.body);
+      res.json(fy);
+    } catch (e: any) { res.status(500).json({ message: e.message || "حدث خطأ" }); }
+  });
+
+  // Year-end close: create closing journal entry and mark fiscal year as closed
+  app.post("/api/accounting/fiscal-years/:id/close", requireRole("owner", "assistant", "accountant"), async (req, res) => {
+    try {
+      const fyId = Number(req.params.id);
+      const fy = await storage.getFiscalYear(fyId);
+      if (!fy) return res.status(404).json({ message: "السنة المالية غير موجودة" });
+      if (fy.status === "closed") return res.status(400).json({ message: "السنة المالية مغلقة بالفعل" });
+
+      const { pool } = await import("./db");
+
+      // Get all revenue and expense/cost account balances for the period.
+      // Use a subquery to INNER JOIN lines with only posted entries in the FY date range,
+      // then LEFT JOIN that result to the chart of accounts so accounts with zero balance still appear.
+      const result = await pool.query(
+        `SELECT
+           coa.code, coa.name_ar, coa.type,
+           COALESCE(SUM(filtered.debit), 0)::numeric AS total_debit,
+           COALESCE(SUM(filtered.credit), 0)::numeric AS total_credit
+         FROM chart_of_accounts coa
+         LEFT JOIN (
+           SELECT jel.account_code, jel.debit, jel.credit
+           FROM journal_entry_lines jel
+           INNER JOIN journal_entries je ON jel.entry_id = je.id
+           WHERE je.status = 'posted'
+             AND je.date >= $1 AND je.date <= $2
+             AND je.reference_type != 'year_closing'
+         ) filtered ON filtered.account_code = coa.code
+         WHERE coa.type IN ('revenue', 'cost', 'expense') AND coa.is_active = true
+         GROUP BY coa.code, coa.name_ar, coa.type`,
+        [fy.startDate, fy.endDate]
+      );
+
+      const closingLines: { accountCode: string; accountNameAr: string; debit: string; credit: string; notes: string }[] = [];
+      let netProfit = 0;
+
+      for (const row of result.rows) {
+        const debit = parseFloat(row.total_debit);
+        const credit = parseFloat(row.total_credit);
+        const balance = debit - credit;
+
+        if (Math.abs(balance) < 0.01) continue;
+
+        if (row.type === "revenue") {
+          // Revenue accounts have credit balances; debit them to close
+          closingLines.push({ accountCode: row.code, accountNameAr: row.name_ar, debit: Math.abs(balance).toFixed(2), credit: "0", notes: "إقفال" });
+          netProfit += Math.abs(balance);
+        } else {
+          // Cost/expense accounts have debit balances; credit them to close
+          closingLines.push({ accountCode: row.code, accountNameAr: row.name_ar, debit: "0", credit: Math.abs(balance).toFixed(2), notes: "إقفال" });
+          netProfit -= Math.abs(balance);
+        }
+      }
+
+      if (closingLines.length === 0) {
+        // Nothing to close — mark as closed without an entry
+        const updated = await storage.updateFiscalYear(fyId, { status: "closed" });
+        return res.json({ fiscalYear: updated, message: "لا توجد إيرادات أو مصروفات للإقفال" });
+      }
+
+      // Transfer net profit/loss to retained earnings (account 3200)
+      const RETAINED_EARNINGS = "3200";
+      const [reAccount] = (await pool.query(
+        `SELECT name_ar FROM chart_of_accounts WHERE code = $1`, [RETAINED_EARNINGS]
+      )).rows;
+      const reName = reAccount?.name_ar || "الأرباح المحتجزة";
+
+      if (netProfit >= 0) {
+        closingLines.push({ accountCode: RETAINED_EARNINGS, accountNameAr: reName, debit: "0", credit: netProfit.toFixed(2), notes: "صافي ربح السنة" });
+      } else {
+        closingLines.push({ accountCode: RETAINED_EARNINGS, accountNameAr: reName, debit: Math.abs(netProfit).toFixed(2), credit: "0", notes: "خسارة السنة" });
+      }
+
+      const totalD = closingLines.reduce((s, l) => s + parseFloat(l.debit), 0);
+      const totalC = closingLines.reduce((s, l) => s + parseFloat(l.credit), 0);
+
+      const closingEntry = await storage.createJournalEntry(
+        {
+          date: fy.endDate,
+          description: `إقفال السنة المالية: ${fy.name}`,
+          reference: `FY-CLOSE-${fyId}`,
+          referenceType: "year_closing",
+          totalDebit: totalD.toFixed(2),
+          totalCredit: totalC.toFixed(2),
+          status: "posted",
+          createdBy: (req as any).userId,
+        },
+        closingLines
+      );
+
+      const updated = await storage.updateFiscalYear(fyId, { status: "closed", closingEntryId: closingEntry.id });
+      res.json({ fiscalYear: updated, closingEntry, netProfit });
+    } catch (e: any) { res.status(500).json({ message: e.message || "حدث خطأ" }); }
+  });
+
   // ── /api/finance/* aliases (backward-compatible redirects) ─────────────────
   const ACCOUNTING_ENDPOINTS = [
     "accounts", "journal-entries", "ledger", "trial-balance",

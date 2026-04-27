@@ -65,6 +65,7 @@ import FinanceIncomeStatementPage from "@/pages/finance-income-statement";
 import FinanceCashFlowPage from "@/pages/finance-cash-flow";
 import FinanceVatReportPage from "@/pages/finance-vat-report";
 import FinanceBankReconciliationPage from "@/pages/finance-bank-reconciliation";
+import FinanceFiscalYearsPage from "@/pages/finance-fiscal-years";
 import AppLayout from "@/components/app-layout";
 import NotFound from "@/pages/not-found";
 
@@ -224,6 +225,8 @@ function DashboardRoutes() {
         <Route path="/finance/cash-flow" component={FinanceCashFlowPage} />
         <Route path="/finance/vat-report" component={FinanceVatReportPage} />
         <Route path="/finance/bank-reconciliation" component={FinanceBankReconciliationPage} />
+        <Route path="/finance/opening-balances" component={FinanceAccountsPage} />
+        <Route path="/finance/fiscal-years" component={FinanceFiscalYearsPage} />
         <Route path="/design-studio/:orderId" component={DesignStudioPage} />
         <Route path="/designer-board" component={DesignerBoardPage} />
         <Route path="/my-profile" component={MyProfilePage} />

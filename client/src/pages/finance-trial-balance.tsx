@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Scale, Printer, CheckCircle2, AlertCircle, FileText, FileSpreadsheet } from "lucide-react";
 import { format, startOfYear } from "date-fns";
 import { exportReportPDF, exportReportExcel } from "@/lib/finance-export";
@@ -25,6 +26,9 @@ export default function FinanceTrialBalancePage() {
   const [exportingPdf, setExportingPdf] = useState(false);
   const [exportingXlsx, setExportingXlsx] = useState(false);
   const { toast } = useToast();
+  const [selectedFy, setSelectedFy] = useState("custom");
+
+  const { data: fiscalYears = [] } = useQuery<any[]>({ queryKey: ["/api/accounting/fiscal-years"] });
 
   const { data, isLoading } = useQuery<any>({
     queryKey: ["/api/accounting/trial-balance", applied.from, applied.to],
@@ -121,6 +125,14 @@ export default function FinanceTrialBalancePage() {
     }
   };
 
+  const handleFyChange = (fyId: string) => {
+    setSelectedFy(fyId);
+    if (fyId !== "custom") {
+      const fy = (fiscalYears as any[]).find((f: any) => String(f.id) === fyId);
+      if (fy) { setFrom(fy.startDate); setTo(fy.endDate); }
+    }
+  };
+
   return (
     <FinanceLayout>
       <div className="space-y-4">
@@ -163,13 +175,29 @@ export default function FinanceTrialBalancePage() {
         <Card className="print:hidden">
           <CardContent className="p-4">
             <div className="flex flex-wrap gap-3 items-end">
+              {(fiscalYears as any[]).length > 0 && (
+                <div className="space-y-1">
+                  <Label className="text-xs">{t("السنة المالية", "Fiscal Year")}</Label>
+                  <Select value={selectedFy} onValueChange={handleFyChange}>
+                    <SelectTrigger className="w-44" data-testid="select-tb-fy">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="custom">{t("تاريخ مخصص", "Custom Range")}</SelectItem>
+                      {(fiscalYears as any[]).map((fy: any) => (
+                        <SelectItem key={fy.id} value={String(fy.id)}>{fy.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <div className="space-y-1">
                 <Label className="text-xs">{t("من", "From")}</Label>
-                <Input type="date" value={from} onChange={e => setFrom(e.target.value)} className="w-40" data-testid="input-tb-from" />
+                <Input type="date" value={from} onChange={e => { setFrom(e.target.value); setSelectedFy("custom"); }} className="w-40" data-testid="input-tb-from" />
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">{t("إلى", "To")}</Label>
-                <Input type="date" value={to} onChange={e => setTo(e.target.value)} className="w-40" data-testid="input-tb-to" />
+                <Input type="date" value={to} onChange={e => { setTo(e.target.value); setSelectedFy("custom"); }} className="w-40" data-testid="input-tb-to" />
               </div>
               <Button size="sm" onClick={() => setApplied({ from, to })} data-testid="btn-apply-tb">
                 {t("عرض", "Show")}

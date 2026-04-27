@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { BarChart3, Printer, FileText, FileSpreadsheet } from "lucide-react";
 import { format } from "date-fns";
 import { exportReportPDF, exportReportExcel } from "@/lib/finance-export";
@@ -94,6 +95,17 @@ export default function FinanceBalanceSheetPage() {
   const [exportingPdf, setExportingPdf] = useState(false);
   const [exportingXlsx, setExportingXlsx] = useState(false);
   const { toast } = useToast();
+  const [selectedFy, setSelectedFy] = useState("custom");
+
+  const { data: fiscalYears = [] } = useQuery<any[]>({ queryKey: ["/api/accounting/fiscal-years"] });
+
+  const handleFyChange = (fyId: string) => {
+    setSelectedFy(fyId);
+    if (fyId !== "custom") {
+      const fy = (fiscalYears as any[]).find((f: any) => String(f.id) === fyId);
+      if (fy) setAsOf(fy.endDate);
+    }
+  };
 
   const { data, isLoading } = useQuery<any>({
     queryKey: ["/api/accounting/balance-sheet", applied],
@@ -234,10 +246,26 @@ export default function FinanceBalanceSheetPage() {
 
         <Card className="print:hidden">
           <CardContent className="p-4">
-            <div className="flex gap-3 items-end">
+            <div className="flex flex-wrap gap-3 items-end">
+              {(fiscalYears as any[]).length > 0 && (
+                <div className="space-y-1">
+                  <Label className="text-xs">{t("السنة المالية", "Fiscal Year")}</Label>
+                  <Select value={selectedFy} onValueChange={handleFyChange}>
+                    <SelectTrigger className="w-44" data-testid="select-bs-fy">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="custom">{t("تاريخ مخصص", "Custom Date")}</SelectItem>
+                      {(fiscalYears as any[]).map((fy: any) => (
+                        <SelectItem key={fy.id} value={String(fy.id)}>{fy.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <div className="space-y-1">
                 <Label className="text-xs">{t("كما في تاريخ", "As of Date")}</Label>
-                <Input type="date" value={asOf} onChange={e => setAsOf(e.target.value)} className="w-44" data-testid="input-bs-asof" />
+                <Input type="date" value={asOf} onChange={e => { setAsOf(e.target.value); setSelectedFy("custom"); }} className="w-44" data-testid="input-bs-asof" />
               </div>
               <Button size="sm" onClick={() => setApplied(asOf)} data-testid="btn-apply-bs">
                 {t("عرض", "Show")}

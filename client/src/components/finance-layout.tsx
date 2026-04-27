@@ -3,7 +3,7 @@ import { useLanguage } from "@/components/language-provider";
 import {
   LayoutDashboard, FileText, BookOpen, BookText, Scale,
   BarChart3, TrendingUp, Wallet, Receipt, Building2,
-  ChevronRight, CreditCard, FileCheck,
+  ChevronRight, CreditCard, FileCheck, DollarSign, Calendar,
 } from "lucide-react";
 
 const NAV_GROUPS = [
@@ -20,6 +20,8 @@ const NAV_GROUPS = [
     items: [
       { href: "/finance/accounts", labelAr: "شجرة الحسابات", icon: BookOpen },
       { href: "/finance/journal", labelAr: "القيود اليومية", icon: FileText },
+      { href: "/finance/opening-balances", labelAr: "الأرصدة الافتتاحية", icon: DollarSign },
+      { href: "/finance/fiscal-years", labelAr: "السنوات المالية", icon: Calendar },
     ],
   },
   {
