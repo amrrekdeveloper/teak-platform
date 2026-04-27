@@ -6685,23 +6685,30 @@ export async function registerRoutes(
           };
         });
 
-      // Build hierarchical groups with subtotals
-      const buildHierarchy = (type: string) => {
-        const typeRows = rows.filter(r => r.type === type);
-        // Roots: accounts with no parent, or parent not in same type
-        const roots = typeRows.filter(r => !r.parentCode || !typeRows.find(p => p.code === r.parentCode));
-        const groups: any[] = [];
-        for (const root of roots) {
-          const children = typeRows.filter(r => r.parentCode === root.code);
-          const subTotal = children.length
-            ? children.reduce((s, c) => s + c.balance, 0)
-            : root.balance;
-          groups.push({ ...root, children, subTotal });
-        }
-        return groups;
+      // Build hierarchical groups with RECURSIVE roll-up across full account tree.
+      // "sumDescendants(code)" adds the account's own balance PLUS all its descendants'.
+      const rowMap = new Map(rows.map(r => [r.code, r]));
+
+      const sumDescendants = (code: string): number => {
+        const self = rowMap.get(code);
+        if (!self) return 0;
+        const directChildren = rows.filter(r => r.parentCode === code);
+        if (directChildren.length === 0) return self.balance;
+        return directChildren.reduce((s, c) => s + sumDescendants(c.code), 0);
       };
 
-      const sum = (arr: any[]) => arr.reduce((s, r) => s + (r.children?.length ? r.subTotal : r.balance), 0);
+      const buildHierarchy = (type: string) => {
+        const typeRows = rows.filter(r => r.type === type);
+        // Roots: accounts whose parent is NOT in the same type (or has no parent)
+        const roots = typeRows.filter(r => !r.parentCode || !typeRows.find(p => p.code === r.parentCode));
+        return roots.map(root => {
+          const directChildren = typeRows.filter(r => r.parentCode === root.code);
+          const subTotal = sumDescendants(root.code);
+          return { ...root, children: directChildren, subTotal };
+        });
+      };
+
+      const sum = (arr: any[]) => arr.reduce((s, r) => s + r.subTotal, 0);
       const assetGroups = buildHierarchy("asset");
       const liabilityGroups = buildHierarchy("liability");
       const equityGroups = buildHierarchy("equity");
@@ -6802,7 +6809,8 @@ export async function registerRoutes(
       //    journal entries they appear in source (1) above.
 
       const expenseGLParams: any[] = ["posted"];
-      let expenseGLConds = "je.status = $1 AND ca.code LIKE '5%'";
+      // Expense accounts: 5xxx (cost of sales) + 6xxx (operating expenses)
+      let expenseGLConds = "je.status = $1 AND (ca.code LIKE '5%' OR ca.code LIKE '6%')";
       if (from) { expenseGLParams.push(from); expenseGLConds += ` AND je.date >= $${expenseGLParams.length}::date`; }
       if (to)   { expenseGLParams.push(to);   expenseGLConds += ` AND je.date <= $${expenseGLParams.length}::date`; }
 
