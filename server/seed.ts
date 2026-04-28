@@ -143,6 +143,14 @@ async function seedRealUsers() {
   // The initial password is set only on first insert (see db-seed.ts).
   // Removing this unconditional reset so owner-changed passwords survive deploys.
   console.log("Admin (jabran) password preserved (no forced reset)");
+
+  // ONE-TIME FIX: Reset ismail's finance_pin if it was accidentally changed
+  // from the default. A non-null PIN prevents login with the "1400" default.
+  const ismailUser = await db.select().from(users).where(eq(users.username, "ismail")).limit(1);
+  if (ismailUser.length > 0 && ismailUser[0].financePin !== null) {
+    await db.update(users).set({ financePin: null }).where(eq(users.username, "ismail"));
+    console.log("Fixed: ismail finance_pin reset to null (default 1400)");
+  }
 }
 
 export async function seedDatabase() {
