@@ -6315,12 +6315,21 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/finance-auth/change-pin", requireRole("accountant"), async (req, res) => {
-    const { newPin } = req.body;
+  app.patch("/api/finance-auth/change-pin", requireRole("accountant"), async (req, res) => {
+    const { currentPin, newPin } = req.body;
+    if (!currentPin) {
+      return res.status(400).json({ message: "يجب إدخال كلمة المرور الحالية" });
+    }
     if (!newPin || String(newPin).length < 4) {
-      return res.status(400).json({ message: "كلمة المرور يجب أن تكون 4 أحرف على الأقل" });
+      return res.status(400).json({ message: "كلمة المرور الجديدة يجب أن تكون 4 أحرف على الأقل" });
     }
     try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user) return res.status(404).json({ message: "المستخدم غير موجود" });
+      const expectedPin = user.financePin || "1400";
+      if (String(currentPin) !== expectedPin) {
+        return res.status(401).json({ message: "كلمة المرور الحالية غير صحيحة" });
+      }
       await storage.updateUser(req.session.userId!, { financePin: String(newPin) });
       return res.json({ success: true });
     } catch {

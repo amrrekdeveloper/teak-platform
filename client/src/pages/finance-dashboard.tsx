@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { FileText, CreditCard, CheckCircle, Plus, Trash2, KeyRound, Eye, EyeOff, Bell, Clock, AlertTriangle, MessageSquare, BookOpen, Scale, BarChart3, TrendingUp, Wallet, Receipt, Building2, BookText } from "lucide-react";
+import { FileText, CreditCard, CheckCircle, Plus, Trash2, KeyRound, Eye, EyeOff, Bell, Clock, AlertTriangle, MessageSquare, BookOpen, Scale, BarChart3, TrendingUp, Wallet, Receipt, Building2, BookText, Settings } from "lucide-react";
 
 import { Link } from "wouter";
 import { format } from "date-fns";
@@ -33,6 +33,7 @@ export default function FinanceDashboardPage() {
   const [selectedContract, setSelectedContract] = useState<any>(null);
 
   const [showPinDialog, setShowPinDialog] = useState(false);
+  const [currentPinInput, setCurrentPinInput] = useState("");
   const [newPin, setNewPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
   const [showCurrentPin, setShowCurrentPin] = useState(false);
@@ -43,15 +44,25 @@ export default function FinanceDashboardPage() {
   });
 
   const changePinMutation = useMutation({
-    mutationFn: (pin: string) => apiRequest("POST", "/api/finance-auth/change-pin", { newPin: pin }),
+    mutationFn: ({ currentPin, newPin }: { currentPin: string; newPin: string }) =>
+      apiRequest("PATCH", "/api/finance-auth/change-pin", { currentPin, newPin }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/finance-auth/my-pin"] });
       setShowPinDialog(false);
+      setCurrentPinInput("");
       setNewPin("");
       setConfirmPin("");
       toast({ title: t("تم تغيير كلمة المرور بنجاح", "Password changed successfully") });
     },
-    onError: () => toast({ title: t("حدث خطأ", "Error"), variant: "destructive" }),
+    onError: (e: Error) => {
+      let message = t("حدث خطأ", "Error");
+      try {
+        const body = e.message.replace(/^\d+:\s*/, "");
+        const parsed = JSON.parse(body);
+        if (parsed.message) message = parsed.message;
+      } catch {}
+      toast({ title: message, variant: "destructive" });
+    },
   });
   const [schedule, setSchedule] = useState<PaymentScheduleItem[]>([
     { label: t("دفعة أولى", "First Payment"), amount: "", dueDate: "" },
@@ -263,6 +274,7 @@ export default function FinanceDashboardPage() {
             { href: "/finance/cash-flow", icon: Wallet, label: "التدفقات النقدية", color: "text-cyan-500" },
             { href: "/finance/vat-report", icon: Receipt, label: "ضريبة القيمة المضافة", color: "text-orange-500" },
             { href: "/finance/bank-reconciliation", icon: Building2, label: "مطابقة البنك", color: "text-rose-500" },
+            { href: "/finance/settings", icon: Settings, label: "تغيير كلمة المرور", color: "text-slate-500" },
           ].map(item => (
             <Link key={item.href} href={item.href}>
               <Card className="hover:bg-accent/40 transition-colors cursor-pointer" data-testid={`quick-link${item.href.replace(/\//g, "-")}`}>
@@ -498,7 +510,10 @@ export default function FinanceDashboardPage() {
       </div>
 
       {/* Change PIN Dialog */}
-      <Dialog open={showPinDialog} onOpenChange={setShowPinDialog}>
+      <Dialog open={showPinDialog} onOpenChange={(open) => {
+        setShowPinDialog(open);
+        if (!open) { setCurrentPinInput(""); setNewPin(""); setConfirmPin(""); }
+      }}>
         <DialogContent className="max-w-sm" dir="rtl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -507,6 +522,17 @@ export default function FinanceDashboardPage() {
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-sm">{t("كلمة المرور الحالية", "Current PIN")}</Label>
+              <Input
+                type="password"
+                value={currentPinInput}
+                onChange={(e) => setCurrentPinInput(e.target.value)}
+                placeholder={t("أدخل كلمة المرور الحالية", "Enter current PIN")}
+                className="font-mono"
+                data-testid="input-current-pin-dialog"
+              />
+            </div>
             <div className="space-y-1.5">
               <Label className="text-sm">{t("كلمة المرور الجديدة", "New PIN")}</Label>
               <Input
@@ -541,13 +567,14 @@ export default function FinanceDashboardPage() {
             )}
           </div>
           <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => { setShowPinDialog(false); setNewPin(""); setConfirmPin(""); }}>
+            <Button variant="outline" onClick={() => { setShowPinDialog(false); setCurrentPinInput(""); setNewPin(""); setConfirmPin(""); }}>
               {t("إلغاء", "Cancel")}
             </Button>
             <Button
-              onClick={() => changePinMutation.mutate(newPin)}
+              onClick={() => changePinMutation.mutate({ currentPin: currentPinInput, newPin })}
               disabled={
                 changePinMutation.isPending ||
+                !currentPinInput ||
                 !newPin || !confirmPin ||
                 newPin !== confirmPin ||
                 newPin.length < 4

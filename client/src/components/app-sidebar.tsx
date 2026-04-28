@@ -39,6 +39,7 @@ import {
   RefreshCcw,
   DollarSign,
   BookText,
+  KeyRound,
   type LucideIcon,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
@@ -77,6 +78,7 @@ const menuItems: MenuItem[] = [
   { titleAr: "دفتر الأستاذ", titleEn: "General Ledger", icon: FileBarChart, path: "/finance/ledger", roles: ["accountant"], group: "financial_reports" },
   { titleAr: "تقرير الضريبة", titleEn: "VAT Report", icon: Landmark, path: "/finance/vat-report", roles: ["accountant"], group: "financial_reports" },
   { titleAr: "مطابقة البنك", titleEn: "Bank Reconciliation", icon: RefreshCcw, path: "/finance/bank-reconciliation", roles: ["accountant"], group: "financial_reports" },
+  { titleAr: "تغيير كلمة المرور", titleEn: "Change Password", icon: KeyRound, path: "/finance/settings", roles: ["accountant"], group: "accounting" },
   { titleAr: "أوامر العمل", titleEn: "Work Orders", icon: ClipboardCheck, path: "/work-orders", roles: ["owner", "assistant", "it", "production", "designer"], group: "manufacturing" },
   { titleAr: "الإنتاج", titleEn: "Production", icon: Factory, path: "/production", roles: ["owner", "assistant", "it", "production"], group: "manufacturing" },
   { titleAr: "المخزون", titleEn: "Inventory", icon: Package, path: "/inventory", roles: ["owner", "assistant", "it", "warehouse", "purchasing"], group: "warehouse" },
