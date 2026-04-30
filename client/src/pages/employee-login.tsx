@@ -1,10 +1,10 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useLanguage } from "@/components/language-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Phone, KeyRound, Loader2, Users, AlertCircle, ArrowRight, RotateCcw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { auth, RecaptchaVerifier, signInWithPhoneNumber, initializeRecaptchaConfig, type ConfirmationResult } from "@/lib/firebase";
+import { auth, RecaptchaVerifier, signInWithPhoneNumber, type ConfirmationResult } from "@/lib/firebase";
 import { LoadingTransition } from "@/components/loading-transition";
 import teakLogo from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
 import { useQuery } from "@tanstack/react-query";
@@ -34,22 +34,39 @@ export default function EmployeeLoginPage() {
   const [error, setError] = useState("");
   const [countdown, setCountdown] = useState(0);
   const [showTransition, setShowTransition] = useState(false);
+  const [recaptchaSolved, setRecaptchaSolved] = useState(false);
 
   const confirmationRef = useRef<ConfirmationResult | null>(null);
   const recaptchaRef = useRef<RecaptchaVerifier | null>(null);
 
-  useEffect(() => {
-    initializeRecaptchaConfig(auth).catch(() => {});
-  }, []);
+  const createVerifier = () => {
+    if (recaptchaRef.current) {
+      try { recaptchaRef.current.clear(); } catch (_e) {}
+      recaptchaRef.current = null;
+    }
+    setRecaptchaSolved(false);
+    try {
+      const v = new RecaptchaVerifier(auth, "emp-recaptcha-container", {
+        size: "normal",
+        callback: () => setRecaptchaSolved(true),
+        "expired-callback": () => {
+          setRecaptchaSolved(false);
+        },
+      });
+      recaptchaRef.current = v;
+      v.render().catch(() => {});
+    } catch (_e) {}
+  };
 
   useEffect(() => {
+    createVerifier();
     return () => {
       if (recaptchaRef.current) {
         try { recaptchaRef.current.clear(); } catch (_e) {}
         recaptchaRef.current = null;
       }
     };
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (countdown > 0) {
@@ -57,21 +74,6 @@ export default function EmployeeLoginPage() {
       return () => clearTimeout(timer);
     }
   }, [countdown]);
-
-  const setupRecaptcha = useCallback(() => {
-    if (recaptchaRef.current) {
-      recaptchaRef.current.clear();
-      recaptchaRef.current = null;
-    }
-    recaptchaRef.current = new RecaptchaVerifier(auth, "emp-recaptcha-container", {
-      size: "invisible",
-      callback: () => {},
-      "expired-callback": () => {
-        setError(t("انتهت صلاحية التحقق. أعد المحاولة", "Verification expired. Try again"));
-      },
-    });
-    return recaptchaRef.current;
-  }, [t]);
 
   const formatPhoneForFirebase = (localPhone: string): string => {
     let cleaned = localPhone.replace(/\D/g, "");
@@ -89,6 +91,11 @@ export default function EmployeeLoginPage() {
     const digits = trimmed.replace(/\D/g, "");
     if (!/^(05\d{8}|5\d{8})$/.test(digits)) {
       setError(t("رقم الجوال غير صحيح. مثال: 05XXXXXXXX أو 5XXXXXXXX", "Invalid phone number. Example: 05XXXXXXXX or 5XXXXXXXX"));
+      return;
+    }
+
+    if (!recaptchaRef.current) {
+      setError(t("أعد تحميل الصفحة وحاول مجدداً", "Reload the page and try again"));
       return;
     }
 
@@ -110,9 +117,8 @@ export default function EmployeeLoginPage() {
         return;
       }
 
-      const recaptchaVerifier = setupRecaptcha();
       const firebasePhone = formatPhoneForFirebase(digits);
-      const confirmation = await signInWithPhoneNumber(auth, firebasePhone, recaptchaVerifier);
+      const confirmation = await signInWithPhoneNumber(auth, firebasePhone, recaptchaRef.current);
       confirmationRef.current = confirmation;
 
       setStep("otp");
@@ -133,15 +139,11 @@ export default function EmployeeLoginPage() {
         msg = t("تم تجاوز حد الإرسال. حاول لاحقاً", "SMS quota exceeded. Try again later");
       }
       setError(msg);
-
-      if (recaptchaRef.current) {
-        try { recaptchaRef.current.clear(); } catch (_e) {}
-        recaptchaRef.current = null;
-      }
+      setTimeout(createVerifier, 100);
     } finally {
       setLoading(false);
     }
-  }, [phone, toast, t, lang, setupRecaptcha]);
+  }, [phone, toast, t, lang]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleVerifyOTP = useCallback(async () => {
     if (!otp.trim() || otp.length < 6) return;
@@ -202,7 +204,8 @@ export default function EmployeeLoginPage() {
     setOtp("");
     setError("");
     confirmationRef.current = null;
-  }, []);
+    setTimeout(createVerifier, 150);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const maskedPhone = phone ? `${phone.substring(0, 4)}****${phone.substring(8)}` : "";
 
@@ -291,16 +294,27 @@ export default function EmployeeLoginPage() {
                       dir="ltr"
                       maxLength={10}
                       data-testid="input-employee-phone"
-                      onKeyDown={(e) => e.key === "Enter" && handleSendOTP()}
+                      onKeyDown={(e) => e.key === "Enter" && recaptchaSolved && handleSendOTP()}
                     />
                   </div>
                   <p className="text-[11px] text-muted-foreground leading-relaxed">
                     {t("أدخل رقم جوالك المسجل في النظام — بصيغة 05XXXXXXXX أو 5XXXXXXXX — سيصلك رمز التحقق عبر SMS", "Enter your registered phone — format 05XXXXXXXX or 5XXXXXXXX — you'll receive a code via SMS")}
                   </p>
                 </div>
+
+                <div className="flex justify-center py-1">
+                  <div id="emp-recaptcha-container" data-testid="emp-recaptcha-container" />
+                </div>
+
+                {!recaptchaSolved && (
+                  <p className="text-[11px] text-muted-foreground text-center">
+                    {t("أكمل التحقق أعلاه ثم اضغط إرسال", "Complete the verification above then tap Send")}
+                  </p>
+                )}
+
                 <Button
                   onClick={handleSendOTP}
-                  disabled={loading || !phone.trim()}
+                  disabled={loading || !phone.trim() || !recaptchaSolved}
                   className="w-full h-11 text-sm font-medium"
                   data-testid="button-employee-send-otp"
                 >
@@ -376,8 +390,6 @@ export default function EmployeeLoginPage() {
             )}
           </div>
         </div>
-
-        <div id="emp-recaptcha-container" data-testid="emp-recaptcha-container"></div>
 
         <div className="text-center">
           <button
