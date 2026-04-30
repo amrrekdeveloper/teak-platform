@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Phone, KeyRound, Loader2, Users, AlertCircle, ArrowRight, RotateCcw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { auth, RecaptchaVerifier, signInWithPhoneNumber, type ConfirmationResult } from "@/lib/firebase";
+import { auth, RecaptchaVerifier, signInWithPhoneNumber, initializeRecaptchaConfig, type ConfirmationResult } from "@/lib/firebase";
 import { LoadingTransition } from "@/components/loading-transition";
 import teakLogo from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
 import { useQuery } from "@tanstack/react-query";
@@ -37,6 +37,10 @@ export default function EmployeeLoginPage() {
 
   const confirmationRef = useRef<ConfirmationResult | null>(null);
   const recaptchaRef = useRef<RecaptchaVerifier | null>(null);
+
+  useEffect(() => {
+    initializeRecaptchaConfig(auth).catch(() => {});
+  }, []);
 
   useEffect(() => {
     return () => {
