@@ -46,6 +46,7 @@ export const users = pgTable("users", {
   active: boolean("active").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   financePin: text("finance_pin"),
+  employeePin: text("employee_pin"),
 });
 
 export const insertUserSchema = createInsertSchema(users).omit({

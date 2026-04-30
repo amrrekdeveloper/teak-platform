@@ -284,38 +284,26 @@ export async function registerRoutes(
       if (user.role === "customer") {
         return res.status(403).json({ message: "رقم الجوال غير مسجل كموظف", messageEn: "Phone number not registered as employee" });
       }
-      return res.json({ success: true, message: "تم التحقق من رقم الجوال.", messageEn: "Phone verified." });
+      return res.json({
+        success: true,
+        fullNameAr: user.fullNameAr,
+        fullNameEn: user.fullNameEn,
+        hasPinSet: !!user.employeePin,
+      });
     } catch (error) {
       console.error("check-phone error:", error);
       return res.status(500).json({ message: "حدث خطأ", messageEn: "An error occurred" });
     }
   });
 
-  // Employee OTP auth: verify Firebase idToken and start session
-  app.post("/api/employee-auth/verify-otp", async (req: Request, res: Response) => {
+  // Employee PIN auth: verify phone + PIN and start session
+  app.post("/api/employee-auth/verify-pin", async (req: Request, res: Response) => {
     try {
-      const { idToken } = req.body;
-      if (!idToken) {
-        return res.status(400).json({ message: "رمز التحقق مطلوب", messageEn: "Verification token is required" });
+      const { phone, pin } = req.body;
+      if (!phone || !pin) {
+        return res.status(400).json({ message: "رقم الجوال والرمز مطلوبان", messageEn: "Phone and PIN are required" });
       }
-
-      const decoded = await verifyFirebaseToken(idToken);
-      if (!decoded) {
-        return res.status(401).json({ message: "رمز التحقق غير صالح", messageEn: "Invalid verification token" });
-      }
-
-      const rawPhone = decoded.phone;
-      if (!rawPhone) {
-        return res.status(400).json({ message: "رقم الجوال غير موجود في الرمز", messageEn: "Phone number not found in token" });
-      }
-
-      // Normalize phone: strip +966 prefix and add leading 0
-      let localPhone = rawPhone;
-      if (localPhone.startsWith("+966")) {
-        localPhone = "0" + localPhone.substring(4);
-      }
-
-      const user = await storage.getUserByPhone(localPhone);
+      const user = await storage.getUserByPhone(normalizePhone(String(phone)));
       if (!user) {
         return res.status(404).json({ message: "رقم الجوال غير مسجل في النظام", messageEn: "Phone number not registered in system" });
       }
@@ -326,11 +314,48 @@ export async function registerRoutes(
         return res.status(403).json({ message: "رقم الجوال غير مسجل كموظف", messageEn: "Phone number not registered as employee" });
       }
 
+      // Default PIN = last 4 digits of phone number
+      const phone10 = normalizePhone(String(phone));
+      const defaultPin = phone10.replace(/\D/g, "").slice(-4);
+      const expectedPin = user.employeePin || defaultPin;
+
+      if (String(pin).trim() !== String(expectedPin).trim()) {
+        return res.status(401).json({ message: "الرمز غير صحيح", messageEn: "Incorrect PIN" });
+      }
+
       req.session.userId = user.id;
-      const { password: _, ...safeUser } = user;
+      const { password: _, financePin: __, employeePin: ___, ...safeUser } = user;
       return res.json(safeUser);
     } catch (error) {
-      console.error("verify-otp error:", error);
+      console.error("verify-pin error:", error);
+      return res.status(500).json({ message: "حدث خطأ", messageEn: "An error occurred" });
+    }
+  });
+
+  // Employee PIN auth: change own PIN
+  app.patch("/api/employee-auth/change-pin", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { currentPin, newPin } = req.body;
+      if (!currentPin || !newPin) {
+        return res.status(400).json({ message: "الرمز الحالي والجديد مطلوبان", messageEn: "Current and new PIN are required" });
+      }
+      if (!/^\d{4,6}$/.test(String(newPin))) {
+        return res.status(400).json({ message: "الرمز يجب أن يكون 4-6 أرقام", messageEn: "PIN must be 4-6 digits" });
+      }
+      const user = await storage.getUser(req.session.userId!);
+      if (!user) return res.status(404).json({ message: "المستخدم غير موجود", messageEn: "User not found" });
+
+      const phone10 = normalizePhone(user.phone || "");
+      const defaultPin = phone10.replace(/\D/g, "").slice(-4);
+      const expectedPin = user.employeePin || defaultPin;
+
+      if (String(currentPin).trim() !== String(expectedPin).trim()) {
+        return res.status(401).json({ message: "الرمز الحالي غير صحيح", messageEn: "Current PIN is incorrect" });
+      }
+      await storage.updateUser(req.session.userId!, { employeePin: String(newPin) });
+      return res.json({ success: true });
+    } catch (error) {
+      console.error("change-pin error:", error);
       return res.status(500).json({ message: "حدث خطأ", messageEn: "An error occurred" });
     }
   });
