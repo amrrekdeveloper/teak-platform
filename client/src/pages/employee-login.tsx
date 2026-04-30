@@ -35,6 +35,7 @@ export default function EmployeeLoginPage() {
   const [countdown, setCountdown] = useState(0);
   const [showTransition, setShowTransition] = useState(false);
   const [recaptchaSolved, setRecaptchaSolved] = useState(false);
+  const [recaptchaVisible, setRecaptchaVisible] = useState(false);
 
   const confirmationRef = useRef<ConfirmationResult | null>(null);
   const recaptchaRef = useRef<RecaptchaVerifier | null>(null);
@@ -45,6 +46,7 @@ export default function EmployeeLoginPage() {
       recaptchaRef.current = null;
     }
     setRecaptchaSolved(false);
+    setRecaptchaVisible(false);
     try {
       const v = new RecaptchaVerifier(auth, "emp-recaptcha-container", {
         size: "normal",
@@ -54,8 +56,14 @@ export default function EmployeeLoginPage() {
         },
       });
       recaptchaRef.current = v;
-      v.render().catch(() => {});
-    } catch (_e) {}
+      v.render().then(() => {
+        setRecaptchaVisible(true);
+      }).catch((_e) => {
+        setRecaptchaSolved(true);
+      });
+    } catch (_e) {
+      setRecaptchaSolved(true);
+    }
   };
 
   useEffect(() => {
@@ -302,11 +310,11 @@ export default function EmployeeLoginPage() {
                   </p>
                 </div>
 
-                <div className="flex justify-center py-1">
+                <div className={recaptchaVisible ? "flex justify-center py-1" : "hidden"}>
                   <div id="emp-recaptcha-container" data-testid="emp-recaptcha-container" />
                 </div>
 
-                {!recaptchaSolved && (
+                {recaptchaVisible && !recaptchaSolved && (
                   <p className="text-[11px] text-muted-foreground text-center">
                     {t("أكمل التحقق أعلاه ثم اضغط إرسال", "Complete the verification above then tap Send")}
                   </p>
