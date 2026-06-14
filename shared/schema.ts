@@ -11,6 +11,7 @@ import {
   jsonb,
   date,
   pgEnum,
+  unique,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -44,6 +45,7 @@ export const users = pgTable("users", {
   email: text("email"),
   profileImage: text("profile_image"),
   active: boolean("active").notNull().default(true),
+  archived: boolean("archived").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   financePin: text("finance_pin"),
   employeePin: text("employee_pin"),
@@ -55,6 +57,30 @@ export const insertUserSchema = createInsertSchema(users).omit({
 });
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
+
+// Per-account permission exceptions (grants/revokes) on top of role defaults.
+export const userPermissions = pgTable(
+  "user_permissions",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    permissionKey: text("permission_key").notNull(),
+    effect: text("effect").notNull(), // 'grant' | 'revoke'
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    userKeyUnique: unique("user_permissions_user_key_unique").on(t.userId, t.permissionKey),
+  }),
+);
+
+export const insertUserPermissionSchema = createInsertSchema(userPermissions).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertUserPermission = z.infer<typeof insertUserPermissionSchema>;
+export type UserPermission = typeof userPermissions.$inferSelect;
 
 export const nationalityEnum = pgEnum("nationality", ["saudi", "resident"]);
 export const employeeStatusEnum = pgEnum("employee_status", [

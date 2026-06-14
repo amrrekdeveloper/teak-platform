@@ -5,8 +5,18 @@ import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import { pool } from "./db";
 import { storage } from "./storage";
+import type { User } from "@shared/schema";
+import { computeEffectivePermissions, isProtectedOwner } from "@shared/permissions";
 
 const scryptAsync = promisify(scrypt);
+
+export async function getEffectivePermissionsForUser(user: User): Promise<string[]> {
+  if (isProtectedOwner(user)) {
+    return computeEffectivePermissions(user.role, [], true);
+  }
+  const exceptions = await storage.getUserPermissions(user.id);
+  return computeEffectivePermissions(user.role, exceptions, false);
+}
 
 export async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(16).toString("hex");
@@ -79,7 +89,8 @@ export function setupAuth(app: Express) {
 
       req.session.userId = user.id;
       const { password: _, ...safeUser } = user;
-      return res.json(safeUser);
+      const permissions = await getEffectivePermissionsForUser(user);
+      return res.json({ ...safeUser, permissions });
     } catch (error) {
       console.error("Login error:", error);
       return res.status(500).json({
@@ -119,7 +130,8 @@ export function setupAuth(app: Express) {
         });
       }
       const { password: _, ...safeUser } = user;
-      return res.json(safeUser);
+      const permissions = await getEffectivePermissionsForUser(user);
+      return res.json({ ...safeUser, permissions });
     } catch (error) {
       return res.status(500).json({
         message: "حدث خطأ",

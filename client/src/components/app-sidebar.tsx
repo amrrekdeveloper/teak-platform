@@ -362,9 +362,12 @@ export function AppSidebar({
 
   if (!user) return null;
 
-  const filteredItems = menuItems.filter(
-    (item) => item.roles.includes(user.role) || (user.role === "owner" && !item.strictRoles)
-  );
+  const perms = (user as any).permissions as string[] | undefined;
+  const filteredItems = perms
+    ? menuItems.filter((item) => perms.includes(item.path))
+    : menuItems.filter(
+        (item) => item.roles.includes(user.role) || (user.role === "owner" && !item.strictRoles)
+      );
 
   const CollapseIcon = collapsed
     ? (isRTL ? ChevronLeft : ChevronRight)
@@ -432,9 +435,12 @@ export function MobileMenuButton() {
 
   if (!user) return null;
 
-  const filteredItems = menuItems.filter(
-    (item) => item.roles.includes(user.role) || (user.role === "owner" && !item.strictRoles)
-  );
+  const perms = (user as any).permissions as string[] | undefined;
+  const filteredItems = perms
+    ? menuItems.filter((item) => perms.includes(item.path))
+    : menuItems.filter(
+        (item) => item.roles.includes(user.role) || (user.role === "owner" && !item.strictRoles)
+      );
 
   return (
     <>

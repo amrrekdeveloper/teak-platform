@@ -2,6 +2,7 @@ import { eq, desc, like, and, sql, gte, lte, or, asc, isNull, isNotNull } from "
 import { db } from "./db";
 import {
   users, type User, type InsertUser,
+  userPermissions, type UserPermission,
   customers, type Customer, type InsertCustomer,
   products, type Product, type InsertProduct,
   woodTypes, type WoodType, type InsertWoodType,
@@ -57,6 +58,9 @@ export interface IStorage {
   createUser(user: InsertUser): Promise<User>;
   getUsers(): Promise<User[]>;
   updateUser(id: number, data: Partial<InsertUser>): Promise<User | undefined>;
+  getUserPermissions(userId: number): Promise<UserPermission[]>;
+  setUserPermission(userId: number, permissionKey: string, effect: "grant" | "revoke"): Promise<void>;
+  deleteUserPermission(userId: number, permissionKey: string): Promise<void>;
 
   getCustomers(): Promise<Customer[]>;
   getCustomer(id: number): Promise<Customer | undefined>;
@@ -333,6 +337,26 @@ export class DatabaseStorage implements IStorage {
   async updateUser(id: number, data: Partial<InsertUser>): Promise<User | undefined> {
     const [updated] = await db.update(users).set(data).where(eq(users.id, id)).returning();
     return updated;
+  }
+
+  async getUserPermissions(userId: number): Promise<UserPermission[]> {
+    return db.select().from(userPermissions).where(eq(userPermissions.userId, userId));
+  }
+
+  async setUserPermission(userId: number, permissionKey: string, effect: "grant" | "revoke"): Promise<void> {
+    await db
+      .insert(userPermissions)
+      .values({ userId, permissionKey, effect })
+      .onConflictDoUpdate({
+        target: [userPermissions.userId, userPermissions.permissionKey],
+        set: { effect },
+      });
+  }
+
+  async deleteUserPermission(userId: number, permissionKey: string): Promise<void> {
+    await db
+      .delete(userPermissions)
+      .where(and(eq(userPermissions.userId, userId), eq(userPermissions.permissionKey, permissionKey)));
   }
 
   async getCustomers(): Promise<Customer[]> {

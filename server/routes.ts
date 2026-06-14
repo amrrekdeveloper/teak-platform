@@ -2,7 +2,14 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { eq } from "drizzle-orm";
 import { storage } from "./storage";
-import { setupAuth, requireAuth, requireRole, comparePasswords, hashPassword } from "./auth";
+import { setupAuth, requireAuth, requireRole, comparePasswords, hashPassword, getEffectivePermissionsForUser } from "./auth";
+import {
+  isProtectedOwner,
+  isValidPermissionKey,
+  getRoleDefaultPermissions,
+  computeEffectivePermissions,
+  PERMISSION_MODULES,
+} from "@shared/permissions";
 import { seedDatabase } from "./seed";
 import { db, pool } from "./db";
 import { verifyFirebaseToken } from "./firebase-admin";
@@ -411,6 +418,25 @@ export async function registerRoutes(
       if (!res.headersSent) res.status(500).json({ message: "حدث خطأ في جلب الملف" });
     }
   });
+
+  // Per-account permissions: add `archived` column + user_permissions table.
+  // Runs BEFORE seedDatabase() because the seed guarantees protected owners are
+  // role=owner / active / not-archived.
+  try {
+    await db.execute(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS archived BOOLEAN NOT NULL DEFAULT FALSE;
+      CREATE TABLE IF NOT EXISTS user_permissions (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        permission_key TEXT NOT NULL,
+        effect TEXT NOT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS user_permissions_user_key_unique ON user_permissions (user_id, permission_key);
+    `);
+  } catch (permsMigrationError) {
+    console.warn("User permissions migration warning (non-fatal):", permsMigrationError instanceof Error ? permsMigrationError.message : String(permsMigrationError));
+  }
 
   await seedDatabase();
 
@@ -877,6 +903,20 @@ export async function registerRoutes(
     try {
       const id = parseInt(req.params.id);
       const data = req.body;
+      const target = await storage.getUser(id);
+      if (!target) return res.status(404).json({ message: "المستخدم غير موجود" });
+      // Protected owner accounts cannot be demoted, disabled, or archived.
+      if (isProtectedOwner(target)) {
+        if (data.role !== undefined && data.role !== target.role) {
+          return res.status(403).json({ message: "لا يمكن تغيير دور حساب المالك المحمي" });
+        }
+        if (data.active === false) {
+          return res.status(403).json({ message: "لا يمكن تعطيل حساب المالك المحمي" });
+        }
+        if (data.archived === true) {
+          return res.status(403).json({ message: "لا يمكن أرشفة حساب المالك المحمي" });
+        }
+      }
       if (data.password) {
         const { hashPassword } = await import("./auth");
         data.password = await hashPassword(data.password);
@@ -896,7 +936,8 @@ export async function registerRoutes(
       if (isNaN(id)) return res.status(400).json({ message: "معرف غير صالح" });
       const user = await storage.getUser(id);
       if (!user) return res.status(404).json({ message: "المستخدم غير موجود" });
-      if (user.role === "owner") return res.status(403).json({ message: "لا يمكن حذف حساب المالك" });
+      if (id === req.session.userId) return res.status(403).json({ message: "لا يمكن حذف حسابك الخاص" });
+      if (isProtectedOwner(user)) return res.status(403).json({ message: "لا يمكن حذف حساب المالك المحمي" });
       const requestingUser = await storage.getUser(req.session.userId!);
       if (requestingUser?.role === "hr" && (user.role === "it" || user.role === "owner")) {
         return res.status(403).json({ message: "لا تملك صلاحية حذف هذا الحساب" });
@@ -905,6 +946,78 @@ export async function registerRoutes(
       return res.json({ message: "تم حذف الحساب بنجاح" });
     } catch {
       return res.status(500).json({ message: "حدث خطأ أثناء الحذف" });
+    }
+  });
+
+  // Per-account permission editor — read current effective/exceptions/role defaults.
+  app.get("/api/users/:id/permissions", requireRole("owner", "it"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "معرف غير صالح" });
+      const target = await storage.getUser(id);
+      if (!target) return res.status(404).json({ message: "المستخدم غير موجود" });
+      const protectedOwner = isProtectedOwner(target);
+      const roleDefaults = getRoleDefaultPermissions(target.role);
+      const exceptions = await storage.getUserPermissions(id);
+      const effective = await getEffectivePermissionsForUser(target);
+      res.json({
+        userId: id,
+        role: target.role,
+        isProtected: protectedOwner,
+        roleDefaults,
+        exceptions: exceptions.map((e) => ({ permissionKey: e.permissionKey, effect: e.effect })),
+        effective,
+      });
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  // Per-account permission editor — set desired enabled module keys.
+  // Reconciles per-account grant/revoke exceptions against the role defaults.
+  app.patch("/api/users/:id/permissions", requireRole("owner", "it"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "معرف غير صالح" });
+      const target = await storage.getUser(id);
+      if (!target) return res.status(404).json({ message: "المستخدم غير موجود" });
+      if (isProtectedOwner(target)) {
+        return res.status(403).json({ message: "لا يمكن تعديل صلاحيات حساب المالك المحمي" });
+      }
+      const enabled: string[] = Array.isArray(req.body?.enabled) ? req.body.enabled : [];
+      const invalid = enabled.filter((k) => !isValidPermissionKey(k));
+      if (invalid.length > 0) {
+        return res.status(400).json({ message: "مفاتيح صلاحيات غير صالحة", invalid });
+      }
+      const enabledSet = new Set(enabled);
+      const roleDefaults = new Set(getRoleDefaultPermissions(target.role));
+
+      for (const m of PERMISSION_MODULES) {
+        if (m.base) continue; // base modules are always granted, never toggled
+        const roleHas = roleDefaults.has(m.key);
+        const want = enabledSet.has(m.key);
+        if (want === roleHas) {
+          await storage.deleteUserPermission(id, m.key);
+        } else if (want && !roleHas) {
+          await storage.setUserPermission(id, m.key, "grant");
+        } else {
+          await storage.setUserPermission(id, m.key, "revoke");
+        }
+      }
+
+      const exceptions = await storage.getUserPermissions(id);
+      const effective = computeEffectivePermissions(
+        target.role,
+        exceptions.map((e) => ({ permissionKey: e.permissionKey, effect: e.effect })),
+        false,
+      );
+      res.json({
+        userId: id,
+        effective,
+        exceptions: exceptions.map((e) => ({ permissionKey: e.permissionKey, effect: e.effect })),
+      });
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ في حفظ الصلاحيات" });
     }
   });
 

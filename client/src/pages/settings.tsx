@@ -14,9 +14,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Loader2, Building2, Users, History, Save, Plus, Pencil, Shield, Tags, Trash2, Package, Search, Key, UserCheck, UserX, Clock } from "lucide-react";
+import { Loader2, Building2, Users, History, Save, Plus, Pencil, Shield, ShieldCheck, Lock, Archive, ArchiveRestore, Tags, Trash2, Package, Search, Key, UserCheck, UserX, Clock } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Link } from "wouter";
+import { PERMISSION_MODULES, PERMISSION_GROUPS } from "@shared/permissions";
 
 const roleLabels: Record<string, { ar: string; en: string }> = {
   owner: { ar: "المالك", en: "Owner" },
@@ -76,6 +77,8 @@ export default function SettingsPage({ initialTab }: { initialTab?: string }) {
   const [statusFilter, setStatusFilter] = useState("all");
   const [resetPasswordUser, setResetPasswordUser] = useState<User | null>(null);
   const [adminNewPassword, setAdminNewPassword] = useState("");
+  const [permUser, setPermUser] = useState<User | null>(null);
+  const [deleteUserTarget, setDeleteUserTarget] = useState<User | null>(null);
 
   const settingsMutation = useMutation({
     mutationFn: (data: any) => apiRequest("PUT", "/api/company-settings", data),
@@ -130,6 +133,31 @@ export default function SettingsPage({ initialTab }: { initialTab?: string }) {
     onError: () => toast({ title: t("حدث خطأ", "Error"), variant: "destructive" }),
   });
 
+  const toggleArchiveMutation = useMutation({
+    mutationFn: ({ id, archived }: { id: number; archived: boolean }) => apiRequest("PATCH", `/api/users/${id}`, { archived }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      toast({ title: t("تم التحديث", "Updated") });
+    },
+    onError: async (err: any) => {
+      try { const r = await err.json?.(); toast({ title: r?.message || t("حدث خطأ", "Error"), variant: "destructive" }); }
+      catch { toast({ title: t("حدث خطأ", "Error"), variant: "destructive" }); }
+    },
+  });
+
+  const deleteUserMutation = useMutation({
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/users/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      setDeleteUserTarget(null);
+      toast({ title: t("تم حذف الحساب", "Account deleted") });
+    },
+    onError: async (err: any) => {
+      try { const r = await err.json?.(); toast({ title: r?.message || t("حدث خطأ في الحذف", "Error deleting"), variant: "destructive" }); }
+      catch { toast({ title: t("حدث خطأ في الحذف", "Error deleting"), variant: "destructive" }); }
+    },
+  });
+
   useEffect(() => {
     if (!companyForm && settings) {
       setCompanyForm({ ...settings });
@@ -137,6 +165,7 @@ export default function SettingsPage({ initialTab }: { initialTab?: string }) {
   }, [settings]);
 
   const isOwnerOrIT = currentUser?.role === "owner" || currentUser?.role === "it" || currentUser?.role === "assistant";
+  const isOwnerOrITStrict = currentUser?.role === "owner" || currentUser?.role === "it";
 
   const filteredUsers = users.filter(u => {
     const q = userSearch.toLowerCase();
@@ -327,6 +356,9 @@ export default function SettingsPage({ initialTab }: { initialTab?: string }) {
                           {u.active === false && (
                             <Badge variant="outline" className="text-[10px] border-destructive text-destructive">{t("معطّل", "Inactive")}</Badge>
                           )}
+                          {(u as any).archived && (
+                            <Badge variant="outline" className="text-[10px] border-amber-500 text-amber-600">{t("مؤرشف", "Archived")}</Badge>
+                          )}
                         </div>
                         {(u.phone || u.email) && (
                           <p className="text-[10px] text-muted-foreground mt-0.5 truncate">
@@ -347,6 +379,23 @@ export default function SettingsPage({ initialTab }: { initialTab?: string }) {
                         <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setEditUser(u)} data-testid={`button-edit-user-${u.id}`}>
                           <Pencil className="w-3.5 h-3.5" />
                         </Button>
+                        {isOwnerOrITStrict && (
+                          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setPermUser(u)} title={t("الصلاحيات", "Permissions")} data-testid={`button-permissions-${u.id}`}>
+                            <ShieldCheck className="w-3.5 h-3.5 text-primary" />
+                          </Button>
+                        )}
+                        {isOwnerOrITStrict && (
+                          <Button size="icon" variant="ghost" className="h-8 w-8"
+                            onClick={() => toggleArchiveMutation.mutate({ id: u.id, archived: !(u as any).archived })}
+                            title={(u as any).archived ? t("إلغاء الأرشفة", "Unarchive") : t("أرشفة", "Archive")} data-testid={`button-archive-${u.id}`}>
+                            {(u as any).archived ? <ArchiveRestore className="w-3.5 h-3.5 text-green-500" /> : <Archive className="w-3.5 h-3.5" />}
+                          </Button>
+                        )}
+                        {isOwnerOrITStrict && (
+                          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setDeleteUserTarget(u)} title={t("حذف", "Delete")} data-testid={`button-delete-user-${u.id}`}>
+                            <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                          </Button>
+                        )}
                       </div>
                     )}
                   </div>
@@ -444,6 +493,127 @@ export default function SettingsPage({ initialTab }: { initialTab?: string }) {
           )}
         </DialogContent>
       </Dialog>
+
+      <Dialog open={!!permUser} onOpenChange={o => { if (!o) setPermUser(null); }}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ShieldCheck className="w-5 h-5 text-primary" />
+              {t("صلاحيات المستخدم", "User Permissions")}
+            </DialogTitle>
+          </DialogHeader>
+          {permUser && <UserPermissionEditor user={permUser} onClose={() => setPermUser(null)} />}
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={!!deleteUserTarget} onOpenChange={o => { if (!o) setDeleteUserTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("حذف الحساب", "Delete Account")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteUserTarget && t(
+                `هل أنت متأكد من حذف حساب "${deleteUserTarget.fullNameAr}" (@${deleteUserTarget.username})؟ لا يمكن التراجع عن هذا الإجراء.`,
+                `Are you sure you want to delete "${deleteUserTarget.fullNameEn}" (@${deleteUserTarget.username})? This cannot be undone.`
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-delete-user">{t("إلغاء", "Cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => deleteUserTarget && deleteUserMutation.mutate(deleteUserTarget.id)}
+              data-testid="button-confirm-delete-user">
+              {deleteUserMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : t("حذف", "Delete")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
+
+function UserPermissionEditor({ user, onClose }: { user: User; onClose: () => void }) {
+  const { t } = useLanguage();
+  const { toast } = useToast();
+  const { data, isLoading } = useQuery<{ effective: string[]; isProtected: boolean }>({
+    queryKey: ["/api/users", user.id, "permissions"],
+  });
+  const [enabled, setEnabled] = useState<Set<string> | null>(null);
+
+  useEffect(() => {
+    if (data && enabled === null) {
+      setEnabled(new Set(data.effective || []));
+    }
+  }, [data]);
+
+  const isProtected = data?.isProtected === true;
+
+  const saveMutation = useMutation({
+    mutationFn: (keys: string[]) => apiRequest("PATCH", `/api/users/${user.id}/permissions`, { enabled: keys }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/users", user.id, "permissions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      toast({ title: t("تم حفظ الصلاحيات", "Permissions saved") });
+      onClose();
+    },
+    onError: async (err: any) => {
+      try { const r = await err.json?.(); toast({ title: r?.message || t("حدث خطأ", "Error"), variant: "destructive" }); }
+      catch { toast({ title: t("حدث خطأ", "Error"), variant: "destructive" }); }
+    },
+  });
+
+  const toggle = (key: string) => {
+    setEnabled(prev => {
+      const next = new Set(prev || []);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
+
+  if (isLoading || enabled === null) {
+    return <div className="flex justify-center p-8"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>;
+  }
+
+  const editableModules = PERMISSION_MODULES.filter(m => !m.base);
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">
+        {t(`${user.fullNameAr} (@${user.username})`, `${user.fullNameEn} (@${user.username})`)}
+      </p>
+      {isProtected && (
+        <div className="flex items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400">
+          <Lock className="w-4 h-4 shrink-0" />
+          {t("هذا حساب مالك محمي — جميع الصلاحيات ممنوحة دائماً ولا يمكن تعديلها.", "Protected owner account — all permissions are always granted and cannot be changed.")}
+        </div>
+      )}
+      <div className="space-y-4">
+        {Object.entries(PERMISSION_GROUPS).map(([groupKey, groupLabel]) => {
+          const modules = editableModules.filter(m => m.group === groupKey);
+          if (modules.length === 0) return null;
+          return (
+            <div key={groupKey} className="space-y-2">
+              <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t(groupLabel.ar, groupLabel.en)}</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {modules.map(m => {
+                  const on = isProtected || enabled.has(m.key);
+                  return (
+                    <div key={m.key} className="flex items-center justify-between rounded-md border p-2.5">
+                      <span className="text-sm">{t(m.titleAr, m.titleEn)}</span>
+                      <Switch checked={on} disabled={isProtected} onCheckedChange={() => toggle(m.key)} data-testid={`switch-perm-${m.key.replace(/\//g, "-")}`} />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {!isProtected && (
+        <Button className="w-full" onClick={() => saveMutation.mutate(Array.from(enabled))} disabled={saveMutation.isPending} data-testid="button-save-permissions">
+          {saveMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : t("حفظ الصلاحيات", "Save Permissions")}
+        </Button>
+      )}
     </div>
   );
 }

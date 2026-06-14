@@ -76,6 +76,7 @@ import FinanceFiscalYearsPage from "@/pages/finance-fiscal-years";
 import FinanceSettingsPage from "@/pages/finance-settings";
 import AppLayout from "@/components/app-layout";
 import NotFound from "@/pages/not-found";
+import { getPermissionKeyForLocation } from "@shared/permissions";
 
 import teakLogo from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
 import FloatingContact from "@/components/floating-contact";
@@ -191,9 +192,21 @@ function PlaceholderPage({ titleAr, titleEn }: { titleAr: string; titleEn: strin
   );
 }
 
+function PermissionGate({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
+  const [location] = useLocation();
+  const perms = (user as any)?.permissions as string[] | undefined;
+  // No permissions array (old session / fallback): defer to existing per-page guards.
+  if (!user || !perms) return <>{children}</>;
+  const key = getPermissionKeyForLocation(location || "/");
+  if (key && !perms.includes(key)) return <NotFound />;
+  return <>{children}</>;
+}
+
 function DashboardRoutes() {
   return (
     <AppLayout>
+      <PermissionGate>
       <Switch>
         <Route path="/" component={DashboardPage} />
         <Route path="/customers/:id" component={CustomerDetailPage} />
@@ -256,6 +269,7 @@ function DashboardRoutes() {
         <Route path="/settings" component={SettingsPage} />
         <Route component={NotFound} />
       </Switch>
+      </PermissionGate>
     </AppLayout>
   );
 }

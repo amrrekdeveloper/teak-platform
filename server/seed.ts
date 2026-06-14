@@ -7,6 +7,7 @@ import {
   quoteProductCategories, adekoProducts,
 } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import { PROTECTED_OWNER_USERNAMES, PROTECTED_OWNER_PHONES } from "@shared/permissions";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -138,6 +139,15 @@ async function seedRealUsers() {
   }
   if (seeded > 0) console.log(`Seeded ${seeded} new real users`);
   if (updated > 0) console.log(`Updated ${updated} existing real users (profile/role only, password preserved)`);
+
+  // Guarantee protected owner accounts are always owner / active / not-archived.
+  // They can never be reduced, disabled, archived, or deleted.
+  for (const uname of PROTECTED_OWNER_USERNAMES) {
+    await db.update(users).set({ role: "owner", active: true, archived: false }).where(eq(users.username, uname));
+  }
+  for (const ph of PROTECTED_OWNER_PHONES) {
+    await db.update(users).set({ role: "owner", active: true, archived: false }).where(eq(users.phone, ph));
+  }
 
   // NOTE: jabran's password is NOT reset here on every restart.
   // The initial password is set only on first insert (see db-seed.ts).
