@@ -275,7 +275,13 @@ export default function AttendanceMonitorPage() {
           <Input
             type="date"
             value={dateRange.from.split("T")[0]}
-            onChange={e => setDateRange(prev => ({ ...prev, from: new Date(e.target.value + "T00:00:00").toISOString() }))}
+            onChange={e => {
+              const v = e.target.value;
+              if (!v) return;
+              const d = new Date(v + "T00:00:00");
+              if (isNaN(d.getTime())) return;
+              setDateRange(prev => ({ ...prev, from: d.toISOString() }));
+            }}
             className="h-8 text-xs w-32"
             data-testid="input-filter-from"
           />
@@ -283,7 +289,13 @@ export default function AttendanceMonitorPage() {
           <Input
             type="date"
             value={dateRange.to.split("T")[0]}
-            onChange={e => setDateRange(prev => ({ ...prev, to: new Date(e.target.value + "T23:59:59").toISOString() }))}
+            onChange={e => {
+              const v = e.target.value;
+              if (!v) return;
+              const d = new Date(v + "T23:59:59");
+              if (isNaN(d.getTime())) return;
+              setDateRange(prev => ({ ...prev, to: d.toISOString() }));
+            }}
             className="h-8 text-xs w-32"
             data-testid="input-filter-to"
           />

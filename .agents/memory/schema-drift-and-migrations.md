@@ -1,0 +1,16 @@
+---
+name: Schema drift & startup migrations
+description: Why this repo syncs schema via idempotent startup migrations in server/routes.ts instead of db:push.
+---
+
+# Schema sync strategy
+
+This repo has real schema drift between `shared/schema.ts` and the actual Postgres DB: tables/enums defined in Drizzle have at times never existed in the live DB (e.g. the `fiscal_years` table + its `calendar_type`/`fiscal_year_status` enums were absent, which silently broke "save fiscal year").
+
+**Rule:** sync schema with idempotent startup migrations (raw SQL with `CREATE TABLE/TYPE IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`, repeatable backfills) placed in `server/routes.ts`, grouped by module (HR migration block, Finance migration block run before `seedChartOfAccounts`). On boot the logs print e.g. `Finance module migration completed`.
+
+**Why:** `npm run db:push` is interactive — it prompts create-vs-rename for new tables and `--force` does NOT bypass that prompt, so it cannot be relied on for unattended dev/prod sync. Startup migrations run automatically on every deploy, so production self-heals on publish without manual DB steps.
+
+**How to apply:** when adding a new table/column, (1) add it to `shared/schema.ts`, (2) apply it to dev DB directly (raw SQL via the executeSql sandbox callback), and (3) add a matching `IF NOT EXISTS` block to the relevant startup migration in routes.ts so prod gets it on deploy. Verify with a workflow restart and check the migration-completed log line.
+
+**Columns with defaults + drizzle-zod:** a NOT NULL column with `.default('')` (e.g. `employees.full_name_ar`) becomes optional in the generated insert schema, so the API can persist an empty string. If a field must be non-blank, add an explicit backend guard in the POST/PATCH route — schema validation alone won't enforce it.

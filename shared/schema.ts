@@ -88,6 +88,8 @@ export const employees = pgTable("employees", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").references(() => users.id),
   employeeNumber: text("employee_number").notNull().unique(),
+  fullNameAr: text("full_name_ar").notNull().default(""),
+  fullNameEn: text("full_name_en"),
   nationality: nationalityEnum("nationality").notNull(),
   position: text("position").notNull(),
   department: departmentEnum("department").notNull(),

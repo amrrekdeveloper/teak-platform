@@ -237,10 +237,21 @@ export default function FinanceAccountsPage() {
   const isBalanced = Math.abs(totalDebit - totalCredit) < 0.01 && totalDebit > 0;
 
   const handleSubmitEntry = () => {
-    if (!jForm.description || !jForm.date) return toast({ title: "البيانات ناقصة", variant: "destructive" });
-    if (!isBalanced) return toast({ title: "القيد غير متوازن", variant: "destructive" });
-    const validLines = lines.filter(l => l.accountCode && (parseFloat(l.debit || "0") > 0 || parseFloat(l.credit || "0") > 0));
-    createEntryMut.mutate({ ...jForm, lines: validLines });
+    if (!jForm.date) return toast({ title: "تاريخ القيد مطلوب", variant: "destructive" });
+    if (!jForm.description?.trim()) return toast({ title: "بيان القيد مطلوب", variant: "destructive" });
+    // A line is "in use" if it has any data; every in-use line must be complete.
+    const inUse = lines.filter(l => l.accountCode || parseFloat(l.debit || "0") > 0 || parseFloat(l.credit || "0") > 0);
+    for (let i = 0; i < inUse.length; i++) {
+      const l = inUse[i];
+      const debit = parseFloat(l.debit || "0");
+      const credit = parseFloat(l.credit || "0");
+      if (!l.accountCode) return toast({ title: `السطر ${i + 1}: يجب اختيار الحساب`, variant: "destructive" });
+      if (debit <= 0 && credit <= 0) return toast({ title: `السطر ${i + 1}: يجب إدخال مبلغ مدين أو دائن`, variant: "destructive" });
+      if (debit > 0 && credit > 0) return toast({ title: `السطر ${i + 1}: لا يمكن إدخال مدين ودائن معاً`, variant: "destructive" });
+    }
+    if (inUse.length < 2) return toast({ title: "يجب إدخال سطرين مكتملين على الأقل", variant: "destructive" });
+    if (!isBalanced) return toast({ title: "القيد غير متوازن — مجموع المدين يجب أن يساوي الدائن", variant: "destructive" });
+    createEntryMut.mutate({ ...jForm, lines: inUse });
   };
 
   const handleSaveOpeningBalances = () => {

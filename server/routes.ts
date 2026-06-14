@@ -2891,6 +2891,9 @@ export async function registerRoutes(
     try {
       const { insertEmployeeSchema } = await import("@shared/schema");
       const parsed = insertEmployeeSchema.parse(req.body);
+      if (!parsed.fullNameAr || !String(parsed.fullNameAr).trim()) {
+        return res.status(400).json({ message: "اسم الموظف مطلوب", messageEn: "Employee name is required" });
+      }
       const emp = await storage.createEmployee(parsed);
       res.status(201).json(emp);
     } catch (error: any) {
@@ -2902,6 +2905,9 @@ export async function registerRoutes(
 
   app.patch("/api/employees/:id", requireRole("owner", "assistant", "hr", "it"), async (req, res) => {
     try {
+      if ("fullNameAr" in req.body && (!req.body.fullNameAr || !String(req.body.fullNameAr).trim())) {
+        return res.status(400).json({ message: "اسم الموظف مطلوب", messageEn: "Employee name is required" });
+      }
       const updated = await storage.updateEmployee(parseInt(req.params.id), req.body);
       if (!updated) return res.status(404).json({ message: "الموظف غير موجود", messageEn: "Employee not found" });
       res.json(updated);
@@ -5617,6 +5623,17 @@ export async function registerRoutes(
       ALTER TABLE employees ADD COLUMN IF NOT EXISTS phone TEXT;
       ALTER TABLE employees ADD COLUMN IF NOT EXISTS email TEXT;
       ALTER TABLE employees ADD COLUMN IF NOT EXISTS documents JSONB DEFAULT '[]';
+      ALTER TABLE employees ADD COLUMN IF NOT EXISTS full_name_ar TEXT NOT NULL DEFAULT '';
+      ALTER TABLE employees ADD COLUMN IF NOT EXISTS full_name_en TEXT;
+    `);
+    // Backfill employee names from any linked user accounts (only where empty).
+    await db.execute(`
+      UPDATE employees e SET full_name_ar = u.full_name_ar
+        FROM users u WHERE e.user_id = u.id AND (e.full_name_ar IS NULL OR e.full_name_ar = '');
+    `);
+    await db.execute(`
+      UPDATE employees e SET full_name_en = u.full_name_en
+        FROM users u WHERE e.user_id = u.id AND (e.full_name_en IS NULL OR e.full_name_en = '');
     `);
     await db.execute(`
       CREATE TABLE IF NOT EXISTS job_titles (
@@ -6676,6 +6693,39 @@ export async function registerRoutes(
   // ACCOUNTING MODULE — شجرة الحسابات، القيود، التقارير المالية
   // ══════════════════════════════════════════════════════════════════════════
 
+  // ── Finance schema migration: ensure fiscal_years table exists ────────────
+  (async () => {
+    try {
+      await db.execute(`
+        DO $$ BEGIN
+          IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'fiscal_year_status') THEN
+            CREATE TYPE fiscal_year_status AS ENUM ('active', 'closed');
+          END IF;
+          IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'calendar_type') THEN
+            CREATE TYPE calendar_type AS ENUM ('gregorian', 'hijri');
+          END IF;
+        END $$;
+      `);
+      await db.execute(`
+        CREATE TABLE IF NOT EXISTS fiscal_years (
+          id SERIAL PRIMARY KEY,
+          name TEXT NOT NULL,
+          start_date DATE NOT NULL,
+          end_date DATE NOT NULL,
+          calendar_type calendar_type NOT NULL DEFAULT 'gregorian',
+          status fiscal_year_status NOT NULL DEFAULT 'active',
+          closing_entry_id INTEGER,
+          notes TEXT,
+          created_by INTEGER REFERENCES users(id),
+          created_at TIMESTAMP NOT NULL DEFAULT NOW()
+        );
+      `);
+      console.log("Finance module migration completed");
+    } catch (financeMigrationError) {
+      console.warn("Finance migration (non-fatal):", financeMigrationError instanceof Error ? financeMigrationError.message : String(financeMigrationError));
+    }
+  })();
+
   // ── Seed chart of accounts on first run ──────────────────────────────────
   storage.seedChartOfAccounts().catch(console.error);
 
@@ -6725,9 +6775,23 @@ export async function registerRoutes(
   app.post("/api/accounting/journal-entries", requireRole("owner", "assistant", "accountant"), async (req, res) => {
     try {
       const { lines, ...entryData } = req.body;
+      if (!entryData.date) return res.status(400).json({ message: "تاريخ القيد مطلوب" });
+      if (!entryData.description || !String(entryData.description).trim()) {
+        return res.status(400).json({ message: "بيان القيد مطلوب" });
+      }
       if (!lines || lines.length < 2) return res.status(400).json({ message: "يجب أن يحتوي القيد على سطرين على الأقل" });
+      // Every line must be complete: account selected + exactly one side (debit XOR credit) > 0.
+      for (let i = 0; i < lines.length; i++) {
+        const l = lines[i];
+        const debit = parseFloat(l.debit || 0);
+        const credit = parseFloat(l.credit || 0);
+        if (!l.accountCode) return res.status(400).json({ message: `السطر ${i + 1}: يجب اختيار الحساب` });
+        if (debit <= 0 && credit <= 0) return res.status(400).json({ message: `السطر ${i + 1}: يجب إدخال مبلغ مدين أو دائن` });
+        if (debit > 0 && credit > 0) return res.status(400).json({ message: `السطر ${i + 1}: لا يمكن إدخال مدين ودائن في نفس السطر` });
+      }
       const totalDebit = lines.reduce((s: number, l: any) => s + parseFloat(l.debit || 0), 0);
       const totalCredit = lines.reduce((s: number, l: any) => s + parseFloat(l.credit || 0), 0);
+      if (totalDebit <= 0) return res.status(400).json({ message: "إجمالي القيد يجب أن يكون أكبر من صفر" });
       if (Math.abs(totalDebit - totalCredit) > 0.01) {
         return res.status(400).json({ message: `القيد غير متوازن: مجموع المدين (${totalDebit.toFixed(2)}) لا يساوي مجموع الدائن (${totalCredit.toFixed(2)})` });
       }
@@ -7329,17 +7393,12 @@ export async function registerRoutes(
         return res.status(400).json({ message: `مجموع المدين (${totalDebitCheck.toFixed(2)}) لا يساوي مجموع الدائن (${totalCreditCheck.toFixed(2)}). يجب أن تكون الأرصدة الافتتاحية متوازنة.` });
       }
 
-      const { pool } = await import("./db");
-
-      // Void any existing opening balance entries
-      await pool.query(
-        `UPDATE journal_entries SET status = 'reversed' WHERE reference_type = 'opening_balance' AND status = 'posted'`
-      );
-
       const totalDebit = validLines.reduce((s, l) => s + parseFloat(l.debit || "0"), 0);
       const totalCredit = validLines.reduce((s, l) => s + parseFloat(l.credit || "0"), 0);
 
-      const entry = await storage.createJournalEntry(
+      // Atomic: void previous opening-balance entry + create the new one in one
+      // transaction so balances are never wiped without a replacement.
+      const entry = await storage.replaceOpeningBalances(
         {
           date,
           description: "أرصدة افتتاحية",

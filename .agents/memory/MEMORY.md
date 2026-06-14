@@ -1,0 +1,1 @@
+- [Schema drift & startup migrations](schema-drift-and-migrations.md) — repo syncs schema via idempotent startup migrations in routes.ts (not db:push, which is interactive); cols with defaults need explicit backend non-blank guards.

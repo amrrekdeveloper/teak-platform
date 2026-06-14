@@ -1194,15 +1194,49 @@ export class DatabaseStorage implements IStorage {
   async createJournalEntry(entry: InsertJournalEntry, lines: InsertJournalEntryLine[]): Promise<JournalEntry> {
     const totalDebit = lines.reduce((s, l) => s + parseFloat(String(l.debit || 0)), 0);
     const totalCredit = lines.reduce((s, l) => s + parseFloat(String(l.credit || 0)), 0);
-    const [created] = await db.insert(journalEntries).values({
-      ...entry,
-      totalDebit: totalDebit.toFixed(2),
-      totalCredit: totalCredit.toFixed(2),
-    }).returning();
-    if (lines.length > 0) {
-      await db.insert(journalEntryLines).values(lines.map(l => ({ ...l, entryId: created.id })));
-    }
-    return created;
+    // Atomic: header + lines are written in a single transaction so a line failure
+    // never leaves a "ghost" header behind (root cause of "القيد لا يُحفظ").
+    return await db.transaction(async (tx) => {
+      const [created] = await tx.insert(journalEntries).values({
+        ...entry,
+        totalDebit: totalDebit.toFixed(2),
+        totalCredit: totalCredit.toFixed(2),
+      }).returning();
+      if (lines.length > 0) {
+        await tx.insert(journalEntryLines).values(lines.map(l => ({ ...l, entryId: created.id })));
+      }
+      return created;
+    });
+  }
+
+  // Atomic replacement of the opening-balance entry: void existing + create new
+  // in one transaction so a failure never wipes balances without a replacement.
+  async replaceOpeningBalances(
+    entry: InsertJournalEntry,
+    lines: InsertJournalEntryLine[],
+  ): Promise<JournalEntry> {
+    const totalDebit = lines.reduce((s, l) => s + parseFloat(String(l.debit || 0)), 0);
+    const totalCredit = lines.reduce((s, l) => s + parseFloat(String(l.credit || 0)), 0);
+    return await db.transaction(async (tx) => {
+      await tx
+        .update(journalEntries)
+        .set({ status: "reversed" })
+        .where(
+          and(
+            eq(journalEntries.referenceType, "opening_balance"),
+            eq(journalEntries.status, "posted"),
+          ),
+        );
+      const [created] = await tx.insert(journalEntries).values({
+        ...entry,
+        totalDebit: totalDebit.toFixed(2),
+        totalCredit: totalCredit.toFixed(2),
+      }).returning();
+      if (lines.length > 0) {
+        await tx.insert(journalEntryLines).values(lines.map(l => ({ ...l, entryId: created.id })));
+      }
+      return created;
+    });
   }
 
   async updateJournalEntry(id: number, data: Partial<InsertJournalEntry>): Promise<JournalEntry | undefined> {

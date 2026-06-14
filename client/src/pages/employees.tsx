@@ -97,6 +97,8 @@ function computeServiceDuration(contractStart: string | null, t: (ar: string, en
 
 interface EmployeeForm {
   employeeNumber: string;
+  fullNameAr: string;
+  fullNameEn: string;
   nationality: string;
   position: string;
   department: string;
@@ -117,6 +119,8 @@ interface EmployeeForm {
 
 const emptyForm: EmployeeForm = {
   employeeNumber: "",
+  fullNameAr: "",
+  fullNameEn: "",
   nationality: "saudi",
   position: "",
   department: "production",
@@ -173,6 +177,16 @@ function FormFields({ data, onChange, users, jobTitlesList }: {
   const { t } = useLanguage();
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div className="space-y-1">
+        <Label>{t("اسم الموظف (عربي)", "Employee Name (Arabic)")} *</Label>
+        <Input value={data.fullNameAr} onChange={e => onChange({ ...data, fullNameAr: e.target.value })}
+          placeholder={t("مثال: محمد عبدالله", "e.g. Mohammed Abdullah")} data-testid="input-emp-name-ar" />
+      </div>
+      <div className="space-y-1">
+        <Label>{t("اسم الموظف (إنجليزي)", "Employee Name (English)")}</Label>
+        <Input value={data.fullNameEn} onChange={e => onChange({ ...data, fullNameEn: e.target.value })}
+          placeholder="e.g. Mohammed Abdullah" data-testid="input-emp-name-en" dir="ltr" className="text-start" />
+      </div>
       <div className="space-y-1">
         <Label>{t("رقم الموظف", "Employee #")} *</Label>
         <Input value={data.employeeNumber} onChange={e => onChange({ ...data, employeeNumber: e.target.value })}
@@ -312,8 +326,8 @@ function SortIcon({ col, sortKey, sortDir }: { col: SortKey; sortKey: SortKey; s
 
 function exportEmployeePDF(emp: Employee, users: any[], t: (ar: string, en: string) => string) {
   const user = users.find((u: any) => u.id === emp.userId);
-  const nameAr = user?.fullNameAr || "—";
-  const nameEn = user?.fullNameEn || "—";
+  const nameAr = (emp as any).fullNameAr || user?.fullNameAr || "—";
+  const nameEn = (emp as any).fullNameEn || user?.fullNameEn || "—";
   const dept = departmentLabels[emp.department] || { ar: emp.department, en: emp.department };
   const status = statusConfig[emp.status] || statusConfig.active;
   const nat = nationalityLabels[emp.nationality] || { ar: emp.nationality, en: emp.nationality };
@@ -922,6 +936,8 @@ function EmployeeDetailDialog({ emp, users, onClose }: { emp: Employee; users: a
   const { toast } = useToast();
   const [editForm, setEditForm] = useState<EmployeeForm>({
     employeeNumber: emp.employeeNumber,
+    fullNameAr: (emp as any).fullNameAr || "",
+    fullNameEn: (emp as any).fullNameEn || "",
     nationality: emp.nationality,
     position: emp.position,
     department: emp.department,
@@ -961,10 +977,12 @@ function EmployeeDetailDialog({ emp, users, onClose }: { emp: Employee; users: a
     onError: () => toast({ title: t("خطأ", "Error"), variant: "destructive" }),
   });
 
-  const isFormValid = editForm.employeeNumber.trim() && editForm.position.trim() && editForm.monthlySalary && editForm.contractStart.length === 10;
+  const isFormValid = editForm.fullNameAr.trim() && editForm.employeeNumber.trim() && editForm.position.trim() && editForm.monthlySalary && editForm.contractStart.length === 10;
 
   const handleUpdate = () => {
     const data: any = {
+      fullNameAr: editForm.fullNameAr.trim(),
+      fullNameEn: editForm.fullNameEn?.trim() || null,
       position: editForm.position.trim(),
       department: editForm.department,
       monthlySalary: editForm.monthlySalary,
@@ -1165,10 +1183,13 @@ export default function EmployeesPage() {
     },
   });
 
-  const getUserName = (userId: number | null) => {
-    if (!userId) return "—";
-    const u = users.find((u: any) => u.id === userId);
-    return u ? t(u.fullNameAr, u.fullNameEn) : "—";
+  const getEmployeeName = (emp: any) => {
+    if (emp.fullNameAr) return t(emp.fullNameAr, emp.fullNameEn || emp.fullNameAr);
+    if (emp.userId) {
+      const u = users.find((u: any) => u.id === emp.userId);
+      if (u) return t(u.fullNameAr, u.fullNameEn);
+    }
+    return "—";
   };
 
   const handleSort = (key: SortKey) => {
@@ -1194,7 +1215,7 @@ export default function EmployeesPage() {
         e.employeeNumber?.toLowerCase().includes(q) ||
         e.position?.toLowerCase().includes(q) ||
         (e.iqamaNumber && e.iqamaNumber.includes(q)) ||
-        getUserName(e.userId).toLowerCase().includes(q) ||
+        getEmployeeName(e).toLowerCase().includes(q) ||
         ((e as any).phone && (e as any).phone.includes(q)) ||
         ((e as any).email && (e as any).email.toLowerCase().includes(q))
       )
@@ -1220,11 +1241,13 @@ export default function EmployeesPage() {
   const totalSalary = activeEmps.reduce((s, e) => s + parseFloat(e.monthlySalary?.toString() || "0"), 0);
 
   const isFormValid = (f: EmployeeForm) =>
-    f.employeeNumber.trim() && f.position.trim() && f.monthlySalary && f.contractStart.length === 10;
+    f.fullNameAr.trim() && f.employeeNumber.trim() && f.position.trim() && f.monthlySalary && f.contractStart.length === 10;
 
   const handleCreate = () => {
     const data: any = {
       employeeNumber: form.employeeNumber.trim(),
+      fullNameAr: form.fullNameAr.trim(),
+      fullNameEn: form.fullNameEn?.trim() || null,
       nationality: form.nationality,
       position: form.position.trim(),
       department: form.department,
@@ -1372,7 +1395,7 @@ export default function EmployeesPage() {
                 const dept = departmentLabels[emp.department] || { ar: emp.department, en: emp.department };
                 const status = statusConfig[emp.status] || statusConfig.active;
                 const salary = parseFloat(emp.monthlySalary?.toString() || "0");
-                const userName = getUserName(emp.userId);
+                const userName = getEmployeeName(emp);
                 const serviceDuration = computeServiceDuration(emp.contractStart, t);
 
                 return (
