@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef } from "react";
+import { Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLanguage } from "@/components/language-provider";
 import { useAuth } from "@/hooks/use-auth";
@@ -19,7 +20,7 @@ import {
   Loader2, Plus, Search, UserCog, Pencil, DollarSign,
   Users, UserCheck, ChevronUp, ChevronDown, ChevronsUpDown,
   FileText, Upload, Trash2, AlertTriangle, Download, Lock, UserX, UserCheck2, ClipboardList, X,
-  Calculator, Package, CheckCircle2, RotateCcw
+  Calculator, Package, CheckCircle2, RotateCcw, Eye
 } from "lucide-react";
 
 const departmentLabels: Record<string, { ar: string; en: string }> = {
@@ -1427,6 +1428,12 @@ export default function EmployeesPage() {
                     </td>
                     <td className="px-3 py-3 text-center">
                       <div className="flex items-center justify-center gap-1">
+                        <Button size="icon" variant="ghost" className="h-7 w-7" asChild
+                          data-testid={`button-view-employee-${emp.id}`}>
+                          <Link href={`/employees/${emp.id}`}>
+                            <Eye className="w-3.5 h-3.5" />
+                          </Link>
+                        </Button>
                         <Button size="icon" variant="ghost" className="h-7 w-7"
                           onClick={() => setSelectedEmployee(emp)} data-testid={`button-edit-employee-${emp.id}`}>
                           <Pencil className="w-3.5 h-3.5" />
