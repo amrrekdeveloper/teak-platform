@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Plus, Package, AlertTriangle, ArrowUpCircle, ArrowDownCircle, Search, Pencil, Trash2, AlertCircle } from "lucide-react";
+import { Loader2, Plus, Package, AlertTriangle, ArrowUpCircle, ArrowDownCircle, Search, Pencil, Trash2, AlertCircle, ImageIcon } from "lucide-react";
 
 const unitLabels: Record<string, { ar: string; en: string }> = {
   piece: { ar: "قطعة", en: "Piece" },
@@ -32,11 +32,29 @@ export default function InventoryPage() {
   const [deleteItem, setDeleteItem] = useState<InventoryItem | null>(null);
 
   const [newItem, setNewItem] = useState({
-    materialNameAr: "", materialNameEn: "", sku: "", category: "",
+    materialNameAr: "", materialNameEn: "", sku: "", category: "", color: "", imageUrl: "",
     unit: "piece", quantity: "0", minQuantity: "0", costPerUnit: "0", location: "",
   });
 
   const [txData, setTxData] = useState({ type: "stock_in", quantity: "", reason: "" });
+  const [uploading, setUploading] = useState(false);
+
+  const uploadImage = async (file: File): Promise<string | null> => {
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/inventory/upload-image", { method: "POST", body: formData, credentials: "include" });
+      if (!res.ok) throw new Error("upload failed");
+      const data = await res.json();
+      return data.url as string;
+    } catch {
+      toast({ title: t("فشل رفع الصورة", "Image upload failed"), variant: "destructive" });
+      return null;
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const { data: items = [], isLoading } = useQuery<InventoryItem[]>({
     queryKey: ["/api/inventory"],
@@ -47,7 +65,7 @@ export default function InventoryPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/inventory"] });
       setCreateOpen(false);
-      setNewItem({ materialNameAr: "", materialNameEn: "", sku: "", category: "", unit: "piece", quantity: "0", minQuantity: "0", costPerUnit: "0", location: "" });
+      setNewItem({ materialNameAr: "", materialNameEn: "", sku: "", category: "", color: "", imageUrl: "", unit: "piece", quantity: "0", minQuantity: "0", costPerUnit: "0", location: "" });
       toast({ title: t("تمت إضافة المادة بنجاح", "Item added successfully") });
     },
   });
@@ -148,9 +166,35 @@ export default function InventoryPage() {
                 <Label>{t("التكلفة/وحدة", "Cost/Unit")}</Label>
                 <Input type="number" value={newItem.costPerUnit} onChange={e => setNewItem({ ...newItem, costPerUnit: e.target.value })} data-testid="input-cost" />
               </div>
+              <div className="space-y-1">
+                <Label>{t("اللون", "Color")}</Label>
+                <Input value={newItem.color} onChange={e => setNewItem({ ...newItem, color: e.target.value })} placeholder={t("بني، أبيض، رمادي...", "Brown, white, gray...")} data-testid="input-color" />
+              </div>
               <div className="col-span-2 space-y-1">
                 <Label>{t("الموقع", "Location")}</Label>
                 <Input value={newItem.location} onChange={e => setNewItem({ ...newItem, location: e.target.value })} data-testid="input-location" />
+              </div>
+              <div className="col-span-2 space-y-1">
+                <Label>{t("صورة المادة", "Material Image")}</Label>
+                <div className="flex items-center gap-3">
+                  {newItem.imageUrl ? (
+                    <img src={newItem.imageUrl} alt="" className="w-16 h-16 rounded-md object-cover border" data-testid="img-new-preview" />
+                  ) : (
+                    <div className="w-16 h-16 rounded-md border border-dashed flex items-center justify-center text-muted-foreground"><ImageIcon className="w-5 h-5" /></div>
+                  )}
+                  <Input
+                    type="file"
+                    accept="image/*"
+                    className="flex-1"
+                    disabled={uploading}
+                    onChange={async e => {
+                      const file = e.target.files?.[0];
+                      if (file) { const url = await uploadImage(file); if (url) setNewItem(prev => ({ ...prev, imageUrl: url })); }
+                    }}
+                    data-testid="input-image-upload"
+                  />
+                  {uploading && <Loader2 className="w-4 h-4 animate-spin" />}
+                </div>
               </div>
             </div>
             <Button
@@ -221,9 +265,19 @@ export default function InventoryPage() {
               <Card key={item.id} className={`${isLow ? "border-orange-400 dark:border-orange-600" : ""}`} data-testid={`card-inventory-${item.id}`}>
                 <CardContent className="p-4">
                   <div className="flex items-start justify-between mb-3">
-                    <div>
-                      <h3 className="font-semibold">{t(item.materialNameAr, item.materialNameEn)}</h3>
-                      {item.sku && <p className="text-xs text-muted-foreground font-mono">{item.sku}</p>}
+                    <div className="flex items-start gap-3 min-w-0">
+                      {item.imageUrl ? (
+                        <img src={item.imageUrl} alt="" className="w-12 h-12 rounded-md object-cover border flex-shrink-0" data-testid={`img-inventory-${item.id}`} />
+                      ) : (
+                        <div className="w-12 h-12 rounded-md border border-dashed flex items-center justify-center text-muted-foreground flex-shrink-0"><Package className="w-5 h-5" /></div>
+                      )}
+                      <div className="min-w-0">
+                        <h3 className="font-semibold truncate">{t(item.materialNameAr, item.materialNameEn)}</h3>
+                        {item.sku && <p className="text-xs text-muted-foreground font-mono truncate">{item.sku}</p>}
+                        {item.color && (
+                          <p className="text-xs text-muted-foreground" data-testid={`text-color-${item.id}`}>{t("اللون", "Color")}: {item.color}</p>
+                        )}
+                      </div>
                     </div>
                     <div className="flex items-center gap-1">
                       <Button
@@ -379,13 +433,39 @@ export default function InventoryPage() {
                 <Label>{t("التكلفة/وحدة", "Cost/Unit")}</Label>
                 <Input type="number" value={editItem.costPerUnit?.toString() || "0"} onChange={e => setEditItem({ ...editItem, costPerUnit: e.target.value })} />
               </div>
+              <div className="space-y-1">
+                <Label>{t("اللون", "Color")}</Label>
+                <Input value={editItem.color || ""} onChange={e => setEditItem({ ...editItem, color: e.target.value })} placeholder={t("بني، أبيض، رمادي...", "Brown, white, gray...")} data-testid="input-edit-color" />
+              </div>
               <div className="col-span-2 space-y-1">
                 <Label>{t("الموقع", "Location")}</Label>
                 <Input value={editItem.location || ""} onChange={e => setEditItem({ ...editItem, location: e.target.value })} />
               </div>
+              <div className="col-span-2 space-y-1">
+                <Label>{t("صورة المادة", "Material Image")}</Label>
+                <div className="flex items-center gap-3">
+                  {editItem.imageUrl ? (
+                    <img src={editItem.imageUrl} alt="" className="w-16 h-16 rounded-md object-cover border" data-testid="img-edit-preview" />
+                  ) : (
+                    <div className="w-16 h-16 rounded-md border border-dashed flex items-center justify-center text-muted-foreground"><ImageIcon className="w-5 h-5" /></div>
+                  )}
+                  <Input
+                    type="file"
+                    accept="image/*"
+                    className="flex-1"
+                    disabled={uploading}
+                    onChange={async e => {
+                      const file = e.target.files?.[0];
+                      if (file) { const url = await uploadImage(file); if (url) setEditItem(prev => prev ? { ...prev, imageUrl: url } : prev); }
+                    }}
+                    data-testid="input-edit-image-upload"
+                  />
+                  {uploading && <Loader2 className="w-4 h-4 animate-spin" />}
+                </div>
+              </div>
               <Button
                 className="col-span-2"
-                onClick={() => updateMutation.mutate({ id: editItem.id, data: { materialNameAr: editItem.materialNameAr, materialNameEn: editItem.materialNameEn, sku: editItem.sku, category: editItem.category, minQuantity: editItem.minQuantity?.toString(), costPerUnit: editItem.costPerUnit?.toString(), location: editItem.location } })}
+                onClick={() => updateMutation.mutate({ id: editItem.id, data: { materialNameAr: editItem.materialNameAr, materialNameEn: editItem.materialNameEn, sku: editItem.sku, category: editItem.category, color: editItem.color, imageUrl: editItem.imageUrl, minQuantity: editItem.minQuantity?.toString(), costPerUnit: editItem.costPerUnit?.toString(), location: editItem.location } })}
                 disabled={updateMutation.isPending}
                 data-testid="button-save-edit"
               >

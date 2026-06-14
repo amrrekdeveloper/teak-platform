@@ -22,6 +22,7 @@ const SURVEY_FILES_FOLDER = "survey-files";
 const DELIVERY_PHOTOS_FOLDER = "delivery-photos";
 const HR_DOCS_FOLDER = "hr-documents";
 const FINANCE_DOCS_FOLDER = "finance-attachments";
+const INVENTORY_IMAGES_FOLDER = "inventory-images";
 
 const surveyFileStorage = multer.memoryStorage();
 
@@ -6742,6 +6743,17 @@ export async function registerRoutes(
     }
   })();
 
+  // Idempotent inventory module migration (applies to production automatically on deploy)
+  (async () => {
+    try {
+      await db.execute(`ALTER TABLE inventory ADD COLUMN IF NOT EXISTS color TEXT`);
+      await db.execute(`ALTER TABLE inventory ADD COLUMN IF NOT EXISTS image_url TEXT`);
+      console.log("Inventory module migration completed");
+    } catch (inventoryMigrationError) {
+      console.warn("Inventory migration (non-fatal):", inventoryMigrationError instanceof Error ? inventoryMigrationError.message : String(inventoryMigrationError));
+    }
+  })();
+
   // ── Seed chart of accounts on first run ──────────────────────────────────
   storage.seedChartOfAccounts().catch(console.error);
 
@@ -6937,6 +6949,38 @@ export async function registerRoutes(
       if (!served) return res.status(404).json({ message: "الملف غير موجود" });
     } catch (error) {
       if (!res.headersSent) res.status(500).json({ message: "حدث خطأ في جلب الملف" });
+    }
+  });
+
+  // ── Inventory item images (Object Storage) ──────────────────────────────
+  const inventoryImageUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 10 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+      const allowed = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+      if (allowed.includes(file.mimetype)) cb(null, true);
+      else cb(new Error("Only JPEG, PNG, and WebP images are allowed"));
+    },
+  });
+
+  app.post("/api/inventory/upload-image", requireRole("owner", "assistant", "warehouse"), inventoryImageUpload.single("file"), async (req: any, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: "لم يتم رفع أي صورة" });
+      const filename = makeSafeFilename(req.file.originalname);
+      await saveObjectFile(INVENTORY_IMAGES_FOLDER, filename, req.file.buffer, req.file.mimetype);
+      res.json({ url: `/uploads/inventory-images/${filename}`, name: req.file.originalname, mime: req.file.mimetype });
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ في رفع الصورة" });
+    }
+  });
+
+  app.get("/uploads/inventory-images/:filename", requireAuth, async (req, res) => {
+    try {
+      const filename = req.params.filename.replace(/[^a-zA-Z0-9._-]/g, "");
+      const served = await streamObjectFile(INVENTORY_IMAGES_FOLDER, filename, res);
+      if (!served) return res.status(404).json({ message: "الصورة غير موجودة" });
+    } catch (error) {
+      if (!res.headersSent) res.status(500).json({ message: "حدث خطأ في جلب الصورة" });
     }
   });
 

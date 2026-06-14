@@ -595,6 +595,8 @@ export const inventory = pgTable("inventory", {
   materialNameEn: text("material_name_en").notNull(),
   sku: text("sku"),
   category: text("category"),
+  color: text("color"),
+  imageUrl: text("image_url"),
   unit: unitEnum("unit").notNull().default("piece"),
   quantity: decimal("quantity", { precision: 12, scale: 2 }).notNull().default("0"),
   minQuantity: decimal("min_quantity", { precision: 12, scale: 2 }).notNull().default("0"),
