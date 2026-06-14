@@ -649,6 +649,7 @@ export const suppliers = pgTable("suppliers", {
   materials: text("materials"),
   taxNumber: text("tax_number"),
   notes: text("notes"),
+  approvalStatus: text("approval_status").notNull().default("approved"),
   active: boolean("active").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });

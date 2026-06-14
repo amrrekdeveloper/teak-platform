@@ -2834,7 +2834,7 @@ export async function registerRoutes(
     try {
       const { insertSupplierSchema } = await import("@shared/schema");
       const parsed = insertSupplierSchema.parse(req.body);
-      const supplier = await storage.createSupplier(parsed);
+      const supplier = await storage.createSupplier({ ...parsed, approvalStatus: "pending" });
       res.status(201).json(supplier);
     } catch (error: any) {
       if (error?.name === "ZodError") return res.status(400).json({ message: "بيانات غير صالحة", messageEn: "Invalid data", errors: error.errors });
@@ -2844,11 +2844,26 @@ export async function registerRoutes(
 
   app.patch("/api/suppliers/:id", requireRole("owner", "assistant", "purchasing"), async (req, res) => {
     try {
-      const updated = await storage.updateSupplier(parseInt(req.params.id), req.body);
+      const { approvalStatus, ...rest } = req.body || {};
+      const updated = await storage.updateSupplier(parseInt(req.params.id), rest);
       if (!updated) return res.status(404).json({ message: "المورد غير موجود", messageEn: "Supplier not found" });
       res.json(updated);
     } catch (error) {
       res.status(500).json({ message: "حدث خطأ في تحديث المورد", messageEn: "Error updating supplier" });
+    }
+  });
+
+  app.patch("/api/suppliers/:id/approval", requireRole("owner", "assistant"), async (req, res) => {
+    try {
+      const { approvalStatus } = req.body || {};
+      if (!["approved", "rejected", "pending"].includes(approvalStatus)) {
+        return res.status(400).json({ message: "حالة غير صالحة", messageEn: "Invalid approval status" });
+      }
+      const updated = await storage.updateSupplier(parseInt(req.params.id), { approvalStatus });
+      if (!updated) return res.status(404).json({ message: "المورد غير موجود", messageEn: "Supplier not found" });
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ في تحديث حالة المورد", messageEn: "Error updating supplier approval" });
     }
   });
 
@@ -2908,6 +2923,13 @@ export async function registerRoutes(
 
   app.post("/api/purchase-orders", requireRole("owner", "assistant", "purchasing"), async (req, res) => {
     try {
+      if (req.body?.supplierId) {
+        const supplier = await storage.getSupplier(parseInt(req.body.supplierId));
+        if (!supplier) return res.status(404).json({ message: "المورد غير موجود", messageEn: "Supplier not found" });
+        if (supplier.approvalStatus !== "approved") {
+          return res.status(400).json({ message: "لا يمكن إنشاء أمر شراء لمورد غير معتمد", messageEn: "Cannot create a purchase order for an unapproved supplier" });
+        }
+      }
       const po = await storage.createPurchaseOrder({ ...req.body, createdBy: req.session.userId });
       res.status(201).json(po);
     } catch (error) {
@@ -2920,6 +2942,13 @@ export async function registerRoutes(
       const poId = parseInt(req.params.id);
       const data = { ...req.body };
       if (data.status === "approved") data.approvedBy = req.session.userId;
+      if (data.supplierId) {
+        const supplier = await storage.getSupplier(parseInt(data.supplierId));
+        if (!supplier) return res.status(404).json({ message: "المورد غير موجود", messageEn: "Supplier not found" });
+        if (supplier.approvalStatus !== "approved") {
+          return res.status(400).json({ message: "لا يمكن ربط أمر الشراء بمورد غير معتمد", messageEn: "Cannot assign an unapproved supplier to a purchase order" });
+        }
+      }
       const existingPO = await storage.getPurchaseOrder(poId);
       const updated = await storage.updatePurchaseOrder(poId, data);
       if (!updated) return res.status(404).json({ message: "أمر الشراء غير موجود", messageEn: "Purchase order not found" });
@@ -6903,6 +6932,7 @@ export async function registerRoutes(
       await db.execute(`ALTER TABLE inventory ADD COLUMN IF NOT EXISTS image_url TEXT`);
       await db.execute(`ALTER TABLE inventory ADD COLUMN IF NOT EXISTS warehouse_id INTEGER`);
       await db.execute(`ALTER TABLE inventory_transactions ADD COLUMN IF NOT EXISTS contract_id INTEGER`);
+      await db.execute(`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS approval_status TEXT NOT NULL DEFAULT 'approved'`);
       await db.execute(`
         CREATE TABLE IF NOT EXISTS warehouses (
           id SERIAL PRIMARY KEY,

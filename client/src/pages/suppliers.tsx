@@ -1,20 +1,24 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLanguage } from "@/components/language-provider";
+import { useAuth } from "@/hooks/use-auth";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Supplier } from "@shared/schema";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, Plus, Search, Building2, Phone, Mail, MapPin, Pencil } from "lucide-react";
+import { Loader2, Plus, Search, Building2, Phone, Mail, MapPin, Pencil, CheckCircle2, XCircle, Clock } from "lucide-react";
 
 export default function SuppliersPage() {
   const { t } = useLanguage();
+  const { user } = useAuth();
   const { toast } = useToast();
+  const canApprove = user?.role === "owner" || user?.role === "assistant";
   const [search, setSearch] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [editSupplier, setEditSupplier] = useState<Supplier | null>(null);
@@ -44,6 +48,21 @@ export default function SuppliersPage() {
       toast({ title: t("تم تحديث المورد", "Supplier updated") });
     },
   });
+
+  const approvalMutation = useMutation({
+    mutationFn: ({ id, approvalStatus }: { id: number; approvalStatus: string }) =>
+      apiRequest("PATCH", `/api/suppliers/${id}/approval`, { approvalStatus }),
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/suppliers"] });
+      toast({ title: vars.approvalStatus === "approved" ? t("تم اعتماد المورد", "Supplier approved") : t("تم رفض المورد", "Supplier rejected") });
+    },
+  });
+
+  const approvalBadge = (status: string) => {
+    if (status === "approved") return <Badge variant="outline" className="gap-1 border-green-500 text-green-600 dark:text-green-400"><CheckCircle2 className="w-3 h-3" />{t("معتمد", "Approved")}</Badge>;
+    if (status === "rejected") return <Badge variant="outline" className="gap-1 border-red-500 text-red-600 dark:text-red-400"><XCircle className="w-3 h-3" />{t("مرفوض", "Rejected")}</Badge>;
+    return <Badge variant="outline" className="gap-1 border-amber-500 text-amber-600 dark:text-amber-400"><Clock className="w-3 h-3" />{t("بانتظار الاعتماد", "Pending")}</Badge>;
+  };
 
   const filtered = suppliers.filter(s =>
     s.name.includes(search) || (s.contactPerson && s.contactPerson.includes(search)) ||
@@ -137,7 +156,7 @@ export default function SuppliersPage() {
           {filtered.map(supplier => (
             <Card key={supplier.id} className="hover:shadow-md transition-shadow" data-testid={`card-supplier-${supplier.id}`}>
               <CardContent className="p-4">
-                <div className="flex items-start justify-between mb-3">
+                <div className="flex items-start justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <Building2 className="w-5 h-5 text-primary" />
                     <h3 className="font-semibold">{supplier.name}</h3>
@@ -153,6 +172,21 @@ export default function SuppliersPage() {
                   >
                     <Pencil className="w-3.5 h-3.5" />
                   </Button>
+                </div>
+                <div className="flex items-center justify-between gap-2 mb-3" data-testid={`status-supplier-approval-${supplier.id}`}>
+                  {approvalBadge((supplier as any).approvalStatus || "approved")}
+                  {canApprove && (supplier as any).approvalStatus !== "approved" && (
+                    <div className="flex items-center gap-1">
+                      <Button size="sm" variant="outline" className="h-7 px-2 text-green-600 dark:text-green-400 border-green-500" disabled={approvalMutation.isPending} onClick={() => approvalMutation.mutate({ id: supplier.id, approvalStatus: "approved" })} data-testid={`button-approve-supplier-${supplier.id}`}>
+                        <CheckCircle2 className="w-3.5 h-3.5 me-1" />{t("اعتماد", "Approve")}
+                      </Button>
+                      {(supplier as any).approvalStatus !== "rejected" && (
+                        <Button size="sm" variant="outline" className="h-7 px-2 text-red-600 dark:text-red-400 border-red-500" disabled={approvalMutation.isPending} onClick={() => approvalMutation.mutate({ id: supplier.id, approvalStatus: "rejected" })} data-testid={`button-reject-supplier-${supplier.id}`}>
+                          <XCircle className="w-3.5 h-3.5" />
+                        </Button>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div className="space-y-1.5 text-sm">
                   {supplier.contactPerson && (

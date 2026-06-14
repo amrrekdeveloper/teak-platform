@@ -130,7 +130,7 @@ export default function PurchasesPage() {
                 <Select value={selectedSupplier} onValueChange={setSelectedSupplier}>
                   <SelectTrigger data-testid="select-po-supplier"><SelectValue placeholder={t("اختر المورد", "Select supplier")} /></SelectTrigger>
                   <SelectContent>
-                    {suppliers.map(s => (
+                    {suppliers.filter(s => ((s as any).approvalStatus ?? "approved") === "approved").map(s => (
                       <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>
                     ))}
                   </SelectContent>
