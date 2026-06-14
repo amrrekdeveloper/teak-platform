@@ -360,13 +360,16 @@ export default function AttendanceZonesMap() {
         </div>
       ) : (
         <div
-          ref={mapRef}
-          className="w-full rounded-xl border overflow-hidden bg-muted/20"
+          className="relative w-full rounded-xl border overflow-hidden bg-muted/20"
           style={{ height: "440px" }}
-          data-testid="map-zones"
         >
+          <div
+            ref={mapRef}
+            className="absolute inset-0 w-full h-full"
+            data-testid="map-zones"
+          />
           {!mapLoaded && (
-            <div className="w-full h-full flex items-center justify-center text-muted-foreground text-sm animate-pulse">
+            <div className="absolute inset-0 flex items-center justify-center text-muted-foreground text-sm animate-pulse bg-muted/20 pointer-events-none">
               جاري تحميل الخريطة...
             </div>
           )}

@@ -2,3 +2,4 @@
 - [Persistent file storage policy](persistent-file-storage.md) — all user uploads must go to Object Storage, never local disk (Replit FS is ephemeral); keep RBAC, roll back orphans on DB failure.
 - [Attendance location/zone model](attendance-location-model.md) — employee home-location is free text, record locationName=matched zone nameAr; monitor filter must be client-side union, not server locationName. employeePin lives on users.
 - [Financial write ordering & idempotency](financial-write-ordering.md) — money endpoints: post journal (with reference-dedup) BEFORE status flip; flip via conditional WHERE status update → 409 on race; no double-pay/no orphan ledger.
+- [React + third-party DOM libs](react-thirdparty-dom.md) — give maps/charts/editors a dedicated empty container; never put React conditional children inside it or you get "removeChild not a child" crashes (mislabeled "Invalid hook call").
