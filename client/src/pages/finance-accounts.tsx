@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { AccountCombobox } from "@/components/account-combobox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Trash2, Edit2, BookOpen, FileText, ChevronLeft, AlertCircle, CheckCircle2, DollarSign, ExternalLink, Printer } from "lucide-react";
@@ -532,20 +533,13 @@ export default function FinanceAccountsPage() {
                         {obLines.map((line, i) => (
                           <tr key={i}>
                             <td className="px-1 py-1">
-                              <Select value={line.accountCode || "none"} onValueChange={v => {
-                                const acc = accountMap.get(v);
-                                setObLines(ls => ls.map((l, j) => j === i ? { ...l, accountCode: v === "none" ? "" : v, accountNameAr: acc?.nameAr || "" } : l));
-                              }}>
-                                <SelectTrigger className="h-7 text-xs font-mono" data-testid={`select-ob-account-${i}`}>
-                                  <SelectValue placeholder={t("اختر", "Select")} />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="none">{t("اختر حساباً", "Select account")}</SelectItem>
-                                  {(accounts as any[]).map((a: any) => (
-                                    <SelectItem key={a.code} value={a.code}>{a.code} - {a.nameAr}</SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
+                              <AccountCombobox
+                                accounts={accounts as any[]}
+                                value={line.accountCode}
+                                onChange={(code, acc) => setObLines(ls => ls.map((l, j) => j === i ? { ...l, accountCode: code, accountNameAr: acc?.nameAr || "" } : l))}
+                                placeholder={t("اختر", "Select")}
+                                testId={`select-ob-account-${i}`}
+                              />
                             </td>
                             <td className="px-1 py-1 text-xs text-muted-foreground">{line.accountNameAr}</td>
                             <td className="px-1 py-1">
@@ -698,20 +692,13 @@ export default function FinanceAccountsPage() {
                     {lines.map((line, i) => (
                       <tr key={i}>
                         <td className="px-1 py-1">
-                          <Select value={line.accountCode || "none"} onValueChange={v => {
-                            const acc = accountMap.get(v);
-                            setLines(ls => ls.map((l, j) => j === i ? { ...l, accountCode: v === "none" ? "" : v, accountNameAr: acc?.nameAr || "" } : l));
-                          }}>
-                            <SelectTrigger className="h-7 text-xs font-mono" data-testid={`select-line-account-${i}`}>
-                              <SelectValue placeholder="اختر" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="none">اختر حساباً</SelectItem>
-                              {(accounts as any[]).map((a: any) => (
-                                <SelectItem key={a.code} value={a.code}>{a.code} - {a.nameAr}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                          <AccountCombobox
+                            accounts={accounts as any[]}
+                            value={line.accountCode}
+                            onChange={(code, acc) => setLines(ls => ls.map((l, j) => j === i ? { ...l, accountCode: code, accountNameAr: acc?.nameAr || "" } : l))}
+                            placeholder={t("اختر", "Select")}
+                            testId={`select-line-account-${i}`}
+                          />
                         </td>
                         <td className="px-1 py-1 text-xs text-muted-foreground">{line.accountNameAr}</td>
                         <td className="px-1 py-1">

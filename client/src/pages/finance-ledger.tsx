@@ -5,6 +5,7 @@ import { FinanceLayout } from "@/components/finance-layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { AccountCombobox } from "@/components/account-combobox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { BookText, Printer } from "lucide-react";
@@ -57,17 +58,14 @@ export default function FinanceLedgerPage() {
             <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
               <div className="md:col-span-2 space-y-1">
                 <Label className="text-xs">{t("الحساب", "Account")} *</Label>
-                <Select value={accountCode || "none"} onValueChange={v => setAccountCode(v === "none" ? "" : v)}>
-                  <SelectTrigger data-testid="select-ledger-account">
-                    <SelectValue placeholder={t("اختر الحساب", "Select account")} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">{t("اختر حساباً", "Select account")}</SelectItem>
-                    {(accounts as any[]).map((a: any) => (
-                      <SelectItem key={a.code} value={a.code}>{a.code} - {a.nameAr}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <AccountCombobox
+                  accounts={accounts as any[]}
+                  value={accountCode}
+                  onChange={(code) => setAccountCode(code)}
+                  placeholder={t("اختر الحساب", "Select account")}
+                  triggerClassName="h-9 text-sm"
+                  testId="select-ledger-account"
+                />
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">{t("من", "From")}</Label>
