@@ -29,6 +29,7 @@ import {
   jobTitles, type JobTitle, type InsertJobTitle,
   hrAuditLog, type HrAuditLog, type InsertHrAuditLog,
   employeeAssets, type EmployeeAsset, type InsertEmployeeAsset,
+  payrollRecords, type PayrollRecord, type InsertPayrollRecord,
   designAssignments, type DesignAssignment, type InsertDesignAssignment,
   warranties, type Warranty, type InsertWarranty,
   adekoProducts, type AdekoProduct, type InsertAdekoProduct,
@@ -175,6 +176,12 @@ export interface IStorage {
   getEmployeeAssets(employeeId: number): Promise<EmployeeAsset[]>;
   createEmployeeAsset(asset: InsertEmployeeAsset): Promise<EmployeeAsset>;
   updateEmployeeAsset(id: number, data: Partial<InsertEmployeeAsset>): Promise<EmployeeAsset | undefined>;
+  getPayrollRecords(period?: string): Promise<PayrollRecord[]>;
+  getPayrollRecord(id: number): Promise<PayrollRecord | undefined>;
+  getPayrollRecordByEmployeePeriod(employeeId: number, period: string): Promise<PayrollRecord | undefined>;
+  createPayrollRecord(record: InsertPayrollRecord): Promise<PayrollRecord>;
+  updatePayrollRecord(id: number, data: Partial<InsertPayrollRecord>): Promise<PayrollRecord | undefined>;
+  markPayrollPaid(id: number, paidDate: string): Promise<PayrollRecord | undefined>;
 
   getDesignAssignments(): Promise<DesignAssignment[]>;
   getDesignAssignmentsByDesigner(designerId: number): Promise<DesignAssignment[]>;
@@ -778,6 +785,44 @@ export class DatabaseStorage implements IStorage {
 
   async updateEmployeeAsset(id: number, data: Partial<InsertEmployeeAsset>): Promise<EmployeeAsset | undefined> {
     const [updated] = await db.update(employeeAssets).set(data).where(eq(employeeAssets.id, id)).returning();
+    return updated;
+  }
+
+  async getPayrollRecords(period?: string): Promise<PayrollRecord[]> {
+    if (period) {
+      return db.select().from(payrollRecords).where(eq(payrollRecords.period, period)).orderBy(desc(payrollRecords.createdAt));
+    }
+    return db.select().from(payrollRecords).orderBy(desc(payrollRecords.period), desc(payrollRecords.createdAt));
+  }
+
+  async getPayrollRecord(id: number): Promise<PayrollRecord | undefined> {
+    const [record] = await db.select().from(payrollRecords).where(eq(payrollRecords.id, id));
+    return record;
+  }
+
+  async getPayrollRecordByEmployeePeriod(employeeId: number, period: string): Promise<PayrollRecord | undefined> {
+    const [record] = await db.select().from(payrollRecords)
+      .where(and(eq(payrollRecords.employeeId, employeeId), eq(payrollRecords.period, period)));
+    return record;
+  }
+
+  async createPayrollRecord(record: InsertPayrollRecord): Promise<PayrollRecord> {
+    const [created] = await db.insert(payrollRecords).values(record).returning();
+    return created;
+  }
+
+  async updatePayrollRecord(id: number, data: Partial<InsertPayrollRecord>): Promise<PayrollRecord | undefined> {
+    const [updated] = await db.update(payrollRecords).set(data).where(eq(payrollRecords.id, id)).returning();
+    return updated;
+  }
+
+  async markPayrollPaid(id: number, paidDate: string): Promise<PayrollRecord | undefined> {
+    // Conditional transition: only a 'draft' record becomes 'paid'. A concurrent
+    // second call matches no rows and returns undefined (no double-pay).
+    const [updated] = await db.update(payrollRecords)
+      .set({ status: "paid", paidDate })
+      .where(and(eq(payrollRecords.id, id), eq(payrollRecords.status, "draft")))
+      .returning();
     return updated;
   }
 

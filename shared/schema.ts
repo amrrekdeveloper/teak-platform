@@ -172,6 +172,30 @@ export const insertEmployeeAssetSchema = createInsertSchema(employeeAssets).omit
 export type InsertEmployeeAsset = z.infer<typeof insertEmployeeAssetSchema>;
 export type EmployeeAsset = typeof employeeAssets.$inferSelect;
 
+export const payrollStatusEnum = pgEnum("payroll_status", ["draft", "paid"]);
+
+export const payrollRecords = pgTable("payroll_records", {
+  id: serial("id").primaryKey(),
+  employeeId: integer("employee_id").references(() => employees.id).notNull(),
+  period: text("period").notNull(), // "YYYY-MM"
+  basicSalary: decimal("basic_salary", { precision: 12, scale: 2 }).notNull().default("0"),
+  allowances: decimal("allowances", { precision: 12, scale: 2 }).notNull().default("0"),
+  deductions: decimal("deductions", { precision: 12, scale: 2 }).notNull().default("0"),
+  netSalary: decimal("net_salary", { precision: 12, scale: 2 }).notNull().default("0"),
+  status: payrollStatusEnum("status").notNull().default("draft"),
+  paidDate: date("paid_date"),
+  notes: text("notes"),
+  createdBy: integer("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertPayrollRecordSchema = createInsertSchema(payrollRecords).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertPayrollRecord = z.infer<typeof insertPayrollRecordSchema>;
+export type PayrollRecord = typeof payrollRecords.$inferSelect;
+
 export const customerSourceEnum = pgEnum("customer_source", [
   "website",
   "walk_in",

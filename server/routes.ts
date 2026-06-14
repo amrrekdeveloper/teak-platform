@@ -2802,6 +2802,28 @@ export async function registerRoutes(
         }
       }
 
+      // Customer return linked to a contract: reduce the contract's remaining
+      // balance by the cost value of the returned items (floored at 0).
+      // Best-effort: a balance-update failure must not roll back the movement.
+      if (type === "stock_in" && reason === "customer_return" && contractIdNum) {
+        try {
+          const contract = await storage.getContract(contractIdNum);
+          // Only reduce the balance of an active contract. Ignore links to
+          // completed/cancelled or non-existent contracts to avoid tampering.
+          if (contract && contract.status === "active") {
+            const unitCost = parseFloat(item.costPerUnit?.toString() || "0");
+            const totalCost = unitCost * txQty;
+            if (totalCost > 0) {
+              const currentRemaining = parseFloat(contract.remainingAmount?.toString() || "0");
+              const newRemaining = Math.max(0, currentRemaining - totalCost);
+              await storage.updateContract(contractIdNum, { remainingAmount: newRemaining.toFixed(2) });
+            }
+          }
+        } catch (balanceError) {
+          console.error("Customer-return contract balance update failed (movement still recorded):", balanceError);
+        }
+      }
+
       res.status(201).json(tx);
     } catch (error) {
       console.error("Inventory transaction error:", error);
@@ -3228,6 +3250,149 @@ export async function registerRoutes(
       res.json(updated);
     } catch (error) {
       res.status(500).json({ message: "حدث خطأ في تحديث العُهدة", messageEn: "Error updating asset" });
+    }
+  });
+
+  // ==================== PAYROLL (مسيّر الرواتب) ====================
+
+  const computeNet = (basic: number, allowances: number, deductions: number) =>
+    Math.max(0, basic + allowances - deductions);
+
+  app.get("/api/payroll", requireRole("owner", "assistant", "hr", "accountant"), async (req, res) => {
+    try {
+      const period = typeof req.query.period === "string" ? req.query.period : undefined;
+      res.json(await storage.getPayrollRecords(period));
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ", messageEn: "Error fetching payroll" });
+    }
+  });
+
+  // Generate draft payroll records for all active employees for a given period.
+  app.post("/api/payroll/generate", requireRole("owner", "assistant", "hr"), async (req, res) => {
+    try {
+      const period = typeof req.body.period === "string" ? req.body.period.trim() : "";
+      if (!/^\d{4}-\d{2}$/.test(period)) {
+        return res.status(400).json({ message: "الفترة غير صالحة (YYYY-MM)", messageEn: "Invalid period (YYYY-MM)" });
+      }
+      const employees = await storage.getEmployees();
+      const activeEmployees = employees.filter(e => e.status === "active");
+      let created = 0;
+      for (const emp of activeEmployees) {
+        const existing = await storage.getPayrollRecordByEmployeePeriod(emp.id, period);
+        if (existing) continue;
+        const basic = parseFloat(emp.monthlySalary?.toString() || "0");
+        await storage.createPayrollRecord({
+          employeeId: emp.id,
+          period,
+          basicSalary: basic.toFixed(2),
+          allowances: "0",
+          deductions: "0",
+          netSalary: basic.toFixed(2),
+          status: "draft",
+          createdBy: req.session.userId,
+        } as any);
+        created++;
+      }
+      res.status(201).json({ created, total: activeEmployees.length });
+    } catch (error) {
+      console.error("Payroll generate error:", error);
+      res.status(500).json({ message: "حدث خطأ في إنشاء المسيّر", messageEn: "Error generating payroll" });
+    }
+  });
+
+  app.patch("/api/payroll/:id", requireRole("owner", "assistant", "hr"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const record = await storage.getPayrollRecord(id);
+      if (!record) return res.status(404).json({ message: "السجل غير موجود", messageEn: "Record not found" });
+      if (record.status === "paid") {
+        return res.status(400).json({ message: "لا يمكن تعديل راتب مدفوع", messageEn: "Cannot edit a paid record" });
+      }
+
+      const validNum = (v: any) => { const n = parseFloat(v); return Number.isFinite(n) && n >= 0 ? n : null; };
+      const updates: any = {};
+      let basic = parseFloat(record.basicSalary.toString());
+      let allowances = parseFloat(record.allowances.toString());
+      let deductions = parseFloat(record.deductions.toString());
+      if (req.body.basicSalary !== undefined) {
+        const v = validNum(req.body.basicSalary);
+        if (v === null) return res.status(400).json({ message: "الراتب الأساسي غير صالح", messageEn: "Invalid basic salary" });
+        basic = v;
+      }
+      if (req.body.allowances !== undefined) {
+        const v = validNum(req.body.allowances);
+        if (v === null) return res.status(400).json({ message: "قيمة البدلات غير صالحة", messageEn: "Invalid allowances" });
+        allowances = v;
+      }
+      if (req.body.deductions !== undefined) {
+        const v = validNum(req.body.deductions);
+        if (v === null) return res.status(400).json({ message: "قيمة الخصومات غير صالحة", messageEn: "Invalid deductions" });
+        deductions = v;
+      }
+      if (req.body.basicSalary !== undefined) updates.basicSalary = basic.toFixed(2);
+      if (req.body.allowances !== undefined) updates.allowances = allowances.toFixed(2);
+      if (req.body.deductions !== undefined) updates.deductions = deductions.toFixed(2);
+      if (req.body.notes !== undefined) updates.notes = req.body.notes;
+      updates.netSalary = computeNet(basic, allowances, deductions).toFixed(2);
+
+      const updated = await storage.updatePayrollRecord(id, updates);
+      res.json(updated);
+    } catch (error) {
+      console.error("Payroll update error:", error);
+      res.status(500).json({ message: "حدث خطأ في التعديل", messageEn: "Error updating record" });
+    }
+  });
+
+  // Mark a payroll record as paid: sets paid date and posts a salary journal entry.
+  app.post("/api/payroll/:id/pay", requireRole("owner", "assistant", "hr", "accountant"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const record = await storage.getPayrollRecord(id);
+      if (!record) return res.status(404).json({ message: "السجل غير موجود", messageEn: "Record not found" });
+      if (record.status === "paid") {
+        return res.status(400).json({ message: "تم دفع هذا الراتب مسبقاً", messageEn: "Already paid" });
+      }
+
+      const paidDate = new Date().toISOString().slice(0, 10);
+      const net = parseFloat(record.netSalary.toString());
+
+      // Post the salary journal entry FIRST (Dr Salaries & Wages 6100 / Cr Cash 1111).
+      // Ordering journal-before-paid means a journal failure leaves the record in
+      // 'draft' (retryable) instead of paid-without-a-ledger-entry. The reference
+      // guard makes a retry idempotent — no duplicate journal entries.
+      if (net > 0) {
+        const existing = await storage.findJournalEntryByReference("payroll", record.id);
+        if (!existing) {
+          const emp = await storage.getEmployee(record.employeeId);
+          const empName = emp?.fullNameAr || emp?.fullNameEn || `#${record.employeeId}`;
+          await storage.createJournalEntry(
+            {
+              date: paidDate,
+              description: `صرف راتب ${empName} عن ${record.period}`,
+              reference: `PAY-${record.id}`,
+              referenceType: "payroll",
+              referenceId: record.id,
+              status: "posted",
+              createdBy: req.session.userId,
+            } as any,
+            [
+              { entryId: 0, accountCode: "6100", accountNameAr: "رواتب وأجور", debit: net.toFixed(2), credit: "0" },
+              { entryId: 0, accountCode: "1111", accountNameAr: "الصندوق", debit: "0", credit: net.toFixed(2) },
+            ] as any,
+          );
+        }
+      }
+
+      // Conditional transition draft -> paid; guards against a concurrent double-pay.
+      const updated = await storage.markPayrollPaid(id, paidDate);
+      if (!updated) {
+        return res.status(409).json({ message: "تم دفع هذا الراتب مسبقاً", messageEn: "Already paid" });
+      }
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Payroll pay error:", error);
+      res.status(500).json({ message: "حدث خطأ في الصرف", messageEn: "Error processing payment" });
     }
   });
 
@@ -5772,6 +5937,31 @@ export async function registerRoutes(
         details TEXT,
         created_at TIMESTAMP NOT NULL DEFAULT NOW()
       );
+    `);
+    await db.execute(`
+      DO $$ BEGIN
+        CREATE TYPE payroll_status AS ENUM ('draft', 'paid');
+      EXCEPTION WHEN duplicate_object THEN null; END $$;
+    `);
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS payroll_records (
+        id SERIAL PRIMARY KEY,
+        employee_id INTEGER NOT NULL REFERENCES employees(id),
+        period TEXT NOT NULL,
+        basic_salary NUMERIC(12,2) NOT NULL DEFAULT 0,
+        allowances NUMERIC(12,2) NOT NULL DEFAULT 0,
+        deductions NUMERIC(12,2) NOT NULL DEFAULT 0,
+        net_salary NUMERIC(12,2) NOT NULL DEFAULT 0,
+        status payroll_status NOT NULL DEFAULT 'draft',
+        paid_date DATE,
+        notes TEXT,
+        created_by INTEGER REFERENCES users(id),
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+    `);
+    await db.execute(`
+      CREATE UNIQUE INDEX IF NOT EXISTS payroll_records_employee_period_unique
+        ON payroll_records (employee_id, period);
     `);
     console.log("HR module migration completed");
 

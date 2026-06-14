@@ -531,6 +531,9 @@ export default function InventoryPage() {
                         ))}
                       </SelectContent>
                     </Select>
+                    {txData.contractId && (
+                      <p className="text-xs text-muted-foreground">{t("سيتم خصم قيمة تكلفة الأصناف المُرجعة من الرصيد المتبقي للعقد تلقائياً.", "The cost value of the returned items will be deducted from the contract's remaining balance automatically.")}</p>
+                    )}
                   </div>
                 )}
               </>
