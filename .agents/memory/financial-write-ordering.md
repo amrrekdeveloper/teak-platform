@@ -22,4 +22,10 @@ everything in a DB transaction.
 
 **How to apply:** any new pay/confirm/settle endpoint that touches both the ledger and a record's
 state (payroll pay, payment confirm, invoice issue). Reuse existing COA codes: salaries 6100,
-cash 1111, inventory 1130, COGS 5100.
+cash 1111, inventory 1130, COGS 5100, employee advances 1140.
+
+**Concurrency on "only one active X" business rules:** a check-then-update (read then write)
+is NOT race-safe. Back it with a Postgres **partial unique index** created in the idempotent
+startup migration (e.g. `CREATE UNIQUE INDEX IF NOT EXISTS ... ON t(employee_id) WHERE status='approved'`),
+then catch the unique violation (`err.code === '23505'`) at the write and return 409. The
+in-app pre-check still gives a friendly early 409 for the common case.

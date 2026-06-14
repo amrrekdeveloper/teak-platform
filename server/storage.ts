@@ -30,6 +30,9 @@ import {
   hrAuditLog, type HrAuditLog, type InsertHrAuditLog,
   employeeAssets, type EmployeeAsset, type InsertEmployeeAsset,
   payrollRecords, type PayrollRecord, type InsertPayrollRecord,
+  employeeAdvances, type EmployeeAdvance, type InsertEmployeeAdvance,
+  leaveRequests, type LeaveRequest, type InsertLeaveRequest,
+  performanceEvaluations, type PerformanceEvaluation, type InsertPerformanceEvaluation,
   designAssignments, type DesignAssignment, type InsertDesignAssignment,
   warranties, type Warranty, type InsertWarranty,
   adekoProducts, type AdekoProduct, type InsertAdekoProduct,
@@ -182,6 +185,26 @@ export interface IStorage {
   createPayrollRecord(record: InsertPayrollRecord): Promise<PayrollRecord>;
   updatePayrollRecord(id: number, data: Partial<InsertPayrollRecord>): Promise<PayrollRecord | undefined>;
   markPayrollPaid(id: number, paidDate: string): Promise<PayrollRecord | undefined>;
+
+  // Employee Advances (السلف)
+  getEmployeeAdvances(employeeId?: number): Promise<EmployeeAdvance[]>;
+  getEmployeeAdvance(id: number): Promise<EmployeeAdvance | undefined>;
+  getActiveAdvanceForEmployee(employeeId: number): Promise<EmployeeAdvance | undefined>;
+  createEmployeeAdvance(data: InsertEmployeeAdvance): Promise<EmployeeAdvance>;
+  updateEmployeeAdvance(id: number, data: Partial<InsertEmployeeAdvance>): Promise<EmployeeAdvance | undefined>;
+
+  // Leave Requests (الإجازات)
+  getLeaveRequests(employeeId?: number): Promise<LeaveRequest[]>;
+  getLeaveRequest(id: number): Promise<LeaveRequest | undefined>;
+  getApprovedAnnualLeaveDays(employeeId: number, year: string): Promise<number>;
+  createLeaveRequest(data: InsertLeaveRequest): Promise<LeaveRequest>;
+  updateLeaveRequest(id: number, data: Partial<InsertLeaveRequest>): Promise<LeaveRequest | undefined>;
+
+  // Performance Evaluations (تقييم الأداء)
+  getPerformanceEvaluations(employeeId?: number): Promise<PerformanceEvaluation[]>;
+  getPerformanceEvaluation(id: number): Promise<PerformanceEvaluation | undefined>;
+  createPerformanceEvaluation(data: InsertPerformanceEvaluation): Promise<PerformanceEvaluation>;
+  updatePerformanceEvaluation(id: number, data: Partial<InsertPerformanceEvaluation>): Promise<PerformanceEvaluation | undefined>;
 
   getDesignAssignments(): Promise<DesignAssignment[]>;
   getDesignAssignmentsByDesigner(designerId: number): Promise<DesignAssignment[]>;
@@ -826,6 +849,105 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
+  // ===== Employee Advances (السلف) =====
+  async getEmployeeAdvances(employeeId?: number): Promise<EmployeeAdvance[]> {
+    if (employeeId) {
+      return db.select().from(employeeAdvances).where(eq(employeeAdvances.employeeId, employeeId)).orderBy(desc(employeeAdvances.createdAt));
+    }
+    return db.select().from(employeeAdvances).orderBy(desc(employeeAdvances.createdAt));
+  }
+
+  async getEmployeeAdvance(id: number): Promise<EmployeeAdvance | undefined> {
+    const [row] = await db.select().from(employeeAdvances).where(eq(employeeAdvances.id, id));
+    return row;
+  }
+
+  async getActiveAdvanceForEmployee(employeeId: number): Promise<EmployeeAdvance | undefined> {
+    const [row] = await db.select().from(employeeAdvances)
+      .where(and(eq(employeeAdvances.employeeId, employeeId), eq(employeeAdvances.status, "approved")))
+      .orderBy(employeeAdvances.createdAt);
+    return row;
+  }
+
+  async createEmployeeAdvance(data: InsertEmployeeAdvance): Promise<EmployeeAdvance> {
+    const [created] = await db.insert(employeeAdvances).values(data).returning();
+    return created;
+  }
+
+  async updateEmployeeAdvance(id: number, data: Partial<InsertEmployeeAdvance>): Promise<EmployeeAdvance | undefined> {
+    const [updated] = await db.update(employeeAdvances).set(data).where(eq(employeeAdvances.id, id)).returning();
+    return updated;
+  }
+
+  // ===== Leave Requests (الإجازات) =====
+  async getLeaveRequests(employeeId?: number): Promise<LeaveRequest[]> {
+    if (employeeId) {
+      return db.select().from(leaveRequests).where(eq(leaveRequests.employeeId, employeeId)).orderBy(desc(leaveRequests.createdAt));
+    }
+    return db.select().from(leaveRequests).orderBy(desc(leaveRequests.createdAt));
+  }
+
+  async getLeaveRequest(id: number): Promise<LeaveRequest | undefined> {
+    const [row] = await db.select().from(leaveRequests).where(eq(leaveRequests.id, id));
+    return row;
+  }
+
+  async getApprovedAnnualLeaveDays(employeeId: number, year: string): Promise<number> {
+    const rows = await db.select().from(leaveRequests).where(and(
+      eq(leaveRequests.employeeId, employeeId),
+      eq(leaveRequests.leaveType, "annual"),
+      eq(leaveRequests.status, "approved"),
+    ));
+    // Count only the portion of each leave that falls within the target year
+    // so cross-year leaves (e.g. Dec→Jan) are attributed accurately per year.
+    const yearStart = new Date(`${year}-01-01`);
+    const yearEnd = new Date(`${year}-12-31`);
+    const DAY = 1000 * 3600 * 24;
+    return rows.reduce((sum, r) => {
+      if (!r.startDate || !r.endDate) return sum;
+      const start = new Date(r.startDate);
+      const end = new Date(r.endDate);
+      const from = start > yearStart ? start : yearStart;
+      const to = end < yearEnd ? end : yearEnd;
+      if (to < from) return sum;
+      const overlap = Math.floor((to.getTime() - from.getTime()) / DAY) + 1;
+      return sum + overlap;
+    }, 0);
+  }
+
+  async createLeaveRequest(data: InsertLeaveRequest): Promise<LeaveRequest> {
+    const [created] = await db.insert(leaveRequests).values(data).returning();
+    return created;
+  }
+
+  async updateLeaveRequest(id: number, data: Partial<InsertLeaveRequest>): Promise<LeaveRequest | undefined> {
+    const [updated] = await db.update(leaveRequests).set(data).where(eq(leaveRequests.id, id)).returning();
+    return updated;
+  }
+
+  // ===== Performance Evaluations (تقييم الأداء) =====
+  async getPerformanceEvaluations(employeeId?: number): Promise<PerformanceEvaluation[]> {
+    if (employeeId) {
+      return db.select().from(performanceEvaluations).where(eq(performanceEvaluations.employeeId, employeeId)).orderBy(desc(performanceEvaluations.createdAt));
+    }
+    return db.select().from(performanceEvaluations).orderBy(desc(performanceEvaluations.createdAt));
+  }
+
+  async getPerformanceEvaluation(id: number): Promise<PerformanceEvaluation | undefined> {
+    const [row] = await db.select().from(performanceEvaluations).where(eq(performanceEvaluations.id, id));
+    return row;
+  }
+
+  async createPerformanceEvaluation(data: InsertPerformanceEvaluation): Promise<PerformanceEvaluation> {
+    const [created] = await db.insert(performanceEvaluations).values(data).returning();
+    return created;
+  }
+
+  async updatePerformanceEvaluation(id: number, data: Partial<InsertPerformanceEvaluation>): Promise<PerformanceEvaluation | undefined> {
+    const [updated] = await db.update(performanceEvaluations).set(data).where(eq(performanceEvaluations.id, id)).returning();
+    return updated;
+  }
+
 
   async getDesignAssignments(): Promise<DesignAssignment[]> {
     return db.select().from(designAssignments).orderBy(desc(designAssignments.createdAt));
@@ -1191,6 +1313,7 @@ export class DatabaseStorage implements IStorage {
       { code: "1120", nameAr: "الذمم المدينة", nameEn: "Accounts Receivable", type: "asset" as const, parentCode: "1100", isSystem: true },
       { code: "1121", nameAr: "ذمم العملاء", nameEn: "Customer Receivables", type: "asset" as const, parentCode: "1120", isSystem: true },
       { code: "1130", nameAr: "المخزون", nameEn: "Inventory", type: "asset" as const, parentCode: "1100", isSystem: true },
+      { code: "1140", nameAr: "سلف وعهد الموظفين", nameEn: "Employee Advances", type: "asset" as const, parentCode: "1100" },
       { code: "1200", nameAr: "الأصول الثابتة", nameEn: "Fixed Assets", type: "asset" as const, parentCode: "1000", isSystem: true },
       { code: "1210", nameAr: "الأثاث والمعدات", nameEn: "Furniture & Equipment", type: "asset" as const, parentCode: "1200" },
       { code: "1220", nameAr: "المركبات", nameEn: "Vehicles", type: "asset" as const, parentCode: "1200" },

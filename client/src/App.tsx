@@ -33,6 +33,9 @@ import PurchasesPage from "@/pages/purchases";
 import PurchaseDetailPage from "@/pages/purchase-detail";
 import EmployeesPage from "@/pages/employees";
 import PayrollPage from "@/pages/payroll";
+import AdvancesPage from "@/pages/advances";
+import LeavesPage from "@/pages/leaves";
+import EvaluationsPage from "@/pages/evaluations";
 import DeliveriesPage from "@/pages/deliveries";
 import InstallationsPage from "@/pages/installations";
 import QualityPage from "@/pages/quality";
@@ -216,6 +219,9 @@ function DashboardRoutes() {
         <Route path="/quality" component={QualityPage} />
         <Route path="/employees" component={EmployeesPage} />
         <Route path="/payroll" component={PayrollPage} />
+        <Route path="/advances" component={AdvancesPage} />
+        <Route path="/leaves" component={LeavesPage} />
+        <Route path="/evaluations" component={EvaluationsPage} />
         <Route path="/order-center" component={OrderCenterPage} />
         <Route path="/orders/:id" component={OrderDetailPage} />
         <Route path="/my-orders" component={MyOrdersPage} />

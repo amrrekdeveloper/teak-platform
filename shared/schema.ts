@@ -181,6 +181,7 @@ export const payrollRecords = pgTable("payroll_records", {
   basicSalary: decimal("basic_salary", { precision: 12, scale: 2 }).notNull().default("0"),
   allowances: decimal("allowances", { precision: 12, scale: 2 }).notNull().default("0"),
   deductions: decimal("deductions", { precision: 12, scale: 2 }).notNull().default("0"),
+  advanceDeduction: decimal("advance_deduction", { precision: 12, scale: 2 }).notNull().default("0"),
   netSalary: decimal("net_salary", { precision: 12, scale: 2 }).notNull().default("0"),
   status: payrollStatusEnum("status").notNull().default("draft"),
   paidDate: date("paid_date"),
@@ -195,6 +196,85 @@ export const insertPayrollRecordSchema = createInsertSchema(payrollRecords).omit
 });
 export type InsertPayrollRecord = z.infer<typeof insertPayrollRecordSchema>;
 export type PayrollRecord = typeof payrollRecords.$inferSelect;
+
+// ===== Employee Advances (السلف) =====
+export const advanceStatusEnum = pgEnum("advance_status", ["pending", "approved", "rejected", "settled"]);
+
+export const employeeAdvances = pgTable("employee_advances", {
+  id: serial("id").primaryKey(),
+  employeeId: integer("employee_id").references(() => employees.id).notNull(),
+  amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+  installments: integer("installments").notNull().default(1),
+  monthlyDeduction: decimal("monthly_deduction", { precision: 12, scale: 2 }).notNull().default("0"),
+  remainingAmount: decimal("remaining_amount", { precision: 12, scale: 2 }).notNull().default("0"),
+  reason: text("reason"),
+  status: advanceStatusEnum("status").notNull().default("pending"),
+  requestDate: date("request_date").notNull(),
+  approvedBy: integer("approved_by").references(() => users.id),
+  approvedDate: date("approved_date"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertEmployeeAdvanceSchema = createInsertSchema(employeeAdvances).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertEmployeeAdvance = z.infer<typeof insertEmployeeAdvanceSchema>;
+export type EmployeeAdvance = typeof employeeAdvances.$inferSelect;
+
+// ===== Leave Management (الإجازات) =====
+export const leaveTypeEnum = pgEnum("leave_type", ["annual", "sick", "unpaid", "emergency", "maternity", "other"]);
+export const leaveStatusEnum = pgEnum("leave_status", ["pending", "approved", "rejected"]);
+
+export const leaveRequests = pgTable("leave_requests", {
+  id: serial("id").primaryKey(),
+  employeeId: integer("employee_id").references(() => employees.id).notNull(),
+  leaveType: leaveTypeEnum("leave_type").notNull().default("annual"),
+  startDate: date("start_date").notNull(),
+  endDate: date("end_date").notNull(),
+  days: integer("days").notNull().default(1),
+  reason: text("reason"),
+  status: leaveStatusEnum("status").notNull().default("pending"),
+  approvedBy: integer("approved_by").references(() => users.id),
+  approvedDate: date("approved_date"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertLeaveRequestSchema = createInsertSchema(leaveRequests).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertLeaveRequest = z.infer<typeof insertLeaveRequestSchema>;
+export type LeaveRequest = typeof leaveRequests.$inferSelect;
+
+// ===== Performance Evaluations (تقييم الأداء) =====
+export const evaluationStatusEnum = pgEnum("evaluation_status", ["draft", "finalized"]);
+
+export const performanceEvaluations = pgTable("performance_evaluations", {
+  id: serial("id").primaryKey(),
+  employeeId: integer("employee_id").references(() => employees.id).notNull(),
+  period: text("period").notNull(), // "YYYY-MM" or "YYYY-Q1" etc.
+  evaluatorId: integer("evaluator_id").references(() => users.id),
+  scoreQuality: integer("score_quality").notNull().default(3),
+  scoreProductivity: integer("score_productivity").notNull().default(3),
+  scoreAttendance: integer("score_attendance").notNull().default(3),
+  scoreTeamwork: integer("score_teamwork").notNull().default(3),
+  scoreDiscipline: integer("score_discipline").notNull().default(3),
+  overallScore: decimal("overall_score", { precision: 4, scale: 2 }).notNull().default("3"),
+  strengths: text("strengths"),
+  improvements: text("improvements"),
+  status: evaluationStatusEnum("status").notNull().default("draft"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertPerformanceEvaluationSchema = createInsertSchema(performanceEvaluations).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertPerformanceEvaluation = z.infer<typeof insertPerformanceEvaluationSchema>;
+export type PerformanceEvaluation = typeof performanceEvaluations.$inferSelect;
 
 export const customerSourceEnum = pgEnum("customer_source", [
   "website",

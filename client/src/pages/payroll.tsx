@@ -85,7 +85,8 @@ export default function PayrollPage() {
     const basic = Number(r.basicSalary || 0);
     const a = Number(editVal(r, "allowances") || 0);
     const d = Number(editVal(r, "deductions") || 0);
-    return Math.max(0, basic + a - d);
+    const adv = Number(r.advanceDeduction || 0);
+    return Math.max(0, basic + a - d - adv);
   };
 
   const totalNet = records.reduce((s, r) => s + Number(r.netSalary || 0), 0);
@@ -147,6 +148,7 @@ export default function PayrollPage() {
                   <th className="p-3 text-start font-medium">{t("الأساسي", "Basic")}</th>
                   <th className="p-3 text-start font-medium">{t("بدلات", "Allowances")}</th>
                   <th className="p-3 text-start font-medium">{t("خصومات", "Deductions")}</th>
+                  <th className="p-3 text-start font-medium">{t("سلفة", "Advance")}</th>
                   <th className="p-3 text-start font-medium">{t("الصافي", "Net")}</th>
                   <th className="p-3 text-start font-medium">{t("الحالة", "Status")}</th>
                   <th className="p-3 text-start font-medium">{t("إجراءات", "Actions")}</th>
@@ -168,6 +170,7 @@ export default function PayrollPage() {
                         <Input type="number" min="0" value={editVal(r, "deductions")} disabled={isPaid}
                           onChange={e => setEdit(r, "deductions", e.target.value)} className="w-24 h-8" data-testid={`input-deductions-${r.id}`} />
                       </td>
+                      <td className="p-3 text-muted-foreground" data-testid={`text-advance-${r.id}`}>{fmt(r.advanceDeduction)}</td>
                       <td className="p-3 font-semibold" data-testid={`text-net-${r.id}`}>{fmt(isPaid ? r.netSalary : previewNet(r))}</td>
                       <td className="p-3">
                         {isPaid ? (

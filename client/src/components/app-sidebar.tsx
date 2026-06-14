@@ -42,6 +42,9 @@ import {
   BookText,
   KeyRound,
   Wallet,
+  HandCoins,
+  CalendarDays,
+  Star,
   type LucideIcon,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
@@ -91,6 +94,9 @@ const menuItems: MenuItem[] = [
   { titleAr: "الجودة", titleEn: "Quality", icon: Shield, path: "/quality", roles: ["owner", "assistant", "it", "quality"], group: "services" },
   { titleAr: "الموارد البشرية", titleEn: "Human Resources", icon: UserCog, path: "/employees", roles: ["owner", "it", "hr"], group: "hr" },
   { titleAr: "مسيّر الرواتب", titleEn: "Payroll", icon: Wallet, path: "/payroll", roles: ["owner", "assistant", "hr", "accountant"], group: "hr" },
+  { titleAr: "سلف الموظفين", titleEn: "Advances", icon: HandCoins, path: "/advances", roles: ["owner", "assistant", "hr", "accountant"], group: "hr" },
+  { titleAr: "الإجازات", titleEn: "Leaves", icon: CalendarDays, path: "/leaves", roles: ["owner", "assistant", "hr"], group: "hr" },
+  { titleAr: "تقييم الأداء", titleEn: "Evaluations", icon: Star, path: "/evaluations", roles: ["owner", "assistant", "hr"], group: "hr" },
   { titleAr: "مراقبة الدوام", titleEn: "Attendance Monitor", icon: Clock, path: "/attendance-monitor", roles: ["owner", "it"], group: "hr" },
   { titleAr: "الإعدادات", titleEn: "Settings", icon: Settings, path: "/settings", roles: ["owner", "it"], group: "admin" },
   { titleAr: "ملفي الشخصي", titleEn: "My Profile", icon: UserCircle, path: "/my-profile", roles: ["owner", "assistant", "sales", "designer", "production", "purchasing", "warehouse", "accountant", "customer_service", "delivery", "installation", "quality", "hr", "it"], group: "admin" },

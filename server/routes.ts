@@ -3255,8 +3255,8 @@ export async function registerRoutes(
 
   // ==================== PAYROLL (مسيّر الرواتب) ====================
 
-  const computeNet = (basic: number, allowances: number, deductions: number) =>
-    Math.max(0, basic + allowances - deductions);
+  const computeNet = (basic: number, allowances: number, deductions: number, advance: number = 0) =>
+    Math.max(0, basic + allowances - deductions - advance);
 
   app.get("/api/payroll", requireRole("owner", "assistant", "hr", "accountant"), async (req, res) => {
     try {
@@ -3281,13 +3281,22 @@ export async function registerRoutes(
         const existing = await storage.getPayrollRecordByEmployeePeriod(emp.id, period);
         if (existing) continue;
         const basic = parseFloat(emp.monthlySalary?.toString() || "0");
+        // Auto-include this employee's active advance installment as a deduction.
+        let advDeduction = 0;
+        const adv = await storage.getActiveAdvanceForEmployee(emp.id);
+        if (adv) {
+          const remaining = parseFloat(adv.remainingAmount?.toString() || "0");
+          const monthly = parseFloat(adv.monthlyDeduction?.toString() || "0");
+          advDeduction = Math.max(0, Math.min(monthly, remaining));
+        }
         await storage.createPayrollRecord({
           employeeId: emp.id,
           period,
           basicSalary: basic.toFixed(2),
           allowances: "0",
           deductions: "0",
-          netSalary: basic.toFixed(2),
+          advanceDeduction: advDeduction.toFixed(2),
+          netSalary: computeNet(basic, 0, 0, advDeduction).toFixed(2),
           status: "draft",
           createdBy: req.session.userId,
         } as any);
@@ -3333,7 +3342,8 @@ export async function registerRoutes(
       if (req.body.allowances !== undefined) updates.allowances = allowances.toFixed(2);
       if (req.body.deductions !== undefined) updates.deductions = deductions.toFixed(2);
       if (req.body.notes !== undefined) updates.notes = req.body.notes;
-      updates.netSalary = computeNet(basic, allowances, deductions).toFixed(2);
+      const advanceDed = parseFloat(record.advanceDeduction?.toString() || "0");
+      updates.netSalary = computeNet(basic, allowances, deductions, advanceDed).toFixed(2);
 
       const updated = await storage.updatePayrollRecord(id, updates);
       res.json(updated);
@@ -3355,16 +3365,30 @@ export async function registerRoutes(
 
       const paidDate = new Date().toISOString().slice(0, 10);
       const net = parseFloat(record.netSalary.toString());
+      const advRecovered = parseFloat(record.advanceDeduction?.toString() || "0");
+      // Salary expense = cash paid (net) + advance recovered (deducted from pay).
+      const salaryExpense = net + advRecovered;
 
-      // Post the salary journal entry FIRST (Dr Salaries & Wages 6100 / Cr Cash 1111).
-      // Ordering journal-before-paid means a journal failure leaves the record in
-      // 'draft' (retryable) instead of paid-without-a-ledger-entry. The reference
-      // guard makes a retry idempotent — no duplicate journal entries.
-      if (net > 0) {
+      // Post the salary journal entry FIRST. Ordering journal-before-paid means a
+      // journal failure leaves the record in 'draft' (retryable) instead of
+      // paid-without-a-ledger-entry. The reference guard makes a retry idempotent.
+      //   Dr 6100 رواتب وأجور (salary expense)
+      //   Cr 1140 سلف الموظفين (advance recovered, if any)
+      //   Cr 1111 الصندوق (net cash paid)
+      if (salaryExpense > 0) {
         const existing = await storage.findJournalEntryByReference("payroll", record.id);
         if (!existing) {
           const emp = await storage.getEmployee(record.employeeId);
           const empName = emp?.fullNameAr || emp?.fullNameEn || `#${record.employeeId}`;
+          const lines: any[] = [
+            { entryId: 0, accountCode: "6100", accountNameAr: "رواتب وأجور", debit: salaryExpense.toFixed(2), credit: "0" },
+          ];
+          if (advRecovered > 0) {
+            lines.push({ entryId: 0, accountCode: "1140", accountNameAr: "سلف وعهد الموظفين", debit: "0", credit: advRecovered.toFixed(2) });
+          }
+          if (net > 0) {
+            lines.push({ entryId: 0, accountCode: "1111", accountNameAr: "الصندوق", debit: "0", credit: net.toFixed(2) });
+          }
           await storage.createJournalEntry(
             {
               date: paidDate,
@@ -3375,10 +3399,7 @@ export async function registerRoutes(
               status: "posted",
               createdBy: req.session.userId,
             } as any,
-            [
-              { entryId: 0, accountCode: "6100", accountNameAr: "رواتب وأجور", debit: net.toFixed(2), credit: "0" },
-              { entryId: 0, accountCode: "1111", accountNameAr: "الصندوق", debit: "0", credit: net.toFixed(2) },
-            ] as any,
+            lines,
           );
         }
       }
@@ -3389,10 +3410,275 @@ export async function registerRoutes(
         return res.status(409).json({ message: "تم دفع هذا الراتب مسبقاً", messageEn: "Already paid" });
       }
 
+      // Recover the advance installment now that the salary is paid. Runs only after
+      // the conditional pay succeeded, so it can't double-decrement on a retry.
+      if (advRecovered > 0) {
+        const adv = await storage.getActiveAdvanceForEmployee(record.employeeId);
+        if (adv) {
+          const remaining = Math.max(0, parseFloat(adv.remainingAmount?.toString() || "0") - advRecovered);
+          await storage.updateEmployeeAdvance(adv.id, {
+            remainingAmount: remaining.toFixed(2),
+            status: remaining <= 0 ? "settled" : "approved",
+          } as any);
+        }
+      }
+
       res.json(updated);
     } catch (error) {
       console.error("Payroll pay error:", error);
       res.status(500).json({ message: "حدث خطأ في الصرف", messageEn: "Error processing payment" });
+    }
+  });
+
+  // ==================== EMPLOYEE ADVANCES (السلف) ====================
+
+  app.get("/api/advances", requireRole("owner", "assistant", "hr", "accountant"), async (req, res) => {
+    try {
+      const employeeId = req.query.employeeId ? parseInt(req.query.employeeId as string) : undefined;
+      res.json(await storage.getEmployeeAdvances(employeeId));
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ", messageEn: "Error fetching advances" });
+    }
+  });
+
+  app.post("/api/advances", requireRole("owner", "assistant", "hr"), async (req, res) => {
+    try {
+      const employeeId = parseInt(req.body.employeeId);
+      const amount = parseFloat(req.body.amount);
+      const installments = parseInt(req.body.installments);
+      if (!Number.isInteger(employeeId)) return res.status(400).json({ message: "الموظف مطلوب", messageEn: "Employee required" });
+      if (!Number.isFinite(amount) || amount <= 0) return res.status(400).json({ message: "المبلغ غير صالح", messageEn: "Invalid amount" });
+      if (!Number.isInteger(installments) || installments < 1) return res.status(400).json({ message: "عدد الأقساط غير صالح", messageEn: "Invalid installments" });
+
+      const emp = await storage.getEmployee(employeeId);
+      if (!emp) return res.status(404).json({ message: "الموظف غير موجود", messageEn: "Employee not found" });
+
+      const monthly = Math.round((amount / installments) * 100) / 100;
+      const created = await storage.createEmployeeAdvance({
+        employeeId,
+        amount: amount.toFixed(2),
+        installments,
+        monthlyDeduction: monthly.toFixed(2),
+        remainingAmount: amount.toFixed(2),
+        reason: typeof req.body.reason === "string" ? req.body.reason : null,
+        status: "pending",
+        requestDate: new Date().toISOString().slice(0, 10),
+      } as any);
+      res.status(201).json(created);
+    } catch (error) {
+      console.error("Advance create error:", error);
+      res.status(500).json({ message: "حدث خطأ في إنشاء السلفة", messageEn: "Error creating advance" });
+    }
+  });
+
+  // Approve an advance: disburse cash and post a journal (Dr 1140 / Cr 1111).
+  app.post("/api/advances/:id/approve", requireRole("owner", "assistant", "hr"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const adv = await storage.getEmployeeAdvance(id);
+      if (!adv) return res.status(404).json({ message: "السلفة غير موجودة", messageEn: "Advance not found" });
+      if (adv.status !== "pending") return res.status(400).json({ message: "تمت معالجة هذه السلفة مسبقاً", messageEn: "Advance already processed" });
+
+      // Only one active (approved) advance per employee to keep payroll recovery simple.
+      const existingActive = await storage.getActiveAdvanceForEmployee(adv.employeeId);
+      if (existingActive) {
+        return res.status(409).json({ message: "يوجد سلفة نشطة لهذا الموظف بالفعل", messageEn: "Employee already has an active advance" });
+      }
+
+      const approvedDate = new Date().toISOString().slice(0, 10);
+      const amount = parseFloat(adv.amount.toString());
+
+      // Post disbursement journal FIRST (idempotent via reference guard).
+      const existingJe = await storage.findJournalEntryByReference("advance", adv.id);
+      if (!existingJe && amount > 0) {
+        const emp = await storage.getEmployee(adv.employeeId);
+        const empName = emp?.fullNameAr || emp?.fullNameEn || `#${adv.employeeId}`;
+        await storage.createJournalEntry(
+          {
+            date: approvedDate,
+            description: `صرف سلفة للموظف ${empName}`,
+            reference: `ADV-${adv.id}`,
+            referenceType: "advance",
+            referenceId: adv.id,
+            status: "posted",
+            createdBy: req.session.userId,
+          } as any,
+          [
+            { entryId: 0, accountCode: "1140", accountNameAr: "سلف وعهد الموظفين", debit: amount.toFixed(2), credit: "0" },
+            { entryId: 0, accountCode: "1111", accountNameAr: "الصندوق", debit: "0", credit: amount.toFixed(2) },
+          ] as any,
+        );
+      }
+
+      let updated;
+      try {
+        updated = await storage.updateEmployeeAdvance(id, {
+          status: "approved",
+          approvedBy: req.session.userId,
+          approvedDate,
+        } as any);
+      } catch (e: any) {
+        // Partial unique index race: another active advance won the approval.
+        if (e?.code === "23505") {
+          return res.status(409).json({ message: "يوجد سلفة نشطة لهذا الموظف بالفعل", messageEn: "Employee already has an active advance" });
+        }
+        throw e;
+      }
+      res.json(updated);
+    } catch (error) {
+      console.error("Advance approve error:", error);
+      res.status(500).json({ message: "حدث خطأ في الاعتماد", messageEn: "Error approving advance" });
+    }
+  });
+
+  app.post("/api/advances/:id/reject", requireRole("owner", "assistant", "hr"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const adv = await storage.getEmployeeAdvance(id);
+      if (!adv) return res.status(404).json({ message: "السلفة غير موجودة", messageEn: "Advance not found" });
+      if (adv.status !== "pending") return res.status(400).json({ message: "تمت معالجة هذه السلفة مسبقاً", messageEn: "Advance already processed" });
+      const updated = await storage.updateEmployeeAdvance(id, {
+        status: "rejected",
+        approvedBy: req.session.userId,
+        approvedDate: new Date().toISOString().slice(0, 10),
+        notes: typeof req.body.notes === "string" ? req.body.notes : adv.notes,
+      } as any);
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ في الرفض", messageEn: "Error rejecting advance" });
+    }
+  });
+
+  // ==================== LEAVE REQUESTS (الإجازات) ====================
+
+  const annualEntitlement = (contractStart: string | null): number => {
+    if (!contractStart) return 21;
+    const years = (Date.now() - new Date(contractStart).getTime()) / (1000 * 3600 * 24 * 365.25);
+    return years >= 5 ? 30 : 21;
+  };
+
+  app.get("/api/leaves", requireRole("owner", "assistant", "hr"), async (req, res) => {
+    try {
+      const employeeId = req.query.employeeId ? parseInt(req.query.employeeId as string) : undefined;
+      res.json(await storage.getLeaveRequests(employeeId));
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ", messageEn: "Error fetching leaves" });
+    }
+  });
+
+  // Annual leave balance for an employee in a given year.
+  app.get("/api/leaves/balance/:employeeId", requireRole("owner", "assistant", "hr"), async (req, res) => {
+    try {
+      const employeeId = parseInt(req.params.employeeId);
+      const year = typeof req.query.year === "string" && /^\d{4}$/.test(req.query.year) ? req.query.year : String(new Date().getFullYear());
+      const emp = await storage.getEmployee(employeeId);
+      if (!emp) return res.status(404).json({ message: "الموظف غير موجود", messageEn: "Employee not found" });
+      const entitlement = annualEntitlement(emp.contractStart);
+      const used = await storage.getApprovedAnnualLeaveDays(employeeId, year);
+      res.json({ entitlement, used, remaining: Math.max(0, entitlement - used), year });
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ", messageEn: "Error computing balance" });
+    }
+  });
+
+  app.post("/api/leaves", requireRole("owner", "assistant", "hr"), async (req, res) => {
+    try {
+      const employeeId = parseInt(req.body.employeeId);
+      const leaveType = req.body.leaveType;
+      const startDate = req.body.startDate;
+      const endDate = req.body.endDate;
+      const validTypes = ["annual", "sick", "unpaid", "emergency", "maternity", "other"];
+      if (!Number.isInteger(employeeId)) return res.status(400).json({ message: "الموظف مطلوب", messageEn: "Employee required" });
+      if (!validTypes.includes(leaveType)) return res.status(400).json({ message: "نوع الإجازة غير صالح", messageEn: "Invalid leave type" });
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate || "") || !/^\d{4}-\d{2}-\d{2}$/.test(endDate || "")) {
+        return res.status(400).json({ message: "التواريخ غير صالحة", messageEn: "Invalid dates" });
+      }
+      const start = new Date(startDate); const end = new Date(endDate);
+      if (end < start) return res.status(400).json({ message: "تاريخ النهاية قبل البداية", messageEn: "End before start" });
+      const days = Math.floor((end.getTime() - start.getTime()) / (1000 * 3600 * 24)) + 1;
+
+      const emp = await storage.getEmployee(employeeId);
+      if (!emp) return res.status(404).json({ message: "الموظف غير موجود", messageEn: "Employee not found" });
+
+      const created = await storage.createLeaveRequest({
+        employeeId, leaveType, startDate, endDate, days,
+        reason: typeof req.body.reason === "string" ? req.body.reason : null,
+        status: "pending",
+      } as any);
+      res.status(201).json(created);
+    } catch (error) {
+      console.error("Leave create error:", error);
+      res.status(500).json({ message: "حدث خطأ في إنشاء الطلب", messageEn: "Error creating leave" });
+    }
+  });
+
+  app.post("/api/leaves/:id/decision", requireRole("owner", "assistant", "hr"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const decision = req.body.decision;
+      if (decision !== "approved" && decision !== "rejected") {
+        return res.status(400).json({ message: "قرار غير صالح", messageEn: "Invalid decision" });
+      }
+      const leave = await storage.getLeaveRequest(id);
+      if (!leave) return res.status(404).json({ message: "الطلب غير موجود", messageEn: "Request not found" });
+      if (leave.status !== "pending") return res.status(400).json({ message: "تمت معالجة هذا الطلب مسبقاً", messageEn: "Already processed" });
+      const updated = await storage.updateLeaveRequest(id, {
+        status: decision,
+        approvedBy: req.session.userId,
+        approvedDate: new Date().toISOString().slice(0, 10),
+        notes: typeof req.body.notes === "string" ? req.body.notes : leave.notes,
+      } as any);
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ في القرار", messageEn: "Error processing decision" });
+    }
+  });
+
+  // ==================== PERFORMANCE EVALUATIONS (تقييم الأداء) ====================
+
+  const clampScore = (v: any): number => {
+    const n = parseInt(v);
+    if (!Number.isFinite(n)) return 3;
+    return Math.min(5, Math.max(1, n));
+  };
+
+  app.get("/api/evaluations", requireRole("owner", "assistant", "hr"), async (req, res) => {
+    try {
+      const employeeId = req.query.employeeId ? parseInt(req.query.employeeId as string) : undefined;
+      res.json(await storage.getPerformanceEvaluations(employeeId));
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ", messageEn: "Error fetching evaluations" });
+    }
+  });
+
+  app.post("/api/evaluations", requireRole("owner", "assistant", "hr"), async (req, res) => {
+    try {
+      const employeeId = parseInt(req.body.employeeId);
+      const period = typeof req.body.period === "string" ? req.body.period.trim() : "";
+      if (!Number.isInteger(employeeId)) return res.status(400).json({ message: "الموظف مطلوب", messageEn: "Employee required" });
+      if (!period) return res.status(400).json({ message: "الفترة مطلوبة", messageEn: "Period required" });
+      const emp = await storage.getEmployee(employeeId);
+      if (!emp) return res.status(404).json({ message: "الموظف غير موجود", messageEn: "Employee not found" });
+
+      const q = clampScore(req.body.scoreQuality);
+      const p = clampScore(req.body.scoreProductivity);
+      const a = clampScore(req.body.scoreAttendance);
+      const t = clampScore(req.body.scoreTeamwork);
+      const d = clampScore(req.body.scoreDiscipline);
+      const overall = (q + p + a + t + d) / 5;
+
+      const created = await storage.createPerformanceEvaluation({
+        employeeId, period, evaluatorId: req.session.userId,
+        scoreQuality: q, scoreProductivity: p, scoreAttendance: a, scoreTeamwork: t, scoreDiscipline: d,
+        overallScore: overall.toFixed(2),
+        strengths: typeof req.body.strengths === "string" ? req.body.strengths : null,
+        improvements: typeof req.body.improvements === "string" ? req.body.improvements : null,
+        status: req.body.status === "finalized" ? "finalized" : "draft",
+      } as any);
+      res.status(201).json(created);
+    } catch (error) {
+      console.error("Evaluation create error:", error);
+      res.status(500).json({ message: "حدث خطأ في إنشاء التقييم", messageEn: "Error creating evaluation" });
     }
   });
 
@@ -5962,6 +6248,88 @@ export async function registerRoutes(
     await db.execute(`
       CREATE UNIQUE INDEX IF NOT EXISTS payroll_records_employee_period_unique
         ON payroll_records (employee_id, period);
+    `);
+    await db.execute(`
+      ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS advance_deduction NUMERIC(12,2) NOT NULL DEFAULT 0;
+    `);
+    // Employee Advances (السلف)
+    await db.execute(`
+      DO $$ BEGIN
+        CREATE TYPE advance_status AS ENUM ('pending', 'approved', 'rejected', 'settled');
+      EXCEPTION WHEN duplicate_object THEN null; END $$;
+    `);
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS employee_advances (
+        id SERIAL PRIMARY KEY,
+        employee_id INTEGER NOT NULL REFERENCES employees(id),
+        amount NUMERIC(12,2) NOT NULL,
+        installments INTEGER NOT NULL DEFAULT 1,
+        monthly_deduction NUMERIC(12,2) NOT NULL DEFAULT 0,
+        remaining_amount NUMERIC(12,2) NOT NULL DEFAULT 0,
+        reason TEXT,
+        status advance_status NOT NULL DEFAULT 'pending',
+        request_date DATE NOT NULL,
+        approved_by INTEGER REFERENCES users(id),
+        approved_date DATE,
+        notes TEXT,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+    `);
+    // Enforce ONE active (approved) advance per employee at the DB level (concurrency-safe).
+    await db.execute(`
+      CREATE UNIQUE INDEX IF NOT EXISTS uniq_active_advance_per_employee
+      ON employee_advances(employee_id) WHERE status = 'approved';
+    `);
+    // Leave Requests (الإجازات)
+    await db.execute(`
+      DO $$ BEGIN
+        CREATE TYPE leave_type AS ENUM ('annual', 'sick', 'unpaid', 'emergency', 'maternity', 'other');
+      EXCEPTION WHEN duplicate_object THEN null; END $$;
+    `);
+    await db.execute(`
+      DO $$ BEGIN
+        CREATE TYPE leave_status AS ENUM ('pending', 'approved', 'rejected');
+      EXCEPTION WHEN duplicate_object THEN null; END $$;
+    `);
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS leave_requests (
+        id SERIAL PRIMARY KEY,
+        employee_id INTEGER NOT NULL REFERENCES employees(id),
+        leave_type leave_type NOT NULL DEFAULT 'annual',
+        start_date DATE NOT NULL,
+        end_date DATE NOT NULL,
+        days INTEGER NOT NULL DEFAULT 1,
+        reason TEXT,
+        status leave_status NOT NULL DEFAULT 'pending',
+        approved_by INTEGER REFERENCES users(id),
+        approved_date DATE,
+        notes TEXT,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+    `);
+    // Performance Evaluations (تقييم الأداء)
+    await db.execute(`
+      DO $$ BEGIN
+        CREATE TYPE evaluation_status AS ENUM ('draft', 'finalized');
+      EXCEPTION WHEN duplicate_object THEN null; END $$;
+    `);
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS performance_evaluations (
+        id SERIAL PRIMARY KEY,
+        employee_id INTEGER NOT NULL REFERENCES employees(id),
+        period TEXT NOT NULL,
+        evaluator_id INTEGER REFERENCES users(id),
+        score_quality INTEGER NOT NULL DEFAULT 3,
+        score_productivity INTEGER NOT NULL DEFAULT 3,
+        score_attendance INTEGER NOT NULL DEFAULT 3,
+        score_teamwork INTEGER NOT NULL DEFAULT 3,
+        score_discipline INTEGER NOT NULL DEFAULT 3,
+        overall_score NUMERIC(4,2) NOT NULL DEFAULT 3,
+        strengths TEXT,
+        improvements TEXT,
+        status evaluation_status NOT NULL DEFAULT 'draft',
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
     `);
     console.log("HR module migration completed");
 
