@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Users, Clock, LogIn, LogOut, AlertTriangle, CheckCircle2, XCircle, MapPin,
   Pencil, Monitor, Factory, Building2, RefreshCw, Download, Filter, Map,
+  ChevronDown, ChevronLeft, CalendarDays,
 } from "lucide-react";
 import { useLanguage } from "@/components/language-provider";
 import AttendanceZonesMap from "@/components/attendance-zones-map";
@@ -50,6 +51,13 @@ interface MonitorData {
   employees: EmployeeInfo[];
 }
 
+interface LocationZone {
+  id: number;
+  nameAr: string;
+  type: string;
+  isActive: boolean;
+}
+
 function formatTime(ts: string) {
   return new Date(ts).toLocaleTimeString("ar-SA", { hour: "2-digit", minute: "2-digit", hour12: true });
 }
@@ -64,6 +72,34 @@ function getTodayRange() {
   const end = new Date();
   end.setHours(23, 59, 59, 999);
   return { from: today.toISOString(), to: end.toISOString() };
+}
+
+function getDaysInRange(from: string, to: string): Date[] {
+  const days: Date[] = [];
+  const start = new Date(from); start.setHours(0, 0, 0, 0);
+  const end = new Date(to); end.setHours(0, 0, 0, 0);
+  const cur = new Date(start);
+  let guard = 0;
+  while (cur <= end && guard < 370) {
+    days.push(new Date(cur));
+    cur.setDate(cur.getDate() + 1);
+    guard++;
+  }
+  return days;
+}
+
+function recordsForDay(records: AttendanceRecord[], day: Date): AttendanceRecord[] {
+  const start = new Date(day); start.setHours(0, 0, 0, 0);
+  const end = new Date(day); end.setHours(23, 59, 59, 999);
+  const s = start.getTime(), e = end.getTime();
+  return records.filter(r => {
+    const t = new Date(r.checkTime).getTime();
+    return t >= s && t <= e;
+  });
+}
+
+function formatDayShort(day: Date) {
+  return day.toLocaleDateString("ar-SA", { weekday: "short", month: "short", day: "numeric" });
 }
 
 function getDayStatus(records: AttendanceRecord[], employeeId: number) {
@@ -106,6 +142,7 @@ export default function AttendanceMonitorPage() {
   const [dateRange, setDateRange] = useState(getTodayRange());
   const [locationFilter, setLocationFilter] = useState("all");
   const [outOfZoneOnly, setOutOfZoneOnly] = useState(false);
+  const [expandedEmployees, setExpandedEmployees] = useState<Set<number>>(new Set());
   const [editRecord, setEditRecord] = useState<AttendanceRecord | null>(null);
   const [editTime, setEditTime] = useState("");
   const [editNotes, setEditNotes] = useState("");
@@ -142,13 +179,16 @@ export default function AttendanceMonitorPage() {
   }, [locationPopup]);
 
   const { data, isLoading, refetch } = useQuery<MonitorData>({
-    queryKey: ["/api/attendance/monitor", dateRange.from, dateRange.to, locationFilter],
+    queryKey: ["/api/attendance/monitor", dateRange.from, dateRange.to],
     queryFn: () => {
       const params = new URLSearchParams({ from: dateRange.from, to: dateRange.to });
-      if (locationFilter !== "all") params.set("locationName", locationFilter);
       return fetch(`/api/attendance/monitor?${params}`).then(r => r.json());
     },
     refetchInterval: 60000,
+  });
+
+  const { data: zones = [] } = useQuery<LocationZone[]>({
+    queryKey: ["/api/attendance/zones"],
   });
 
   const { data: deviceReport = [] } = useQuery<{ fingerprint: string; employees: string[] }[]>({
@@ -169,24 +209,65 @@ export default function AttendanceMonitorPage() {
   const records = data?.records || [];
   const employees = data?.employees || [];
 
-  const filteredEmployees = useMemo(() => {
-    let result = locationFilter === "all" ? employees : employees.filter(e => e.locationName === locationFilter);
-    if (outOfZoneOnly) result = result.filter(e => records.some(r => r.employeeId === e.id && r.isOutOfZone));
-    return result;
-  }, [employees, locationFilter, outOfZoneOnly, records]);
+  const days = useMemo(() => getDaysInRange(dateRange.from, dateRange.to), [dateRange.from, dateRange.to]);
+  const isMultiDay = days.length > 1;
 
+  // Location options = active zones + any location names seen on employees/records
+  const locationOptions = useMemo(() => {
+    const set = new Set<string>();
+    zones.filter(z => z.isActive !== false).forEach(z => z.nameAr && set.add(z.nameAr));
+    employees.forEach(e => e.locationName && set.add(e.locationName));
+    records.forEach(r => r.locationName && set.add(r.locationName));
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "ar"));
+  }, [zones, employees, records]);
+
+  // Does an employee belong to the selected location? (by home location OR by any record there)
+  const employeeMatchesLocation = (e: EmployeeInfo) => {
+    if (locationFilter === "all") return true;
+    if (e.locationName === locationFilter) return true;
+    return records.some(r => r.employeeId === e.id && r.locationName === locationFilter);
+  };
+
+  // Records filtered by selected location only (used for status/summary calculations)
+  const locRecords = useMemo(() => {
+    if (locationFilter === "all") return records;
+    return records.filter(r => r.locationName === locationFilter);
+  }, [records, locationFilter]);
+
+  const filteredEmployees = useMemo(() => {
+    let result = employees.filter(employeeMatchesLocation);
+    if (outOfZoneOnly) result = result.filter(e => locRecords.some(r => r.employeeId === e.id && r.isOutOfZone));
+    return result;
+  }, [employees, locationFilter, outOfZoneOnly, records, locRecords]);
+
+  // Records for the detailed records tab (location + out-of-zone filters)
   const filteredRecords = useMemo(() => {
-    if (!outOfZoneOnly) return records;
-    return records.filter(r => r.isOutOfZone);
-  }, [records, outOfZoneOnly]);
+    let result = locRecords;
+    if (outOfZoneOnly) result = result.filter(r => r.isOutOfZone);
+    return result;
+  }, [locRecords, outOfZoneOnly]);
 
   const summary = useMemo(() => {
-    const present = filteredEmployees.filter(e => getDayStatus(records, e.id).status === "present").length;
-    const absent = filteredEmployees.filter(e => getDayStatus(records, e.id).status === "absent").length;
-    const incomplete = filteredEmployees.filter(e => getDayStatus(records, e.id).status === "incomplete").length;
-    const outOfZone = records.filter(r => r.isOutOfZone).length;
+    let present = 0, absent = 0, incomplete = 0;
+    if (isMultiDay) {
+      // Sum statuses across employee × day
+      filteredEmployees.forEach(emp => {
+        days.forEach(day => {
+          const dayRecs = recordsForDay(locRecords, day);
+          const st = getDayStatus(dayRecs, emp.id).status;
+          if (st === "present") present++;
+          else if (st === "incomplete") incomplete++;
+          else absent++;
+        });
+      });
+    } else {
+      present = filteredEmployees.filter(e => getDayStatus(locRecords, e.id).status === "present").length;
+      absent = filteredEmployees.filter(e => getDayStatus(locRecords, e.id).status === "absent").length;
+      incomplete = filteredEmployees.filter(e => getDayStatus(locRecords, e.id).status === "incomplete").length;
+    }
+    const outOfZone = locRecords.filter(r => r.isOutOfZone).length;
     return { present, absent, incomplete, outOfZone, total: filteredEmployees.length };
-  }, [records, filteredEmployees]);
+  }, [locRecords, filteredEmployees, isMultiDay, days]);
 
   const handleSetToday = () => setDateRange(getTodayRange());
   const handleSetWeek = () => {
@@ -197,6 +278,27 @@ export default function AttendanceMonitorPage() {
     const end = new Date(now);
     end.setHours(23, 59, 59, 999);
     setDateRange({ from: start.toISOString(), to: end.toISOString() });
+  };
+  const handleSetMonth = () => {
+    const now = new Date();
+    const start = new Date(now);
+    start.setDate(now.getDate() - 29);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(now);
+    end.setHours(23, 59, 59, 999);
+    setDateRange({ from: start.toISOString(), to: end.toISOString() });
+  };
+
+  const todayRange = getTodayRange();
+  const isTodayActive = dateRange.from.split("T")[0] === todayRange.from.split("T")[0]
+    && dateRange.to.split("T")[0] === todayRange.to.split("T")[0];
+
+  const toggleExpand = (id: number) => {
+    setExpandedEmployees(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
   };
 
   const openEditDialog = (rec: AttendanceRecord) => {
@@ -217,16 +319,19 @@ export default function AttendanceMonitorPage() {
   const exportCSV = () => {
     const rows = [["اسم الموظف", "التاريخ", "وقت الدخول", "وقت الخروج", "المدة", "الموقع", "الحالة"]];
     filteredEmployees.forEach(emp => {
-      const s = getDayStatus(records, emp.id);
-      rows.push([
-        emp.nameAr,
-        dateRange.from.split("T")[0],
-        s.in ? formatTime(s.in.checkTime) : "—",
-        s.out ? formatTime(s.out.checkTime) : "—",
-        s.duration || "—",
-        emp.locationName,
-        s.status === "present" ? "حاضر" : s.status === "absent" ? "غائب" : "ناقص",
-      ]);
+      days.forEach(day => {
+        const dayRecs = recordsForDay(locRecords, day);
+        const s = getDayStatus(dayRecs, emp.id);
+        rows.push([
+          emp.nameAr,
+          day.toISOString().split("T")[0],
+          s.in ? formatTime(s.in.checkTime) : "—",
+          s.out ? formatTime(s.out.checkTime) : "—",
+          s.duration || "—",
+          (s.in?.locationName) || emp.locationName,
+          s.status === "present" ? "حاضر" : s.status === "absent" ? "غائب" : "ناقص",
+        ]);
+      });
     });
     const csv = rows.map(r => r.join(",")).join("\n");
     const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
@@ -262,14 +367,17 @@ export default function AttendanceMonitorPage() {
         <Filter className="w-4 h-4 text-muted-foreground" />
         <Button
           size="sm"
-          variant={dateRange === getTodayRange() ? "default" : "outline"}
+          variant={isTodayActive ? "default" : "outline"}
           onClick={handleSetToday}
           data-testid="button-filter-today"
         >
           اليوم
         </Button>
         <Button size="sm" variant="outline" onClick={handleSetWeek} data-testid="button-filter-week">
-          هذا الأسبوع
+          آخر 7 أيام
+        </Button>
+        <Button size="sm" variant="outline" onClick={handleSetMonth} data-testid="button-filter-month">
+          آخر 30 يوم
         </Button>
         <div className="flex gap-1 items-center">
           <Input
@@ -301,13 +409,14 @@ export default function AttendanceMonitorPage() {
           />
         </div>
         <Select value={locationFilter} onValueChange={setLocationFilter}>
-          <SelectTrigger className="h-8 w-32 text-xs" data-testid="select-filter-location">
+          <SelectTrigger className="h-8 w-36 text-xs" data-testid="select-filter-location">
             <SelectValue placeholder="الموقع" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">جميع المواقع</SelectItem>
-            <SelectItem value="مصنع">المصنع</SelectItem>
-            <SelectItem value="معرض">المعرض</SelectItem>
+            {locationOptions.map(loc => (
+              <SelectItem key={loc} value={loc} data-testid={`option-location-${loc}`}>{loc}</SelectItem>
+            ))}
           </SelectContent>
         </Select>
         <Button
@@ -400,11 +509,96 @@ export default function AttendanceMonitorPage() {
         <TabsContent value="daily">
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-base">حالة الموظفين - {formatDate(dateRange.from)}</CardTitle>
+              <CardTitle className="text-base flex items-center gap-2">
+                <CalendarDays className="w-4 h-4 text-muted-foreground" />
+                {isMultiDay
+                  ? `حالة الموظفين — ${formatDate(dateRange.from)} ← ${formatDate(dateRange.to)} (${days.length} يوم)`
+                  : `حالة الموظفين - ${formatDate(dateRange.from)}`}
+              </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
               {isLoading ? (
                 <div className="p-8 text-center text-muted-foreground animate-pulse">جاري التحميل...</div>
+              ) : filteredEmployees.length === 0 ? (
+                <div className="p-8 text-center text-muted-foreground">لا يوجد موظفون مطابقون للتصفية</div>
+              ) : isMultiDay ? (
+                <div className="divide-y" data-testid="list-multiday-employees">
+                  {filteredEmployees.map(emp => {
+                    const empDays = days.map(day => ({ day, s: getDayStatus(recordsForDay(locRecords, day), emp.id) }));
+                    const presentDays = empDays.filter(d => d.s.status === "present").length;
+                    const incompleteDays = empDays.filter(d => d.s.status === "incomplete").length;
+                    const absentDays = empDays.filter(d => d.s.status === "absent").length;
+                    const expanded = expandedEmployees.has(emp.id);
+                    return (
+                      <div key={emp.id} data-testid={`row-employee-${emp.id}`}>
+                        <button
+                          onClick={() => toggleExpand(emp.id)}
+                          className="w-full flex items-center gap-3 px-4 py-3 text-right hover:bg-muted/20 transition-colors"
+                          data-testid={`button-expand-employee-${emp.id}`}
+                        >
+                          {expanded ? <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" /> : <ChevronLeft className="w-4 h-4 text-muted-foreground shrink-0" />}
+                          <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary shrink-0">
+                            {emp.nameAr[0]}
+                          </div>
+                          <div className="flex-1 min-w-0 text-right">
+                            <p className="font-medium truncate">{emp.nameAr}</p>
+                            <p className="text-xs text-muted-foreground">{emp.locationName}</p>
+                          </div>
+                          <div className="flex items-center gap-2 text-xs shrink-0">
+                            <span className="inline-flex items-center gap-1 text-green-600" title="أيام الحضور"><CheckCircle2 className="w-3.5 h-3.5" />{presentDays}</span>
+                            <span className="inline-flex items-center gap-1 text-yellow-600" title="أيام ناقصة"><AlertTriangle className="w-3.5 h-3.5" />{incompleteDays}</span>
+                            <span className="inline-flex items-center gap-1 text-red-600" title="أيام الغياب"><XCircle className="w-3.5 h-3.5" />{absentDays}</span>
+                          </div>
+                        </button>
+                        {expanded && (
+                          <div className="overflow-x-auto bg-muted/10 border-t">
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="text-right text-xs text-muted-foreground">
+                                  <th className="px-4 py-2 font-medium">اليوم</th>
+                                  <th className="px-4 py-2 font-medium">الدخول</th>
+                                  <th className="px-4 py-2 font-medium">الخروج</th>
+                                  <th className="px-4 py-2 font-medium">المدة</th>
+                                  <th className="px-4 py-2 font-medium">الموقع</th>
+                                  <th className="px-4 py-2 font-medium">الحالة</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y">
+                                {empDays.map(({ day, s }) => (
+                                  <tr key={day.toISOString()} className="hover:bg-muted/20" data-testid={`row-day-${emp.id}-${day.toISOString().split("T")[0]}`}>
+                                    <td className="px-4 py-2 whitespace-nowrap">{formatDayShort(day)}</td>
+                                    <td className="px-4 py-2">
+                                      {s.in ? (
+                                        <span className="inline-flex items-center gap-1">
+                                          <LogIn className="w-3.5 h-3.5 text-green-500" />{formatTime(s.in.checkTime)}
+                                          {s.in.isManualEdit && <Pencil className="w-3 h-3 text-muted-foreground" />}
+                                        </span>
+                                      ) : <span className="text-muted-foreground">—</span>}
+                                    </td>
+                                    <td className="px-4 py-2">
+                                      {s.out ? (
+                                        <span className="inline-flex items-center gap-1">
+                                          <LogOut className="w-3.5 h-3.5 text-orange-500" />{formatTime(s.out.checkTime)}
+                                          {s.out.isManualEdit && <Pencil className="w-3 h-3 text-muted-foreground" />}
+                                        </span>
+                                      ) : <span className="text-muted-foreground">—</span>}
+                                    </td>
+                                    <td className="px-4 py-2 font-mono">{s.duration || "—"}</td>
+                                    <td className="px-4 py-2 text-xs text-muted-foreground">
+                                      {s.in?.locationName || "—"}
+                                      {s.outOfZone && <MapPin className="w-3 h-3 text-orange-500 inline ms-1" />}
+                                    </td>
+                                    <td className="px-4 py-2"><StatusBadge status={s.status} /></td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
@@ -420,7 +614,7 @@ export default function AttendanceMonitorPage() {
                     </thead>
                     <tbody className="divide-y">
                       {filteredEmployees.map(emp => {
-                        const s = getDayStatus(records, emp.id);
+                        const s = getDayStatus(locRecords, emp.id);
                         return (
                           <tr key={emp.id} className="hover:bg-muted/20 transition-colors" data-testid={`row-employee-${emp.id}`}>
                             <td className="px-4 py-3">

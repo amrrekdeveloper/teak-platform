@@ -6525,6 +6525,7 @@ export async function registerRoutes(
             nameAr: user?.fullNameAr || e.phone || e.employeeNumber,
             phone: user?.phone || e.phone,
             locationName: e.fingerprintLocation || e.fingerScanLocation || "غير محدد",
+            hasPin: !!user?.employeePin,
           };
         });
       res.json(activeEmployees);
@@ -6552,6 +6553,7 @@ export async function registerRoutes(
         phone: empUser?.phone || employee.phone || phone,
         locationName: employee.fingerprintLocation || employee.fingerScanLocation || "غير محدد",
         attendanceEnabled: employee.attendanceEnabled,
+        hasPin: !!empUser?.employeePin,
         lastRecord: lastRecord ? { type: lastRecord.type, checkTime: lastRecord.checkTime } : null,
       });
     } catch {
@@ -6559,9 +6561,88 @@ export async function registerRoutes(
     }
   });
 
+  // In-memory rate limiter for attendance PIN verification (per IP)
+  const attendancePinRateLimit = new Map<string, { count: number; resetAt: number }>();
+  const ATTENDANCE_PIN_MAX_ATTEMPTS = 8;
+
+  app.post("/api/attendance/verify-pin", requireAttendanceAuth, async (req, res) => {
+    const ip = req.ip || "unknown";
+    const now = Date.now();
+    const limiter = attendancePinRateLimit.get(ip) || { count: 0, resetAt: now + ATTENDANCE_WINDOW_MS };
+    if (now > limiter.resetAt) { limiter.count = 0; limiter.resetAt = now + ATTENDANCE_WINDOW_MS; }
+    if (limiter.count >= ATTENDANCE_PIN_MAX_ATTEMPTS) {
+      return res.status(429).json({ success: false, message: "تجاوزت عدد المحاولات المسموحة. حاول بعد قليل." });
+    }
+    limiter.count++;
+    attendancePinRateLimit.set(ip, limiter);
+
+    const { employeeId, employeePhone, pin, type } = req.body;
+    if (!pin) return res.status(400).json({ success: false, message: "الرقم السري الوظيفي مطلوب" });
+    try {
+      const allEmployees = await storage.getEmployees();
+      const allUsers = await storage.getUsers();
+      let employee = employeeId ? allEmployees.find(e => e.id === Number(employeeId)) : undefined;
+      if (!employee && employeePhone) {
+        const user = allUsers.find(u => u.phone === employeePhone);
+        employee = user ? allEmployees.find(e => e.userId === user.id) : allEmployees.find(e => e.phone === employeePhone);
+      }
+      if (!employee) return res.status(404).json({ success: false, message: "لم يُعثَر على الموظف" });
+      const empUser = allUsers.find(u => u.id === employee!.userId);
+      const storedPin = empUser?.employeePin;
+      if (!storedPin) return res.json({ success: true, noPin: true });
+      if (String(pin).trim() === String(storedPin).trim()) {
+        limiter.count = 0;
+        // Bind a short-lived (2 min) verification to the session so /record can
+        // confirm the PIN was checked. Validated against employee id/phone + action.
+        (req as any).session.attendancePinVerified = {
+          employeeId: employee.id,
+          employeePhone: employee.phone || employeePhone || null,
+          type: type && ["check_in", "check_out"].includes(type) ? type : null,
+          expiresAt: Date.now() + 2 * 60 * 1000,
+        };
+        return res.json({ success: true });
+      }
+      return res.status(401).json({ success: false, message: "الرقم السري الوظيفي غير صحيح" });
+    } catch {
+      res.status(500).json({ success: false, message: "حدث خطأ" });
+    }
+  });
+
   app.post("/api/attendance/record", requireAttendanceAuth, async (req, res) => {
     const { employeeId, employeePhone, employeeNameAr, type, locationName: clientLocationName, latitude, longitude, deviceInfo, deviceFingerprint, notes } = req.body;
     if (!type || !["check_in", "check_out"].includes(type)) return res.status(400).json({ message: "نوع السجل غير صالح" });
+
+    // Server-side PIN enforcement: if the resolved employee has an employeePin,
+    // the request must be backed by a recent, matching /verify-pin success
+    // stored on the session. Employees without a pin are allowed through.
+    try {
+      const allEmployees = await storage.getEmployees();
+      const allUsers = await storage.getUsers();
+      let pinEmployee = employeeId ? allEmployees.find(e => e.id === Number(employeeId)) : undefined;
+      if (!pinEmployee && employeePhone) {
+        const u = allUsers.find(us => us.phone === employeePhone);
+        pinEmployee = u ? allEmployees.find(e => e.userId === u.id) : allEmployees.find(e => e.phone === employeePhone);
+      }
+      if (pinEmployee) {
+        const pinUser = allUsers.find(u => u.id === pinEmployee!.userId);
+        if (pinUser?.employeePin) {
+          const v = (req as any).session.attendancePinVerified;
+          const valid = v
+            && v.expiresAt > Date.now()
+            && Number(v.employeeId) === Number(pinEmployee.id)
+            && (!v.type || v.type === type);
+          if (!valid) {
+            return res.status(403).json({ message: "يجب تأكيد الرقم السري الوظيفي قبل التسجيل", requirePin: true });
+          }
+          // Consume the verification so it can't be replayed.
+          (req as any).session.attendancePinVerified = undefined;
+        }
+      }
+    } catch (e) {
+      console.error("PIN enforcement error:", e);
+      return res.status(500).json({ message: "حدث خطأ أثناء التحقق من الهوية" });
+    }
+
     const lat2Num = latitude !== undefined && latitude !== null ? parseFloat(latitude) : NaN;
     const lng2Num = longitude !== undefined && longitude !== null ? parseFloat(longitude) : NaN;
     const hasValidCoords = !isNaN(lat2Num) && !isNaN(lng2Num) && lat2Num >= -90 && lat2Num <= 90 && lng2Num >= -180 && lng2Num <= 180;

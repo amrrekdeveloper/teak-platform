@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import teakLogo from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
 
-type Step = "password" | "lookup" | "action" | "fingerprint" | "success" | "history";
+type Step = "password" | "lookup" | "action" | "pin" | "fingerprint" | "success" | "history";
 
 interface EmployeeInfo {
   id: number;
@@ -24,6 +24,7 @@ interface EmployeeInfo {
   phone: string;
   locationName: string;
   attendanceEnabled: boolean;
+  hasPin?: boolean;
   lastRecord: { type: string; checkTime: string } | null;
 }
 
@@ -182,6 +183,8 @@ export default function AttendancePage() {
   const [password, setPassword] = useState("");
   const [phone, setPhone] = useState("");
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>("");
+  const [employeeSearch, setEmployeeSearch] = useState("");
+  const [pin, setPin] = useState("");
   const [employee, setEmployee] = useState<EmployeeInfo | null>(null);
   const [actionType, setActionType] = useState<"check_in" | "check_out">("check_in");
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
@@ -239,12 +242,43 @@ export default function AttendancePage() {
   });
 
   const recordMutation = useMutation({
-    mutationFn: (data: object) => apiRequest("POST", "/api/attendance/record", data),
+    mutationFn: async (data: object) => {
+      const r = await fetch("/api/attendance/record", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}));
+        throw Object.assign(new Error(body.message || "تعذّر تسجيل الحضور"), { requirePin: body.requirePin });
+      }
+      return r.json();
+    },
     onSuccess: () => {
       setStep("success");
       qc.invalidateQueries({ queryKey: ["/api/attendance/my-records"] });
     },
-    onError: () => toast({ title: "خطأ", description: "تعذّر تسجيل الحضور", variant: "destructive" }),
+    onError: (err: Error & { requirePin?: boolean }) => {
+      if (err.requirePin) {
+        setPin("");
+        setStep("pin");
+      }
+      toast({ title: "خطأ", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const verifyPinMutation = useMutation({
+    mutationFn: (p: string) => fetch("/api/attendance/verify-pin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ employeeId: employee?.id, employeePhone: employee?.phone, pin: p, type: actionType }),
+    }).then(async r => { if (!r.ok) throw new Error((await r.json()).message); return r.json(); }),
+    onSuccess: () => {
+      setPin("");
+      setFingerprintDone(false);
+      setStep("fingerprint");
+    },
+    onError: (err: Error) => toast({ title: "خطأ", description: err.message, variant: "destructive" }),
   });
 
   const permMutation = useMutation({
@@ -298,9 +332,14 @@ export default function AttendancePage() {
   const handleProceedToFingerprint = useCallback(() => {
     if (locationPermDenied) return;
     if (!locationReady) return;
+    if (employee?.hasPin) {
+      setPin("");
+      setStep("pin");
+      return;
+    }
     setFingerprintDone(false);
     setStep("fingerprint");
-  }, [locationPermDenied, locationReady]);
+  }, [locationPermDenied, locationReady, employee]);
 
   const handleFingerprintComplete = useCallback(() => {
     setFingerprintDone(true);
@@ -327,6 +366,8 @@ export default function AttendancePage() {
     setEmployee(null);
     setPhone("");
     setSelectedEmployeeId("");
+    setEmployeeSearch("");
+    setPin("");
     setLocation(null);
     setLocationPermDenied(false);
     setLocationReady(false);
@@ -430,27 +471,45 @@ export default function AttendancePage() {
 
                     <div className="relative">
                       <div className="absolute inset-0 flex items-center"><div className="w-full border-t" /></div>
-                      <div className="relative flex justify-center text-xs text-muted-foreground"><span className="bg-card px-2">أو اختر من القائمة</span></div>
+                      <div className="relative flex justify-center text-xs text-muted-foreground"><span className="bg-card px-2">أو اختر اسمك من القائمة</span></div>
                     </div>
 
-                    <Select value={selectedEmployeeId} onValueChange={handleSelectEmployee}>
-                      <SelectTrigger className="w-full" data-testid="select-attendance-employee">
-                        <SelectValue placeholder="اختر اسمك من القائمة" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {employeesList.map(emp => (
-                          <SelectItem key={emp.id} value={String(emp.id)} data-testid={`option-employee-${emp.id}`}>
-                            <div className="flex items-center gap-2">
-                              <span>{emp.nameAr}</span>
-                              <span className="text-muted-foreground text-xs">
-                                {emp.locationName === "معرض" ? <Building2 className="w-3 h-3 inline" /> : <Factory className="w-3 h-3 inline" />}
-                                {" "}{emp.locationName}
-                              </span>
-                            </div>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <div className="space-y-2">
+                      <Input
+                        type="text"
+                        placeholder="ابحث بالاسم..."
+                        value={employeeSearch}
+                        onChange={e => setEmployeeSearch(e.target.value)}
+                        data-testid="input-employee-search"
+                      />
+                      <div className="max-h-64 overflow-y-auto rounded-xl border divide-y" data-testid="list-attendance-employees">
+                        {employeesList
+                          .filter(emp => emp.nameAr.toLowerCase().includes(employeeSearch.trim().toLowerCase()))
+                          .map(emp => (
+                            <button
+                              key={emp.id}
+                              onClick={() => handleSelectEmployee(String(emp.id))}
+                              className="w-full flex items-center gap-3 px-3 py-3 text-right hover:bg-muted/40 active:bg-muted/60 transition-colors"
+                              data-testid={`option-employee-${emp.id}`}
+                            >
+                              <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center text-sm font-bold text-primary shrink-0">
+                                {emp.nameAr[0]}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="font-medium truncate">{emp.nameAr}</p>
+                                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                  {emp.locationName === "معرض" ? <Building2 className="w-3 h-3" /> : <Factory className="w-3 h-3" />}
+                                  {emp.locationName}
+                                </p>
+                              </div>
+                              <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+                            </button>
+                          ))}
+                        {employeesList.filter(emp => emp.nameAr.toLowerCase().includes(employeeSearch.trim().toLowerCase())).length === 0 && (
+                          <p className="px-3 py-6 text-center text-sm text-muted-foreground">لا يوجد موظف مطابق</p>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
               </motion.div>
@@ -548,8 +607,8 @@ export default function AttendancePage() {
                       disabled={!locationReady || locationPermDenied || !location}
                       data-testid="button-proceed-fingerprint"
                     >
-                      {!locationReady ? <Loader2 className="w-4 h-4 animate-spin ms-2" /> : <Fingerprint className="w-5 h-5 ms-2" />}
-                      متابعة للبصمة
+                      {!locationReady ? <Loader2 className="w-4 h-4 animate-spin ms-2" /> : <ChevronRight className="w-5 h-5 ms-2" />}
+                      متابعة
                     </Button>
                     <Button variant="outline" onClick={handleReset} data-testid="button-reset-lookup">
                       <RotateCcw className="w-4 h-4" />
@@ -571,6 +630,56 @@ export default function AttendancePage() {
                     >
                       طلب استئذان
                     </button>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+
+            {/* Step 3.5: PIN confirmation */}
+            {step === "pin" && employee && (
+              <motion.div key="pin" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}>
+                <div className="bg-card border rounded-2xl p-8 shadow-lg space-y-6">
+                  <div className="text-center space-y-2">
+                    <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto">
+                      <Shield className="w-8 h-8 text-primary" />
+                    </div>
+                    <h2 className="text-xl font-bold">تأكيد الهوية</h2>
+                    <p className="text-muted-foreground text-sm">
+                      {employee.nameAr} — أدخل الرقم السري الوظيفي لتأكيد {actionType === "check_in" ? "تسجيل الدخول" : "تسجيل الخروج"}
+                    </p>
+                  </div>
+                  <div className="space-y-3">
+                    <Input
+                      type="password"
+                      inputMode="numeric"
+                      placeholder="الرقم السري الوظيفي"
+                      value={pin}
+                      onChange={e => setPin(e.target.value)}
+                      onKeyDown={e => e.key === "Enter" && pin && verifyPinMutation.mutate(pin)}
+                      className="text-center text-2xl tracking-widest h-14"
+                      autoFocus
+                      data-testid="input-attendance-pin"
+                    />
+                    {verifyPinMutation.isError && (
+                      <p className="text-destructive text-sm text-center flex items-center gap-1 justify-center">
+                        <AlertCircle className="w-4 h-4" />
+                        {(verifyPinMutation.error as Error).message}
+                      </p>
+                    )}
+                    <div className="flex gap-2">
+                      <Button
+                        className="flex-1 h-12 text-base"
+                        onClick={() => pin && verifyPinMutation.mutate(pin)}
+                        disabled={verifyPinMutation.isPending || !pin}
+                        data-testid="button-verify-pin"
+                      >
+                        {verifyPinMutation.isPending ? "جاري التحقق..." : "تأكيد ومتابعة"}
+                        <ChevronRight className="w-4 h-4 ms-1" />
+                      </Button>
+                      <Button variant="outline" onClick={() => setStep("action")} data-testid="button-pin-back">
+                        رجوع
+                      </Button>
+                    </div>
                   </div>
                 </div>
               </motion.div>
