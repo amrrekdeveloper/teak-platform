@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useLocation, Link } from "wouter";
 import { useLanguage } from "@/components/language-provider";
 import { useAuth } from "@/hooks/use-auth";
@@ -29,6 +29,7 @@ import {
   UserCircle,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   TrendingUp,
   Clock,
   BookOpen,
@@ -110,6 +111,83 @@ const GROUP_LABELS: Record<string, { ar: string; en: string }> = {
   admin: { ar: "الإدارة", en: "Admin" },
 };
 
+const OPEN_GROUPS_STORAGE_KEY = "teak-sidebar-open-groups";
+
+function loadOpenGroups(): Record<string, boolean> {
+  try {
+    const raw = localStorage.getItem(OPEN_GROUPS_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+function isPathMatch(path: string, location: string): boolean {
+  if (path === "/") return location === "/";
+  return location === path || location.startsWith(path + "/");
+}
+
+function buildGroups(items: MenuItem[]): { groupKey: string; groupItems: MenuItem[] }[] {
+  const groups: { groupKey: string; groupItems: MenuItem[] }[] = [];
+  const seen = new Set<string>();
+  for (const item of items) {
+    const gk = item.group || "main";
+    if (!seen.has(gk)) {
+      seen.add(gk);
+      groups.push({ groupKey: gk, groupItems: [] });
+    }
+    groups.find((g) => g.groupKey === gk)!.groupItems.push(item);
+  }
+  return groups;
+}
+
+function NavLink({
+  item, isActive, collapsed, onItemClick, t, newOrderCount, activeRef,
+}: {
+  item: MenuItem;
+  isActive: boolean;
+  collapsed?: boolean;
+  onItemClick?: () => void;
+  t: (ar: string, en: string) => string;
+  newOrderCount?: number;
+  activeRef?: React.RefObject<HTMLDivElement>;
+}) {
+  const Icon = item.icon;
+  const showBadge = (item.path === "/order-center" || item.path === "/my-orders") && (newOrderCount || 0) > 0;
+  return (
+    <Link href={item.path}>
+      <div
+        ref={isActive ? activeRef : undefined}
+        className={`relative flex items-center gap-3 rounded-lg cursor-pointer transition-colors mb-0.5 ${
+          collapsed ? "px-2 py-2.5 justify-center" : "px-3 py-2.5"
+        } ${
+          isActive
+            ? "bg-primary/10 text-primary font-medium"
+            : "text-muted-foreground hover:bg-muted hover:text-foreground"
+        }`}
+        onClick={onItemClick}
+        title={collapsed ? t(item.titleAr, item.titleEn) : undefined}
+        data-testid={`link-sidebar-${item.path === "/" ? "" : item.path.split("/").pop()}`}
+      >
+        <Icon className="w-5 h-5 shrink-0" />
+        {!collapsed && (
+          <span className="text-sm truncate flex-1">
+            {t(item.titleAr, item.titleEn)}
+          </span>
+        )}
+        {showBadge && (
+          <span
+            className={`min-w-[18px] h-[18px] rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center px-1 ${collapsed ? "absolute -top-1 -end-1" : ""}`}
+            data-testid="badge-new-orders"
+          >
+            {newOrderCount}
+          </span>
+        )}
+      </div>
+    </Link>
+  );
+}
+
 function SidebarContent({
   items, location, t, onItemClick, newOrderCount, collapsed,
 }: {
@@ -120,62 +198,136 @@ function SidebarContent({
   newOrderCount?: number;
   collapsed?: boolean;
 }) {
-  const groups: { groupKey: string; groupItems: MenuItem[] }[] = [];
-  const seen = new Set<string>();
-  for (const item of items) {
-    const gk = item.group || "main";
-    if (!seen.has(gk)) { seen.add(gk); groups.push({ groupKey: gk, groupItems: [] }); }
-    groups.find(g => g.groupKey === gk)!.groupItems.push(item);
+  const groups = useMemo(() => buildGroups(items), [items]);
+  const activeRef = useRef<HTMLDivElement>(null);
+
+  const { activeItemPath, activeGroupKey } = useMemo(() => {
+    let bestPath = "";
+    let bestGroup: string | null = null;
+    for (const item of items) {
+      if (isPathMatch(item.path, location) && item.path.length >= bestPath.length) {
+        bestPath = item.path;
+        bestGroup = item.group || "main";
+      }
+    }
+    return { activeItemPath: bestPath, activeGroupKey: bestGroup };
+  }, [items, location]);
+
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => loadOpenGroups());
+
+  useEffect(() => {
+    if (activeGroupKey && !openGroups[activeGroupKey]) {
+      setOpenGroups((prev) => ({ ...prev, [activeGroupKey]: true }));
+    }
+  }, [activeGroupKey]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(OPEN_GROUPS_STORAGE_KEY, JSON.stringify(openGroups));
+    } catch {
+      // ignore storage failures
+    }
+  }, [openGroups]);
+
+  useEffect(() => {
+    if (!collapsed) {
+      activeRef.current?.scrollIntoView({ block: "nearest" });
+    }
+  }, [activeItemPath, collapsed]);
+
+  const toggleGroup = (groupKey: string) => {
+    setOpenGroups((prev) => ({ ...prev, [groupKey]: !prev[groupKey] }));
+  };
+
+  if (collapsed) {
+    return (
+      <nav className="flex-1 py-2 overflow-y-auto scrollbar-thin">
+        <div className="px-1">
+          {items.map((item) => (
+            <NavLink
+              key={item.path}
+              item={item}
+              isActive={item.path === activeItemPath}
+              collapsed
+              onItemClick={onItemClick}
+              t={t}
+              newOrderCount={newOrderCount}
+              activeRef={activeRef}
+            />
+          ))}
+        </div>
+      </nav>
+    );
   }
 
   return (
-    <nav className="flex-1 py-2 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
-      <div className={collapsed ? "px-1" : "px-2"}>
-        {groups.map(({ groupKey, groupItems }) => (
-          <div key={groupKey} className="mb-1">
-            {!collapsed && GROUP_LABELS[groupKey] && (
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60 px-3 pt-3 pb-1 select-none">
-                {t(GROUP_LABELS[groupKey].ar, GROUP_LABELS[groupKey].en)}
-              </p>
-            )}
-            {groupItems.map((item) => {
-              const isActive = location === item.path || (item.path !== "/" && location.startsWith(item.path));
-              const Icon = item.icon;
-              const showBadge = (item.path === "/order-center" || item.path === "/my-orders") && (newOrderCount || 0) > 0;
-              return (
-                <Link key={item.path} href={item.path}>
-                  <div
-                    className={`flex items-center gap-3 rounded-lg cursor-pointer transition-colors mb-0.5 ${
-                      collapsed ? "px-2 py-2.5 justify-center" : "px-3 py-2.5"
-                    } ${
-                      isActive
-                        ? "bg-primary/10 text-primary font-medium"
-                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                    }`}
-                    onClick={onItemClick}
-                    title={collapsed ? t(item.titleAr, item.titleEn) : undefined}
-                    data-testid={`link-sidebar-${item.path === "/" ? "" : item.path.split("/").pop()}`}
-                  >
-                    <Icon className="w-5 h-5 shrink-0" />
-                    {!collapsed && (
-                      <span className="text-sm truncate flex-1">
-                        {t(item.titleAr, item.titleEn)}
-                      </span>
-                    )}
-                    {showBadge && (
-                      <span
-                        className={`min-w-[18px] h-[18px] rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center px-1 ${collapsed ? "absolute -top-1 -end-1" : ""}`}
-                        data-testid="badge-new-orders"
-                      >
-                        {newOrderCount}
-                      </span>
-                    )}
+    <nav className="flex-1 py-2 overflow-y-auto scrollbar-thin">
+      <div className="px-2">
+        {groups.map(({ groupKey, groupItems }) => {
+          const label = GROUP_LABELS[groupKey];
+          const isOpen = openGroups[groupKey] ?? false;
+          const groupHasActive = groupKey === activeGroupKey;
+
+          if (!label) {
+            return (
+              <div key={groupKey} className="mb-1">
+                {groupItems.map((item) => (
+                  <NavLink
+                    key={item.path}
+                    item={item}
+                    isActive={item.path === activeItemPath}
+                    onItemClick={onItemClick}
+                    t={t}
+                    newOrderCount={newOrderCount}
+                    activeRef={activeRef}
+                  />
+                ))}
+              </div>
+            );
+          }
+
+          return (
+            <div key={groupKey} className="mb-0.5">
+              <button
+                type="button"
+                onClick={() => toggleGroup(groupKey)}
+                className={`w-full flex items-center justify-between gap-2 rounded-lg px-3 py-2 transition-colors select-none ${
+                  groupHasActive ? "text-primary" : "text-muted-foreground/70 hover:text-foreground hover:bg-muted/50"
+                }`}
+                aria-expanded={isOpen}
+                data-testid={`button-group-${groupKey}`}
+              >
+                <span className="text-[10px] font-semibold uppercase tracking-wider truncate">
+                  {t(label.ar, label.en)}
+                </span>
+                <ChevronDown
+                  className={`w-3.5 h-3.5 shrink-0 transition-transform duration-200 ${isOpen ? "" : "-rotate-90"}`}
+                />
+              </button>
+              <div
+                className={`grid transition-all duration-200 ease-in-out ${
+                  isOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+                }`}
+              >
+                <div className="overflow-hidden">
+                  <div className="pt-0.5 pb-1">
+                    {groupItems.map((item) => (
+                      <NavLink
+                        key={item.path}
+                        item={item}
+                        isActive={item.path === activeItemPath}
+                        onItemClick={onItemClick}
+                        t={t}
+                        newOrderCount={newOrderCount}
+                        activeRef={activeRef}
+                      />
+                    ))}
                   </div>
-                </Link>
-              );
-            })}
-          </div>
-        ))}
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </nav>
   );
@@ -305,7 +457,7 @@ export function MobileMenuButton() {
             data-testid="mobile-menu-drawer"
           >
             {/* Mobile drawer header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
               <div className="flex items-center gap-2.5">
                 <img src={teakLogo} alt="Teak" className="w-8 h-8 object-contain logo-auto" />
                 <div>

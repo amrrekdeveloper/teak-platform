@@ -279,8 +279,31 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [notifOpen, setNotifOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [, setLocation] = useLocation();
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("teak-sidebar-collapsed") === "true";
+    } catch {
+      return false;
+    }
+  });
+  const [location, setLocation] = useLocation();
+  const mainRef = useRef<HTMLElement>(null);
+
+  const toggleSidebarCollapsed = () => {
+    setSidebarCollapsed((v) => {
+      const next = !v;
+      try {
+        localStorage.setItem("teak-sidebar-collapsed", String(next));
+      } catch {
+        // ignore storage failures
+      }
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    mainRef.current?.scrollTo({ top: 0 });
+  }, [location]);
 
   const { data: notifications = [] } = useQuery<Notification[]>({
     queryKey: ["/api/notifications"],
@@ -320,7 +343,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-background flex">
-      <AppSidebar collapsed={sidebarCollapsed} onToggleCollapsed={() => setSidebarCollapsed(v => !v)} />
+      <AppSidebar collapsed={sidebarCollapsed} onToggleCollapsed={toggleSidebarCollapsed} />
 
       <div className="flex-1 flex flex-col min-h-screen min-w-0">
         <header
@@ -494,7 +517,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
         <ProfileEditDialog user={user} open={editOpen} onClose={() => setEditOpen(false)} t={t} />
 
-        <main className="flex-1 p-4 md:p-6 overflow-y-auto">
+        <main ref={mainRef} className="flex-1 p-4 md:p-6 overflow-y-auto scrollbar-thin">
           {children}
         </main>
       </div>
