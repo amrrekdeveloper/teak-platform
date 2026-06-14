@@ -10,20 +10,19 @@ import { normalizePhone } from "./utils";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
+import {
+  makeSafeFilename,
+  saveObjectFile,
+  streamObjectFile,
+  deleteObjectFile,
+} from "./objectFileStore";
 
-const UPLOADS_DIR = path.join(process.cwd(), "uploads", "survey-files");
-fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+// Object Storage folder names (logical prefixes within the private bucket dir).
+const SURVEY_FILES_FOLDER = "survey-files";
+const DELIVERY_PHOTOS_FOLDER = "delivery-photos";
+const HR_DOCS_FOLDER = "hr-documents";
 
-const DELIVERY_PHOTOS_DIR = path.join(process.cwd(), "uploads", "delivery-photos");
-fs.mkdirSync(DELIVERY_PHOTOS_DIR, { recursive: true });
-
-const surveyFileStorage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
-  filename: (_req, file, cb) => {
-    const safeBase = file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_");
-    cb(null, `${Date.now()}_${safeBase}`);
-  },
-});
+const surveyFileStorage = multer.memoryStorage();
 
 const ALLOWED_SURVEY_FILE_TYPES = [
   "application/pdf",
@@ -49,13 +48,7 @@ const surveyFileUpload = multer({
   },
 });
 
-const deliveryPhotoStorage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, DELIVERY_PHOTOS_DIR),
-  filename: (_req, file, cb) => {
-    const safeBase = file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_");
-    cb(null, `${Date.now()}_${safeBase}`);
-  },
-});
+const deliveryPhotoStorage = multer.memoryStorage();
 
 const ALLOWED_DELIVERY_PHOTO_MIMES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 
@@ -363,50 +356,58 @@ export async function registerRoutes(
   // Authenticated endpoint to serve uploaded survey design files from disk.
   // Verifies the requesting user has access to the survey that owns the file.
   app.get("/api/uploads/survey-files/:filename", requireAuth, async (req, res) => {
-    const filename = req.params.filename.replace(/[^a-zA-Z0-9._-]/g, "");
-    const urlPath = `/uploads/survey-files/${filename}`;
-    // Lookup file and verify user has survey access
-    const fileRow = await pool.query(
-      `SELECT sdf.id, sdf.survey_id FROM survey_design_files sdf WHERE sdf.file_url = $1 LIMIT 1`,
-      [urlPath]
-    );
-    if (fileRow.rows.length === 0) return res.status(404).json({ message: "الملف غير موجود" });
-    const surveyId = fileRow.rows[0].survey_id;
-    const { allowed } = await verifySurveyAccess(surveyId, req);
-    if (!allowed) return res.status(403).json({ message: "غير مصرح" });
-    const filePath = path.join(UPLOADS_DIR, filename);
-    if (!fs.existsSync(filePath)) return res.status(404).json({ message: "الملف غير موجود على القرص" });
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(filename)}"`);
-    fs.createReadStream(filePath).pipe(res);
+    try {
+      const filename = req.params.filename.replace(/[^a-zA-Z0-9._-]/g, "");
+      const urlPath = `/uploads/survey-files/${filename}`;
+      // Lookup file and verify user has survey access
+      const fileRow = await pool.query(
+        `SELECT sdf.id, sdf.survey_id, sdf.mime_type FROM survey_design_files sdf WHERE sdf.file_url = $1 LIMIT 1`,
+        [urlPath]
+      );
+      if (fileRow.rows.length === 0) return res.status(404).json({ message: "الملف غير موجود" });
+      const surveyId = fileRow.rows[0].survey_id;
+      const { allowed } = await verifySurveyAccess(surveyId, req);
+      if (!allowed) return res.status(403).json({ message: "غير مصرح" });
+      const served = await streamObjectFile(SURVEY_FILES_FOLDER, filename, res, {
+        contentType: fileRow.rows[0].mime_type || "application/pdf",
+        disposition: `attachment; filename="${encodeURIComponent(filename)}"`,
+      });
+      if (!served) return res.status(404).json({ message: "الملف غير موجود على القرص" });
+    } catch (error) {
+      if (!res.headersSent) res.status(500).json({ message: "حدث خطأ في جلب الملف" });
+    }
   });
 
   // Customer-accessible endpoint: only for files attached to a quote owned by the portal customer.
   // Uses quotation.attached_design_files (source of truth) OR attach_to_quote flag as fallback.
   app.get("/api/customer/survey-files/:filename", requirePortalAuth, async (req, res) => {
-    const filename = req.params.filename.replace(/[^a-zA-Z0-9._-]/g, "");
-    const urlPath = `/uploads/survey-files/${filename}`;
-    const portalCustomer = (req as any).portalCustomer;
-    // Check by source-of-truth: file ID in quotation.attached_design_files, customer owns quote
-    const check = await pool.query(
-      `SELECT sdf.id FROM survey_design_files sdf
-       JOIN quotations q ON q.id = sdf.quotation_id
-       WHERE sdf.file_url = $1
-         AND q.customer_id = $2
-         AND (
-           (q.attached_design_files IS NOT NULL AND q.attached_design_files != '[]'::jsonb
-             AND q.attached_design_files @> to_jsonb(sdf.id))
-           OR sdf.attach_to_quote = TRUE
-         )
-       LIMIT 1`,
-      [urlPath, portalCustomer.id]
-    );
-    if (check.rows.length === 0) return res.status(403).json({ message: "غير مصرح" });
-    const filePath = path.join(UPLOADS_DIR, filename);
-    if (!fs.existsSync(filePath)) return res.status(404).json({ message: "الملف غير موجود" });
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(filename)}"`);
-    fs.createReadStream(filePath).pipe(res);
+    try {
+      const filename = req.params.filename.replace(/[^a-zA-Z0-9._-]/g, "");
+      const urlPath = `/uploads/survey-files/${filename}`;
+      const portalCustomer = (req as any).portalCustomer;
+      // Check by source-of-truth: file ID in quotation.attached_design_files, customer owns quote
+      const check = await pool.query(
+        `SELECT sdf.id, sdf.mime_type FROM survey_design_files sdf
+         JOIN quotations q ON q.id = sdf.quotation_id
+         WHERE sdf.file_url = $1
+           AND q.customer_id = $2
+           AND (
+             (q.attached_design_files IS NOT NULL AND q.attached_design_files != '[]'::jsonb
+               AND q.attached_design_files @> to_jsonb(sdf.id))
+             OR sdf.attach_to_quote = TRUE
+           )
+         LIMIT 1`,
+        [urlPath, portalCustomer.id]
+      );
+      if (check.rows.length === 0) return res.status(403).json({ message: "غير مصرح" });
+      const served = await streamObjectFile(SURVEY_FILES_FOLDER, filename, res, {
+        contentType: check.rows[0].mime_type || "application/pdf",
+        disposition: `attachment; filename="${encodeURIComponent(filename)}"`,
+      });
+      if (!served) return res.status(404).json({ message: "الملف غير موجود" });
+    } catch (error) {
+      if (!res.headersSent) res.status(500).json({ message: "حدث خطأ في جلب الملف" });
+    }
   });
 
   await seedDatabase();
@@ -2931,19 +2932,8 @@ export async function registerRoutes(
 
   // ==================== HR: EMPLOYEE DOCUMENTS ====================
 
-  const HR_DOCS_DIR = path.join(process.cwd(), "uploads", "hr-documents");
-  fs.mkdirSync(HR_DOCS_DIR, { recursive: true });
-
-  const hrDocStorage = multer.diskStorage({
-    destination: (_req, _file, cb) => cb(null, HR_DOCS_DIR),
-    filename: (_req, file, cb) => {
-      const safeBase = file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_");
-      cb(null, `${Date.now()}_${safeBase}`);
-    },
-  });
-
   const hrDocUpload = multer({
-    storage: hrDocStorage,
+    storage: multer.memoryStorage(),
     limits: { fileSize: 10 * 1024 * 1024 },
     fileFilter: (_req, file, cb) => {
       const allowed = ["application/pdf", "image/jpeg", "image/jpg", "image/png"];
@@ -2959,17 +2949,26 @@ export async function registerRoutes(
       if (!emp) return res.status(404).json({ message: "الموظف غير موجود" });
       if (!req.file) return res.status(400).json({ message: "لم يتم رفع أي ملف" });
 
-      const docs = (emp.documents as any[] || []);
-      const newDoc = {
-        id: Date.now(),
-        name: req.body.name || req.file.originalname,
-        url: `/uploads/hr-documents/${req.file.filename}`,
-        mime: req.file.mimetype,
-        uploadedAt: new Date().toISOString(),
-      };
-      docs.push(newDoc);
-      const updated = await storage.updateEmployee(empId, { documents: docs } as any);
-      res.json(updated);
+      const filename = makeSafeFilename(req.file.originalname);
+      await saveObjectFile(HR_DOCS_FOLDER, filename, req.file.buffer, req.file.mimetype);
+
+      try {
+        const docs = (emp.documents as any[] || []);
+        const newDoc = {
+          id: Date.now(),
+          name: req.body.name || req.file.originalname,
+          url: `/uploads/hr-documents/${filename}`,
+          mime: req.file.mimetype,
+          uploadedAt: new Date().toISOString(),
+        };
+        docs.push(newDoc);
+        const updated = await storage.updateEmployee(empId, { documents: docs } as any);
+        res.json(updated);
+      } catch (dbErr) {
+        // Roll back the orphaned object if persisting metadata fails
+        await deleteObjectFile(HR_DOCS_FOLDER, filename);
+        throw dbErr;
+      }
     } catch (error) {
       res.status(500).json({ message: "حدث خطأ في رفع المستند" });
     }
@@ -2981,19 +2980,28 @@ export async function registerRoutes(
       const docId = parseInt(req.params.docId);
       const emp = await storage.getEmployee(empId);
       if (!emp) return res.status(404).json({ message: "الموظف غير موجود" });
-      const docs = (emp.documents as any[] || []).filter((d: any) => d.id !== docId);
+      const allDocs = (emp.documents as any[] || []);
+      const removed = allDocs.find((d: any) => d.id === docId);
+      const docs = allDocs.filter((d: any) => d.id !== docId);
       const updated = await storage.updateEmployee(empId, { documents: docs } as any);
+      if (removed?.url) {
+        const fn = path.basename(String(removed.url));
+        await deleteObjectFile(HR_DOCS_FOLDER, fn);
+      }
       res.json(updated);
     } catch (error) {
       res.status(500).json({ message: "حدث خطأ في حذف المستند" });
     }
   });
 
-  app.get("/uploads/hr-documents/:filename", requireAuth, (req, res) => {
-    const filename = req.params.filename.replace(/[^a-zA-Z0-9._-]/g, "");
-    const filePath = path.join(HR_DOCS_DIR, filename);
-    if (!fs.existsSync(filePath)) return res.status(404).json({ message: "الملف غير موجود" });
-    res.sendFile(filePath);
+  app.get("/uploads/hr-documents/:filename", requireAuth, async (req, res) => {
+    try {
+      const filename = req.params.filename.replace(/[^a-zA-Z0-9._-]/g, "");
+      const served = await streamObjectFile(HR_DOCS_FOLDER, filename, res);
+      if (!served) return res.status(404).json({ message: "الملف غير موجود" });
+    } catch (error) {
+      if (!res.headersSent) res.status(500).json({ message: "حدث خطأ في جلب الملف" });
+    }
   });
 
   // ==================== JOB TITLES ====================
@@ -3161,25 +3169,22 @@ export async function registerRoutes(
       const id = parseInt(req.params.id);
       const files = req.files as Express.Multer.File[];
       if (!files || files.length === 0) return res.status(400).json({ message: "لا توجد صور مرفوعة", messageEn: "No photos uploaded" });
-      const newFilePaths = files.map(f => path.join(DELIVERY_PHOTOS_DIR, f.filename));
-      const newPhotoPaths = files.map(f => `/uploads/delivery-photos/${f.filename}`);
-
-      const cleanupNewFiles = () => {
-        for (const fp of newFilePaths) {
-          try { fs.unlinkSync(fp); } catch { /* ignore */ }
-        }
-      };
 
       const existing = await storage.getDelivery(id);
       if (!existing) {
-        cleanupNewFiles();
         return res.status(404).json({ message: "غير موجود", messageEn: "Not found" });
       }
 
       // Server-side status guard: only allow uploads for in_transit or delivered
       if (existing.status !== "in_transit" && existing.status !== "delivered") {
-        cleanupNewFiles();
         return res.status(422).json({ message: "لا يمكن رفع الصور إلا في حالات 'في الطريق' أو 'تم التوصيل'", messageEn: "Photos can only be uploaded for in_transit or delivered deliveries" });
+      }
+
+      const newPhotoPaths: string[] = [];
+      for (const f of files) {
+        const filename = makeSafeFilename(f.originalname);
+        await saveObjectFile(DELIVERY_PHOTOS_FOLDER, filename, f.buffer, f.mimetype);
+        newPhotoPaths.push(`/uploads/delivery-photos/${filename}`);
       }
 
       const existingPhotos: string[] = existing.deliveryPhotos || [];
@@ -3193,15 +3198,18 @@ export async function registerRoutes(
   });
 
   app.get("/uploads/delivery-photos/:filename", requireRole("owner", "assistant", "delivery", "production", "installation"), async (req, res) => {
-    const filename = req.params.filename.replace(/[^a-zA-Z0-9._-]/g, "");
-    const photoPath = `/uploads/delivery-photos/${filename}`;
-    // Verify that this photo path exists in at least one delivery record
-    const allDeliveries = await storage.getDeliveries();
-    const hasAccess = allDeliveries.some(d => d.deliveryPhotos && d.deliveryPhotos.includes(photoPath));
-    if (!hasAccess) return res.status(403).json({ message: "غير مصرح" });
-    const filePath = path.join(DELIVERY_PHOTOS_DIR, filename);
-    if (!fs.existsSync(filePath)) return res.status(404).json({ message: "الملف غير موجود" });
-    res.sendFile(filePath);
+    try {
+      const filename = req.params.filename.replace(/[^a-zA-Z0-9._-]/g, "");
+      const photoPath = `/uploads/delivery-photos/${filename}`;
+      // Verify that this photo path exists in at least one delivery record
+      const allDeliveries = await storage.getDeliveries();
+      const hasAccess = allDeliveries.some(d => d.deliveryPhotos && d.deliveryPhotos.includes(photoPath));
+      if (!hasAccess) return res.status(403).json({ message: "غير مصرح" });
+      const served = await streamObjectFile(DELIVERY_PHOTOS_FOLDER, filename, res);
+      if (!served) return res.status(404).json({ message: "الملف غير موجود" });
+    } catch (error) {
+      if (!res.headersSent) res.status(500).json({ message: "حدث خطأ في جلب الملف" });
+    }
   });
 
   // ==================== INSTALLATIONS ====================
@@ -4489,24 +4497,30 @@ export async function registerRoutes(
       try {
         const { allowed } = await verifySurveyAccess(surveyId, req);
         if (!allowed) {
-          if (req.file) fs.unlinkSync(req.file.path);
           return res.status(403).json({ message: "غير مصرح" });
         }
         const userId = (req as any).session.userId!;
         const uploadedFile = req.file;
         if (!uploadedFile) return res.status(400).json({ message: "لم يتم إرسال ملف" });
         const { fileLabel, quotationId } = req.body;
-        const fileUrl = `/uploads/survey-files/${uploadedFile.filename}`;
+        const filename = makeSafeFilename(uploadedFile.originalname);
+        await saveObjectFile(SURVEY_FILES_FOLDER, filename, uploadedFile.buffer, uploadedFile.mimetype);
+        const fileUrl = `/uploads/survey-files/${filename}`;
         const label = (fileLabel && String(fileLabel).trim()) ? String(fileLabel).trim() : uploadedFile.originalname;
-        const result = await pool.query(
-          `INSERT INTO survey_design_files (survey_id, quotation_id, file_name, file_label, file_url, mime_type, file_size, uploaded_by)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-           RETURNING id, survey_id, quotation_id, file_name, file_label, file_url, mime_type, file_size, attach_to_quote, uploaded_by, created_at`,
-          [surveyId, quotationId || null, uploadedFile.originalname, label, fileUrl, "application/pdf", uploadedFile.size, userId]
-        );
-        res.status(201).json(result.rows[0]);
+        try {
+          const result = await pool.query(
+            `INSERT INTO survey_design_files (survey_id, quotation_id, file_name, file_label, file_url, mime_type, file_size, uploaded_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+             RETURNING id, survey_id, quotation_id, file_name, file_label, file_url, mime_type, file_size, attach_to_quote, uploaded_by, created_at`,
+            [surveyId, quotationId || null, uploadedFile.originalname, label, fileUrl, uploadedFile.mimetype || "application/pdf", uploadedFile.size, userId]
+          );
+          res.status(201).json(result.rows[0]);
+        } catch (dbErr) {
+          // Roll back the orphaned object if the DB insert fails
+          await deleteObjectFile(SURVEY_FILES_FOLDER, filename);
+          throw dbErr;
+        }
       } catch (error) {
-        if (req.file) fs.unlinkSync(req.file.path);
         console.error("design-file upload error:", error);
         res.status(500).json({ message: "حدث خطأ في رفع الملف" });
       }
@@ -4571,12 +4585,11 @@ export async function registerRoutes(
         [fileId, surveyId]
       );
       if (del.rows.length === 0) return res.status(404).json({ message: "الملف غير موجود" });
-      // Clean up filesystem file
+      // Clean up object storage file
       const fileUrl: string | null = del.rows[0].file_url;
       if (fileUrl) {
         try {
-          const filePath = path.join(__dirname, "..", fileUrl);
-          if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+          await deleteObjectFile(SURVEY_FILES_FOLDER, path.basename(fileUrl));
         } catch (_) {}
       }
       res.json({ message: "تم الحذف" });
@@ -4598,12 +4611,13 @@ export async function registerRoutes(
       if (result.rows.length === 0) return res.status(404).json({ message: "الملف غير موجود" });
       const { file_name, file_data, file_url, mime_type } = result.rows[0];
       if (file_url) {
-        // New: stream from disk
-        const diskPath = path.join(UPLOADS_DIR, path.basename(file_url));
-        if (!fs.existsSync(diskPath)) return res.status(404).json({ message: "الملف غير موجود على القرص" });
-        res.setHeader("Content-Type", mime_type || "application/pdf");
-        res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(file_name)}"`);
-        return fs.createReadStream(diskPath).pipe(res);
+        // Stream from object storage
+        const served = await streamObjectFile(SURVEY_FILES_FOLDER, path.basename(file_url), res, {
+          contentType: mime_type || "application/pdf",
+          disposition: `attachment; filename="${encodeURIComponent(file_name)}"`,
+        });
+        if (!served) return res.status(404).json({ message: "الملف غير موجود على القرص" });
+        return;
       }
       // Legacy: base64 data
       res.json({ fileName: file_name, fileData: file_data, mimeType: mime_type });

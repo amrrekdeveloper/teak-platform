@@ -56,3 +56,6 @@ VITE_FIREBASE_MEASUREMENT_ID = "G-4PJVCELR5Q"
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 20000
+
+[agent]
+integrations = ["javascript_object_storage:2.0.0"]

@@ -1,1 +1,2 @@
 - [Schema drift & startup migrations](schema-drift-and-migrations.md) — repo syncs schema via idempotent startup migrations in routes.ts (not db:push, which is interactive); cols with defaults need explicit backend non-blank guards.
+- [Persistent file storage policy](persistent-file-storage.md) — all user uploads must go to Object Storage, never local disk (Replit FS is ephemeral); keep RBAC, roll back orphans on DB failure.
