@@ -1428,12 +1428,14 @@ export default function EmployeesPage() {
                     </td>
                     <td className="px-3 py-3 text-center">
                       <div className="flex items-center justify-center gap-1">
-                        <Button size="icon" variant="ghost" className="h-7 w-7" asChild
-                          data-testid={`button-view-employee-${emp.id}`}>
-                          <Link href={`/employees/${emp.id}`}>
-                            <Eye className="w-3.5 h-3.5" />
-                          </Link>
-                        </Button>
+                        {(currentUser?.role === "owner" || currentUser?.role === "assistant" || currentUser?.role === "hr") && (
+                          <Button size="icon" variant="ghost" className="h-7 w-7" asChild
+                            data-testid={`button-view-employee-${emp.id}`}>
+                            <Link href={`/employees/${emp.id}`}>
+                              <Eye className="w-3.5 h-3.5" />
+                            </Link>
+                          </Button>
+                        )}
                         <Button size="icon" variant="ghost" className="h-7 w-7"
                           onClick={() => setSelectedEmployee(emp)} data-testid={`button-edit-employee-${emp.id}`}>
                           <Pencil className="w-3.5 h-3.5" />

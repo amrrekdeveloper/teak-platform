@@ -3119,7 +3119,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/uploads/hr-documents/:filename", requireAuth, async (req, res) => {
+  app.get("/uploads/hr-documents/:filename", requireRole("owner", "assistant", "hr"), async (req, res) => {
     try {
       const filename = req.params.filename.replace(/[^a-zA-Z0-9._-]/g, "");
       const served = await streamObjectFile(HR_DOCS_FOLDER, filename, res);

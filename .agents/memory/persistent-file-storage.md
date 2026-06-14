@@ -19,6 +19,8 @@ causing 404s. This was a confirmed production data-loss incident.
 - Keep DB URL shapes stable for backward compat; serve routes resolve the stored name
   and stream from Object Storage.
 - Preserve each route's existing RBAC/auth guard — private files are only as protected
-  as the route serving them.
+  as the route serving them. For sensitive/personnel files, `requireAuth` (any logged-in
+  user) is NOT enough; match the serve route's role guard to the data (e.g. HR document
+  serve route must be `requireRole("owner","assistant","hr")`, same roles as the data API).
 - On upload, roll back the stored object if the follow-up DB write fails (avoid orphans).
 - Files uploaded to production BEFORE this fix are permanently lost and must be re-uploaded.
