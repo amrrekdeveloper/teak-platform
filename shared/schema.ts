@@ -597,6 +597,7 @@ export const inventory = pgTable("inventory", {
   category: text("category"),
   color: text("color"),
   imageUrl: text("image_url"),
+  warehouseId: integer("warehouse_id"),
   unit: unitEnum("unit").notNull().default("piece"),
   quantity: decimal("quantity", { precision: 12, scale: 2 }).notNull().default("0"),
   minQuantity: decimal("min_quantity", { precision: 12, scale: 2 }).notNull().default("0"),
@@ -624,6 +625,7 @@ export const inventoryTransactions = pgTable("inventory_transactions", {
   type: transactionTypeEnum("type").notNull(),
   quantity: decimal("quantity", { precision: 12, scale: 2 }).notNull(),
   reason: text("reason"),
+  contractId: integer("contract_id").references(() => contracts.id),
   workOrderId: integer("work_order_id").references(() => workOrders.id),
   purchaseOrderId: integer("purchase_order_id"),
   performedBy: integer("performed_by").references(() => users.id),
@@ -657,6 +659,21 @@ export const insertSupplierSchema = createInsertSchema(suppliers).omit({
 });
 export type InsertSupplier = z.infer<typeof insertSupplierSchema>;
 export type Supplier = typeof suppliers.$inferSelect;
+
+export const warehouses = pgTable("warehouses", {
+  id: serial("id").primaryKey(),
+  nameAr: text("name_ar").notNull(),
+  nameEn: text("name_en").notNull(),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertWarehouseSchema = createInsertSchema(warehouses).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertWarehouse = z.infer<typeof insertWarehouseSchema>;
+export type Warehouse = typeof warehouses.$inferSelect;
 
 export const poStatusEnum = pgEnum("po_status", [
   "draft",

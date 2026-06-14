@@ -17,6 +17,7 @@ import {
   inventory, type InventoryItem, type InsertInventory,
   inventoryTransactions, type InventoryTransaction, type InsertInventoryTransaction,
   suppliers, type Supplier, type InsertSupplier,
+  warehouses, type Warehouse, type InsertWarehouse,
   purchaseOrders, type PurchaseOrder, type InsertPurchaseOrder,
   deliveries, type Delivery, type InsertDelivery,
   installations, type Installation, type InsertInstallation,
@@ -122,6 +123,10 @@ export interface IStorage {
   getSupplier(id: number): Promise<Supplier | undefined>;
   createSupplier(supplier: InsertSupplier): Promise<Supplier>;
   updateSupplier(id: number, data: Partial<InsertSupplier>): Promise<Supplier | undefined>;
+
+  getWarehouses(): Promise<Warehouse[]>;
+  createWarehouse(warehouse: InsertWarehouse): Promise<Warehouse>;
+  updateWarehouse(id: number, data: Partial<InsertWarehouse>): Promise<Warehouse | undefined>;
 
   getInventoryTransactions(inventoryId?: number): Promise<InventoryTransaction[]>;
 
@@ -586,6 +591,20 @@ export class DatabaseStorage implements IStorage {
 
   async updateSupplier(id: number, data: Partial<InsertSupplier>): Promise<Supplier | undefined> {
     const [updated] = await db.update(suppliers).set(data).where(eq(suppliers.id, id)).returning();
+    return updated;
+  }
+
+  async getWarehouses(): Promise<Warehouse[]> {
+    return db.select().from(warehouses).orderBy(warehouses.id);
+  }
+
+  async createWarehouse(warehouse: InsertWarehouse): Promise<Warehouse> {
+    const [created] = await db.insert(warehouses).values(warehouse).returning();
+    return created;
+  }
+
+  async updateWarehouse(id: number, data: Partial<InsertWarehouse>): Promise<Warehouse | undefined> {
+    const [updated] = await db.update(warehouses).set(data).where(eq(warehouses.id, id)).returning();
     return updated;
   }
 

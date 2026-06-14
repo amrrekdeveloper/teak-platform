@@ -2740,12 +2740,21 @@ export async function registerRoutes(
 
   app.post("/api/inventory-transactions", requireRole("owner", "assistant", "warehouse"), async (req, res) => {
     try {
-      const { inventoryId, type, quantity, reason, workOrderId, purchaseOrderId } = req.body;
+      const { inventoryId, type, quantity, reason, contractId, workOrderId, purchaseOrderId } = req.body;
       if (!inventoryId || !type || !quantity) {
         return res.status(400).json({ message: "بيانات ناقصة", messageEn: "Missing required fields" });
       }
       const txQty = parseFloat(quantity);
       if (txQty <= 0) return res.status(400).json({ message: "الكمية يجب أن تكون أكبر من صفر", messageEn: "Quantity must be greater than zero" });
+
+      const STOCK_OUT_REASONS = ["production_use", "contract_delivery", "damaged", "sample", "adjustment", "other"];
+      const STOCK_IN_REASONS = ["purchase", "customer_return", "production_return", "adjustment", "transfer", "other"];
+      if (type === "stock_out" && !STOCK_OUT_REASONS.includes(reason)) {
+        return res.status(400).json({ message: "يجب اختيار سبب صحيح للإخراج", messageEn: "A valid stock-out reason is required" });
+      }
+      if (type === "stock_in" && !STOCK_IN_REASONS.includes(reason)) {
+        return res.status(400).json({ message: "يجب اختيار سبب صحيح للإدخال", messageEn: "A valid stock-in reason is required" });
+      }
 
       const item = await storage.getInventoryItem(inventoryId);
       if (!item) return res.status(404).json({ message: "المادة غير موجودة", messageEn: "Inventory item not found" });
@@ -2755,13 +2764,43 @@ export async function registerRoutes(
         return res.status(400).json({ message: `الكمية المتوفرة (${currentQty}) غير كافية`, messageEn: `Insufficient stock (${currentQty} available)` });
       }
 
-      const tx = await storage.createInventoryTransaction({ inventoryId, type, quantity, reason, workOrderId, purchaseOrderId, performedBy: req.session.userId });
+      const contractIdNum = contractId ? parseInt(contractId) : null;
+      const tx = await storage.createInventoryTransaction({ inventoryId, type, quantity, reason, contractId: contractIdNum, workOrderId, purchaseOrderId, performedBy: req.session.userId });
 
       let newQty = currentQty;
       if (type === "stock_in") newQty = currentQty + txQty;
       else if (type === "stock_out") newQty = currentQty - txQty;
       else newQty = txQty;
       await storage.updateInventoryItem(inventoryId, { quantity: newQty.toString() });
+
+      // Auto-create an expense journal entry on stock-out (Dr COGS / Cr Inventory) by cost.
+      // Best-effort: a journal failure must not roll back the already-committed stock movement.
+      if (type === "stock_out") {
+        try {
+          const unitCost = parseFloat(item.costPerUnit?.toString() || "0");
+          const totalCost = unitCost * txQty;
+          if (totalCost > 0) {
+            const matName = item.materialNameAr || item.materialNameEn || `#${inventoryId}`;
+            await storage.createJournalEntry(
+              {
+                date: new Date().toISOString().slice(0, 10),
+                description: `إخراج مخزون: ${matName} (${txQty})`,
+                reference: `INV-OUT-${tx.id}`,
+                referenceType: "inventory_out",
+                referenceId: tx.id,
+                status: "posted",
+                createdBy: req.session.userId,
+              } as any,
+              [
+                { entryId: 0, accountCode: "5100", accountNameAr: "تكلفة المواد الخام", debit: totalCost.toFixed(2), credit: "0" },
+                { entryId: 0, accountCode: "1130", accountNameAr: "المخزون", debit: "0", credit: totalCost.toFixed(2) },
+              ] as any,
+            );
+          }
+        } catch (journalError) {
+          console.error("Stock-out journal entry failed (movement still recorded):", journalError);
+        }
+      }
 
       res.status(201).json(tx);
     } catch (error) {
@@ -2810,6 +2849,39 @@ export async function registerRoutes(
       res.json(updated);
     } catch (error) {
       res.status(500).json({ message: "حدث خطأ في تحديث المورد", messageEn: "Error updating supplier" });
+    }
+  });
+
+  // ==================== WAREHOUSES ====================
+
+  app.get("/api/warehouses", requireRole("owner", "assistant", "warehouse", "purchasing"), async (_req, res) => {
+    try {
+      const list = await storage.getWarehouses();
+      res.json(list);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ في جلب المستودعات", messageEn: "Error fetching warehouses" });
+    }
+  });
+
+  app.post("/api/warehouses", requireRole("owner", "assistant"), async (req, res) => {
+    try {
+      const { insertWarehouseSchema } = await import("@shared/schema");
+      const parsed = insertWarehouseSchema.parse(req.body);
+      const warehouse = await storage.createWarehouse(parsed);
+      res.status(201).json(warehouse);
+    } catch (error: any) {
+      if (error?.name === "ZodError") return res.status(400).json({ message: "بيانات غير صالحة", messageEn: "Invalid data", errors: error.errors });
+      res.status(500).json({ message: "حدث خطأ في إضافة المستودع", messageEn: "Error creating warehouse" });
+    }
+  });
+
+  app.patch("/api/warehouses/:id", requireRole("owner", "assistant"), async (req, res) => {
+    try {
+      const updated = await storage.updateWarehouse(parseInt(req.params.id), req.body);
+      if (!updated) return res.status(404).json({ message: "المستودع غير موجود", messageEn: "Warehouse not found" });
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ في تحديث المستودع", messageEn: "Error updating warehouse" });
     }
   });
 
@@ -6748,6 +6820,28 @@ export async function registerRoutes(
     try {
       await db.execute(`ALTER TABLE inventory ADD COLUMN IF NOT EXISTS color TEXT`);
       await db.execute(`ALTER TABLE inventory ADD COLUMN IF NOT EXISTS image_url TEXT`);
+      await db.execute(`ALTER TABLE inventory ADD COLUMN IF NOT EXISTS warehouse_id INTEGER`);
+      await db.execute(`ALTER TABLE inventory_transactions ADD COLUMN IF NOT EXISTS contract_id INTEGER`);
+      await db.execute(`
+        CREATE TABLE IF NOT EXISTS warehouses (
+          id SERIAL PRIMARY KEY,
+          name_ar TEXT NOT NULL,
+          name_en TEXT NOT NULL,
+          active BOOLEAN NOT NULL DEFAULT TRUE,
+          created_at TIMESTAMP NOT NULL DEFAULT NOW()
+        );
+      `);
+      const whCount = await db.execute(`SELECT COUNT(*)::int AS count FROM warehouses`);
+      const existing = (whCount.rows?.[0] as any)?.count ?? 0;
+      if (existing === 0) {
+        await db.execute(`
+          INSERT INTO warehouses (name_ar, name_en) VALUES
+            ('المستودع الرئيسي', 'Main Warehouse'),
+            ('مستودع الخامات', 'Raw Materials Warehouse'),
+            ('مستودع الإكسسوارات', 'Accessories Warehouse'),
+            ('مستودع الرجيع', 'Returns Warehouse');
+        `);
+      }
       console.log("Inventory module migration completed");
     } catch (inventoryMigrationError) {
       console.warn("Inventory migration (non-fatal):", inventoryMigrationError instanceof Error ? inventoryMigrationError.message : String(inventoryMigrationError));
