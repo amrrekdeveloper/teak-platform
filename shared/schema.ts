@@ -1315,6 +1315,7 @@ export const journalEntries = pgTable("journal_entries", {
   status: journalEntryStatusEnum("status").notNull().default("posted"),
   totalDebit: decimal("total_debit", { precision: 15, scale: 2 }).notNull().default("0"),
   totalCredit: decimal("total_credit", { precision: 15, scale: 2 }).notNull().default("0"),
+  attachmentUrl: text("attachment_url"),
   createdBy: integer("created_by").references(() => users.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });

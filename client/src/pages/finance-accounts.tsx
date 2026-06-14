@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { AccountCombobox } from "@/components/account-combobox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Trash2, Edit2, BookOpen, FileText, ChevronLeft, AlertCircle, CheckCircle2, DollarSign, ExternalLink, Printer } from "lucide-react";
+import { Plus, Trash2, Edit2, BookOpen, FileText, ChevronLeft, AlertCircle, CheckCircle2, DollarSign, ExternalLink, Printer, Paperclip, X } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { format } from "date-fns";
 import { exportReportPDF } from "@/lib/finance-export";
@@ -197,10 +197,104 @@ export default function FinanceAccountsPage() {
       setJournalDialog(false);
       setLines([EMPTY_LINE(), EMPTY_LINE()]);
       setJForm({ date: format(new Date(), "yyyy-MM-dd"), description: "", reference: "" });
+      setJAttachment(null);
       toast({ title: "تم ترحيل القيد بنجاح" });
     },
     onError: (e: any) => toast({ title: e.message || "حدث خطأ", variant: "destructive" }),
   });
+
+  const [invDialog, setInvDialog] = useState(false);
+  const INV_EMPTY = () => ({
+    invoiceKind: "sales",
+    terms: "credit",
+    date: format(new Date(), "yyyy-MM-dd"),
+    reference: "",
+    counterpartyName: "",
+    revenueExpenseAccountCode: "",
+    paymentAccountCode: "",
+    subtotal: "",
+    vatAmount: "",
+  });
+  const [invForm, setInvForm] = useState(INV_EMPTY());
+  const [invAttachment, setInvAttachment] = useState<{ url: string; name: string } | null>(null);
+  const [jAttachment, setJAttachment] = useState<{ url: string; name: string } | null>(null);
+  const [uploadingAtt, setUploadingAtt] = useState(false);
+
+  const uploadAttachment = async (file: File): Promise<{ url: string; name: string } | null> => {
+    setUploadingAtt(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/accounting/upload-attachment", { method: "POST", credentials: "include", body: fd });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || "Upload failed");
+      }
+      const data = await res.json();
+      return { url: data.url, name: data.name };
+    } catch (e: any) {
+      toast({ title: e.message || t("تعذّر رفع المرفق", "Failed to upload attachment"), variant: "destructive" });
+      return null;
+    } finally {
+      setUploadingAtt(false);
+    }
+  };
+
+  const recordInvoiceMut = useMutation({
+    mutationFn: (data: any) => apiRequest("POST", "/api/accounting/record-invoice", data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/accounting/journal-entries"], exact: false });
+      setInvDialog(false);
+      setInvForm(INV_EMPTY());
+      setInvAttachment(null);
+      toast({ title: t("تم تسجيل الفاتورة وترحيل القيد", "Invoice recorded and posted") });
+    },
+    onError: (e: any) => toast({ title: e.message || "حدث خطأ", variant: "destructive" }),
+  });
+
+  const [voucherDialog, setVoucherDialog] = useState(false);
+  const VOUCHER_EMPTY = () => ({
+    voucherKind: "receipt",
+    date: format(new Date(), "yyyy-MM-dd"),
+    reference: "",
+    partyName: "",
+    paymentAccountCode: "",
+    counterAccountCode: "",
+    amount: "",
+  });
+  const [voucherForm, setVoucherForm] = useState(VOUCHER_EMPTY());
+  const [voucherAttachment, setVoucherAttachment] = useState<{ url: string; name: string } | null>(null);
+
+  const recordVoucherMut = useMutation({
+    mutationFn: (data: any) => apiRequest("POST", "/api/accounting/record-voucher", data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/accounting/journal-entries"], exact: false });
+      setVoucherDialog(false);
+      setVoucherForm(VOUCHER_EMPTY());
+      setVoucherAttachment(null);
+      toast({ title: t("تم تسجيل السند وترحيل القيد", "Voucher recorded and posted") });
+    },
+    onError: (e: any) => toast({ title: e.message || "حدث خطأ", variant: "destructive" }),
+  });
+
+  const handleRecordVoucher = () => {
+    const amt = parseFloat(voucherForm.amount || "0");
+    if (!voucherForm.date) return toast({ title: t("تاريخ السند مطلوب", "Voucher date required"), variant: "destructive" });
+    if (!(amt > 0)) return toast({ title: t("المبلغ يجب أن يكون أكبر من صفر", "Amount must be greater than zero"), variant: "destructive" });
+    if (!voucherForm.paymentAccountCode) return toast({ title: t("يجب اختيار حساب الصندوق/البنك", "Select cash/bank account"), variant: "destructive" });
+    if (!voucherForm.counterAccountCode) return toast({ title: t("يجب اختيار الحساب المقابل", "Select counter account"), variant: "destructive" });
+    if (voucherForm.paymentAccountCode === voucherForm.counterAccountCode) return toast({ title: t("لا يمكن أن يكون الحسابان متطابقين", "Accounts cannot be identical"), variant: "destructive" });
+    recordVoucherMut.mutate({
+      voucherKind: voucherForm.voucherKind,
+      date: voucherForm.date,
+      reference: voucherForm.reference,
+      partyName: voucherForm.partyName,
+      paymentAccountCode: voucherForm.paymentAccountCode,
+      counterAccountCode: voucherForm.counterAccountCode,
+      amount: amt,
+      attachmentUrl: voucherAttachment?.url || null,
+    });
+  };
 
   const saveObMut = useMutation({
     mutationFn: (data: any) => apiRequest("POST", "/api/accounting/opening-balances", data),
@@ -252,7 +346,37 @@ export default function FinanceAccountsPage() {
     }
     if (inUse.length < 2) return toast({ title: "يجب إدخال سطرين مكتملين على الأقل", variant: "destructive" });
     if (!isBalanced) return toast({ title: "القيد غير متوازن — مجموع المدين يجب أن يساوي الدائن", variant: "destructive" });
-    createEntryMut.mutate({ ...jForm, lines: inUse });
+    createEntryMut.mutate({ ...jForm, attachmentUrl: jAttachment?.url || null, lines: inUse });
+  };
+
+  const invSubtotal = parseFloat(invForm.subtotal || "0");
+  const invVat = parseFloat(invForm.vatAmount || "0");
+  const invTotal = +(invSubtotal + invVat).toFixed(2);
+
+  const revenueExpenseAccounts = (accounts as any[]).filter((a: any) =>
+    invForm.invoiceKind === "sales"
+      ? a.type === "revenue"
+      : a.type === "expense" || a.type === "cost" || a.code?.startsWith("113"),
+  );
+  const paymentAccounts = (accounts as any[]).filter((a: any) => a.code?.startsWith("111") && a.code !== "1110");
+
+  const handleRecordInvoice = () => {
+    if (!invForm.date) return toast({ title: t("تاريخ الفاتورة مطلوب", "Invoice date required"), variant: "destructive" });
+    if (!(invSubtotal > 0)) return toast({ title: t("المبلغ قبل الضريبة يجب أن يكون أكبر من صفر", "Subtotal must be greater than zero"), variant: "destructive" });
+    if (!invForm.revenueExpenseAccountCode) return toast({ title: invForm.invoiceKind === "sales" ? t("يجب اختيار حساب الإيراد", "Select revenue account") : t("يجب اختيار حساب المصروف/المخزون", "Select expense/inventory account"), variant: "destructive" });
+    if (invForm.terms === "cash" && !invForm.paymentAccountCode) return toast({ title: t("يجب اختيار حساب الدفع (صندوق/بنك)", "Select payment account (cash/bank)"), variant: "destructive" });
+    recordInvoiceMut.mutate({
+      invoiceKind: invForm.invoiceKind,
+      terms: invForm.terms,
+      date: invForm.date,
+      reference: invForm.reference,
+      counterpartyName: invForm.counterpartyName,
+      revenueExpenseAccountCode: invForm.revenueExpenseAccountCode,
+      paymentAccountCode: invForm.terms === "cash" ? invForm.paymentAccountCode : undefined,
+      subtotal: invSubtotal,
+      vatAmount: invVat,
+      attachmentUrl: invAttachment?.url || null,
+    });
   };
 
   const handleSaveOpeningBalances = () => {
@@ -371,10 +495,20 @@ export default function FinanceAccountsPage() {
                   </button>
                 )}
               </div>
-              <Button size="sm" onClick={() => setJournalDialog(true)} data-testid="btn-new-entry">
-                <Plus className="h-4 w-4 me-1.5" />
-                {t("قيد جديد", "New Entry")}
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button size="sm" variant="outline" onClick={() => { setVoucherForm(VOUCHER_EMPTY()); setVoucherAttachment(null); setVoucherDialog(true); }} data-testid="btn-record-voucher">
+                  <Plus className="h-4 w-4 me-1.5" />
+                  {t("سند قبض / صرف", "Receipt / Payment Voucher")}
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => { setInvForm(INV_EMPTY()); setInvAttachment(null); setInvDialog(true); }} data-testid="btn-record-invoice">
+                  <Plus className="h-4 w-4 me-1.5" />
+                  {t("تسجيل فاتورة", "Record Invoice")}
+                </Button>
+                <Button size="sm" onClick={() => setJournalDialog(true)} data-testid="btn-new-entry">
+                  <Plus className="h-4 w-4 me-1.5" />
+                  {t("قيد جديد", "New Entry")}
+                </Button>
+              </div>
             </div>
             {entriesLoading ? (
               <p className="text-center text-muted-foreground py-8">{t("جاري التحميل...", "Loading...")}</p>
@@ -390,6 +524,12 @@ export default function FinanceAccountsPage() {
                           <span className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded">#{entry.entryNumber}</span>
                           <span className="text-sm font-medium">{entry.description}</span>
                           {entry.reference && <span className="text-xs text-muted-foreground">({entry.reference})</span>}
+                          {entry.attachmentUrl && (
+                            <a href={entry.attachmentUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-primary hover:underline" data-testid={`link-entry-attachment-${entry.id}`}>
+                              <Paperclip className="h-3 w-3" />
+                              {t("مرفق", "Attachment")}
+                            </a>
+                          )}
                         </div>
                         <div className="flex items-center gap-2">
                           {entry.referenceType && (
@@ -746,11 +886,298 @@ export default function FinanceAccountsPage() {
                   : t(`الفرق: ${Math.abs(totalDebit - totalCredit).toFixed(2)} ر.س`, `Difference: ${Math.abs(totalDebit - totalCredit).toFixed(2)} SAR`)}
               </div>
             </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs">{t("مرفق (صورة / PDF)", "Attachment (Image / PDF)")}</Label>
+              {jAttachment ? (
+                <div className="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm">
+                  <a href={jAttachment.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-primary hover:underline truncate" data-testid="link-journal-attachment">
+                    <Paperclip className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">{jAttachment.name}</span>
+                  </a>
+                  <button type="button" onClick={() => setJAttachment(null)} className="text-destructive hover:text-destructive/80 shrink-0" data-testid="btn-remove-journal-attachment">
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              ) : (
+                <Input
+                  type="file"
+                  accept="application/pdf,image/jpeg,image/png"
+                  disabled={uploadingAtt}
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = "";
+                    if (!file) return;
+                    const res = await uploadAttachment(file);
+                    if (res) setJAttachment(res);
+                  }}
+                  data-testid="input-journal-attachment"
+                />
+              )}
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setJournalDialog(false)}>{t("إلغاء", "Cancel")}</Button>
-            <Button onClick={handleSubmitEntry} disabled={!isBalanced || createEntryMut.isPending} data-testid="btn-post-entry">
+            <Button onClick={handleSubmitEntry} disabled={!isBalanced || createEntryMut.isPending || uploadingAtt} data-testid="btn-post-entry">
               {createEntryMut.isPending ? t("جاري الترحيل...", "Posting...") : t("ترحيل القيد", "Post Entry")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Record Invoice Dialog */}
+      <Dialog open={invDialog} onOpenChange={setInvDialog}>
+        <DialogContent className="max-w-2xl" dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="h-4 w-4" />
+              {t("تسجيل فاتورة", "Record Invoice")}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">{t("نوع الفاتورة", "Invoice Type")} *</Label>
+                <Select value={invForm.invoiceKind} onValueChange={v => setInvForm(f => ({ ...f, invoiceKind: v, revenueExpenseAccountCode: "" }))}>
+                  <SelectTrigger data-testid="select-invoice-kind"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="sales">{t("مبيعات", "Sales")}</SelectItem>
+                    <SelectItem value="purchase">{t("مشتريات", "Purchase")}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">{t("طريقة الدفع", "Terms")} *</Label>
+                <Select value={invForm.terms} onValueChange={v => setInvForm(f => ({ ...f, terms: v, paymentAccountCode: "" }))}>
+                  <SelectTrigger data-testid="select-invoice-terms"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="credit">{t("آجل", "Credit")}</SelectItem>
+                    <SelectItem value="cash">{t("نقدي", "Cash")}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">{t("التاريخ", "Date")} *</Label>
+                <Input type="date" value={invForm.date} onChange={e => setInvForm(f => ({ ...f, date: e.target.value }))} data-testid="input-invoice-date" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">{t("رقم الفاتورة / المرجع", "Invoice # / Reference")}</Label>
+                <Input value={invForm.reference} onChange={e => setInvForm(f => ({ ...f, reference: e.target.value }))} placeholder={t("رقم الفاتورة...", "Invoice #...")} data-testid="input-invoice-reference" />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs">{invForm.invoiceKind === "sales" ? t("اسم العميل", "Customer Name") : t("اسم المورد", "Supplier Name")}</Label>
+              <Input value={invForm.counterpartyName} onChange={e => setInvForm(f => ({ ...f, counterpartyName: e.target.value }))} placeholder={invForm.invoiceKind === "sales" ? t("اسم العميل...", "Customer name...") : t("اسم المورد...", "Supplier name...")} data-testid="input-invoice-counterparty" />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs">{invForm.invoiceKind === "sales" ? t("حساب الإيراد", "Revenue Account") : t("حساب المصروف / المخزون", "Expense / Inventory Account")} *</Label>
+              <AccountCombobox
+                accounts={revenueExpenseAccounts}
+                value={invForm.revenueExpenseAccountCode}
+                onChange={(code) => setInvForm(f => ({ ...f, revenueExpenseAccountCode: code }))}
+                placeholder={t("اختر الحساب", "Select account")}
+                testId="select-invoice-revenue-expense"
+              />
+            </div>
+
+            {invForm.terms === "cash" && (
+              <div className="space-y-1">
+                <Label className="text-xs">{t("حساب الدفع (صندوق / بنك)", "Payment Account (Cash / Bank)")} *</Label>
+                <AccountCombobox
+                  accounts={paymentAccounts}
+                  value={invForm.paymentAccountCode}
+                  onChange={(code) => setInvForm(f => ({ ...f, paymentAccountCode: code }))}
+                  placeholder={t("اختر حساب الدفع", "Select payment account")}
+                  testId="select-invoice-payment"
+                />
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">{t("المبلغ قبل الضريبة", "Subtotal")} *</Label>
+                <Input
+                  type="number" min="0" step="0.01"
+                  value={invForm.subtotal}
+                  onChange={e => setInvForm(f => ({ ...f, subtotal: e.target.value }))}
+                  placeholder="0.00"
+                  data-testid="input-invoice-subtotal"
+                />
+              </div>
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs">{t("ضريبة القيمة المضافة", "VAT")}</Label>
+                  <button
+                    type="button"
+                    className="text-[11px] text-primary hover:underline"
+                    onClick={() => setInvForm(f => ({ ...f, vatAmount: (parseFloat(f.subtotal || "0") * 0.15).toFixed(2) }))}
+                    data-testid="btn-invoice-vat-15"
+                  >
+                    {t("احسب 15%", "Calc 15%")}
+                  </button>
+                </div>
+                <Input
+                  type="number" min="0" step="0.01"
+                  value={invForm.vatAmount}
+                  onChange={e => setInvForm(f => ({ ...f, vatAmount: e.target.value }))}
+                  placeholder="0.00"
+                  data-testid="input-invoice-vat"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between rounded-md bg-muted/50 px-3 py-2 text-sm font-semibold">
+              <span>{t("الإجمالي", "Total")}</span>
+              <span className="tabular-nums" data-testid="text-invoice-total">{invTotal.toLocaleString("ar-SA", { minimumFractionDigits: 2 })} {t("ر.س", "SAR")}</span>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs">{t("مرفق الفاتورة (صورة / PDF)", "Invoice Attachment (Image / PDF)")}</Label>
+              {invAttachment ? (
+                <div className="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm">
+                  <a href={invAttachment.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-primary hover:underline truncate" data-testid="link-invoice-attachment">
+                    <Paperclip className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">{invAttachment.name}</span>
+                  </a>
+                  <button type="button" onClick={() => setInvAttachment(null)} className="text-destructive hover:text-destructive/80 shrink-0" data-testid="btn-remove-invoice-attachment">
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              ) : (
+                <Input
+                  type="file"
+                  accept="application/pdf,image/jpeg,image/png"
+                  disabled={uploadingAtt}
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = "";
+                    if (!file) return;
+                    const res = await uploadAttachment(file);
+                    if (res) setInvAttachment(res);
+                  }}
+                  data-testid="input-invoice-attachment"
+                />
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setInvDialog(false)}>{t("إلغاء", "Cancel")}</Button>
+            <Button onClick={handleRecordInvoice} disabled={recordInvoiceMut.isPending || uploadingAtt} data-testid="btn-submit-invoice">
+              {recordInvoiceMut.isPending ? t("جاري الترحيل...", "Posting...") : t("تسجيل وترحيل", "Record & Post")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Receipt / Payment Voucher Dialog */}
+      <Dialog open={voucherDialog} onOpenChange={setVoucherDialog}>
+        <DialogContent className="max-w-xl" dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <DollarSign className="h-4 w-4" />
+              {voucherForm.voucherKind === "receipt" ? t("سند قبض", "Receipt Voucher") : t("سند صرف", "Payment Voucher")}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">{t("نوع السند", "Voucher Type")} *</Label>
+                <Select value={voucherForm.voucherKind} onValueChange={v => setVoucherForm(f => ({ ...f, voucherKind: v, counterAccountCode: "" }))}>
+                  <SelectTrigger data-testid="select-voucher-kind"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="receipt">{t("سند قبض (مقبوضات)", "Receipt (money in)")}</SelectItem>
+                    <SelectItem value="payment">{t("سند صرف (مدفوعات)", "Payment (money out)")}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">{t("التاريخ", "Date")} *</Label>
+                <Input type="date" value={voucherForm.date} onChange={e => setVoucherForm(f => ({ ...f, date: e.target.value }))} data-testid="input-voucher-date" />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">{voucherForm.voucherKind === "receipt" ? t("اسم الدافع", "Payer Name") : t("اسم المستفيد", "Payee Name")}</Label>
+                <Input value={voucherForm.partyName} onChange={e => setVoucherForm(f => ({ ...f, partyName: e.target.value }))} placeholder={voucherForm.voucherKind === "receipt" ? t("من...", "From...") : t("إلى...", "To...")} data-testid="input-voucher-party" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">{t("رقم السند / المرجع", "Voucher # / Reference")}</Label>
+                <Input value={voucherForm.reference} onChange={e => setVoucherForm(f => ({ ...f, reference: e.target.value }))} placeholder={t("رقم السند...", "Voucher #...")} data-testid="input-voucher-reference" />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs">{t("حساب الصندوق / البنك", "Cash / Bank Account")} *</Label>
+              <AccountCombobox
+                accounts={paymentAccounts}
+                value={voucherForm.paymentAccountCode}
+                onChange={(code) => setVoucherForm(f => ({ ...f, paymentAccountCode: code }))}
+                placeholder={t("اختر حساب الصندوق / البنك", "Select cash / bank account")}
+                testId="select-voucher-payment"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs">{voucherForm.voucherKind === "receipt" ? t("الحساب المقابل (المصدر)", "Counter Account (Source)") : t("الحساب المقابل (الوجهة)", "Counter Account (Destination)")} *</Label>
+              <AccountCombobox
+                accounts={accounts}
+                value={voucherForm.counterAccountCode}
+                onChange={(code) => setVoucherForm(f => ({ ...f, counterAccountCode: code }))}
+                placeholder={t("اختر الحساب المقابل", "Select counter account")}
+                testId="select-voucher-counter"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs">{t("المبلغ", "Amount")} *</Label>
+              <Input
+                type="number" min="0" step="0.01"
+                value={voucherForm.amount}
+                onChange={e => setVoucherForm(f => ({ ...f, amount: e.target.value }))}
+                placeholder="0.00"
+                data-testid="input-voucher-amount"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs">{t("إيصال (صورة / PDF)", "Receipt (Image / PDF)")}</Label>
+              {voucherAttachment ? (
+                <div className="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm">
+                  <a href={voucherAttachment.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-primary hover:underline truncate" data-testid="link-voucher-attachment">
+                    <Paperclip className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">{voucherAttachment.name}</span>
+                  </a>
+                  <button type="button" onClick={() => setVoucherAttachment(null)} className="text-destructive hover:text-destructive/80 shrink-0" data-testid="btn-remove-voucher-attachment">
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              ) : (
+                <Input
+                  type="file"
+                  accept="application/pdf,image/jpeg,image/png"
+                  disabled={uploadingAtt}
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = "";
+                    if (!file) return;
+                    const res = await uploadAttachment(file);
+                    if (res) setVoucherAttachment(res);
+                  }}
+                  data-testid="input-voucher-attachment"
+                />
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setVoucherDialog(false)}>{t("إلغاء", "Cancel")}</Button>
+            <Button onClick={handleRecordVoucher} disabled={recordVoucherMut.isPending || uploadingAtt} data-testid="btn-submit-voucher">
+              {recordVoucherMut.isPending ? t("جاري الترحيل...", "Posting...") : t("تسجيل وترحيل", "Record & Post")}
             </Button>
           </DialogFooter>
         </DialogContent>

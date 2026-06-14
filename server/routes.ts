@@ -21,6 +21,7 @@ import {
 const SURVEY_FILES_FOLDER = "survey-files";
 const DELIVERY_PHOTOS_FOLDER = "delivery-photos";
 const HR_DOCS_FOLDER = "hr-documents";
+const FINANCE_DOCS_FOLDER = "finance-attachments";
 
 const surveyFileStorage = multer.memoryStorage();
 
@@ -6734,6 +6735,7 @@ export async function registerRoutes(
           created_at TIMESTAMP NOT NULL DEFAULT NOW()
         );
       `);
+      await db.execute(`ALTER TABLE journal_entries ADD COLUMN IF NOT EXISTS attachment_url TEXT`);
       console.log("Finance module migration completed");
     } catch (financeMigrationError) {
       console.warn("Finance migration (non-fatal):", financeMigrationError instanceof Error ? financeMigrationError.message : String(financeMigrationError));
@@ -6826,6 +6828,177 @@ export async function registerRoutes(
       const lines = await storage.getJournalEntryLines(entry.id);
       res.json({ ...entry, lines });
     } catch { res.status(500).json({ message: "حدث خطأ" }); }
+  });
+
+  // ── Record an invoice (sales/purchase, credit/cash) → posts a balanced journal entry ──
+  app.post("/api/accounting/record-invoice", requireRole("owner", "assistant", "accountant"), async (req, res) => {
+    try {
+      const { invoiceKind, terms, date, reference, counterpartyName, revenueExpenseAccountCode, paymentAccountCode } = req.body;
+      const subtotal = parseFloat(req.body.subtotal ?? 0);
+      const vatAmount = parseFloat(req.body.vatAmount ?? 0);
+
+      if (invoiceKind !== "sales" && invoiceKind !== "purchase") {
+        return res.status(400).json({ message: "نوع الفاتورة غير صحيح" });
+      }
+      if (terms !== "credit" && terms !== "cash") {
+        return res.status(400).json({ message: "طريقة الدفع غير صحيحة" });
+      }
+      if (!date) return res.status(400).json({ message: "تاريخ الفاتورة مطلوب" });
+      if (!(subtotal > 0)) return res.status(400).json({ message: "المبلغ قبل الضريبة يجب أن يكون أكبر من صفر" });
+      if (vatAmount < 0) return res.status(400).json({ message: "مبلغ الضريبة غير صحيح" });
+      if (!revenueExpenseAccountCode) {
+        return res.status(400).json({ message: invoiceKind === "sales" ? "يجب اختيار حساب الإيراد" : "يجب اختيار حساب المصروف/المخزون" });
+      }
+      if (terms === "cash" && !paymentAccountCode) {
+        return res.status(400).json({ message: "يجب اختيار حساب الدفع (صندوق/بنك) للفواتير النقدية" });
+      }
+
+      const total = +(subtotal + vatAmount).toFixed(2);
+
+      // Resolve and validate account names from the chart of accounts.
+      const resolveName = async (code: string): Promise<string> => {
+        const acc = await storage.getChartOfAccountByCode(code);
+        if (!acc) throw new Error(`الحساب ${code} غير موجود في شجرة الحسابات`);
+        return acc.nameAr;
+      };
+
+      const VAT_OUTPUT = "2121", VAT_INPUT = "2122", CUSTOMER_AR = "1121", SUPPLIER_AP = "2111";
+      const reAccountName = await resolveName(revenueExpenseAccountCode);
+      const lines: any[] = [];
+
+      if (invoiceKind === "sales") {
+        // Debit side: cash/bank (cash sale) or customer receivable (credit sale)
+        const debitCode = terms === "cash" ? paymentAccountCode : CUSTOMER_AR;
+        const debitName = await resolveName(debitCode);
+        lines.push({ entryId: 0, accountCode: debitCode, accountNameAr: debitName, debit: total.toFixed(2), credit: "0" });
+        lines.push({ entryId: 0, accountCode: revenueExpenseAccountCode, accountNameAr: reAccountName, debit: "0", credit: subtotal.toFixed(2) });
+        if (vatAmount > 0) {
+          lines.push({ entryId: 0, accountCode: VAT_OUTPUT, accountNameAr: await resolveName(VAT_OUTPUT), debit: "0", credit: vatAmount.toFixed(2) });
+        }
+      } else {
+        // Purchase: debit expense/inventory + input VAT; credit cash/bank or supplier payable
+        lines.push({ entryId: 0, accountCode: revenueExpenseAccountCode, accountNameAr: reAccountName, debit: subtotal.toFixed(2), credit: "0" });
+        if (vatAmount > 0) {
+          lines.push({ entryId: 0, accountCode: VAT_INPUT, accountNameAr: await resolveName(VAT_INPUT), debit: vatAmount.toFixed(2), credit: "0" });
+        }
+        const creditCode = terms === "cash" ? paymentAccountCode : SUPPLIER_AP;
+        const creditName = await resolveName(creditCode);
+        lines.push({ entryId: 0, accountCode: creditCode, accountNameAr: creditName, debit: "0", credit: total.toFixed(2) });
+      }
+
+      const kindAr = invoiceKind === "sales" ? "فاتورة مبيعات" : "فاتورة مشتريات";
+      const termsAr = terms === "cash" ? "نقدي" : "آجل";
+      const description = `${kindAr} (${termsAr})${counterpartyName ? ` - ${counterpartyName}` : ""}${reference ? ` - ${reference}` : ""}`;
+
+      const entry = await storage.createJournalEntry(
+        {
+          date,
+          description,
+          reference: reference || null,
+          referenceType: invoiceKind === "sales" ? "sales_invoice" : "purchase_invoice",
+          status: "posted",
+          attachmentUrl: req.body.attachmentUrl || null,
+          createdBy: (req as any).userId,
+        },
+        lines
+      );
+      res.json(entry);
+    } catch (e: any) {
+      res.status(400).json({ message: e.message || "حدث خطأ في تسجيل الفاتورة" });
+    }
+  });
+
+  // ── Finance attachments (invoices / journal entries) ──────────────────────
+  const financeDocUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 10 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+      const allowed = ["application/pdf", "image/jpeg", "image/jpg", "image/png"];
+      if (allowed.includes(file.mimetype)) cb(null, true);
+      else cb(new Error("Only PDF, JPEG, and PNG files are allowed"));
+    },
+  });
+
+  app.post("/api/accounting/upload-attachment", requireRole("owner", "assistant", "accountant"), financeDocUpload.single("file"), async (req: any, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: "لم يتم رفع أي ملف" });
+      const filename = makeSafeFilename(req.file.originalname);
+      await saveObjectFile(FINANCE_DOCS_FOLDER, filename, req.file.buffer, req.file.mimetype);
+      res.json({ url: `/uploads/finance-attachments/${filename}`, name: req.file.originalname, mime: req.file.mimetype });
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ في رفع المرفق" });
+    }
+  });
+
+  app.get("/uploads/finance-attachments/:filename", requireRole("owner", "assistant", "accountant"), async (req, res) => {
+    try {
+      const filename = req.params.filename.replace(/[^a-zA-Z0-9._-]/g, "");
+      const served = await streamObjectFile(FINANCE_DOCS_FOLDER, filename, res);
+      if (!served) return res.status(404).json({ message: "الملف غير موجود" });
+    } catch (error) {
+      if (!res.headersSent) res.status(500).json({ message: "حدث خطأ في جلب الملف" });
+    }
+  });
+
+  // ── Vouchers: receipt (سند قبض) / payment (سند صرف) → posts a balanced entry ──
+  app.post("/api/accounting/record-voucher", requireRole("owner", "assistant", "accountant"), async (req, res) => {
+    try {
+      const { voucherKind, date, reference, partyName, paymentAccountCode, counterAccountCode } = req.body;
+      const amount = parseFloat(req.body.amount ?? 0);
+
+      if (voucherKind !== "receipt" && voucherKind !== "payment") {
+        return res.status(400).json({ message: "نوع السند غير صحيح" });
+      }
+      if (!date) return res.status(400).json({ message: "تاريخ السند مطلوب" });
+      if (!(amount > 0)) return res.status(400).json({ message: "المبلغ يجب أن يكون أكبر من صفر" });
+      if (!paymentAccountCode) return res.status(400).json({ message: "يجب اختيار حساب الصندوق/البنك" });
+      if (!counterAccountCode) return res.status(400).json({ message: "يجب اختيار الحساب المقابل" });
+      if (paymentAccountCode === counterAccountCode) {
+        return res.status(400).json({ message: "لا يمكن أن يكون حساب الدفع والحساب المقابل متطابقين" });
+      }
+
+      const resolveName = async (code: string): Promise<string> => {
+        const acc = await storage.getChartOfAccountByCode(code);
+        if (!acc) throw new Error(`الحساب ${code} غير موجود في شجرة الحسابات`);
+        return acc.nameAr;
+      };
+      // Payment account must be a cash/bank account (codes 111x, excluding the 1110 parent)
+      if (!String(paymentAccountCode).startsWith("111") || paymentAccountCode === "1110") {
+        return res.status(400).json({ message: "حساب الدفع يجب أن يكون حساب صندوق أو بنك" });
+      }
+      const payName = await resolveName(paymentAccountCode);
+      const counterName = await resolveName(counterAccountCode);
+
+      const lines: any[] = [];
+      if (voucherKind === "receipt") {
+        // Money in: debit cash/bank, credit the source account
+        lines.push({ entryId: 0, accountCode: paymentAccountCode, accountNameAr: payName, debit: amount.toFixed(2), credit: "0" });
+        lines.push({ entryId: 0, accountCode: counterAccountCode, accountNameAr: counterName, debit: "0", credit: amount.toFixed(2) });
+      } else {
+        // Money out: debit the destination account, credit cash/bank
+        lines.push({ entryId: 0, accountCode: counterAccountCode, accountNameAr: counterName, debit: amount.toFixed(2), credit: "0" });
+        lines.push({ entryId: 0, accountCode: paymentAccountCode, accountNameAr: payName, debit: "0", credit: amount.toFixed(2) });
+      }
+
+      const kindAr = voucherKind === "receipt" ? "سند قبض" : "سند صرف";
+      const description = `${kindAr}${partyName ? ` - ${partyName}` : ""}${reference ? ` - ${reference}` : ""}`;
+
+      const entry = await storage.createJournalEntry(
+        {
+          date,
+          description,
+          reference: reference || null,
+          referenceType: voucherKind === "receipt" ? "receipt_voucher" : "payment_voucher",
+          status: "posted",
+          attachmentUrl: req.body.attachmentUrl || null,
+          createdBy: (req as any).userId,
+        },
+        lines
+      );
+      res.json(entry);
+    } catch (e: any) {
+      res.status(400).json({ message: e.message || "حدث خطأ في تسجيل السند" });
+    }
   });
 
   // ── General Ledger ─────────────────────────────────────────────────────────
