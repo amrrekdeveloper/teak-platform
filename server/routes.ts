@@ -83,6 +83,7 @@ import {
   type OrderStageValue,
   type PaymentSchedule,
 } from "@shared/schema";
+import { parseNum } from "@shared/digits";
 
 async function setOrderStage(quotationId: number, stage: OrderStageValue) {
   try {
@@ -7840,14 +7841,14 @@ export async function registerRoutes(
       // Every line must be complete: account selected + exactly one side (debit XOR credit) > 0.
       for (let i = 0; i < lines.length; i++) {
         const l = lines[i];
-        const debit = parseFloat(l.debit || 0);
-        const credit = parseFloat(l.credit || 0);
+        const debit = parseNum(l.debit);
+        const credit = parseNum(l.credit);
         if (!l.accountCode) return res.status(400).json({ message: `السطر ${i + 1}: يجب اختيار الحساب` });
         if (debit <= 0 && credit <= 0) return res.status(400).json({ message: `السطر ${i + 1}: يجب إدخال مبلغ مدين أو دائن` });
         if (debit > 0 && credit > 0) return res.status(400).json({ message: `السطر ${i + 1}: لا يمكن إدخال مدين ودائن في نفس السطر` });
       }
-      const totalDebit = lines.reduce((s: number, l: any) => s + parseFloat(l.debit || 0), 0);
-      const totalCredit = lines.reduce((s: number, l: any) => s + parseFloat(l.credit || 0), 0);
+      const totalDebit = lines.reduce((s: number, l: any) => s + parseNum(l.debit), 0);
+      const totalCredit = lines.reduce((s: number, l: any) => s + parseNum(l.credit), 0);
       if (totalDebit <= 0) return res.status(400).json({ message: "إجمالي القيد يجب أن يكون أكبر من صفر" });
       if (Math.abs(totalDebit - totalCredit) > 0.01) {
         return res.status(400).json({ message: `القيد غير متوازن: مجموع المدين (${totalDebit.toFixed(2)}) لا يساوي مجموع الدائن (${totalCredit.toFixed(2)})` });
@@ -7875,8 +7876,8 @@ export async function registerRoutes(
   app.post("/api/accounting/record-invoice", requireRole("owner", "assistant", "accountant"), async (req, res) => {
     try {
       const { invoiceKind, terms, date, reference, counterpartyName, revenueExpenseAccountCode, paymentAccountCode } = req.body;
-      const subtotal = parseFloat(req.body.subtotal ?? 0);
-      const vatAmount = parseFloat(req.body.vatAmount ?? 0);
+      const subtotal = parseNum(req.body.subtotal);
+      const vatAmount = parseNum(req.body.vatAmount);
 
       if (invoiceKind !== "sales" && invoiceKind !== "purchase") {
         return res.status(400).json({ message: "نوع الفاتورة غير صحيح" });
@@ -8017,7 +8018,7 @@ export async function registerRoutes(
   app.post("/api/accounting/record-voucher", requireRole("owner", "assistant", "accountant"), async (req, res) => {
     try {
       const { voucherKind, date, reference, partyName, paymentAccountCode, counterAccountCode } = req.body;
-      const amount = parseFloat(req.body.amount ?? 0);
+      const amount = parseNum(req.body.amount);
 
       if (voucherKind !== "receipt" && voucherKind !== "payment") {
         return res.status(400).json({ message: "نوع السند غير صحيح" });
@@ -8644,17 +8645,17 @@ export async function registerRoutes(
       const { date, lines } = req.body as { date: string; lines: { accountCode: string; accountNameAr: string; debit: string; credit: string }[] };
       if (!date) return res.status(400).json({ message: "التاريخ مطلوب" });
       if (!lines || lines.length === 0) return res.status(400).json({ message: "يجب إدخال سطر واحد على الأقل" });
-      const validLines = lines.filter(l => parseFloat(l.debit || "0") > 0 || parseFloat(l.credit || "0") > 0);
+      const validLines = lines.filter(l => parseNum(l.debit) > 0 || parseNum(l.credit) > 0);
       if (validLines.length === 0) return res.status(400).json({ message: "يجب إدخال مبالغ للأرصدة الافتتاحية" });
 
-      const totalDebitCheck = validLines.reduce((s, l) => s + parseFloat(l.debit || "0"), 0);
-      const totalCreditCheck = validLines.reduce((s, l) => s + parseFloat(l.credit || "0"), 0);
+      const totalDebitCheck = validLines.reduce((s, l) => s + parseNum(l.debit), 0);
+      const totalCreditCheck = validLines.reduce((s, l) => s + parseNum(l.credit), 0);
       if (Math.abs(totalDebitCheck - totalCreditCheck) > 0.01) {
         return res.status(400).json({ message: `مجموع المدين (${totalDebitCheck.toFixed(2)}) لا يساوي مجموع الدائن (${totalCreditCheck.toFixed(2)}). يجب أن تكون الأرصدة الافتتاحية متوازنة.` });
       }
 
-      const totalDebit = validLines.reduce((s, l) => s + parseFloat(l.debit || "0"), 0);
-      const totalCredit = validLines.reduce((s, l) => s + parseFloat(l.credit || "0"), 0);
+      const totalDebit = validLines.reduce((s, l) => s + parseNum(l.debit), 0);
+      const totalCredit = validLines.reduce((s, l) => s + parseNum(l.credit), 0);
 
       // Atomic: void previous opening-balance entry + create the new one in one
       // transaction so balances are never wiped without a replacement.

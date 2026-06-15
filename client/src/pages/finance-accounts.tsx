@@ -18,6 +18,7 @@ import { Plus, Trash2, Edit2, BookOpen, FileText, ChevronLeft, AlertCircle, Chec
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { format } from "date-fns";
 import { exportReportPDF } from "@/lib/finance-export";
+import { toLatinDigits } from "@shared/digits";
 
 const ACCOUNT_TYPES: Record<string, { labelAr: string; color: string }> = {
   asset:     { labelAr: "أصول",        color: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300" },
@@ -687,7 +688,7 @@ export default function FinanceAccountsPage() {
                                 type="number" min="0" step="0.01"
                                 className="h-7 text-xs text-blue-700 dark:text-blue-400"
                                 value={line.debit}
-                                onChange={e => setObLines(ls => ls.map((l, j) => j === i ? { ...l, debit: e.target.value, credit: e.target.value ? "" : l.credit } : l))}
+                                onChange={e => { const v = toLatinDigits(e.target.value); setObLines(ls => ls.map((l, j) => j === i ? { ...l, debit: v, credit: v ? "" : l.credit } : l)); }}
                                 placeholder="0.00"
                                 data-testid={`input-ob-debit-${i}`}
                               />
@@ -697,7 +698,7 @@ export default function FinanceAccountsPage() {
                                 type="number" min="0" step="0.01"
                                 className="h-7 text-xs text-green-700 dark:text-green-400"
                                 value={line.credit}
-                                onChange={e => setObLines(ls => ls.map((l, j) => j === i ? { ...l, credit: e.target.value, debit: e.target.value ? "" : l.debit } : l))}
+                                onChange={e => { const v = toLatinDigits(e.target.value); setObLines(ls => ls.map((l, j) => j === i ? { ...l, credit: v, debit: v ? "" : l.debit } : l)); }}
                                 placeholder="0.00"
                                 data-testid={`input-ob-credit-${i}`}
                               />
@@ -846,7 +847,7 @@ export default function FinanceAccountsPage() {
                             type="number" min="0" step="0.01"
                             className="h-7 text-xs text-blue-700 dark:text-blue-400"
                             value={line.debit}
-                            onChange={e => setLines(ls => ls.map((l, j) => j === i ? { ...l, debit: e.target.value, credit: e.target.value ? "" : l.credit } : l))}
+                            onChange={e => { const v = toLatinDigits(e.target.value); setLines(ls => ls.map((l, j) => j === i ? { ...l, debit: v, credit: v ? "" : l.credit } : l)); }}
                             placeholder="0.00"
                             data-testid={`input-line-debit-${i}`}
                           />
@@ -856,7 +857,7 @@ export default function FinanceAccountsPage() {
                             type="number" min="0" step="0.01"
                             className="h-7 text-xs text-green-700 dark:text-green-400"
                             value={line.credit}
-                            onChange={e => setLines(ls => ls.map((l, j) => j === i ? { ...l, credit: e.target.value, debit: e.target.value ? "" : l.debit } : l))}
+                            onChange={e => { const v = toLatinDigits(e.target.value); setLines(ls => ls.map((l, j) => j === i ? { ...l, credit: v, debit: v ? "" : l.debit } : l)); }}
                             placeholder="0.00"
                             data-testid={`input-line-credit-${i}`}
                           />
@@ -1004,7 +1005,7 @@ export default function FinanceAccountsPage() {
                 <Input
                   type="number" min="0" step="0.01"
                   value={invForm.subtotal}
-                  onChange={e => setInvForm(f => ({ ...f, subtotal: e.target.value }))}
+                  onChange={e => setInvForm(f => ({ ...f, subtotal: toLatinDigits(e.target.value) }))}
                   placeholder="0.00"
                   data-testid="input-invoice-subtotal"
                 />
@@ -1024,7 +1025,7 @@ export default function FinanceAccountsPage() {
                 <Input
                   type="number" min="0" step="0.01"
                   value={invForm.vatAmount}
-                  onChange={e => setInvForm(f => ({ ...f, vatAmount: e.target.value }))}
+                  onChange={e => setInvForm(f => ({ ...f, vatAmount: toLatinDigits(e.target.value) }))}
                   placeholder="0.00"
                   data-testid="input-invoice-vat"
                 />
@@ -1139,7 +1140,7 @@ export default function FinanceAccountsPage() {
               <Input
                 type="number" min="0" step="0.01"
                 value={voucherForm.amount}
-                onChange={e => setVoucherForm(f => ({ ...f, amount: e.target.value }))}
+                onChange={e => setVoucherForm(f => ({ ...f, amount: toLatinDigits(e.target.value) }))}
                 placeholder="0.00"
                 data-testid="input-voucher-amount"
               />

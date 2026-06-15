@@ -50,6 +50,7 @@ import {
   journalEntryLines, type JournalEntryLine, type InsertJournalEntryLine,
   fiscalYears, type FiscalYear, type InsertFiscalYear,
 } from "@shared/schema";
+import { toLatinDigits, parseNum } from "@shared/digits";
 
 export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
@@ -1403,8 +1404,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createJournalEntry(entry: InsertJournalEntry, lines: InsertJournalEntryLine[]): Promise<JournalEntry> {
-    const totalDebit = lines.reduce((s, l) => s + parseFloat(String(l.debit || 0)), 0);
-    const totalCredit = lines.reduce((s, l) => s + parseFloat(String(l.credit || 0)), 0);
+    // Normalize Arabic-Indic/Persian digits so numeric casts never fail at the DB.
+    const safeLines = lines.map(l => ({ ...l, debit: toLatinDigits(l.debit ?? "0") || "0", credit: toLatinDigits(l.credit ?? "0") || "0" }));
+    const totalDebit = safeLines.reduce((s, l) => s + parseNum(l.debit), 0);
+    const totalCredit = safeLines.reduce((s, l) => s + parseNum(l.credit), 0);
     // Atomic: header + lines are written in a single transaction so a line failure
     // never leaves a "ghost" header behind (root cause of "القيد لا يُحفظ").
     return await db.transaction(async (tx) => {
@@ -1413,8 +1416,8 @@ export class DatabaseStorage implements IStorage {
         totalDebit: totalDebit.toFixed(2),
         totalCredit: totalCredit.toFixed(2),
       }).returning();
-      if (lines.length > 0) {
-        await tx.insert(journalEntryLines).values(lines.map(l => ({ ...l, entryId: created.id })));
+      if (safeLines.length > 0) {
+        await tx.insert(journalEntryLines).values(safeLines.map(l => ({ ...l, entryId: created.id })));
       }
       return created;
     });
@@ -1426,8 +1429,9 @@ export class DatabaseStorage implements IStorage {
     entry: InsertJournalEntry,
     lines: InsertJournalEntryLine[],
   ): Promise<JournalEntry> {
-    const totalDebit = lines.reduce((s, l) => s + parseFloat(String(l.debit || 0)), 0);
-    const totalCredit = lines.reduce((s, l) => s + parseFloat(String(l.credit || 0)), 0);
+    const safeLines = lines.map(l => ({ ...l, debit: toLatinDigits(l.debit ?? "0") || "0", credit: toLatinDigits(l.credit ?? "0") || "0" }));
+    const totalDebit = safeLines.reduce((s, l) => s + parseNum(l.debit), 0);
+    const totalCredit = safeLines.reduce((s, l) => s + parseNum(l.credit), 0);
     return await db.transaction(async (tx) => {
       await tx
         .update(journalEntries)
@@ -1443,8 +1447,8 @@ export class DatabaseStorage implements IStorage {
         totalDebit: totalDebit.toFixed(2),
         totalCredit: totalCredit.toFixed(2),
       }).returning();
-      if (lines.length > 0) {
-        await tx.insert(journalEntryLines).values(lines.map(l => ({ ...l, entryId: created.id })));
+      if (safeLines.length > 0) {
+        await tx.insert(journalEntryLines).values(safeLines.map(l => ({ ...l, entryId: created.id })));
       }
       return created;
     });

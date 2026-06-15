@@ -5,3 +5,4 @@
 - [React + third-party DOM libs](react-thirdparty-dom.md) — give maps/charts/editors a dedicated empty container; never put React conditional children inside it or you get "removeChild not a child" crashes (mislabeled "Invalid hook call").
 - [Per-account permission system](permission-system.md) — permission key = route path; effective = role defaults + grants − revokes; protected owners always get all keys & are immune; perms attached to /me, sidebar/route-guard fall back to role when absent.
 - [React stale dialog snapshot](react-stale-dialog-snapshot.md) — dialogs that capture an entity into state show a frozen copy; query invalidation won't update them. Re-derive the live entity from the query by id inside the dialog.
+- [Arabic numerals in numeric fields](arabic-numeral-numeric-inputs.md) — normalize Arabic-Indic/Persian digits + separators via shared/digits.ts before parseFloat or numeric DB casts, or NaN slips past validation and Postgres rejects the write.
