@@ -1,9 +1,32 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
+import { friendlyArabicError } from "@/lib/errors";
+
+export class ApiError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
 
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
-    const text = (await res.text()) || res.statusText;
-    throw new Error(`${res.status}: ${text}`);
+    let rawMessage = res.statusText;
+    try {
+      const text = await res.text();
+      if (text) {
+        try {
+          const json = JSON.parse(text);
+          rawMessage = json.message || json.error || text;
+        } catch {
+          rawMessage = text;
+        }
+      }
+    } catch {
+      // ignore body read failures, fall back to statusText
+    }
+    throw new ApiError(res.status, friendlyArabicError(res.status, rawMessage));
   }
 }
 

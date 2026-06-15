@@ -5,8 +5,12 @@ import type {
   ToastProps,
 } from "@/components/ui/toast"
 
-const TOAST_LIMIT = 1
-const TOAST_REMOVE_DELAY = 1000000
+const TOAST_LIMIT = 3
+// Cleanup delay AFTER a toast is dismissed (lets the close animation finish).
+// The user-visible lifetime is controlled by the Radix `duration` prop set in toast().
+const TOAST_REMOVE_DELAY = 1000
+const DEFAULT_DURATION = 5000
+const DESTRUCTIVE_DURATION = 8000
 
 type ToasterToast = ToastProps & {
   id: string
@@ -149,12 +153,17 @@ function toast({ ...props }: Toast) {
     })
   const dismiss = () => dispatch({ type: "DISMISS_TOAST", toastId: id })
 
+  const duration =
+    props.duration ??
+    (props.variant === "destructive" ? DESTRUCTIVE_DURATION : DEFAULT_DURATION)
+
   dispatch({
     type: "ADD_TOAST",
     toast: {
       ...props,
       id,
       open: true,
+      duration,
       onOpenChange: (open) => {
         if (!open) dismiss()
       },

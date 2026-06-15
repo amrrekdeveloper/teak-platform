@@ -6,3 +6,4 @@
 - [Per-account permission system](permission-system.md) — permission key = route path; effective = role defaults + grants − revokes; protected owners always get all keys & are immune; perms attached to /me, sidebar/route-guard fall back to role when absent.
 - [React stale dialog snapshot](react-stale-dialog-snapshot.md) — dialogs that capture an entity into state show a frozen copy; query invalidation won't update them. Re-derive the live entity from the query by id inside the dialog.
 - [Arabic numerals in numeric fields](arabic-numeral-numeric-inputs.md) — normalize Arabic-Indic/Persian digits + separators via shared/digits.ts before parseFloat or numeric DB casts, or NaN slips past validation and Postgres rejects the write.
+- [Toast lifetime & error UX](toast-and-error-ux.md) — shadcn toast on-screen time = Radix `duration` prop, not TOAST_REMOVE_DELAY; all API errors normalized to Arabic via queryClient + errors.ts (backend Arabic msgs trusted).
