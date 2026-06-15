@@ -20,7 +20,7 @@ import {
   Loader2, Plus, Search, UserCog, Pencil, DollarSign,
   Users, UserCheck, ChevronUp, ChevronDown, ChevronsUpDown,
   FileText, Upload, Trash2, AlertTriangle, Download, Lock, UserX, UserCheck2, ClipboardList, X,
-  Calculator, Package, CheckCircle2, RotateCcw, Eye
+  Calculator, Package, CheckCircle2, RotateCcw, Eye, Image as ImageIcon
 } from "lucide-react";
 
 const departmentLabels: Record<string, { ar: string; en: string }> = {
@@ -397,17 +397,40 @@ function exportEmployeePDF(emp: Employee, users: any[], t: (ar: string, en: stri
   URL.revokeObjectURL(url);
 }
 
+const DOC_ALLOWED_MIME = ["application/pdf", "image/jpeg", "image/jpg", "image/png"];
+const DOC_MAX_SIZE = 10 * 1024 * 1024;
+const isImageDoc = (mime?: string) => !!mime && mime.startsWith("image/");
+
 function DocumentsSection({ emp }: { emp: Employee }) {
   const { t } = useLanguage();
   const { toast } = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [docName, setDocName] = useState("");
+  const [previewDoc, setPreviewDoc] = useState<any | null>(null);
 
-  const docs = (emp.documents as any[] || []);
+  const { data: employees = [] } = useQuery<Employee[]>({ queryKey: ["/api/employees"] });
+  const liveEmp = employees.find(e => e.id === emp.id) || emp;
+  const docs = (liveEmp.documents as any[] || []);
 
   const handleUpload = async (file: File) => {
     if (!file) return;
+    if (!DOC_ALLOWED_MIME.includes(file.type)) {
+      toast({
+        title: t("نوع ملف غير مدعوم", "Unsupported file type"),
+        description: t("يُسمح برفع ملفات PDF أو صور (JPG/PNG) فقط", "Only PDF or images (JPG/PNG) are allowed"),
+        variant: "destructive",
+      });
+      return;
+    }
+    if (file.size > DOC_MAX_SIZE) {
+      toast({
+        title: t("حجم الملف كبير جدًا", "File too large"),
+        description: t("الحد الأقصى المسموح به 10 ميجابايت", "Maximum allowed size is 10 MB"),
+        variant: "destructive",
+      });
+      return;
+    }
     setUploading(true);
     try {
       const formData = new FormData();
@@ -418,12 +441,20 @@ function DocumentsSection({ emp }: { emp: Employee }) {
         body: formData,
         credentials: "include",
       });
-      if (!res.ok) throw new Error("Upload failed");
+      if (!res.ok) {
+        let msg = "";
+        try { msg = (await res.json())?.message || ""; } catch { /* ignore */ }
+        throw new Error(msg);
+      }
       await queryClient.invalidateQueries({ queryKey: ["/api/employees"] });
       setDocName("");
       toast({ title: t("تم رفع المستند بنجاح", "Document uploaded successfully") });
-    } catch {
-      toast({ title: t("حدث خطأ في رفع المستند", "Error uploading document"), variant: "destructive" });
+    } catch (err: any) {
+      toast({
+        title: t("حدث خطأ في رفع المستند", "Error uploading document"),
+        description: err?.message || undefined,
+        variant: "destructive",
+      });
     } finally {
       setUploading(false);
     }
@@ -440,7 +471,7 @@ function DocumentsSection({ emp }: { emp: Employee }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Input
           placeholder={t("اسم المستند (اختياري)", "Document name (optional)")}
           value={docName}
@@ -466,36 +497,99 @@ function DocumentsSection({ emp }: { emp: Employee }) {
           onChange={e => { const f = e.target.files?.[0]; if (f) handleUpload(f); e.target.value = ""; }}
         />
       </div>
+      <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+        <AlertTriangle className="w-3.5 h-3.5 shrink-0 opacity-70" />
+        {t("يُسمح برفع ملفات PDF أو صور (JPG/PNG) فقط — بحد أقصى 10 ميجابايت", "Only PDF or image files (JPG/PNG) are allowed — up to 10 MB")}
+      </p>
       {docs.length === 0 ? (
-        <p className="text-sm text-muted-foreground text-center py-8">{t("لا توجد مستندات مرفوعة", "No documents uploaded")}</p>
+        <div className="rounded-lg border border-dashed p-8 text-center text-muted-foreground">
+          <FileText className="w-8 h-8 mx-auto mb-2 opacity-40" />
+          <p className="text-sm">{t("لا توجد مستندات مرفوعة", "No documents uploaded")}</p>
+        </div>
       ) : (
         <div className="divide-y divide-border rounded-lg border overflow-hidden">
-          {docs.map((doc: any) => (
-            <div key={doc.id} className="flex items-center justify-between px-4 py-3" data-testid={`row-doc-${doc.id}`}>
-              <div className="flex items-center gap-3 min-w-0">
-                <FileText className="w-5 h-5 text-muted-foreground shrink-0" />
-                <div className="min-w-0">
-                  <p className="text-sm font-medium truncate">{doc.name}</p>
-                  <p className="text-xs text-muted-foreground">{new Date(doc.uploadedAt).toLocaleDateString("ar-SA")}</p>
+          {docs.map((doc: any) => {
+            const img = isImageDoc(doc.mime);
+            return (
+              <div key={doc.id} className="flex items-center justify-between px-4 py-3" data-testid={`row-doc-${doc.id}`}>
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className={`p-1.5 rounded shrink-0 ${img ? "bg-blue-100 dark:bg-blue-900/30" : "bg-red-100 dark:bg-red-900/30"}`}>
+                    {img
+                      ? <ImageIcon className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                      : <FileText className="w-4 h-4 text-red-600 dark:text-red-400" />}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate">{doc.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {img ? t("صورة", "Image") : "PDF"} · {new Date(doc.uploadedAt).toLocaleDateString("ar-SA")}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <Button size="icon" variant="ghost" className="h-7 w-7"
+                    onClick={() => setPreviewDoc(doc)}
+                    title={t("معاينة", "Preview")}
+                    data-testid={`button-view-doc-${doc.id}`}>
+                    <Eye className="w-3.5 h-3.5" />
+                  </Button>
+                  <Button size="icon" variant="ghost" className="h-7 w-7" asChild
+                    title={t("تحميل", "Download")}
+                    data-testid={`button-download-doc-${doc.id}`}>
+                    <a href={doc.url} download={doc.name}>
+                      <Download className="w-3.5 h-3.5" />
+                    </a>
+                  </Button>
+                  <Button size="icon" variant="ghost" className="h-7 w-7 text-red-500 hover:text-red-600"
+                    onClick={() => deleteMutation.mutate(doc.id)}
+                    disabled={deleteMutation.isPending}
+                    title={t("حذف", "Delete")}
+                    data-testid={`button-delete-doc-${doc.id}`}>
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </Button>
                 </div>
               </div>
-              <div className="flex items-center gap-1 shrink-0">
-                <Button size="icon" variant="ghost" className="h-7 w-7" asChild data-testid={`button-view-doc-${doc.id}`}>
-                  <a href={doc.url} target="_blank" rel="noopener noreferrer">
-                    <Download className="w-3.5 h-3.5" />
-                  </a>
-                </Button>
-                <Button size="icon" variant="ghost" className="h-7 w-7 text-red-500 hover:text-red-600"
-                  onClick={() => deleteMutation.mutate(doc.id)}
-                  disabled={deleteMutation.isPending}
-                  data-testid={`button-delete-doc-${doc.id}`}>
-                  <Trash2 className="w-3.5 h-3.5" />
-                </Button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
+
+      <Dialog open={!!previewDoc} onOpenChange={open => !open && setPreviewDoc(null)}>
+        <DialogContent className="max-w-4xl w-[95vw] h-[88vh] flex flex-col p-0 gap-0">
+          <DialogHeader className="px-4 py-3 border-b">
+            <DialogTitle className="text-base truncate pe-8 flex items-center gap-2">
+              {previewDoc && (isImageDoc(previewDoc.mime)
+                ? <ImageIcon className="w-4 h-4 text-blue-500 shrink-0" />
+                : <FileText className="w-4 h-4 text-red-500 shrink-0" />)}
+              <span className="truncate">{previewDoc?.name}</span>
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 min-h-0 overflow-auto bg-muted/30 flex items-center justify-center">
+            {previewDoc && (isImageDoc(previewDoc.mime) ? (
+              <img
+                src={previewDoc.url}
+                alt={previewDoc.name}
+                className="max-w-full max-h-full object-contain"
+                data-testid="img-doc-preview"
+              />
+            ) : (
+              <iframe
+                src={previewDoc.url}
+                title={previewDoc.name}
+                className="w-full h-full border-0"
+                data-testid="iframe-doc-preview"
+              />
+            ))}
+          </div>
+          <div className="px-4 py-3 border-t flex justify-end">
+            <Button size="sm" variant="outline" asChild data-testid="button-download-preview">
+              <a href={previewDoc?.url} download={previewDoc?.name}>
+                <Download className="w-4 h-4 me-1.5" />
+                {t("تحميل المستند", "Download Document")}
+              </a>
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

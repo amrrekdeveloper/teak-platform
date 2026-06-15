@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLanguage } from "@/components/language-provider";
 import { useRoute, Link } from "wouter";
@@ -5,10 +6,14 @@ import type { Employee } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   Loader2, ArrowLeft, ArrowRight, FileText, Download, Phone, Mail,
   CreditCard, CalendarDays, Briefcase, Building2, BadgeCheck, User, Clock, Pencil,
+  Eye, Image as ImageIcon,
 } from "lucide-react";
+
+const isImageDoc = (mime?: string) => !!mime && mime.startsWith("image/");
 
 const departmentLabels: Record<string, { ar: string; en: string }> = {
   sales:            { ar: "المبيعات",         en: "Sales" },
@@ -86,6 +91,7 @@ export default function EmployeeDetailPage() {
   const locale = isRTL ? "ar-SA" : "en-US";
   const [, params] = useRoute("/employees/:id");
   const id = params?.id;
+  const [previewDoc, setPreviewDoc] = useState<any | null>(null);
 
   const { data: employee, isLoading } = useQuery<Employee>({
     queryKey: ["/api/employees", id],
@@ -233,31 +239,72 @@ export default function EmployeeDetailPage() {
             </p>
           ) : (
             <div className="divide-y divide-border rounded-lg border overflow-hidden">
-              {docs.map((doc: any) => (
-                <div key={doc.id} className="flex items-center justify-between gap-3 px-4 py-3" data-testid={`row-doc-${doc.id}`}>
-                  <div className="flex items-center gap-3 min-w-0">
-                    <FileText className={`w-5 h-5 shrink-0 ${isContractDoc(doc.name) ? "text-primary" : "text-muted-foreground"}`} />
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p className="text-sm font-medium truncate">{doc.name}</p>
-                        {isContractDoc(doc.name) && (
-                          <Badge variant="secondary" className="text-[9px]">{t("عقد", "Contract")}</Badge>
-                        )}
+              {docs.map((doc: any) => {
+                const img = isImageDoc(doc.mime);
+                return (
+                  <div key={doc.id} className="flex items-center justify-between gap-3 px-4 py-3" data-testid={`row-doc-${doc.id}`}>
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className={`p-1.5 rounded shrink-0 ${img ? "bg-blue-100 dark:bg-blue-900/30" : "bg-red-100 dark:bg-red-900/30"}`}>
+                        {img
+                          ? <ImageIcon className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                          : <FileText className={`w-4 h-4 ${isContractDoc(doc.name) ? "text-primary" : "text-red-600 dark:text-red-400"}`} />}
                       </div>
-                      <p className="text-xs text-muted-foreground">{fmtDate(doc.uploadedAt, locale)}</p>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-medium truncate">{doc.name}</p>
+                          {isContractDoc(doc.name) && (
+                            <Badge variant="secondary" className="text-[9px]">{t("عقد", "Contract")}</Badge>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {img ? t("صورة", "Image") : "PDF"} · {fmtDate(doc.uploadedAt, locale)}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <Button size="sm" variant="outline" onClick={() => setPreviewDoc(doc)} data-testid={`button-view-doc-${doc.id}`}>
+                        <Eye className="w-3.5 h-3.5 me-1" />{t("معاينة", "Preview")}
+                      </Button>
+                      <Button size="icon" variant="ghost" className="h-8 w-8" asChild title={t("تحميل", "Download")} data-testid={`button-download-doc-${doc.id}`}>
+                        <a href={doc.url} download={doc.name}>
+                          <Download className="w-3.5 h-3.5" />
+                        </a>
+                      </Button>
                     </div>
                   </div>
-                  <Button size="sm" variant="outline" asChild data-testid={`button-download-doc-${doc.id}`}>
-                    <a href={doc.url} target="_blank" rel="noopener noreferrer">
-                      <Download className="w-3.5 h-3.5 me-1" />{t("تحميل", "Download")}
-                    </a>
-                  </Button>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={!!previewDoc} onOpenChange={open => !open && setPreviewDoc(null)}>
+        <DialogContent className="max-w-4xl w-[95vw] h-[88vh] flex flex-col p-0 gap-0">
+          <DialogHeader className="px-4 py-3 border-b">
+            <DialogTitle className="text-base truncate pe-8 flex items-center gap-2">
+              {previewDoc && (isImageDoc(previewDoc.mime)
+                ? <ImageIcon className="w-4 h-4 text-blue-500 shrink-0" />
+                : <FileText className="w-4 h-4 text-red-500 shrink-0" />)}
+              <span className="truncate">{previewDoc?.name}</span>
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 min-h-0 overflow-auto bg-muted/30 flex items-center justify-center">
+            {previewDoc && (isImageDoc(previewDoc.mime) ? (
+              <img src={previewDoc.url} alt={previewDoc.name} className="max-w-full max-h-full object-contain" data-testid="img-doc-preview" />
+            ) : (
+              <iframe src={previewDoc.url} title={previewDoc.name} className="w-full h-full border-0" data-testid="iframe-doc-preview" />
+            ))}
+          </div>
+          <div className="px-4 py-3 border-t flex justify-end">
+            <Button size="sm" variant="outline" asChild data-testid="button-download-preview">
+              <a href={previewDoc?.url} download={previewDoc?.name}>
+                <Download className="w-4 h-4 me-1.5" />{t("تحميل المستند", "Download Document")}
+              </a>
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
