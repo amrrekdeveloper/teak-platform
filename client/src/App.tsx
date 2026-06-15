@@ -23,6 +23,7 @@ import ContractDetailPage from "@/pages/contract-detail";
 import PaymentsPage from "@/pages/payments";
 import PaymentDetailPage from "@/pages/payment-detail";
 import InvoicesPage from "@/pages/invoices";
+import InvoiceNewPage from "@/pages/invoice-new";
 import InvoiceViewPage from "@/pages/invoice-view";
 import WorkOrdersPage from "@/pages/work-orders";
 import WorkOrderDetailPage from "@/pages/work-order-detail";
@@ -219,6 +220,7 @@ function DashboardRoutes() {
         <Route path="/contracts" component={ContractsPage} />
         <Route path="/payments/:id" component={PaymentDetailPage} />
         <Route path="/payments" component={PaymentsPage} />
+        <Route path="/invoices/new" component={InvoiceNewPage} />
         <Route path="/invoices/:id" component={InvoiceViewPage} />
         <Route path="/invoices" component={InvoicesPage} />
         <Route path="/work-orders/:id" component={WorkOrderDetailPage} />

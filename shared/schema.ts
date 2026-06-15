@@ -593,6 +593,7 @@ export type Payment = typeof payments.$inferSelect;
 export const invoiceTypeEnum = pgEnum("invoice_type", [
   "quotation",
   "simplified_tax_invoice",
+  "standard_tax_invoice",
 ]);
 
 export const invoiceStatusEnum = pgEnum("invoice_status", [
@@ -620,6 +621,8 @@ export const invoices = pgTable("invoices", {
   sellerAddress: text("seller_address").notNull(),
   buyerName: text("buyer_name").notNull(),
   buyerPhone: text("buyer_phone"),
+  buyerVatNumber: text("buyer_vat_number"),
+  buyerAddress: text("buyer_address"),
   paymentMethod: text("payment_method"),
   qrCodeData: text("qr_code_data"),
   status: invoiceStatusEnum("status").notNull().default("draft"),

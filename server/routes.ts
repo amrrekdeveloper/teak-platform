@@ -17,6 +17,7 @@ import { normalizePhone } from "./utils";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
+import { z } from "zod";
 import {
   makeSafeFilename,
   saveObjectFile,
@@ -623,6 +624,33 @@ export async function registerRoutes(
     console.warn("Task #33 migration warning (non-fatal):", task33MigrationError instanceof Error ? task33MigrationError.message : String(task33MigrationError));
   }
 
+  // Standalone professional invoice: add standard (B2B) tax-invoice type + buyer
+  // VAT number/address columns. ALTER TYPE ADD VALUE must run as its own
+  // statement (cannot run inside a transaction with other DDL).
+  try {
+    await db.execute(`ALTER TYPE invoice_type ADD VALUE IF NOT EXISTS 'standard_tax_invoice'`);
+  } catch (invoiceTypeMigrationError) {
+    console.warn("Invoice type migration warning (non-fatal):", invoiceTypeMigrationError instanceof Error ? invoiceTypeMigrationError.message : String(invoiceTypeMigrationError));
+  }
+  try {
+    await db.execute(`
+      ALTER TABLE invoices ADD COLUMN IF NOT EXISTS buyer_vat_number TEXT;
+      ALTER TABLE invoices ADD COLUMN IF NOT EXISTS buyer_address TEXT;
+    `);
+  } catch (invoiceBuyerMigrationError) {
+    console.warn("Invoice buyer columns migration warning (non-fatal):", invoiceBuyerMigrationError instanceof Error ? invoiceBuyerMigrationError.message : String(invoiceBuyerMigrationError));
+  }
+  // company_settings.retained_earnings_account_code — schema declares this column
+  // (NOT NULL DEFAULT '3200') but older DBs predate it; add idempotently so
+  // getCompanySettings() (used by the standalone invoice path) doesn't fail.
+  try {
+    await db.execute(`
+      ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS retained_earnings_account_code TEXT NOT NULL DEFAULT '3200';
+    `);
+  } catch (companySettingsMigrationError) {
+    console.warn("Company settings migration warning (non-fatal):", companySettingsMigrationError instanceof Error ? companySettingsMigrationError.message : String(companySettingsMigrationError));
+  }
+
   // Startup cleanup: delete orphaned empty draft quotations older than 1 hour.
   // Items are stored as JSONB in quotations.items (no separate quotation_items table exists).
   // Condition: status=draft, finalPrice=0, created >1h ago, items array empty.
@@ -1153,7 +1181,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/customers", requireRole("owner", "assistant", "sales", "customer_service"), async (req, res) => {
+  app.post("/api/customers", requireRole("owner", "assistant", "sales", "customer_service", "accountant"), async (req, res) => {
     try {
       const customer = await storage.createCustomer({ ...req.body, createdBy: req.session.userId });
       res.status(201).json(customer);
@@ -2424,7 +2452,132 @@ export async function registerRoutes(
   app.post("/api/invoices", requireRole("owner", "assistant", "accountant"), async (req, res) => {
     try {
       const { contractId } = req.body;
-      if (!contractId) return res.status(400).json({ message: "contractId مطلوب" });
+
+      // ---- New standalone professional-invoice path ----
+      // When no contractId is supplied, build a tax invoice directly from a
+      // customer + line items (optionally pre-filled from a quotation/order).
+      // Totals are computed server-side bottom-up from the items; never trust
+      // client-side totals. Double-entry journal is created via the existing
+      // autoCreateJournalEntry mechanism (with reference-dedup).
+      if (!contractId) {
+        const standaloneSchema = z.object({
+          customerId: z.coerce.number().int().positive(),
+          type: z.enum(["simplified_tax_invoice", "standard_tax_invoice"]).default("simplified_tax_invoice"),
+          quotationId: z.coerce.number().int().positive().optional(),
+          sourceType: z.enum(["none", "quotation", "order", "contract"]).optional(),
+          sourceId: z.coerce.number().int().positive().optional(),
+          items: z.array(z.object({
+            description: z.string().trim().min(1, "وصف البند مطلوب"),
+            quantity: z.coerce.number().positive("الكمية يجب أن تكون أكبر من صفر"),
+            unitPrice: z.coerce.number().nonnegative("سعر الوحدة غير صالح"),
+          })).min(1, "أضف بنداً واحداً على الأقل"),
+          buyerName: z.string().trim().optional(),
+          buyerPhone: z.string().trim().optional(),
+          buyerVatNumber: z.string().trim().optional(),
+          buyerAddress: z.string().trim().optional(),
+          paymentMethod: z.string().trim().optional(),
+          notes: z.string().trim().optional(),
+        });
+
+        const parsed = standaloneSchema.safeParse(req.body);
+        if (!parsed.success) {
+          return res.status(400).json({ message: parsed.error.errors[0]?.message || "بيانات غير صالحة" });
+        }
+        const data = parsed.data;
+
+        const customer = await storage.getCustomer(data.customerId);
+        if (!customer) return res.status(404).json({ message: "العميل غير موجود" });
+
+        // Resolve optional source linkage (contract / quotation / order). The
+        // linked id is persisted on the invoice for traceability. This does NOT
+        // trigger the legacy contract auto-issuance/dedup path (that path is
+        // only reached when a top-level `contractId` is sent).
+        let linkedContractId: number | null = null;
+        let linkedQuotationId: number | null = null;
+        if (data.sourceType === "contract" && data.sourceId) {
+          const sourceContract = await storage.getContract(data.sourceId);
+          if (!sourceContract) return res.status(404).json({ message: "المصدر (العقد) غير موجود" });
+          linkedContractId = sourceContract.id;
+        } else if ((data.sourceType === "quotation" || data.sourceType === "order") && data.sourceId) {
+          const sourceQuotation = await storage.getQuotation(data.sourceId);
+          if (!sourceQuotation) return res.status(404).json({ message: "المصدر (عرض السعر/الطلب) غير موجود" });
+          linkedQuotationId = sourceQuotation.id;
+        } else if (data.quotationId) {
+          const sourceQuotation = await storage.getQuotation(data.quotationId);
+          if (!sourceQuotation) return res.status(404).json({ message: "المصدر (عرض السعر/الطلب) غير موجود" });
+          linkedQuotationId = sourceQuotation.id;
+        }
+
+        // Bottom-up totals: subtotal = Σ(qty × unitPrice), VAT = subtotal × 15%.
+        const VAT_RATE = 0.15;
+        const lineItems = data.items.map((it) => {
+          const lineSubtotal = Math.round(it.quantity * it.unitPrice * 100) / 100;
+          const lineVat = Math.round(lineSubtotal * VAT_RATE * 100) / 100;
+          return {
+            description: it.description,
+            quantity: it.quantity,
+            unitPrice: it.unitPrice.toFixed(2),
+            amount: lineSubtotal.toFixed(2),
+            vat: lineVat.toFixed(2),
+            totalWithVat: (lineSubtotal + lineVat).toFixed(2),
+          };
+        });
+        const subtotal = lineItems.reduce((s, it) => s + parseFloat(it.amount), 0);
+        const vatAmount = Math.round(subtotal * VAT_RATE * 100) / 100;
+        const totalWithVat = Math.round((subtotal + vatAmount) * 100) / 100;
+
+        const settings = await storage.getCompanySettings();
+        const isStandard = data.type === "standard_tax_invoice";
+
+        const invoiceData = {
+          contractId: linkedContractId,
+          quotationId: linkedQuotationId,
+          customerId: customer.id,
+          paymentStage: null,
+          type: data.type,
+          items: lineItems as any,
+          subtotal: subtotal.toFixed(2),
+          vatRate: "15",
+          vatAmount: vatAmount.toFixed(2),
+          totalWithVat: totalWithVat.toFixed(2),
+          sellerName: settings?.nameAr || "مصنع تيك للمنتجات الخشبية",
+          sellerVatNumber: settings?.vatNumber || "310012345600003",
+          sellerAddress: settings?.address || "الرياض - المملكة العربية السعودية",
+          buyerName: (data.buyerName || customer.fullName || "").trim(),
+          buyerPhone: data.buyerPhone || customer.phone || "",
+          buyerVatNumber: isStandard ? (data.buyerVatNumber || null) : null,
+          buyerAddress: isStandard ? (data.buyerAddress || null) : null,
+          paymentMethod: data.paymentMethod || "bank_transfer",
+          status: "issued" as const,
+          issuedAt: new Date(),
+          notes: data.notes || null,
+          createdBy: req.session.userId,
+        };
+
+        const invoice = await storage.createInvoice(invoiceData);
+
+        const qrData = generateQRData({
+          sellerName: invoiceData.sellerName,
+          sellerVatNumber: invoiceData.sellerVatNumber,
+          issuedAt: invoiceData.issuedAt,
+          totalWithVat: invoiceData.totalWithVat,
+          vatAmount: invoiceData.vatAmount,
+        });
+        const updated = await storage.updateInvoice(invoice.id, { qrCodeData: qrData });
+
+        autoCreateJournalEntry({
+          type: "invoice_issued",
+          referenceId: invoice.id,
+          referenceNumber: invoice.invoiceNumber ? String(invoice.invoiceNumber) : null,
+          date: new Date().toISOString().split("T")[0],
+          amount: parseFloat(invoiceData.totalWithVat),
+          subtotal: parseFloat(invoiceData.subtotal),
+          vatAmount: parseFloat(invoiceData.vatAmount),
+          createdBy: req.session.userId ?? null,
+        });
+
+        return res.status(201).json(updated || invoice);
+      }
 
       const parsedContractId = parseInt(contractId);
       if (isNaN(parsedContractId)) return res.status(400).json({ message: "contractId غير صالح" });

@@ -5,16 +5,22 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useState } from "react";
-import { Search, Loader2, Receipt, FileText } from "lucide-react";
+import { Search, Loader2, Receipt, FileText, Plus } from "lucide-react";
 import { Link } from "wouter";
+import { useAuth } from "@/hooks/use-auth";
+
+const FINANCE_ROLES = ["owner", "assistant", "it", "accountant"];
 
 const typeLabels: Record<string, { ar: string; en: string; color: string }> = {
   quotation: { ar: "عرض سعر", en: "Quotation", color: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300" },
   simplified_tax_invoice: { ar: "فاتورة ضريبية مبسطة", en: "Simplified Tax Invoice", color: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300" },
+  standard_tax_invoice: { ar: "فاتورة ضريبية قياسية", en: "Standard Tax Invoice", color: "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300" },
 };
 
 export default function InvoicesPage() {
   const { t } = useLanguage();
+  const { user } = useAuth();
+  const isFinance = !!user && FINANCE_ROLES.includes(user.role);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("all");
 
@@ -38,13 +44,23 @@ export default function InvoicesPage() {
 
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold" data-testid="text-invoices-title">
-          {t("الفواتير", "Invoices")}
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          {t(`${invoices.length} فاتورة`, `${invoices.length} invoices`)}
-        </p>
+      <div className="mb-6 flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold" data-testid="text-invoices-title">
+            {t("الفواتير", "Invoices")}
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            {t(`${invoices.length} فاتورة`, `${invoices.length} invoices`)}
+          </p>
+        </div>
+        {isFinance && (
+          <Link href="/invoices/new">
+            <Button data-testid="button-create-invoice">
+              <Plus className="w-4 h-4 me-1" />
+              {t("إنشاء فاتورة", "Create Invoice")}
+            </Button>
+          </Link>
+        )}
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3 mb-4">
@@ -59,7 +75,7 @@ export default function InvoicesPage() {
           />
         </div>
         <div className="flex gap-2">
-          {["all", "simplified_tax_invoice", "quotation"].map((type) => (
+          {["all", "simplified_tax_invoice", "standard_tax_invoice", "quotation"].map((type) => (
             <Button
               key={type}
               variant={typeFilter === type ? "default" : "outline"}

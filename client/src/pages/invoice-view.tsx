@@ -89,12 +89,15 @@ export default function InvoiceViewPage() {
     return <div className="text-center py-12 text-muted-foreground">{t("الفاتورة غير موجودة", "Invoice not found")}</div>;
   }
 
-  const isTaxInvoice = invoice.type === "simplified_tax_invoice";
+  const isStandard = invoice.type === "standard_tax_invoice";
+  const isTaxInvoice = invoice.type === "simplified_tax_invoice" || isStandard;
   const BackIcon = isRTL ? ArrowRight : ArrowLeft;
-  const headerTitle = isTaxInvoice
+  const headerTitle = isStandard
+    ? t("فاتورة ضريبية", "Tax Invoice")
+    : isTaxInvoice
     ? t("فاتورة ضريبية مبسطة", "Simplified Tax Invoice")
     : t("عرض سعر ضريبي", "Tax Price Quotation");
-  const headerColor = isTaxInvoice ? "#16a34a" : "#2563eb";
+  const headerColor = isStandard ? "#b45309" : isTaxInvoice ? "#16a34a" : "#2563eb";
 
   return (
     <div className="max-w-md mx-auto">
@@ -123,7 +126,7 @@ export default function InvoiceViewPage() {
       <div className="bg-white rounded-lg border shadow-sm print:shadow-none print:border-none overflow-hidden">
         <div id="invoice-receipt" dir="rtl" className="p-4 text-black" style={{ fontSize: "12px", fontFamily: "system-ui, -apple-system, sans-serif" }}>
           <div style={{ backgroundColor: headerColor, color: "#fff", textAlign: "center", padding: "10px 4px", fontWeight: "bold", fontSize: "16px", marginBottom: "10px" }}>
-            {isTaxInvoice ? "فاتورة ضريبية مبسطة" : "عرض سعر ضريبي"}
+            {isStandard ? "فاتورة ضريبية" : isTaxInvoice ? "فاتورة ضريبية مبسطة" : "عرض سعر ضريبي"}
           </div>
 
           <div style={{ textAlign: "center", marginBottom: "8px", fontSize: "12px" }}>
@@ -153,6 +156,30 @@ export default function InvoiceViewPage() {
               <span style={{ direction: "ltr", unicodeBidi: "embed" }}>{invoice.sellerVatNumber}</span>
             </div>
           </div>
+
+          {isStandard && (
+            <div style={{ border: "1px solid #000", padding: "8px 10px", marginBottom: "10px", fontSize: "11px" }}>
+              <div style={{ fontWeight: "bold", marginBottom: "4px" }}>بيانات المشتري:</div>
+              {invoice.buyerName && (
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "2px" }}>
+                  <span>الاسم:</span>
+                  <span>{invoice.buyerName}</span>
+                </div>
+              )}
+              {invoice.buyerVatNumber && (
+                <div style={{ marginBottom: "2px" }}>
+                  <span>الرقم الضريبي: </span>
+                  <span style={{ direction: "ltr", unicodeBidi: "embed" }}>{invoice.buyerVatNumber}</span>
+                </div>
+              )}
+              {invoice.buyerAddress && (
+                <div>
+                  <span>العنوان: </span>
+                  <span>{invoice.buyerAddress}</span>
+                </div>
+              )}
+            </div>
+          )}
 
           {Array.isArray(invoice.items) && invoice.items.length > 0 && (
             <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "10px", fontSize: "11px" }}>
