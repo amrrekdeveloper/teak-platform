@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import {
   Loader2, ArrowLeft, ArrowRight, FileText, Download, Phone, Mail,
   CreditCard, CalendarDays, Briefcase, Building2, BadgeCheck, User, Clock, Pencil,
-  Eye, Image as ImageIcon,
+  Eye, Image as ImageIcon, ExternalLink,
 } from "lucide-react";
 
 const isImageDoc = (mime?: string) => !!mime && mime.startsWith("image/");
@@ -296,7 +296,12 @@ export default function EmployeeDetailPage() {
               <iframe src={previewDoc.url} title={previewDoc.name} className="w-full h-full border-0" data-testid="iframe-doc-preview" />
             ))}
           </div>
-          <div className="px-4 py-3 border-t flex justify-end">
+          <div className="px-4 py-3 border-t flex justify-end gap-2">
+            <Button size="sm" variant="ghost" asChild data-testid="button-open-newtab-preview">
+              <a href={previewDoc?.url} target="_blank" rel="noopener noreferrer">
+                <ExternalLink className="w-4 h-4 me-1.5" />{t("فتح في تبويب جديد", "Open in new tab")}
+              </a>
+            </Button>
             <Button size="sm" variant="outline" asChild data-testid="button-download-preview">
               <a href={previewDoc?.url} download={previewDoc?.name}>
                 <Download className="w-4 h-4 me-1.5" />{t("تحميل المستند", "Download Document")}

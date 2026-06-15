@@ -20,7 +20,7 @@ import {
   Loader2, Plus, Search, UserCog, Pencil, DollarSign,
   Users, UserCheck, ChevronUp, ChevronDown, ChevronsUpDown,
   FileText, Upload, Trash2, AlertTriangle, Download, Lock, UserX, UserCheck2, ClipboardList, X,
-  Calculator, Package, CheckCircle2, RotateCcw, Eye, Image as ImageIcon
+  Calculator, Package, CheckCircle2, RotateCcw, Eye, Image as ImageIcon, ExternalLink
 } from "lucide-react";
 
 const departmentLabels: Record<string, { ar: string; en: string }> = {
@@ -580,7 +580,13 @@ function DocumentsSection({ emp }: { emp: Employee }) {
               />
             ))}
           </div>
-          <div className="px-4 py-3 border-t flex justify-end">
+          <div className="px-4 py-3 border-t flex justify-end gap-2">
+            <Button size="sm" variant="ghost" asChild data-testid="button-open-newtab-preview">
+              <a href={previewDoc?.url} target="_blank" rel="noopener noreferrer">
+                <ExternalLink className="w-4 h-4 me-1.5" />
+                {t("فتح في تبويب جديد", "Open in new tab")}
+              </a>
+            </Button>
             <Button size="sm" variant="outline" asChild data-testid="button-download-preview">
               <a href={previewDoc?.url} download={previewDoc?.name}>
                 <Download className="w-4 h-4 me-1.5" />
