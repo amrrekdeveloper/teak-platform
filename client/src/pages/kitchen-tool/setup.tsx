@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { useLanguage } from "@/components/language-provider";
 import DesktopGate from "@/components/kitchen-tool/desktop-gate";
 import { useKitchenToolStore, type KitchenAnswers } from "@/components/kitchen-tool/store";
+import { ToolStages } from "@/components/kitchen-tool/tool-stages";
 import {
   OvenUnderCounterIllustration,
   OvenTallCabinetIllustration,
@@ -132,7 +133,10 @@ export default function KitchenToolSetupPage() {
           </div>
         </nav>
 
-        <div className="max-w-5xl mx-auto w-full px-6 pt-8">
+        <div className="max-w-5xl mx-auto w-full px-6 pt-6">
+          <div className="mb-6">
+            <ToolStages current="questions" />
+          </div>
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm font-bold text-primary" data-testid="text-setup-step">
               {t(`السؤال ${safeStep + 1} من ${questions.length}`, `Question ${safeStep + 1} of ${questions.length}`)}

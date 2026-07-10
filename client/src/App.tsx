@@ -82,6 +82,8 @@ import { getPermissionKeyForLocation } from "@shared/permissions";
 const KitchenToolLandingLazy = lazy(() => import("@/pages/kitchen-tool/landing"));
 const KitchenToolSetupLazy = lazy(() => import("@/pages/kitchen-tool/setup"));
 const KitchenToolDimensionsLazy = lazy(() => import("@/pages/kitchen-tool/dimensions"));
+const KitchenToolOpeningsLazy = lazy(() => import("@/pages/kitchen-tool/openings"));
+const KitchenToolStudioLazy = lazy(() => import("@/pages/kitchen-tool/studio"));
 
 function KitchenToolFallback() {
   return (
@@ -111,6 +113,22 @@ function KitchenToolDimensions() {
   return (
     <Suspense fallback={<KitchenToolFallback />}>
       <KitchenToolDimensionsLazy />
+    </Suspense>
+  );
+}
+
+function KitchenToolOpenings() {
+  return (
+    <Suspense fallback={<KitchenToolFallback />}>
+      <KitchenToolOpeningsLazy />
+    </Suspense>
+  );
+}
+
+function KitchenToolStudio() {
+  return (
+    <Suspense fallback={<KitchenToolFallback />}>
+      <KitchenToolStudioLazy />
     </Suspense>
   );
 }
@@ -328,6 +346,8 @@ function Router() {
       <Route path="/system-admin" component={SystemAdminLogin} />
       <Route path="/kitchen-designer/setup" component={KitchenToolSetup} />
       <Route path="/kitchen-designer/dimensions" component={KitchenToolDimensions} />
+      <Route path="/kitchen-designer/openings" component={KitchenToolOpenings} />
+      <Route path="/kitchen-designer/studio" component={KitchenToolStudio} />
       <Route path="/kitchen-designer" component={KitchenToolLanding} />
       <Route path="/view-3d" component={Scene3DPage} />
       <Route path="/scene-3d" component={Scene3DPage} />
