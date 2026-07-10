@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, lazy, Suspense } from "react";
 import { Switch, Route } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -78,6 +78,42 @@ import FinanceSettingsPage from "@/pages/finance-settings";
 import AppLayout from "@/components/app-layout";
 import NotFound from "@/pages/not-found";
 import { getPermissionKeyForLocation } from "@shared/permissions";
+
+const KitchenToolLandingLazy = lazy(() => import("@/pages/kitchen-tool/landing"));
+const KitchenToolSetupLazy = lazy(() => import("@/pages/kitchen-tool/setup"));
+const KitchenToolDimensionsLazy = lazy(() => import("@/pages/kitchen-tool/dimensions"));
+
+function KitchenToolFallback() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="w-10 h-10 rounded-full border-4 border-primary/20 border-t-primary animate-spin" />
+    </div>
+  );
+}
+
+function KitchenToolLanding() {
+  return (
+    <Suspense fallback={<KitchenToolFallback />}>
+      <KitchenToolLandingLazy />
+    </Suspense>
+  );
+}
+
+function KitchenToolSetup() {
+  return (
+    <Suspense fallback={<KitchenToolFallback />}>
+      <KitchenToolSetupLazy />
+    </Suspense>
+  );
+}
+
+function KitchenToolDimensions() {
+  return (
+    <Suspense fallback={<KitchenToolFallback />}>
+      <KitchenToolDimensionsLazy />
+    </Suspense>
+  );
+}
 
 import teakLogo from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
 import FloatingContact from "@/components/floating-contact";
@@ -290,6 +326,9 @@ function Router() {
       <Route path="/attendance" component={AttendancePage} />
       <Route path="/finance-login" component={FinanceLoginPage} />
       <Route path="/system-admin" component={SystemAdminLogin} />
+      <Route path="/kitchen-designer/setup" component={KitchenToolSetup} />
+      <Route path="/kitchen-designer/dimensions" component={KitchenToolDimensions} />
+      <Route path="/kitchen-designer" component={KitchenToolLanding} />
       <Route path="/view-3d" component={Scene3DPage} />
       <Route path="/scene-3d" component={Scene3DPage} />
       <Route path="/dashboard" nest component={DashboardRoutes} />

@@ -213,6 +213,7 @@ function Navbar() {
   const logoClass = showWhiteLogo ? "" : "logo-red";
 
   const navLinks = [
+    { href: "/kitchen-designer", labelAr: "صمّم مطبخك", labelEn: "Design Your Kitchen" },
     { href: "#about", labelAr: "من نحن", labelEn: "About" },
     { href: "#products", labelAr: "منتجاتنا", labelEn: "Products" },
     { href: "#gallery", labelAr: "معرض أعمالنا", labelEn: "Gallery" },
@@ -498,6 +499,45 @@ function HeroSection() {
         >
           {isRTL ? <ChevronLeft className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
         </button>
+      </div>
+    </section>
+  );
+}
+
+function KitchenToolBanner() {
+  const { t } = useLanguage();
+
+  return (
+    <section className="py-16 sm:py-20 bg-primary/5 border-y border-primary/10 relative overflow-hidden" data-testid="section-kitchen-tool-banner">
+      <div className="absolute top-0 end-0 w-[350px] h-[350px] rounded-full bg-primary/5 blur-3xl" />
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 relative">
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.6 }}
+          className="flex flex-col md:flex-row items-center justify-between gap-8 text-center md:text-start"
+        >
+          <div className="max-w-2xl">
+            <span className="inline-block px-4 py-1.5 rounded-full bg-primary/10 text-primary text-sm font-bold mb-4" data-testid="badge-kitchen-tool-new">
+              {t("جديد من تيك", "New from Teak")}
+            </span>
+            <h2 className="text-2xl sm:text-3xl font-bold mb-3" data-testid="text-kitchen-tool-banner-title">
+              {t("أداة تيك لتصميم المطابخ", "Teak Kitchen Design Tool")}
+            </h2>
+            <p className="text-muted-foreground leading-relaxed" data-testid="text-kitchen-tool-banner-desc">
+              {t(
+                "صمّم مطبخ أحلامك بنفسك في دقائق — أجب عن أسئلة بسيطة وشاهد مطبخك يتحوّل إلى تصميم ثلاثي الأبعاد بخزائن تيك الأصلية.",
+                "Design your dream kitchen yourself in minutes — answer simple questions and watch your kitchen come to life in 3D with genuine Teak cabinets."
+              )}
+            </p>
+          </div>
+          <a href="/kitchen-designer" data-testid="link-kitchen-tool-banner">
+            <Button size="lg" className="min-w-[200px] text-base font-bold h-14 shadow-lg shadow-primary/20">
+              {t("صمّم وأبدع", "Design & Create")}
+            </Button>
+          </a>
+        </motion.div>
       </div>
     </section>
   );
@@ -1487,6 +1527,7 @@ export default function LandingPage() {
     <div className="min-h-screen bg-background overflow-x-hidden">
       <Navbar />
       <HeroSection />
+      <KitchenToolBanner />
       <AboutSection />
       <CEOSection />
       <ProductsSection />
