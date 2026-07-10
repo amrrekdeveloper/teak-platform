@@ -77,6 +77,14 @@ function pointAlong(seg: WallSegment, d: number): { x: number; y: number } {
   return { x: seg.x1 + (seg.x2 - seg.x1) * t, y: seg.y1 + (seg.y2 - seg.y1) * t };
 }
 
+/** Unit direction vector along the wall (start → end). */
+function unitDir(seg: WallSegment): { ux: number; uy: number } {
+  const dx = seg.x2 - seg.x1;
+  const dy = seg.y2 - seg.y1;
+  const len = Math.hypot(dx, dy) || 1;
+  return { ux: dx / len, uy: dy / len };
+}
+
 interface PlanSvgProps {
   layout: KitchenLayout;
   walls: KitchenWall[];
@@ -89,11 +97,6 @@ interface PlanSvgProps {
   className?: string;
   t: (ar: string, en: string) => string;
 }
-
-const WALL_THICKNESS = 14;
-const OPENING_THICKNESS = 26;
-const DIM_OFFSET = 55;
-const PADDING = 110;
 
 export default function KitchenPlanSvg({
   layout,
@@ -121,10 +124,42 @@ export default function KitchenPlanSvg({
   const segByIdRef = useRef(segById);
   segByIdRef.current = segById;
 
-  const minX = Math.min(...segments.map((s) => Math.min(s.x1, s.x2))) - PADDING;
-  const maxX = Math.max(...segments.map((s) => Math.max(s.x1, s.x2))) + PADDING;
-  const minY = Math.min(...segments.map((s) => Math.min(s.y1, s.y2))) - PADDING;
-  const maxY = Math.max(...segments.map((s) => Math.max(s.y1, s.y2))) + PADDING;
+  // Content bounds: wall endpoints + inward reach of door swing arcs
+  const px: number[] = [];
+  const py: number[] = [];
+  for (const s of segments) {
+    px.push(s.x1, s.x2);
+    py.push(s.y1, s.y2);
+  }
+  for (const o of openings) {
+    const seg = segById.get(o.wallId);
+    if (!seg) continue;
+    const reach = o.type === "door" ? o.width : 12;
+    const a = pointAlong(seg, o.distanceFromWallStart);
+    const b = pointAlong(seg, o.distanceFromWallStart + o.width);
+    px.push(a.x - seg.nx * reach, b.x - seg.nx * reach);
+    py.push(a.y - seg.ny * reach, b.y - seg.ny * reach);
+  }
+  const rawMinX = Math.min(...px);
+  const rawMaxX = Math.max(...px);
+  const rawMinY = Math.min(...py);
+  const rawMaxY = Math.max(...py);
+
+  // Scale factor: keeps text/stroke sizes visually consistent for small and large kitchens
+  const span = Math.max(rawMaxX - rawMinX, rawMaxY - rawMinY, 200);
+  const k = Math.min(Math.max(span / 700, 0.5), 1.3);
+
+  const PADDING = 92 * k;
+  const WALL_T = 9 * k;
+  const DIM_OFFSET = 44 * k;
+  const DIM_FONT = 15 * k;
+  const SYM_STROKE = 1.8 * k;
+  const HIT_BAND = 17 * k;
+
+  const minX = rawMinX - PADDING;
+  const maxX = rawMaxX + PADDING;
+  const minY = rawMinY - PADDING;
+  const maxY = rawMaxY + PADDING;
 
   const toSvgPoint = useCallback((clientX: number, clientY: number) => {
     const svg = svgRef.current;
@@ -190,6 +225,15 @@ export default function KitchenPlanSvg({
 
   const isDraggingNow = dragRef.current !== null;
 
+  const floorMinX = Math.min(...segments.map((s) => Math.min(s.x1, s.x2)));
+  const floorMinY = Math.min(...segments.map((s) => Math.min(s.y1, s.y2)));
+  const floorW =
+    Math.max(...segments.map((s) => Math.max(s.x1, s.x2))) - floorMinX;
+  const floorH = Math.max(
+    Math.max(...segments.map((s) => Math.max(s.y1, s.y2))) - floorMinY,
+    120
+  );
+
   return (
     <svg
       ref={svgRef}
@@ -197,80 +241,187 @@ export default function KitchenPlanSvg({
       className={className}
       data-testid="svg-kitchen-plan"
     >
-      {/* Floor area hint */}
+      <defs>
+        <marker
+          id="kt-dim-arrow"
+          viewBox="0 0 10 10"
+          refX="9"
+          refY="5"
+          markerWidth="7"
+          markerHeight="7"
+          orient="auto-start-reverse"
+        >
+          <path d="M 0 1 L 10 5 L 0 9 z" className="fill-muted-foreground" />
+        </marker>
+      </defs>
+
+      {/* Floor */}
       <rect
-        x={Math.min(...segments.map((s) => Math.min(s.x1, s.x2)))}
-        y={Math.min(...segments.map((s) => Math.min(s.y1, s.y2)))}
-        width={
-          Math.max(...segments.map((s) => Math.max(s.x1, s.x2))) -
-          Math.min(...segments.map((s) => Math.min(s.x1, s.x2)))
-        }
-        height={Math.max(
-          Math.max(...segments.map((s) => Math.max(s.y1, s.y2))) -
-            Math.min(...segments.map((s) => Math.min(s.y1, s.y2))),
-          120
-        )}
-        className="fill-muted/40"
-        rx={8}
+        x={floorMinX}
+        y={floorMinY}
+        width={Math.max(floorW, 120)}
+        height={floorH}
+        className="fill-muted/30"
       />
 
-      {/* Walls */}
-      {segments.map((seg) => (
-        <g key={seg.id}>
-          <line
-            x1={seg.x1}
-            y1={seg.y1}
-            x2={seg.x2}
-            y2={seg.y2}
-            strokeWidth={WALL_THICKNESS}
-            strokeLinecap="square"
-            className="stroke-foreground/80"
-          />
-          {/* Dimension line */}
-          <DimensionLabel seg={seg} t={t} />
-        </g>
-      ))}
+      {/* Walls drawn as pieces interrupted by openings */}
+      {segments.map((seg) => {
+        const segOpenings = openings
+          .filter((o) => o.wallId === seg.id)
+          .sort((a, b) => a.distanceFromWallStart - b.distanceFromWallStart);
+        const pieces: [number, number][] = [];
+        let cursor = 0;
+        for (const o of segOpenings) {
+          if (o.distanceFromWallStart > cursor) pieces.push([cursor, o.distanceFromWallStart]);
+          cursor = Math.max(cursor, o.distanceFromWallStart + o.width);
+        }
+        if (cursor < seg.length) pieces.push([cursor, seg.length]);
+        return (
+          <g key={seg.id}>
+            {pieces.map(([d0, d1], i) => {
+              const p0 = pointAlong(seg, d0);
+              const p1 = pointAlong(seg, d1);
+              return (
+                <line
+                  key={i}
+                  x1={p0.x}
+                  y1={p0.y}
+                  x2={p1.x}
+                  y2={p1.y}
+                  strokeWidth={WALL_T}
+                  strokeLinecap="butt"
+                  className="stroke-foreground/60"
+                />
+              );
+            })}
+            <DimensionLabel seg={seg} t={t} k={k} dimOffset={DIM_OFFSET} font={DIM_FONT} />
+          </g>
+        );
+      })}
 
-      {/* Openings */}
+      {/* Openings as architectural symbols */}
       {openings.map((o) => {
         const seg = segById.get(o.wallId);
         if (!seg) return null;
-        const start = pointAlong(seg, o.distanceFromWallStart);
-        const end = pointAlong(seg, o.distanceFromWallStart + o.width);
-        const cx = (start.x + end.x) / 2;
-        const cy = (start.y + end.y) / 2;
+        const { ux, uy } = unitDir(seg);
+        // inward = opposite of the outward normal
+        const ix = -seg.nx;
+        const iy = -seg.ny;
+        const S = pointAlong(seg, o.distanceFromWallStart);
+        const E = pointAlong(seg, o.distanceFromWallStart + o.width);
+        const w = o.width;
         const isSelected = o.id === selectedOpeningId;
-        const isDragged = o.id === draggingOpeningId || (isDraggingNow && dragRef.current?.id === o.id);
-        const horizontal = Math.abs(seg.y2 - seg.y1) < 0.001;
-        const colorClass =
-          o.type === "door"
-            ? isSelected
-              ? "fill-primary"
-              : "fill-primary/70"
-            : isSelected
-              ? "fill-sky-500"
-              : "fill-sky-500/70";
-        const rectProps = horizontal
-          ? {
-              x: Math.min(start.x, end.x),
-              y: cy - OPENING_THICKNESS / 2,
-              width: Math.abs(end.x - start.x),
-              height: OPENING_THICKNESS,
-            }
-          : {
-              x: cx - OPENING_THICKNESS / 2,
-              y: Math.min(start.y, end.y),
-              width: OPENING_THICKNESS,
-              height: Math.abs(end.y - start.y),
-            };
+        const isDragged =
+          o.id === draggingOpeningId || (isDraggingNow && dragRef.current?.id === o.id);
+
+        // Jamb caps (wall ends at the gap)
+        const jamb = WALL_T * 0.9;
+        const jambLine = (P: { x: number; y: number }, key: string) => (
+          <line
+            key={key}
+            x1={P.x + seg.nx * jamb * 0.6}
+            y1={P.y + seg.ny * jamb * 0.6}
+            x2={P.x - seg.nx * jamb * 0.6}
+            y2={P.y - seg.ny * jamb * 0.6}
+            strokeWidth={SYM_STROKE}
+            className="stroke-foreground/70"
+          />
+        );
+
+        let symbol: JSX.Element;
+        if (o.type === "door") {
+          // Door leaf from hinge S into the room + quarter-circle swing arc to E
+          const tip = { x: S.x + ix * w, y: S.y + iy * w };
+          const cross = ux * iy - uy * ix;
+          const sweep = cross > 0 ? 0 : 1;
+          symbol = (
+            <g style={{ pointerEvents: "none" }}>
+              {jambLine(S, "j1")}
+              {jambLine(E, "j2")}
+              <line
+                x1={S.x}
+                y1={S.y}
+                x2={tip.x}
+                y2={tip.y}
+                strokeWidth={SYM_STROKE}
+                className="stroke-foreground/70"
+              />
+              <path
+                d={`M ${tip.x} ${tip.y} A ${w} ${w} 0 0 ${sweep} ${E.x} ${E.y}`}
+                fill="none"
+                strokeWidth={SYM_STROKE * 0.8}
+                strokeDasharray={`${4 * k} ${3 * k}`}
+                className="stroke-foreground/50"
+              />
+            </g>
+          );
+        } else {
+          // Window: triple parallel thin lines across the gap
+          const off = WALL_T * 0.38;
+          const lines = [-off, 0, off].map((d, i) => (
+            <line
+              key={i}
+              x1={S.x + seg.nx * d}
+              y1={S.y + seg.ny * d}
+              x2={E.x + seg.nx * d}
+              y2={E.y + seg.ny * d}
+              strokeWidth={SYM_STROKE * 0.8}
+              className="stroke-sky-600/80"
+            />
+          ));
+          symbol = (
+            <g style={{ pointerEvents: "none" }}>
+              {jambLine(S, "j1")}
+              {jambLine(E, "j2")}
+              {lines}
+            </g>
+          );
+        }
+
+        // Selection outline (subtle Teak red)
+        const selMargin = HIT_BAND * 0.85;
+        const selRect = (() => {
+          const xs = [
+            S.x + seg.nx * selMargin,
+            S.x - seg.nx * selMargin,
+            E.x + seg.nx * selMargin,
+            E.x - seg.nx * selMargin,
+          ];
+          const ys = [
+            S.y + seg.ny * selMargin,
+            S.y - seg.ny * selMargin,
+            E.y + seg.ny * selMargin,
+            E.y - seg.ny * selMargin,
+          ];
+          return {
+            x: Math.min(...xs),
+            y: Math.min(...ys),
+            width: Math.max(...xs) - Math.min(...xs),
+            height: Math.max(...ys) - Math.min(...ys),
+          };
+        })();
+
         return (
           <g key={o.id}>
+            {symbol}
+            {isSelected && (
+              <rect
+                {...selRect}
+                rx={4 * k}
+                fill="none"
+                strokeWidth={SYM_STROKE * 0.9}
+                strokeDasharray={`${5 * k} ${4 * k}`}
+                className="stroke-primary/80"
+                style={{ pointerEvents: "none" }}
+              />
+            )}
+            {/* Invisible drag/click hit zone over the gap */}
             <rect
-              {...rectProps}
-              rx={4}
-              className={colorClass}
-              stroke={isSelected ? "currentColor" : "none"}
-              strokeWidth={isSelected ? 4 : 0}
+              x={selRect.x}
+              y={selRect.y}
+              width={selRect.width}
+              height={selRect.height}
+              fill="transparent"
               onPointerDown={(e) => handlePointerDown(e, o)}
               onClick={(e) => {
                 e.stopPropagation();
@@ -279,21 +430,8 @@ export default function KitchenPlanSvg({
               style={{ cursor: onDragOpening ? "grab" : "default", touchAction: "none" }}
               data-testid={`opening-${o.id}`}
             />
-            {/* Type glyph */}
-            <text
-              x={horizontal ? cx : cx + seg.nx * -46}
-              y={horizontal ? cy + seg.ny * -46 : cy}
-              textAnchor="middle"
-              dominantBaseline="middle"
-              fontSize={26}
-              className="fill-foreground/70 select-none"
-              style={{ pointerEvents: "none" }}
-            >
-              {o.type === "door" ? t("باب", "Door") : t("نافذة", "Window")}
-            </text>
-            {/* Live distance labels while selected/dragging */}
             {(isSelected || isDragged) && (
-              <OpeningDistanceLabels seg={seg} opening={o} />
+              <OpeningDistanceLabels seg={seg} opening={o} k={k} />
             )}
           </g>
         );
@@ -302,74 +440,128 @@ export default function KitchenPlanSvg({
   );
 }
 
-function DimensionLabel({ seg, t }: { seg: WallSegment; t: (ar: string, en: string) => string }) {
-  const midX = (seg.x1 + seg.x2) / 2 + seg.nx * DIM_OFFSET;
-  const midY = (seg.y1 + seg.y2) / 2 + seg.ny * DIM_OFFSET;
-  const dx1 = seg.x1 + seg.nx * (DIM_OFFSET - 12);
-  const dy1 = seg.y1 + seg.ny * (DIM_OFFSET - 12);
-  const dx2 = seg.x2 + seg.nx * (DIM_OFFSET - 12);
-  const dy2 = seg.y2 + seg.ny * (DIM_OFFSET - 12);
+function DimensionLabel({
+  seg,
+  t,
+  k,
+  dimOffset,
+  font,
+}: {
+  seg: WallSegment;
+  t: (ar: string, en: string) => string;
+  k: number;
+  dimOffset: number;
+  font: number;
+}) {
+  const dx1 = seg.x1 + seg.nx * dimOffset;
+  const dy1 = seg.y1 + seg.ny * dimOffset;
+  const dx2 = seg.x2 + seg.nx * dimOffset;
+  const dy2 = seg.y2 + seg.ny * dimOffset;
+  const midX = (dx1 + dx2) / 2;
+  const midY = (dy1 + dy2) / 2;
+  const vertical = Math.abs(seg.x2 - seg.x1) < 0.001;
+  // Text sits slightly beyond the dimension line, rotated along vertical walls
+  const tx = midX + seg.nx * font * 0.9;
+  const ty = midY + seg.ny * font * 0.9;
+  const rotate = vertical ? (seg.nx > 0 ? 90 : -90) : 0;
+  const label = `${Math.round(seg.length)} ${t("سم", "cm")} — ${t(
+    wallLabelAr(seg.id),
+    wallLabelEn(seg.id)
+  )}`;
   return (
-    <g data-testid={`dim-wall-${seg.id}`}>
-      <line x1={dx1} y1={dy1} x2={dx2} y2={dy2} strokeWidth={2} className="stroke-primary/60" />
-      <line x1={seg.x1 + seg.nx * 10} y1={seg.y1 + seg.ny * 10} x2={dx1} y2={dy1} strokeWidth={2} className="stroke-primary/40" />
-      <line x1={seg.x2 + seg.nx * 10} y1={seg.y2 + seg.ny * 10} x2={dx2} y2={dy2} strokeWidth={2} className="stroke-primary/40" />
+    <g data-testid={`dim-wall-${seg.id}`} style={{ pointerEvents: "none" }}>
+      {/* Extension lines */}
+      <line
+        x1={seg.x1 + seg.nx * 8 * k}
+        y1={seg.y1 + seg.ny * 8 * k}
+        x2={dx1 + seg.nx * 4 * k}
+        y2={dy1 + seg.ny * 4 * k}
+        strokeWidth={1 * k}
+        className="stroke-muted-foreground/50"
+      />
+      <line
+        x1={seg.x2 + seg.nx * 8 * k}
+        y1={seg.y2 + seg.ny * 8 * k}
+        x2={dx2 + seg.nx * 4 * k}
+        y2={dy2 + seg.ny * 4 * k}
+        strokeWidth={1 * k}
+        className="stroke-muted-foreground/50"
+      />
+      {/* Dimension line with arrowheads */}
+      <line
+        x1={dx1}
+        y1={dy1}
+        x2={dx2}
+        y2={dy2}
+        strokeWidth={1.1 * k}
+        className="stroke-muted-foreground"
+        markerStart="url(#kt-dim-arrow)"
+        markerEnd="url(#kt-dim-arrow)"
+      />
       <text
-        x={midX + seg.nx * 26}
-        y={midY + seg.ny * 26}
+        x={tx}
+        y={ty}
         textAnchor="middle"
         dominantBaseline="middle"
-        fontSize={30}
-        fontWeight={700}
-        className="fill-primary select-none"
-        style={{ pointerEvents: "none" }}
+        fontSize={font}
+        fontWeight={500}
+        transform={rotate ? `rotate(${rotate} ${tx} ${ty})` : undefined}
+        className="fill-muted-foreground select-none"
       >
-        {`${Math.round(seg.length)} ${t("سم", "cm")} — ${t(wallLabelAr(seg.id), wallLabelEn(seg.id))}`}
+        {label}
       </text>
     </g>
   );
 }
 
-function OpeningDistanceLabels({ seg, opening }: { seg: WallSegment; opening: KitchenOpening }) {
+function OpeningDistanceLabels({
+  seg,
+  opening,
+  k,
+}: {
+  seg: WallSegment;
+  opening: KitchenOpening;
+  k: number;
+}) {
   const start = pointAlong(seg, 0);
   const oStart = pointAlong(seg, opening.distanceFromWallStart);
-  const horizontal = Math.abs(seg.y2 - seg.y1) < 0.001;
-  const inward = 60;
+  const inward = 34 * k;
   const midX = (start.x + oStart.x) / 2 - seg.nx * inward;
   const midY = (start.y + oStart.y) / 2 - seg.ny * inward;
   const d = Math.round(opening.distanceFromWallStart);
+  const boxW = 52 * k;
+  const boxH = 22 * k;
   return (
     <g style={{ pointerEvents: "none" }} data-testid={`label-distance-${opening.id}`}>
       <line
-        x1={start.x - seg.nx * inward * 0.6}
-        y1={start.y - seg.ny * inward * 0.6}
-        x2={oStart.x - seg.nx * inward * 0.6}
-        y2={oStart.y - seg.ny * inward * 0.6}
-        strokeWidth={3}
-        strokeDasharray="10 6"
+        x1={start.x - seg.nx * inward * 0.65}
+        y1={start.y - seg.ny * inward * 0.65}
+        x2={oStart.x - seg.nx * inward * 0.65}
+        y2={oStart.y - seg.ny * inward * 0.65}
+        strokeWidth={1.2 * k}
+        strokeDasharray={`${6 * k} ${4 * k}`}
         className="stroke-amber-500"
       />
       <rect
-        x={midX - 55}
-        y={midY - 22}
-        width={110}
-        height={44}
-        rx={8}
+        x={midX - boxW / 2}
+        y={midY - boxH / 2}
+        width={boxW}
+        height={boxH}
+        rx={4 * k}
+        strokeWidth={1 * k}
         className="fill-background stroke-amber-500"
-        strokeWidth={2}
       />
       <text
         x={midX}
-        y={midY + 2}
+        y={midY + 1 * k}
         textAnchor="middle"
         dominantBaseline="middle"
-        fontSize={26}
-        fontWeight={700}
+        fontSize={11.5 * k}
+        fontWeight={600}
         className="fill-amber-600"
       >
         {`${d} سم`}
       </text>
-      {horizontal ? null : null}
     </g>
   );
 }
