@@ -31,9 +31,9 @@ import {
 } from "@/components/kitchen-tool/store";
 
 /** Drains snap to a wall when dropped/dragged within this distance (cm). */
-const WALL_SNAP_CM = 35;
+const WALL_SNAP_CM = 60;
 /** Keep floor drains at least this far (cm) inside the floor edges. */
-const FLOOR_MARGIN_CM = 20;
+const FLOOR_MARGIN_CM = 8;
 
 let utilityCounter = 0;
 function newUtilityId(): string {

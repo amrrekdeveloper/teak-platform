@@ -1,0 +1,63 @@
+PHASE 3 — 3D Studio with Realistic Materials (Kitchen Designer Tool)
+
+SAFETY RULES (CRITICAL):
+- Do NOT modify, delete, or refactor ANY existing platform files (existing Design Studio, quotes system, auth, routes, database, etc.).
+- Only create/edit files belonging to the kitchen designer tool (the /kitchen-designer route and its components), and you may COPY (never move or delete) asset files as described below.
+- Do not upgrade or change versions of any installed packages.
+- Create a checkpoint when done.
+
+CONTEXT:
+The kitchen designer tool at /kitchen-designer now has: onboarding questions (oven/hood/fridge, kitchen shape I/L/U/galley), wall dimensions (default ceiling 270cm), openings (doors/windows with position, width, height, sill height, door swing), and utilities (optional: one water supply, multiple outlets/switches on walls with heightFromFloor, floor drains with x/y, wall drains) — all in the kitchen designer Zustand store. Phase 3 replaces the placeholder 3D step with a real studio.
+
+ASSETS (already at project root in /kitchen-tool-assets):
+- /kitchen-tool-assets/cabinet-lower-standard.glb  (Shaker lower cabinet)
+- /kitchen-tool-assets/hdri/relax_inn_seaview_suite_2k.hdr
+- /kitchen-tool-assets/floor/laminate_floor_02_2k.gltf (+ .bin + textures/)
+- /kitchen-tool-assets/wall/painted_plaster_wall_2k.gltf (+ .bin + textures/)
+- /kitchen-tool-assets/countertop/oak_veneer_01_2k.gltf (+ .bin + textures/)
+First step: COPY the whole kitchen-tool-assets folder into client/public/ so files are served statically (keep the original untouched). All URLs below assume /kitchen-tool-assets/... is served from public.
+Note: floor/wall/countertop are Poly Haven material .gltf files — we only need their PBR texture maps. Load the texture JPGs directly with TextureLoader from their textures/ folders; do not render those .gltf meshes.
+
+BUILD (React Three Fiber, reuse the project's existing three/@react-three/fiber/drei setup):
+
+1. ROOM FROM CUSTOMER DATA
+- Build the room from the store's wall dimensions (cm → meters, 1 unit = 1m) and ceiling height.
+- Walls with real thickness (~12cm) and REAL cut openings: each door/window is an actual hole (build each wall from box segments around the openings — left/right segments, segment above door, segments above/below window). No fake decals.
+- Floor sized to room footprint. Ceiling: omit or single-sided facing down so it never blocks the camera/light.
+
+2. PBR MATERIALS
+- Floor: laminate textures (diff as map with sRGB colorSpace, nor_gl as normalMap, rough as roughnessMap). RepeatWrapping, tile roughly every 1m for real-scale planks.
+- Walls: painted plaster (diff sRGB, nor_gl normalMap, arm as packed AO/Roughness/Metalness map on the respective channels).
+- Countertop material (oak veneer) prepared the same way for later use.
+
+3. LIGHTING & REALISM (the critical quality bar — IKEA planner level)
+- HDR via RGBELoader / drei Environment (files prop) as environment lighting.
+- Renderer: ACESFilmicToneMapping, outputColorSpace SRGB, soft shadows (PCFSoft or drei SoftShadows).
+- One directional light (sun-like through windows) casting soft shadows, tuned to complement the HDRI without blowing out.
+- All meshes castShadow/receiveShadow appropriately.
+
+4. CABINET GLB
+- Load /kitchen-tool-assets/cabinet-lower-standard.glb with useGLTF.
+- SCALE FIX: measure its bounding box after loading and uniformly rescale so height is exactly 0.9m; place it standing on the floor against a sensible default wall (based on kitchen shape). castShadow/receiveShadow.
+
+5. UTILITIES DISPLAY (from the store — show each placed utility at its true position)
+- Water supply: small 3D marker on the wall at its stored position and height (e.g. blue disc/badge with faucet feel; a simple extruded cylinder + icon sprite is fine).
+- Outlets and switches: small white rounded plates on the walls at stored positions/heights (outlet at 30cm default, switch at 110cm) — simple box geometry with subtle material, readable but discreet.
+- Floor drains: dark circular disc slightly above the floor surface (avoid z-fighting) at stored x/y. Wall drains: small circle on the wall at stored height.
+- These markers are visual only in this phase (no interaction), must not cast harsh shadows (castShadow false is fine), and must never block the camera.
+
+6. CAMERA & CONTROLS
+- PerspectiveCamera at human-ish eye level, OrbitControls (drei) with limits: maxPolarAngle slightly under 90° (never below floor), sensible min/max distance, target near room center at ~1m height.
+
+7. INTEGRATION
+- This studio replaces the placeholder step after the utilities step. RTL Arabic UI consistent with the tool. Lazy-loaded so the main platform bundle is unaffected. Show a friendly Arabic loading indicator while assets load (HDR + textures + GLB are a few MB).
+
+ACCEPTANCE CHECK (verify all before finishing):
+- Room matches entered wall lengths and ceiling height.
+- Every door/window appears as a REAL hole at the correct wall/position/size.
+- Floor shows realistic laminate with normal/roughness response; walls show plaster.
+- HDRI ambient/reflections visible, soft shadows from the cabinet, no blown-out whites (ACES active).
+- Cabinet exactly 0.9m tall, on the floor, not floating/sunken.
+- All placed utilities appear at correct positions/heights (test with: one water supply, one outlet, one switch, one floor drain).
+- Orbit smooth, camera cannot go under the floor.
+- Existing platform pages and old Design Studio untouched.

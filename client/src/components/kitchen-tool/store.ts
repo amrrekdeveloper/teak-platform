@@ -134,11 +134,21 @@ export const useKitchenToolStore = create<KitchenToolState>()(
                 : WALL_DEFAULT;
             return { id, length };
           });
-          const wallIds = new Set(walls.map((w) => w.id));
-          const openings = state.openings.filter((o) => wallIds.has(o.wallId));
-          const utilities = (state.utilities ?? []).filter(
-            (u) => !u.wallId || wallIds.has(u.wallId)
-          );
+          const wallById = new Map(walls.map((w) => [w.id, w]));
+          const openings = state.openings.filter((o) => wallById.has(o.wallId));
+          const utilities = (state.utilities ?? [])
+            .filter((u) => !u.wallId || wallById.has(u.wallId))
+            .map((u) => {
+              if (!u.wallId) return u;
+              const wall = wallById.get(u.wallId)!;
+              const pos = Math.min(
+                Math.max(u.positionAlongWall ?? 0, 0),
+                wall.length
+              );
+              return pos === u.positionAlongWall
+                ? u
+                : { ...u, positionAlongWall: pos };
+            });
           return { walls, openings, utilities };
         }),
       setWallLength: (id, length) =>
