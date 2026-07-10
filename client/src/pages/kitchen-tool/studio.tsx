@@ -119,7 +119,7 @@ export default function KitchenToolStudioPage() {
           </div>
 
           <div
-            className="relative flex-1 min-h-[520px] rounded-xl overflow-hidden border border-border bg-muted/30"
+            className="relative w-full h-[calc(100vh-240px)] min-h-[420px] rounded-xl overflow-hidden border border-border bg-muted/30"
             data-testid="container-studio-3d"
           >
             <SceneErrorBoundary fallback={<SceneFallback />}>

@@ -444,7 +444,8 @@ function SceneContents({
 
   return (
     <>
-      <Environment files={HDR_URL} background blur={0.06} />
+      <color attach="background" args={["#efece7"]} />
+      <Environment files={HDR_URL} />
       <directionalLight
         position={[center.x + roomSpan * 0.9, ceilingM + 2.6, center.z + roomSpan * 1.2]}
         intensity={1.35}
