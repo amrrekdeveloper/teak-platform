@@ -1,8 +1,9 @@
-import { Component, Suspense, useEffect, type ReactNode } from "react";
+import { Component, Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useLocation } from "wouter";
-import { ChevronRight, ChevronLeft, Home, Loader2 } from "lucide-react";
+import { ChevronRight, ChevronLeft, Home, Loader2, Trash2, Plus } from "lucide-react";
 import { useProgress } from "@react-three/drei";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/components/language-provider";
 import DesktopGate from "@/components/kitchen-tool/desktop-gate";
 import { ToolStages, ToolNav } from "@/components/kitchen-tool/tool-stages";
@@ -16,6 +17,15 @@ import {
   WALL_OPTIONS,
   type MaterialOption,
 } from "@/components/kitchen-tool/materials";
+import { getWallSegments } from "@/components/kitchen-tool/plan-svg";
+import {
+  CABINET_DEFS,
+  findCabinetDef,
+  findSlotForCabinet,
+  findCornerSlot,
+  type CabinetDef,
+  type CabinetLevel,
+} from "@/components/kitchen-tool/cabinets";
 
 function LoadingOverlay() {
   const { t } = useLanguage();
@@ -166,18 +176,132 @@ function MaterialBar() {
   );
 }
 
+function CabinetCatalog({
+  onAdd,
+}: {
+  onAdd: (def: CabinetDef) => void;
+}) {
+  const { t } = useLanguage();
+  const [tab, setTab] = useState<CabinetLevel>("base");
+  const items = CABINET_DEFS.filter((d) => d.level === tab);
+
+  return (
+    <div
+      className="w-56 shrink-0 rounded-xl border border-border bg-card flex flex-col overflow-hidden"
+      data-testid="panel-cabinet-catalog"
+    >
+      <div className="flex border-b border-border">
+        {(
+          [
+            { id: "base" as const, ar: "سفلية", en: "Base" },
+            { id: "upper" as const, ar: "علوية", en: "Wall" },
+          ]
+        ).map((tb) => (
+          <button
+            key={tb.id}
+            type="button"
+            onClick={() => setTab(tb.id)}
+            className={`flex-1 py-2.5 text-sm font-bold transition-colors ${
+              tab === tb.id
+                ? "bg-primary/10 text-primary border-b-2 border-primary"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+            data-testid={`tab-cabinets-${tb.id}`}
+          >
+            {t(tb.ar, tb.en)}
+          </button>
+        ))}
+      </div>
+      <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-1.5">
+        {items.map((def) => (
+          <button
+            key={def.id}
+            type="button"
+            onClick={() => onAdd(def)}
+            className="flex items-center justify-between gap-2 rounded-lg border border-border bg-background px-3 py-2.5 text-start hover:border-primary/60 hover:bg-primary/5 transition-colors"
+            data-testid={`button-add-cabinet-${def.id}`}
+          >
+            <span className="min-w-0">
+              <span className="block text-xs font-bold leading-tight">
+                {t(def.nameAr, def.nameEn)}
+              </span>
+              <span className="block text-[10px] text-muted-foreground mt-0.5">
+                {Math.round(def.width * 100)} {t("سم", "cm")}
+                {def.corner ? t(" • ركن", " • corner") : ""}
+              </span>
+            </span>
+            <Plus className="w-4 h-4 shrink-0 text-primary" />
+          </button>
+        ))}
+      </div>
+      <p className="px-3 py-2 text-[10px] text-muted-foreground border-t border-border leading-relaxed">
+        {t(
+          "اضغط لإضافة الخزانة، ثم اسحبها في المشهد لتحريكها على الجدران.",
+          "Click to add a cabinet, then drag it in the scene to move it along the walls."
+        )}
+      </p>
+    </div>
+  );
+}
+
 export default function KitchenToolStudioPage() {
   const { t, isRTL } = useLanguage();
+  const { toast } = useToast();
   const [, setLocation] = useLocation();
   const { answers, walls, ceilingHeight, openings, utilities, ensureWalls } =
     useKitchenToolStore();
+  const placedCabinets = useKitchenToolStore((s) => s.placedCabinets ?? []);
+  const addPlacedCabinet = useKitchenToolStore((s) => s.addPlacedCabinet);
+  const removePlacedCabinet = useKitchenToolStore((s) => s.removePlacedCabinet);
+  const [selectedCabinetId, setSelectedCabinetId] = useState<string | null>(null);
   const layout: KitchenLayout = answers.layout ?? "L";
   const BackIcon = isRTL ? ChevronRight : ChevronLeft;
+
+  const segments = useMemo(() => getWallSegments(layout, walls), [layout, walls]);
 
   useEffect(() => {
     ensureWalls(layout);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [layout]);
+
+  const handleAddCabinet = (def: CabinetDef) => {
+    const slot = def.corner
+      ? findCornerSlot(def, placedCabinets, segments, openings)
+      : findSlotForCabinet(def, placedCabinets, segments, openings);
+    if (!slot) {
+      toast({
+        title: def.corner
+          ? t("لا يوجد ركن متاح", "No free corner")
+          : t("لا توجد مساحة كافية", "Not enough space"),
+        description: def.corner
+          ? t(
+              "الوحدات الركنية تُركّب فقط في زاوية بين جدارين متاحة.",
+              "Corner units only fit in a free corner between two walls."
+            )
+          : t(
+              "الجدران ممتلئة — احذف خزانة أو حرّك الموجود لإفساح مكان.",
+              "The walls are full — remove or move a cabinet to make room."
+            ),
+        variant: "destructive",
+      });
+      return;
+    }
+    const id = `cab-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    addPlacedCabinet({ id, catalogId: def.id, wallId: slot.wallId, offset: slot.offset });
+    setSelectedCabinetId(id);
+  };
+
+  const handleDeleteSelected = () => {
+    if (!selectedCabinetId) return;
+    removePlacedCabinet(selectedCabinetId);
+    setSelectedCabinetId(null);
+  };
+
+  const selectedDef = selectedCabinetId
+    ? findCabinetDef(
+        placedCabinets.find((c) => c.id === selectedCabinetId)?.catalogId ?? ""
+      )
+    : undefined;
 
   return (
     <DesktopGate>
@@ -221,22 +345,47 @@ export default function KitchenToolStudioPage() {
 
           <MaterialBar />
 
-          <div
-            className="relative w-full h-[calc(100vh-340px)] min-h-[400px] rounded-xl overflow-hidden border border-border bg-muted/30"
-            data-testid="container-studio-3d"
-          >
-            <SceneErrorBoundary fallback={<SceneFallback />}>
-              <LoadingOverlay />
-              <Suspense fallback={null}>
-                <StudioScene
-                  layout={layout}
-                  walls={walls}
-                  ceilingHeight={ceilingHeight}
-                  openings={openings}
-                  utilities={utilities}
-                />
-              </Suspense>
-            </SceneErrorBoundary>
+          <div className="flex gap-4 h-[calc(100vh-340px)] min-h-[400px]">
+            <div
+              className="relative flex-1 rounded-xl overflow-hidden border border-border bg-muted/30"
+              data-testid="container-studio-3d"
+            >
+              <SceneErrorBoundary fallback={<SceneFallback />}>
+                <LoadingOverlay />
+                <Suspense fallback={null}>
+                  <StudioScene
+                    layout={layout}
+                    walls={walls}
+                    ceilingHeight={ceilingHeight}
+                    openings={openings}
+                    utilities={utilities}
+                    selectedCabinetId={selectedCabinetId}
+                    onSelectCabinet={setSelectedCabinetId}
+                  />
+                </Suspense>
+              </SceneErrorBoundary>
+              {selectedCabinetId && selectedDef && (
+                <div
+                  className="absolute top-3 start-3 z-10 flex items-center gap-2 rounded-lg border border-border bg-card/95 backdrop-blur px-3 py-2 shadow-md"
+                  data-testid="bar-selected-cabinet"
+                >
+                  <span className="text-xs font-bold" data-testid="text-selected-cabinet">
+                    {t(selectedDef.nameAr, selectedDef.nameEn)}
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    className="h-7 px-2 font-bold"
+                    onClick={handleDeleteSelected}
+                    data-testid="button-delete-cabinet"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 me-1" />
+                    {t("حذف", "Delete")}
+                  </Button>
+                </div>
+              )}
+            </div>
+            <CabinetCatalog onAdd={handleAddCabinet} />
           </div>
         </div>
         <div className="pb-6" />

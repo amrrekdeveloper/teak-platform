@@ -34,6 +34,14 @@ export interface KitchenOpening {
   hinge?: DoorHinge;
 }
 
+export interface PlacedCabinetState {
+  id: string;
+  catalogId: string;
+  wallId: string;
+  /** Distance (m) from wall start to the cabinet's near edge. */
+  offset: number;
+}
+
 export type UtilityKind = "water" | "outlet" | "switch" | "drain";
 
 export interface KitchenUtility {
@@ -93,6 +101,8 @@ interface KitchenToolState {
   /** Selected material ids for the 3D studio. */
   floorMaterialId: string;
   wallMaterialId: string;
+  /** Cabinets placed in the 3D studio. */
+  placedCabinets: PlacedCabinetState[];
   setAnswer: <K extends keyof KitchenAnswers>(key: K, value: KitchenAnswers[K]) => void;
   setStep: (step: number) => void;
   ensureWalls: (layout: KitchenLayout) => void;
@@ -106,6 +116,9 @@ interface KitchenToolState {
   removeUtility: (id: string) => void;
   setFloorMaterial: (id: string) => void;
   setWallMaterial: (id: string) => void;
+  addPlacedCabinet: (cabinet: PlacedCabinetState) => void;
+  movePlacedCabinet: (id: string, wallId: string, offset: number) => void;
+  removePlacedCabinet: (id: string) => void;
   reset: () => void;
 }
 
@@ -127,6 +140,7 @@ export const useKitchenToolStore = create<KitchenToolState>()(
       utilities: [],
       floorMaterialId: "laminate",
       wallMaterialId: "plaster",
+      placedCabinets: [],
       setAnswer: (key, value) =>
         set((state) => ({ answers: { ...state.answers, [key]: value } })),
       setStep: (step) => set({ step }),
@@ -185,6 +199,20 @@ export const useKitchenToolStore = create<KitchenToolState>()(
         })),
       setFloorMaterial: (id) => set({ floorMaterialId: id }),
       setWallMaterial: (id) => set({ wallMaterialId: id }),
+      addPlacedCabinet: (cabinet) =>
+        set((state) => ({
+          placedCabinets: [...(state.placedCabinets ?? []), cabinet],
+        })),
+      movePlacedCabinet: (id, wallId, offset) =>
+        set((state) => ({
+          placedCabinets: (state.placedCabinets ?? []).map((c) =>
+            c.id === id ? { ...c, wallId, offset } : c
+          ),
+        })),
+      removePlacedCabinet: (id) =>
+        set((state) => ({
+          placedCabinets: (state.placedCabinets ?? []).filter((c) => c.id !== id),
+        })),
       reset: () =>
         set({
           answers: initialAnswers,
@@ -195,6 +223,7 @@ export const useKitchenToolStore = create<KitchenToolState>()(
           utilities: [],
           floorMaterialId: "laminate",
           wallMaterialId: "plaster",
+          placedCabinets: [],
         }),
     }),
     { name: "teak-kitchen-tool" }

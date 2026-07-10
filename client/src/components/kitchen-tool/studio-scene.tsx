@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useMemo } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import * as THREE from "three";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, Environment, useGLTF, useTexture } from "@react-three/drei";
@@ -11,8 +11,19 @@ import {
 import {
   getWallSegments,
   getFloorBounds,
+  planPointAt,
   type WallSegment,
 } from "@/components/kitchen-tool/plan-svg";
+import {
+  CABINET_DEFS,
+  findCabinetDef,
+  junctionOfPlaced,
+  blockedIntervals,
+  resolveDragOffset,
+  type CabinetDef,
+} from "@/components/kitchen-tool/cabinets";
+import type { ThreeEvent } from "@react-three/fiber";
+import type { PlacedCabinetState } from "@/components/kitchen-tool/store";
 import {
   findFloorOption,
   findWallOption,
@@ -29,7 +40,6 @@ const CM = 1 / 100;
 
 const ASSETS = "/kitchen-tool-assets";
 const HDR_URL = `${ASSETS}/hdri/relax_inn_seaview_suite_2k.hdr`;
-const CABINET_URL = `${ASSETS}/cabinet-lower-standard.glb`;
 
 /** Oak veneer countertop maps — prepared for later phases (cabinet runs). */
 export const COUNTERTOP_TEX = {
@@ -243,9 +253,13 @@ function Walls({
 function Floor({
   bounds,
   option,
+  onPointerMove,
+  onPointerDown,
 }: {
   bounds: { minX: number; minY: number; maxX: number; maxY: number };
   option: MaterialOption;
+  onPointerMove?: (e: ThreeEvent<PointerEvent>) => void;
+  onPointerDown?: (e: ThreeEvent<PointerEvent>) => void;
 }) {
   const w = (bounds.maxX - bounds.minX) * CM;
   const d = (bounds.maxY - bounds.minY) * CM;
@@ -253,7 +267,13 @@ function Floor({
   const cz = ((bounds.minY + bounds.maxY) / 2) * CM;
 
   return (
-    <mesh position={[cx, 0, cz]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+    <mesh
+      position={[cx, 0, cz]}
+      rotation={[-Math.PI / 2, 0, 0]}
+      receiveShadow
+      onPointerMove={onPointerMove}
+      onPointerDown={onPointerDown}
+    >
       <planeGeometry args={[w, d]} />
       <SurfaceMaterial key={option.id} opt={option} repeatX={w} repeatY={d} />
     </mesh>
@@ -279,54 +299,124 @@ function Ceiling({
   );
 }
 
-/* ── Cabinet GLB (0.9m tall, on floor against a wall) ────── */
-function Cabinet({ segments }: { segments: WallSegment[] }) {
-  const { scene } = useGLTF(CABINET_URL);
+/* ── Placed cabinets (catalog items on walls) ────────────── */
+function inwardOf(seg: WallSegment): THREE.Vector3 {
+  return new THREE.Vector3(-seg.nx, 0, -seg.ny);
+}
 
-  const { object, position } = useMemo(() => {
+function PlacedCabinetMesh({
+  placed,
+  def,
+  segments,
+  selected,
+  onGrab,
+}: {
+  placed: PlacedCabinetState;
+  def: CabinetDef;
+  segments: WallSegment[];
+  selected: boolean;
+  onGrab: (id: string, def: CabinetDef) => void;
+}) {
+  const { scene } = useGLTF(def.url);
+  const seg = segments.find((s) => s.id === placed.wallId);
+
+  // Clone + recenter once per model — NOT on every drag move.
+  const object = useMemo(() => {
     const obj = scene.clone(true);
-    const box = new THREE.Box3().setFromObject(obj);
-    const size = new THREE.Vector3();
-    box.getSize(size);
-    const scale = size.y > 0 ? 0.9 / size.y : 1;
-    obj.scale.setScalar(scale);
     obj.traverse((child) => {
       if ((child as THREE.Mesh).isMesh) {
         child.castShadow = true;
         child.receiveShadow = true;
       }
     });
+    // Recenter: bottom-center of the bounding box at the local origin
+    const box = new THREE.Box3().setFromObject(obj);
+    const center = box.getCenter(new THREE.Vector3());
+    obj.position.set(-center.x, -box.min.y, -center.z);
+    return obj;
+  }, [scene]);
 
-    // Face the cabinet front (assumed +Z in the GLB) toward the room interior
-    const seg = segments[0];
-    const { origin, dir, out, lengthM } = segVectors(seg);
-    const inward = out.clone().negate();
-    obj.rotation.y = Math.atan2(inward.x, inward.z);
-    obj.updateMatrixWorld(true);
+  const built = useMemo(() => {
+    if (!seg) return null;
+    const { origin, dir } = segVectors(seg);
+    const inward = inwardOf(seg);
+    let rotY = Math.atan2(inward.x, inward.z) + (def.rotYFix ?? 0);
+    let pos: THREE.Vector3 | null = null;
 
-    // Measure AFTER scale + rotation, then anchor against the wall, on the floor
-    const sBox = new THREE.Box3().setFromObject(obj);
-    const sSize = new THREE.Vector3();
-    const sCenter = new THREE.Vector3();
-    sBox.getSize(sSize);
-    sBox.getCenter(sCenter);
+    if (def.corner) {
+      const jn = junctionOfPlaced(placed, def, segments);
+      if (jn) {
+        const segA = segments.find((s) => s.id === jn.aId)!;
+        const segB = segments.find((s) => s.id === jn.bId)!;
+        const inA = inwardOf(segA);
+        const inB = inwardOf(segB);
+        const diag = inA.clone().add(inB);
+        // Model's default front diagonal faces (-X, +Z)
+        rotY = Math.atan2(diag.x, diag.z) + Math.PI / 4 + (def.rotYFix ?? 0);
+        pos = new THREE.Vector3(jn.x * CM, 0, jn.y * CM)
+          .addScaledVector(inA, def.width / 2 + 0.005)
+          .addScaledVector(inB, def.width / 2 + 0.005);
+      }
+    }
+    if (!pos) {
+      pos = origin
+        .clone()
+        .addScaledVector(dir, placed.offset + def.width / 2)
+        .addScaledVector(inward, def.depth / 2 + 0.005);
+    }
+    pos.y = def.mountY;
+    return { pos, rotY };
+  }, [seg, placed, def, segments]);
 
-    const anchor = origin.clone().addScaledVector(dir, lengthM / 2);
-    const depth = Math.max(Math.abs(sSize.x * inward.x) + Math.abs(sSize.z * inward.z), 0.3);
-    anchor.addScaledVector(inward, depth / 2 + 0.005);
-
-    const pos = new THREE.Vector3(
-      anchor.x - sCenter.x,
-      -sBox.min.y,
-      anchor.z - sCenter.z
-    );
-    return { object: obj, position: pos };
-  }, [scene, segments]);
+  if (!built) return null;
 
   return (
-    <group position={position}>
+    <group
+      position={built.pos}
+      rotation={[0, built.rotY, 0]}
+      onPointerDown={(e) => {
+        e.stopPropagation();
+        onGrab(placed.id, def);
+      }}
+    >
       <primitive object={object} />
+      {selected && (
+        <mesh position={[0, def.height / 2, 0]}>
+          <boxGeometry args={[def.width + 0.05, def.height + 0.05, def.depth + 0.05]} />
+          <meshBasicMaterial color="#d92626" transparent opacity={0.16} depthWrite={false} />
+        </mesh>
+      )}
     </group>
+  );
+}
+
+function PlacedCabinets({
+  segments,
+  selectedId,
+  onGrab,
+}: {
+  segments: WallSegment[];
+  selectedId: string | null;
+  onGrab: (id: string, def: CabinetDef) => void;
+}) {
+  const placed = useKitchenToolStore((s) => s.placedCabinets ?? []);
+  return (
+    <>
+      {placed.map((p) => {
+        const def = findCabinetDef(p.catalogId);
+        if (!def) return null;
+        return (
+          <PlacedCabinetMesh
+            key={p.id}
+            placed={p}
+            def={def}
+            segments={segments}
+            selected={p.id === selectedId}
+            onGrab={onGrab}
+          />
+        );
+      })}
+    </>
   );
 }
 
@@ -453,6 +543,8 @@ function SceneContents({
   ceilingHeight,
   openings,
   utilities,
+  selectedCabinetId = null,
+  onSelectCabinet,
 }: StudioSceneProps) {
   const segments = useMemo(() => getWallSegments(layout, walls), [layout, walls]);
   const bounds = useMemo(() => getFloorBounds(segments), [segments]);
@@ -462,6 +554,53 @@ function SceneContents({
   const wallMaterialId = useKitchenToolStore((s) => s.wallMaterialId);
   const floorOption = findFloorOption(floorMaterialId);
   const wallOption = findWallOption(wallMaterialId);
+
+  const placedCabinets = useKitchenToolStore((s) => s.placedCabinets ?? []);
+  const movePlacedCabinet = useKitchenToolStore((s) => s.movePlacedCabinet);
+  const [dragId, setDragId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!dragId) return;
+    const up = () => setDragId(null);
+    window.addEventListener("pointerup", up);
+    return () => window.removeEventListener("pointerup", up);
+  }, [dragId]);
+
+  const handleGrab = (id: string, def: CabinetDef) => {
+    onSelectCabinet?.(id);
+    if (!def.corner) setDragId(id);
+  };
+
+  const handleFloorMove = (e: ThreeEvent<PointerEvent>) => {
+    if (!dragId) return;
+    const placed = placedCabinets.find((c) => c.id === dragId);
+    if (!placed) return;
+    const def = findCabinetDef(placed.catalogId);
+    if (!def) return;
+    const pp = planPointAt(segments, e.point.x / CM, e.point.z / CM);
+    if (!pp.nearestWallId) return;
+    const seg = segments.find((s) => s.id === pp.nearestWallId);
+    if (!seg) return;
+    const wallLenM = seg.length * CM;
+    const desired = pp.distanceAlongWall * CM - def.width / 2;
+    const intervals = blockedIntervals(
+      pp.nearestWallId,
+      def.level,
+      placedCabinets,
+      segments,
+      openings,
+      placed.id
+    );
+    const resolved = resolveDragOffset(wallLenM, intervals, desired, def.width);
+    if (resolved === null) return;
+    if (pp.nearestWallId !== placed.wallId || Math.abs(resolved - placed.offset) > 1e-4) {
+      movePlacedCabinet(placed.id, pp.nearestWallId, resolved);
+    }
+  };
+
+  const handleFloorDown = () => {
+    onSelectCabinet?.(null);
+  };
 
   const center = useMemo(
     () =>
@@ -497,7 +636,12 @@ function SceneContents({
       <ambientLight intensity={0.12} />
 
       <Suspense fallback={null}>
-        <Floor bounds={bounds} option={floorOption} />
+        <Floor
+          bounds={bounds}
+          option={floorOption}
+          onPointerMove={handleFloorMove}
+          onPointerDown={handleFloorDown}
+        />
       </Suspense>
       <Ceiling bounds={bounds} ceilingM={ceilingM} />
       <Suspense fallback={null}>
@@ -508,7 +652,13 @@ function SceneContents({
           option={wallOption}
         />
       </Suspense>
-      <Cabinet segments={segments} />
+      <Suspense fallback={null}>
+        <PlacedCabinets
+          segments={segments}
+          selectedId={selectedCabinetId}
+          onGrab={handleGrab}
+        />
+      </Suspense>
       <UtilityMarkers utilities={utilities} segments={segments} />
 
       <OrbitControls
@@ -517,6 +667,7 @@ function SceneContents({
         minDistance={0.9}
         maxDistance={Math.max(roomSpan * 2.4, 7)}
         enableDamping
+        enabled={!dragId}
       />
     </>
   );
@@ -529,6 +680,8 @@ export interface StudioSceneProps {
   ceilingHeight: number;
   openings: KitchenOpening[];
   utilities: KitchenUtility[];
+  selectedCabinetId?: string | null;
+  onSelectCabinet?: (id: string | null) => void;
 }
 
 export default function StudioScene(props: StudioSceneProps) {
@@ -559,4 +712,6 @@ export default function StudioScene(props: StudioSceneProps) {
   );
 }
 
-useGLTF.preload(CABINET_URL);
+for (const def of CABINET_DEFS) {
+  useGLTF.preload(def.url);
+}
