@@ -34,6 +34,29 @@ export interface KitchenOpening {
   hinge?: DoorHinge;
 }
 
+export type UtilityKind = "water" | "outlet" | "switch" | "drain";
+
+export interface KitchenUtility {
+  id: string;
+  kind: UtilityKind;
+  /** Wall-mounted when wallId is set (water/outlet/switch/wall-drain). */
+  wallId?: string;
+  /** Distance (cm) from wall start for wall-mounted utilities. */
+  positionAlongWall?: number;
+  /** Floor position (cm, plan coordinates) — floor drains only. */
+  x?: number;
+  y?: number;
+  /** Height from floor (cm). Hidden default per kind; 0 for floor drains. */
+  heightFromFloor: number;
+}
+
+export const UTILITY_DEFAULT_HEIGHT: Record<UtilityKind, number> = {
+  water: 55,
+  outlet: 30,
+  switch: 110,
+  drain: 40,
+};
+
 export const WALL_MIN = 120;
 export const WALL_MAX = 800;
 export const WALL_DEFAULT = 360;
@@ -66,6 +89,7 @@ interface KitchenToolState {
   walls: KitchenWall[];
   ceilingHeight: number;
   openings: KitchenOpening[];
+  utilities: KitchenUtility[];
   setAnswer: <K extends keyof KitchenAnswers>(key: K, value: KitchenAnswers[K]) => void;
   setStep: (step: number) => void;
   ensureWalls: (layout: KitchenLayout) => void;
@@ -74,6 +98,9 @@ interface KitchenToolState {
   addOpening: (opening: KitchenOpening) => void;
   updateOpening: (id: string, patch: Partial<Omit<KitchenOpening, "id">>) => void;
   removeOpening: (id: string) => void;
+  addUtility: (utility: KitchenUtility) => void;
+  updateUtility: (id: string, patch: Partial<Omit<KitchenUtility, "id" | "kind">>) => void;
+  removeUtility: (id: string) => void;
   reset: () => void;
 }
 
@@ -92,6 +119,7 @@ export const useKitchenToolStore = create<KitchenToolState>()(
       walls: [],
       ceilingHeight: CEILING_DEFAULT,
       openings: [],
+      utilities: [],
       setAnswer: (key, value) =>
         set((state) => ({ answers: { ...state.answers, [key]: value } })),
       setStep: (step) => set({ step }),
@@ -108,7 +136,10 @@ export const useKitchenToolStore = create<KitchenToolState>()(
           });
           const wallIds = new Set(walls.map((w) => w.id));
           const openings = state.openings.filter((o) => wallIds.has(o.wallId));
-          return { walls, openings };
+          const utilities = (state.utilities ?? []).filter(
+            (u) => !u.wallId || wallIds.has(u.wallId)
+          );
+          return { walls, openings, utilities };
         }),
       setWallLength: (id, length) =>
         set((state) => ({
@@ -123,6 +154,18 @@ export const useKitchenToolStore = create<KitchenToolState>()(
         })),
       removeOpening: (id) =>
         set((state) => ({ openings: state.openings.filter((o) => o.id !== id) })),
+      addUtility: (utility) =>
+        set((state) => ({ utilities: [...(state.utilities ?? []), utility] })),
+      updateUtility: (id, patch) =>
+        set((state) => ({
+          utilities: (state.utilities ?? []).map((u) =>
+            u.id === id ? { ...u, ...patch } : u
+          ),
+        })),
+      removeUtility: (id) =>
+        set((state) => ({
+          utilities: (state.utilities ?? []).filter((u) => u.id !== id),
+        })),
       reset: () =>
         set({
           answers: initialAnswers,
@@ -130,6 +173,7 @@ export const useKitchenToolStore = create<KitchenToolState>()(
           walls: [],
           ceilingHeight: CEILING_DEFAULT,
           openings: [],
+          utilities: [],
         }),
     }),
     { name: "teak-kitchen-tool" }

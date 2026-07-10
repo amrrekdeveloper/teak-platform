@@ -39,7 +39,7 @@ export default function KitchenToolStudioPage() {
               size="lg"
               variant="outline"
               className="font-bold min-w-[180px]"
-              onClick={() => setLocation("/kitchen-designer/openings")}
+              onClick={() => setLocation("/kitchen-designer/utilities")}
               data-testid="button-studio-back"
             >
               <BackIcon className="w-4 h-4 me-2" />

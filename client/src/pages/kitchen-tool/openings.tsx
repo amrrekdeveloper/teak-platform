@@ -410,7 +410,7 @@ export default function KitchenToolOpeningsPage() {
             </Button>
             <Button
               size="lg"
-              onClick={() => setLocation("/kitchen-designer/studio")}
+              onClick={() => setLocation("/kitchen-designer/utilities")}
               className="font-bold min-w-[130px]"
               data-testid="button-openings-next"
             >

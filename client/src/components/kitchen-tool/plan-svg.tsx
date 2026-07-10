@@ -3,6 +3,7 @@ import {
   type KitchenLayout,
   type KitchenWall,
   type KitchenOpening,
+  type KitchenUtility,
   clampWallLength,
 } from "@/components/kitchen-tool/store";
 
@@ -85,6 +86,56 @@ function unitDir(seg: WallSegment): { ux: number; uy: number } {
   return { ux: dx / len, uy: dy / len };
 }
 
+/** Rectangle covering the kitchen floor area of the plan. */
+export function getFloorBounds(segments: WallSegment[]) {
+  const minX = Math.min(...segments.map((s) => Math.min(s.x1, s.x2)));
+  const minY = Math.min(...segments.map((s) => Math.min(s.y1, s.y2)));
+  const maxX = Math.max(
+    Math.max(...segments.map((s) => Math.max(s.x1, s.x2))),
+    minX + 120
+  );
+  const maxY = Math.max(
+    Math.max(...segments.map((s) => Math.max(s.y1, s.y2))),
+    minY + 120
+  );
+  return { minX, minY, maxX, maxY };
+}
+
+/** A point on the plan with its relation to the nearest wall. */
+export interface PlanPoint {
+  x: number;
+  y: number;
+  nearestWallId: string | null;
+  /** Distance (cm) along the nearest wall from its start (clamped to the wall). */
+  distanceAlongWall: number;
+  /** Perpendicular distance (cm) from the point to the nearest wall. */
+  perpDistance: number;
+}
+
+export function planPointAt(segments: WallSegment[], x: number, y: number): PlanPoint {
+  let best: { id: string; along: number; perp: number } | null = null;
+  for (const s of segments) {
+    const dx = s.x2 - s.x1;
+    const dy = s.y2 - s.y1;
+    const lenSq = dx * dx + dy * dy || 1;
+    let t = ((x - s.x1) * dx + (y - s.y1) * dy) / lenSq;
+    t = Math.min(Math.max(t, 0), 1);
+    const px = s.x1 + dx * t;
+    const py = s.y1 + dy * t;
+    const perp = Math.hypot(x - px, y - py);
+    if (!best || perp < best.perp) {
+      best = { id: s.id, along: t * s.length, perp };
+    }
+  }
+  return {
+    x,
+    y,
+    nearestWallId: best?.id ?? null,
+    distanceAlongWall: best?.along ?? 0,
+    perpDistance: best?.perp ?? Infinity,
+  };
+}
+
 interface PlanSvgProps {
   layout: KitchenLayout;
   walls: KitchenWall[];
@@ -94,6 +145,14 @@ interface PlanSvgProps {
   onSelectOpening?: (id: string) => void;
   onDragOpening?: (id: string, desiredDistance: number) => void;
   onDragEnd?: () => void;
+  utilities?: KitchenUtility[];
+  selectedUtilityId?: string | null;
+  onSelectUtility?: (id: string) => void;
+  /** Called continuously while a utility marker is dragged; parent decides snapping. */
+  onDragUtilityPoint?: (id: string, p: PlanPoint) => void;
+  /** When true, a click anywhere on the plan reports a PlanPoint (placement mode). */
+  placementActive?: boolean;
+  onPlacePoint?: (p: PlanPoint) => void;
   className?: string;
   t: (ar: string, en: string) => string;
 }
@@ -107,6 +166,12 @@ export default function KitchenPlanSvg({
   onSelectOpening,
   onDragOpening,
   onDragEnd,
+  utilities = [],
+  selectedUtilityId = null,
+  onSelectUtility,
+  onDragUtilityPoint,
+  placementActive = false,
+  onPlacePoint,
   className,
   t,
 }: PlanSvgProps) {
@@ -123,6 +188,11 @@ export default function KitchenPlanSvg({
   dragEndCbRef.current = onDragEnd;
   const segByIdRef = useRef(segById);
   segByIdRef.current = segById;
+  const segmentsRef = useRef(segments);
+  segmentsRef.current = segments;
+  const utilDragRef = useRef<string | null>(null);
+  const utilDragCbRef = useRef(onDragUtilityPoint);
+  utilDragCbRef.current = onDragUtilityPoint;
 
   // Content bounds: wall endpoints + inward reach of door swing arcs
   const px: number[] = [];
@@ -225,6 +295,43 @@ export default function KitchenPlanSvg({
     window.addEventListener("pointercancel", onWindowUp);
   };
 
+  const handleUtilityPointerDown = (e: React.PointerEvent, u: KitchenUtility) => {
+    if (!onDragUtilityPoint) return;
+    e.stopPropagation();
+    e.preventDefault();
+    utilDragRef.current = u.id;
+    onSelectUtility?.(u.id);
+    forceRender((n) => n + 1);
+
+    const onWindowMove = (ev: PointerEvent) => {
+      const id = utilDragRef.current;
+      const cb = utilDragCbRef.current;
+      if (!id || !cb) return;
+      const p = toSvgPoint(ev.clientX, ev.clientY);
+      if (!p) return;
+      cb(id, planPointAt(segmentsRef.current, p.x, p.y));
+    };
+    const onWindowUp = () => {
+      window.removeEventListener("pointermove", onWindowMove);
+      window.removeEventListener("pointerup", onWindowUp);
+      window.removeEventListener("pointercancel", onWindowUp);
+      if (utilDragRef.current) {
+        utilDragRef.current = null;
+        forceRender((n) => n + 1);
+      }
+    };
+    window.addEventListener("pointermove", onWindowMove);
+    window.addEventListener("pointerup", onWindowUp);
+    window.addEventListener("pointercancel", onWindowUp);
+  };
+
+  const handlePlacementClick = (e: React.MouseEvent) => {
+    if (!placementActive || !onPlacePoint) return;
+    const p = toSvgPoint(e.clientX, e.clientY);
+    if (!p) return;
+    onPlacePoint(planPointAt(segments, p.x, p.y));
+  };
+
   const isDraggingNow = dragRef.current !== null;
 
   const floorMinX = Math.min(...segments.map((s) => Math.min(s.x1, s.x2)));
@@ -241,6 +348,8 @@ export default function KitchenPlanSvg({
       ref={svgRef}
       viewBox={`${minX} ${minY} ${maxX - minX} ${maxY - minY}`}
       className={className}
+      style={placementActive ? { cursor: "crosshair" } : undefined}
+      onClick={handlePlacementClick}
       data-testid="svg-kitchen-plan"
     >
       <defs>
@@ -444,7 +553,297 @@ export default function KitchenPlanSvg({
           </g>
         );
       })}
+
+      {/* Utility markers (water / outlets / switches / drains) */}
+      {utilities.map((u) => {
+        const seg = u.wallId ? segById.get(u.wallId) : undefined;
+        if (u.wallId && !seg) return null;
+        const P = seg
+          ? pointAlong(
+              seg,
+              Math.min(Math.max(u.positionAlongWall ?? 0, 0), seg.length)
+            )
+          : { x: u.x ?? 0, y: u.y ?? 0 };
+        const isSelected = u.id === selectedUtilityId;
+        const isDragged = utilDragRef.current === u.id;
+        const R = 13 * k;
+        return (
+          <g key={u.id}>
+            {(isSelected || isDragged) &&
+              (seg ? (
+                <UtilityWallDistanceLabel
+                  seg={seg}
+                  distance={Math.min(
+                    Math.max(u.positionAlongWall ?? 0, 0),
+                    seg.length
+                  )}
+                  utilityId={u.id}
+                  k={k}
+                />
+              ) : (
+                <UtilityFloorDistanceLabels
+                  segments={segments}
+                  x={P.x}
+                  y={P.y}
+                  utilityId={u.id}
+                  k={k}
+                />
+              ))}
+            <UtilitySymbol kind={u.kind} x={P.x} y={P.y} r={R} k={k} onWall={!!seg} />
+            {isSelected && (
+              <circle
+                cx={P.x}
+                cy={P.y}
+                r={R + 5 * k}
+                fill="none"
+                strokeWidth={SYM_STROKE * 0.9}
+                strokeDasharray={`${5 * k} ${4 * k}`}
+                className="stroke-primary/80"
+                style={{ pointerEvents: "none" }}
+              />
+            )}
+            <circle
+              cx={P.x}
+              cy={P.y}
+              r={R + 8 * k}
+              fill="transparent"
+              onPointerDown={(e) => handleUtilityPointerDown(e, u)}
+              onClick={(e) => {
+                e.stopPropagation();
+                onSelectUtility?.(u.id);
+              }}
+              style={{
+                cursor: onDragUtilityPoint ? "grab" : "default",
+                touchAction: "none",
+              }}
+              data-testid={`utility-${u.id}`}
+            />
+          </g>
+        );
+      })}
     </svg>
+  );
+}
+
+const UTILITY_FILL: Record<KitchenUtility["kind"], string> = {
+  water: "fill-sky-600",
+  outlet: "fill-amber-500",
+  switch: "fill-violet-500",
+  drain: "fill-teal-600",
+};
+
+function UtilitySymbol({
+  kind,
+  x,
+  y,
+  r,
+  k,
+  onWall,
+}: {
+  kind: KitchenUtility["kind"];
+  x: number;
+  y: number;
+  r: number;
+  k: number;
+  onWall: boolean;
+}) {
+  let icon: JSX.Element;
+  if (kind === "water") {
+    // Droplet
+    icon = (
+      <path
+        d={`M 0 ${-r * 0.52} C ${r * 0.38} ${-r * 0.05} ${r * 0.46} ${r * 0.14} ${r * 0.46} ${r * 0.3} A ${r * 0.46} ${r * 0.46} 0 0 1 ${-r * 0.46} ${r * 0.3} C ${-r * 0.46} ${r * 0.14} ${-r * 0.38} ${-r * 0.05} 0 ${-r * 0.52} Z`}
+        className="fill-white"
+      />
+    );
+  } else if (kind === "outlet") {
+    // Circle with two dots
+    icon = (
+      <>
+        <circle r={r * 0.62} fill="none" strokeWidth={1.6 * k} className="stroke-white" />
+        <circle cx={-r * 0.26} cy={0} r={r * 0.13} className="fill-white" />
+        <circle cx={r * 0.26} cy={0} r={r * 0.13} className="fill-white" />
+      </>
+    );
+  } else if (kind === "switch") {
+    // Small square with a line
+    icon = (
+      <>
+        <rect
+          x={-r * 0.5}
+          y={-r * 0.5}
+          width={r}
+          height={r}
+          rx={r * 0.12}
+          fill="none"
+          strokeWidth={1.6 * k}
+          className="stroke-white"
+        />
+        <line
+          x1={0}
+          y1={-r * 0.28}
+          x2={0}
+          y2={r * 0.28}
+          strokeWidth={1.6 * k}
+          className="stroke-white"
+        />
+      </>
+    );
+  } else {
+    // Drain: circle with X (grate)
+    icon = (
+      <>
+        <circle r={r * 0.6} fill="none" strokeWidth={1.5 * k} className="stroke-white" />
+        <line
+          x1={-r * 0.38}
+          y1={-r * 0.38}
+          x2={r * 0.38}
+          y2={r * 0.38}
+          strokeWidth={1.4 * k}
+          className="stroke-white"
+        />
+        <line
+          x1={r * 0.38}
+          y1={-r * 0.38}
+          x2={-r * 0.38}
+          y2={r * 0.38}
+          strokeWidth={1.4 * k}
+          className="stroke-white"
+        />
+      </>
+    );
+  }
+  return (
+    <g transform={`translate(${x} ${y})`} style={{ pointerEvents: "none" }}>
+      <circle r={r} className={UTILITY_FILL[kind]} />
+      <circle
+        r={r}
+        fill="none"
+        strokeWidth={1.2 * k}
+        className={onWall ? "stroke-background" : "stroke-white/60"}
+      />
+      {icon}
+    </g>
+  );
+}
+
+function MeasureTag({
+  x,
+  y,
+  text,
+  k,
+}: {
+  x: number;
+  y: number;
+  text: string;
+  k: number;
+}) {
+  const boxW = 52 * k;
+  const boxH = 22 * k;
+  return (
+    <>
+      <rect
+        x={x - boxW / 2}
+        y={y - boxH / 2}
+        width={boxW}
+        height={boxH}
+        rx={4 * k}
+        strokeWidth={1 * k}
+        className="fill-background stroke-amber-500"
+      />
+      <text
+        x={x}
+        y={y + 1 * k}
+        textAnchor="middle"
+        dominantBaseline="middle"
+        fontSize={11.5 * k}
+        fontWeight={600}
+        className="fill-amber-600"
+      >
+        {text}
+      </text>
+    </>
+  );
+}
+
+function UtilityWallDistanceLabel({
+  seg,
+  distance,
+  utilityId,
+  k,
+}: {
+  seg: WallSegment;
+  distance: number;
+  utilityId: string;
+  k: number;
+}) {
+  const start = pointAlong(seg, 0);
+  const pos = pointAlong(seg, distance);
+  const inward = 34 * k;
+  const midX = (start.x + pos.x) / 2 - seg.nx * inward;
+  const midY = (start.y + pos.y) / 2 - seg.ny * inward;
+  return (
+    <g style={{ pointerEvents: "none" }} data-testid={`label-utility-distance-${utilityId}`}>
+      <line
+        x1={start.x - seg.nx * inward * 0.65}
+        y1={start.y - seg.ny * inward * 0.65}
+        x2={pos.x - seg.nx * inward * 0.65}
+        y2={pos.y - seg.ny * inward * 0.65}
+        strokeWidth={1.2 * k}
+        strokeDasharray={`${6 * k} ${4 * k}`}
+        className="stroke-amber-500"
+      />
+      <MeasureTag x={midX} y={midY} text={`${Math.round(distance)} سم`} k={k} />
+    </g>
+  );
+}
+
+function UtilityFloorDistanceLabels({
+  segments,
+  x,
+  y,
+  utilityId,
+  k,
+}: {
+  segments: WallSegment[];
+  x: number;
+  y: number;
+  utilityId: string;
+  k: number;
+}) {
+  const fb = getFloorBounds(segments);
+  // Nearest vertical boundary (left/right) and nearest horizontal boundary (top/bottom)
+  const toLeft = x - fb.minX;
+  const toRight = fb.maxX - x;
+  const xEdge = toLeft <= toRight ? fb.minX : fb.maxX;
+  const dX = Math.round(Math.min(toLeft, toRight));
+  const toTop = y - fb.minY;
+  const toBottom = fb.maxY - y;
+  const yEdge = toTop <= toBottom ? fb.minY : fb.maxY;
+  const dY = Math.round(Math.min(toTop, toBottom));
+  return (
+    <g style={{ pointerEvents: "none" }} data-testid={`label-utility-distance-${utilityId}`}>
+      <line
+        x1={x}
+        y1={y}
+        x2={xEdge}
+        y2={y}
+        strokeWidth={1.2 * k}
+        strokeDasharray={`${6 * k} ${4 * k}`}
+        className="stroke-amber-500"
+      />
+      <line
+        x1={x}
+        y1={y}
+        x2={x}
+        y2={yEdge}
+        strokeWidth={1.2 * k}
+        strokeDasharray={`${6 * k} ${4 * k}`}
+        className="stroke-amber-500"
+      />
+      <MeasureTag x={(x + xEdge) / 2} y={y - 16 * k} text={`${dX} سم`} k={k} />
+      <MeasureTag x={x + 34 * k} y={(y + yEdge) / 2} text={`${dY} سم`} k={k} />
+    </g>
   );
 }
 

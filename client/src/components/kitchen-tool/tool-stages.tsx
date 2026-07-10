@@ -3,12 +3,13 @@ import { Button } from "@/components/ui/button";
 import { useLanguage } from "@/components/language-provider";
 import teakLogo from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
 
-export type ToolStage = "questions" | "dimensions" | "openings" | "studio";
+export type ToolStage = "questions" | "dimensions" | "openings" | "utilities" | "studio";
 
 const STAGES: { key: ToolStage; ar: string; en: string }[] = [
   { key: "questions", ar: "الأسئلة", en: "Questions" },
   { key: "dimensions", ar: "المقاسات", en: "Dimensions" },
   { key: "openings", ar: "الفتحات", en: "Openings" },
+  { key: "utilities", ar: "المرافق", en: "Utilities" },
   { key: "studio", ar: "الاستوديو", en: "Studio" },
 ];
 
