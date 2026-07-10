@@ -11,6 +11,11 @@ import {
   useKitchenToolStore,
   type KitchenLayout,
 } from "@/components/kitchen-tool/store";
+import {
+  FLOOR_OPTIONS,
+  WALL_OPTIONS,
+  type MaterialOption,
+} from "@/components/kitchen-tool/materials";
 
 function LoadingOverlay() {
   const { t } = useLanguage();
@@ -61,6 +66,102 @@ function SceneFallback() {
           "This device or browser does not seem to support WebGL. Try another browser or device — your data is saved."
         )}
       </p>
+    </div>
+  );
+}
+
+function MaterialSwatch({
+  opt,
+  active,
+  onSelect,
+  group,
+}: {
+  opt: MaterialOption;
+  active: boolean;
+  onSelect: () => void;
+  group: string;
+}) {
+  const { t } = useLanguage();
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`flex flex-col items-center gap-1 shrink-0 focus:outline-none group`}
+      title={t(opt.nameAr, opt.nameEn)}
+      data-testid={`button-material-${group}-${opt.id}`}
+    >
+      <span
+        className={`block w-11 h-11 rounded-lg border-2 overflow-hidden transition-all ${
+          active
+            ? "border-primary ring-2 ring-primary/30 scale-105"
+            : "border-border group-hover:border-primary/50"
+        }`}
+        style={!opt.thumb ? { backgroundColor: opt.color } : undefined}
+      >
+        {opt.thumb && (
+          <img
+            src={opt.thumb}
+            alt={t(opt.nameAr, opt.nameEn)}
+            className="w-full h-full object-cover"
+            loading="lazy"
+          />
+        )}
+      </span>
+      <span
+        className={`text-[10px] leading-tight font-bold max-w-[64px] text-center ${
+          active ? "text-primary" : "text-muted-foreground"
+        }`}
+      >
+        {t(opt.nameAr, opt.nameEn)}
+      </span>
+    </button>
+  );
+}
+
+function MaterialBar() {
+  const { t } = useLanguage();
+  const floorMaterialId = useKitchenToolStore((s) => s.floorMaterialId);
+  const wallMaterialId = useKitchenToolStore((s) => s.wallMaterialId);
+  const setFloorMaterial = useKitchenToolStore((s) => s.setFloorMaterial);
+  const setWallMaterial = useKitchenToolStore((s) => s.setWallMaterial);
+
+  return (
+    <div
+      className="flex flex-wrap items-start gap-x-8 gap-y-3 rounded-xl border border-border bg-card px-4 py-3"
+      data-testid="bar-studio-materials"
+    >
+      <div className="flex items-center gap-3 flex-wrap">
+        <span className="text-xs font-bold text-foreground whitespace-nowrap">
+          {t("الأرضية:", "Floor:")}
+        </span>
+        <div className="flex items-start gap-2 flex-wrap">
+          {FLOOR_OPTIONS.map((opt) => (
+            <MaterialSwatch
+              key={opt.id}
+              opt={opt}
+              group="floor"
+              active={opt.id === floorMaterialId}
+              onSelect={() => setFloorMaterial(opt.id)}
+            />
+          ))}
+        </div>
+      </div>
+      <div className="flex items-center gap-3 flex-wrap">
+        <span className="text-xs font-bold text-foreground whitespace-nowrap">
+          {t("الجدران:", "Walls:")}
+        </span>
+        <div className="flex items-start gap-2 flex-wrap">
+          {WALL_OPTIONS.map((opt) => (
+            <MaterialSwatch
+              key={opt.id}
+              opt={opt}
+              group="wall"
+              active={opt.id === wallMaterialId}
+              onSelect={() => setWallMaterial(opt.id)}
+            />
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
@@ -118,8 +219,10 @@ export default function KitchenToolStudioPage() {
             </div>
           </div>
 
+          <MaterialBar />
+
           <div
-            className="relative w-full h-[calc(100vh-240px)] min-h-[420px] rounded-xl overflow-hidden border border-border bg-muted/30"
+            className="relative w-full h-[calc(100vh-340px)] min-h-[400px] rounded-xl overflow-hidden border border-border bg-muted/30"
             data-testid="container-studio-3d"
           >
             <SceneErrorBoundary fallback={<SceneFallback />}>

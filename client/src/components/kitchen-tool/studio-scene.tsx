@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { Suspense, useEffect, useMemo } from "react";
 import * as THREE from "three";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, Environment, useGLTF, useTexture } from "@react-three/drei";
@@ -13,6 +13,12 @@ import {
   getFloorBounds,
   type WallSegment,
 } from "@/components/kitchen-tool/plan-svg";
+import {
+  findFloorOption,
+  findWallOption,
+  type MaterialOption,
+} from "@/components/kitchen-tool/materials";
+import { useKitchenToolStore } from "@/components/kitchen-tool/store";
 
 /* ── Constants (meters unless noted) ─────────────────────── */
 const WALL_T = 0.12;
@@ -25,16 +31,6 @@ const ASSETS = "/kitchen-tool-assets";
 const HDR_URL = `${ASSETS}/hdri/relax_inn_seaview_suite_2k.hdr`;
 const CABINET_URL = `${ASSETS}/cabinet-lower-standard.glb`;
 
-const FLOOR_TEX = {
-  map: `${ASSETS}/floor/textures/laminate_floor_02_diff_2k.jpg`,
-  normalMap: `${ASSETS}/floor/textures/laminate_floor_02_nor_gl_2k.jpg`,
-  roughnessMap: `${ASSETS}/floor/textures/laminate_floor_02_rough_2k.jpg`,
-};
-const WALL_TEX = {
-  map: `${ASSETS}/wall/textures/painted_plaster_wall_diff_2k.jpg`,
-  normalMap: `${ASSETS}/wall/textures/painted_plaster_wall_nor_gl_2k.jpg`,
-  armMap: `${ASSETS}/wall/textures/painted_plaster_wall_arm_2k.jpg`,
-};
 /** Oak veneer countertop maps — prepared for later phases (cabinet runs). */
 export const COUNTERTOP_TEX = {
   map: `${ASSETS}/countertop/textures/oak_veneer_01_diff_2k.jpg`,
@@ -51,6 +47,74 @@ function prepTexture(tex: THREE.Texture, repeatX: number, repeatY: number, srgb:
   t.anisotropy = 8;
   t.needsUpdate = true;
   return t;
+}
+
+/* ── Material rendering (paint or PBR) ───────────────────── */
+function PbrSurfaceMaterial({
+  opt,
+  repeatX,
+  repeatY,
+}: {
+  opt: MaterialOption;
+  repeatX: number;
+  repeatY: number;
+}) {
+  const maps = opt.maps!;
+  const urls = useMemo(() => {
+    const u: Record<string, string> = { map: maps.map };
+    if (maps.normalMap) u.normalMap = maps.normalMap;
+    if (maps.roughnessMap) u.roughnessMap = maps.roughnessMap;
+    if (maps.armMap) u.armMap = maps.armMap;
+    return u;
+  }, [maps]);
+  const tex = useTexture(urls) as Record<string, THREE.Texture>;
+
+  const prepped = useMemo(() => {
+    const out: Record<string, THREE.Texture> = {};
+    for (const [key, t] of Object.entries(tex)) {
+      out[key] = prepTexture(t, repeatX, repeatY, key === "map");
+    }
+    return out;
+  }, [tex, repeatX, repeatY]);
+
+  // Dispose cloned GPU textures when the material changes or unmounts
+  useEffect(() => {
+    const clones = Object.values(prepped);
+    return () => {
+      for (const t of clones) t.dispose();
+    };
+  }, [prepped]);
+
+  return (
+    <meshStandardMaterial
+      map={prepped.map}
+      normalMap={prepped.normalMap}
+      roughnessMap={prepped.roughnessMap ?? prepped.armMap}
+      aoMap={prepped.armMap}
+      metalnessMap={prepped.armMap}
+      color={opt.color ?? "#ffffff"}
+    />
+  );
+}
+
+function SurfaceMaterial({
+  opt,
+  repeatX,
+  repeatY,
+}: {
+  opt: MaterialOption;
+  repeatX: number;
+  repeatY: number;
+}) {
+  if (!opt.maps) {
+    return (
+      <meshStandardMaterial
+        color={opt.color ?? "#eeeeee"}
+        roughness={opt.roughness ?? 0.85}
+      />
+    );
+  }
+  return <PbrSurfaceMaterial opt={opt} repeatX={repeatX} repeatY={repeatY} />;
 }
 
 /* ── Wall geometry: real cut openings ────────────────────── */
@@ -122,11 +186,11 @@ function segVectors(seg: WallSegment) {
 function WallPieceMesh({
   seg,
   piece,
-  textures,
+  option,
 }: {
   seg: WallSegment;
   piece: WallPiece;
-  textures: { map: THREE.Texture; normalMap: THREE.Texture; armMap: THREE.Texture };
+  option: MaterialOption;
 }) {
   const { origin, dir, out, theta } = useMemo(() => segVectors(seg), [seg]);
   const w = piece.u1 - piece.u0;
@@ -140,24 +204,10 @@ function WallPieceMesh({
     return p;
   }, [origin, dir, out, piece]);
 
-  const mats = useMemo(() => {
-    const map = prepTexture(textures.map, w, h, true);
-    const normalMap = prepTexture(textures.normalMap, w, h, false);
-    const arm = prepTexture(textures.armMap, w, h, false);
-    return { map, normalMap, arm };
-  }, [textures, w, h]);
-
   return (
     <mesh position={position} rotation={[0, theta, 0]} castShadow receiveShadow>
       <boxGeometry args={[w, h, WALL_T]} />
-      <meshStandardMaterial
-        map={mats.map}
-        normalMap={mats.normalMap}
-        aoMap={mats.arm}
-        roughnessMap={mats.arm}
-        metalnessMap={mats.arm}
-        color="#f5f2ec"
-      />
+      <SurfaceMaterial key={option.id} opt={option} repeatX={w} repeatY={h} />
     </mesh>
   );
 }
@@ -166,12 +216,12 @@ function Walls({
   segments,
   ceilingM,
   openings,
-  textures,
+  option,
 }: {
   segments: WallSegment[];
   ceilingM: number;
   openings: KitchenOpening[];
-  textures: { map: THREE.Texture; normalMap: THREE.Texture; armMap: THREE.Texture };
+  option: MaterialOption;
 }) {
   return (
     <>
@@ -182,7 +232,7 @@ function Walls({
           openings.filter((o) => o.wallId === seg.id)
         );
         return pieces.map((p, i) => (
-          <WallPieceMesh key={`${seg.id}-${i}`} seg={seg} piece={p} textures={textures} />
+          <WallPieceMesh key={`${seg.id}-${i}`} seg={seg} piece={p} option={option} />
         ));
       })}
     </>
@@ -192,33 +242,20 @@ function Walls({
 /* ── Floor & ceiling ─────────────────────────────────────── */
 function Floor({
   bounds,
-  textures,
+  option,
 }: {
   bounds: { minX: number; minY: number; maxX: number; maxY: number };
-  textures: { map: THREE.Texture; normalMap: THREE.Texture; roughnessMap: THREE.Texture };
+  option: MaterialOption;
 }) {
   const w = (bounds.maxX - bounds.minX) * CM;
   const d = (bounds.maxY - bounds.minY) * CM;
   const cx = ((bounds.minX + bounds.maxX) / 2) * CM;
   const cz = ((bounds.minY + bounds.maxY) / 2) * CM;
 
-  const mats = useMemo(
-    () => ({
-      map: prepTexture(textures.map, w, d, true),
-      normalMap: prepTexture(textures.normalMap, w, d, false),
-      roughnessMap: prepTexture(textures.roughnessMap, w, d, false),
-    }),
-    [textures, w, d]
-  );
-
   return (
     <mesh position={[cx, 0, cz]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
       <planeGeometry args={[w, d]} />
-      <meshStandardMaterial
-        map={mats.map}
-        normalMap={mats.normalMap}
-        roughnessMap={mats.roughnessMap}
-      />
+      <SurfaceMaterial key={option.id} opt={option} repeatX={w} repeatY={d} />
     </mesh>
   );
 }
@@ -421,12 +458,10 @@ function SceneContents({
   const bounds = useMemo(() => getFloorBounds(segments), [segments]);
   const ceilingM = ceilingHeight * CM;
 
-  const floorTex = useTexture(FLOOR_TEX);
-  const wallTexRaw = useTexture({
-    map: WALL_TEX.map,
-    normalMap: WALL_TEX.normalMap,
-    armMap: WALL_TEX.armMap,
-  });
+  const floorMaterialId = useKitchenToolStore((s) => s.floorMaterialId);
+  const wallMaterialId = useKitchenToolStore((s) => s.wallMaterialId);
+  const floorOption = findFloorOption(floorMaterialId);
+  const wallOption = findWallOption(wallMaterialId);
 
   const center = useMemo(
     () =>
@@ -461,14 +496,18 @@ function SceneContents({
       />
       <ambientLight intensity={0.12} />
 
-      <Floor bounds={bounds} textures={floorTex as any} />
+      <Suspense fallback={null}>
+        <Floor bounds={bounds} option={floorOption} />
+      </Suspense>
       <Ceiling bounds={bounds} ceilingM={ceilingM} />
-      <Walls
-        segments={segments}
-        ceilingM={ceilingM}
-        openings={openings}
-        textures={wallTexRaw as any}
-      />
+      <Suspense fallback={null}>
+        <Walls
+          segments={segments}
+          ceilingM={ceilingM}
+          openings={openings}
+          option={wallOption}
+        />
+      </Suspense>
       <Cabinet segments={segments} />
       <UtilityMarkers utilities={utilities} segments={segments} />
 

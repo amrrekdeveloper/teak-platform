@@ -90,6 +90,9 @@ interface KitchenToolState {
   ceilingHeight: number;
   openings: KitchenOpening[];
   utilities: KitchenUtility[];
+  /** Selected material ids for the 3D studio. */
+  floorMaterialId: string;
+  wallMaterialId: string;
   setAnswer: <K extends keyof KitchenAnswers>(key: K, value: KitchenAnswers[K]) => void;
   setStep: (step: number) => void;
   ensureWalls: (layout: KitchenLayout) => void;
@@ -101,6 +104,8 @@ interface KitchenToolState {
   addUtility: (utility: KitchenUtility) => void;
   updateUtility: (id: string, patch: Partial<Omit<KitchenUtility, "id" | "kind">>) => void;
   removeUtility: (id: string) => void;
+  setFloorMaterial: (id: string) => void;
+  setWallMaterial: (id: string) => void;
   reset: () => void;
 }
 
@@ -120,6 +125,8 @@ export const useKitchenToolStore = create<KitchenToolState>()(
       ceilingHeight: CEILING_DEFAULT,
       openings: [],
       utilities: [],
+      floorMaterialId: "laminate",
+      wallMaterialId: "plaster",
       setAnswer: (key, value) =>
         set((state) => ({ answers: { ...state.answers, [key]: value } })),
       setStep: (step) => set({ step }),
@@ -176,6 +183,8 @@ export const useKitchenToolStore = create<KitchenToolState>()(
         set((state) => ({
           utilities: (state.utilities ?? []).filter((u) => u.id !== id),
         })),
+      setFloorMaterial: (id) => set({ floorMaterialId: id }),
+      setWallMaterial: (id) => set({ wallMaterialId: id }),
       reset: () =>
         set({
           answers: initialAnswers,
@@ -184,6 +193,8 @@ export const useKitchenToolStore = create<KitchenToolState>()(
           ceilingHeight: CEILING_DEFAULT,
           openings: [],
           utilities: [],
+          floorMaterialId: "laminate",
+          wallMaterialId: "plaster",
         }),
     }),
     { name: "teak-kitchen-tool" }
