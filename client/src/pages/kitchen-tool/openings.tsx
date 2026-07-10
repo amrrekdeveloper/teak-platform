@@ -317,25 +317,47 @@ export default function KitchenToolOpeningsPage() {
                   </div>
                 </div>
                 {selectedOpening.type === "door" && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full font-bold"
-                    onClick={() =>
-                      updateOpening(selectedOpening.id, {
-                        swing: (selectedOpening.swing ?? "in") === "in" ? "out" : "in",
-                      })
-                    }
-                    data-testid="button-toggle-swing"
-                  >
-                    <ArrowLeftRight className="w-4 h-4 me-2" />
-                    {t("عكس اتجاه الفتح", "Flip Swing Direction")}
-                    <span className="text-xs text-muted-foreground font-normal ms-2">
-                      {(selectedOpening.swing ?? "in") === "in"
-                        ? t("(للداخل)", "(inward)")
-                        : t("(للخارج)", "(outward)")}
-                    </span>
-                  </Button>
+                  <div className="space-y-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full font-bold"
+                      onClick={() =>
+                        updateOpening(selectedOpening.id, {
+                          swing: (selectedOpening.swing ?? "in") === "in" ? "out" : "in",
+                        })
+                      }
+                      data-testid="button-toggle-swing"
+                    >
+                      <ArrowLeftRight className="w-4 h-4 me-2" />
+                      {t("عكس اتجاه الفتح", "Flip Swing Direction")}
+                      <span className="text-xs text-muted-foreground font-normal ms-2">
+                        {(selectedOpening.swing ?? "in") === "in"
+                          ? t("(للداخل)", "(inward)")
+                          : t("(للخارج)", "(outward)")}
+                      </span>
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full font-bold"
+                      onClick={() =>
+                        updateOpening(selectedOpening.id, {
+                          hinge:
+                            (selectedOpening.hinge ?? "start") === "start" ? "end" : "start",
+                        })
+                      }
+                      data-testid="button-toggle-hinge"
+                    >
+                      <FlipHorizontal2 className="w-4 h-4 me-2" />
+                      {t("عكس جهة المفصلة", "Flip Hinge Side")}
+                      <span className="text-xs text-muted-foreground font-normal ms-2">
+                        {(selectedOpening.hinge ?? "start") === "start"
+                          ? t("(يسار)", "(left)")
+                          : t("(يمين)", "(right)")}
+                      </span>
+                    </Button>
+                  </div>
                 )}
               </div>
             ) : (

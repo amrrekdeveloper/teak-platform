@@ -333,24 +333,29 @@ export default function KitchenPlanSvg({
 
         let symbol: JSX.Element;
         if (o.type === "door") {
-          // Door leaf from hinge S into the room + quarter-circle swing arc to E
-          const tip = { x: S.x + ix * w, y: S.y + iy * w };
+          // Door leaf from the hinge point + quarter-circle swing arc to the opposite jamb.
+          // Hinge side "end" mirrors the leaf/arc left↔right along the wall.
+          const hingeEnd = o.hinge === "end";
+          const H = hingeEnd ? E : S;
+          const J = hingeEnd ? S : E;
+          const tip = { x: H.x + ix * w, y: H.y + iy * w };
           const cross = ux * iy - uy * ix;
-          const sweep = cross > 0 ? 0 : 1;
+          let sweep = cross > 0 ? 0 : 1;
+          if (hingeEnd) sweep = sweep === 0 ? 1 : 0;
           symbol = (
             <g style={{ pointerEvents: "none" }}>
               {jambLine(S, "j1")}
               {jambLine(E, "j2")}
               <line
-                x1={S.x}
-                y1={S.y}
+                x1={H.x}
+                y1={H.y}
                 x2={tip.x}
                 y2={tip.y}
                 strokeWidth={SYM_STROKE}
                 className="stroke-foreground/70"
               />
               <path
-                d={`M ${tip.x} ${tip.y} A ${w} ${w} 0 0 ${sweep} ${E.x} ${E.y}`}
+                d={`M ${tip.x} ${tip.y} A ${w} ${w} 0 0 ${sweep} ${J.x} ${J.y}`}
                 fill="none"
                 strokeWidth={SYM_STROKE * 0.8}
                 strokeDasharray={`${4 * k} ${3 * k}`}

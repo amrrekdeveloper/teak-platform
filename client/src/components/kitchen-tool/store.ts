@@ -20,6 +20,7 @@ export interface KitchenWall {
 
 export type OpeningType = "door" | "window";
 export type DoorSwing = "in" | "out";
+export type DoorHinge = "start" | "end";
 
 export interface KitchenOpening {
   id: string;
@@ -29,6 +30,8 @@ export interface KitchenOpening {
   distanceFromWallStart: number;
   /** Doors only. Defaults to "in" (opens into the room) when absent. */
   swing?: DoorSwing;
+  /** Doors only. Hinge side along the wall. Defaults to "start" when absent. */
+  hinge?: DoorHinge;
 }
 
 export const WALL_MIN = 120;
