@@ -135,10 +135,12 @@ export default function KitchenPlanSvg({
     const seg = segById.get(o.wallId);
     if (!seg) continue;
     const reach = o.type === "door" ? o.width : 12;
+    // Door swing side: "out" mirrors the symbol to the outside of the room
+    const sideSign = o.type === "door" && o.swing === "out" ? 1 : -1;
     const a = pointAlong(seg, o.distanceFromWallStart);
     const b = pointAlong(seg, o.distanceFromWallStart + o.width);
-    px.push(a.x - seg.nx * reach, b.x - seg.nx * reach);
-    py.push(a.y - seg.ny * reach, b.y - seg.ny * reach);
+    px.push(a.x + sideSign * seg.nx * reach, b.x + sideSign * seg.nx * reach);
+    py.push(a.y + sideSign * seg.ny * reach, b.y + sideSign * seg.ny * reach);
   }
   const rawMinX = Math.min(...px);
   const rawMaxX = Math.max(...px);
@@ -304,9 +306,10 @@ export default function KitchenPlanSvg({
         const seg = segById.get(o.wallId);
         if (!seg) return null;
         const { ux, uy } = unitDir(seg);
-        // inward = opposite of the outward normal
-        const ix = -seg.nx;
-        const iy = -seg.ny;
+        // Symbol side: inward by default, mirrored outward when door swing = "out"
+        const swingOut = o.type === "door" && o.swing === "out";
+        const ix = swingOut ? seg.nx : -seg.nx;
+        const iy = swingOut ? seg.ny : -seg.ny;
         const S = pointAlong(seg, o.distanceFromWallStart);
         const E = pointAlong(seg, o.distanceFromWallStart + o.width);
         const w = o.width;

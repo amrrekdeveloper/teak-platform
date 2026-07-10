@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
-import { ChevronRight, ChevronLeft, DoorOpen, AppWindow, X } from "lucide-react";
+import { ChevronRight, ChevronLeft, DoorOpen, AppWindow, X, ArrowLeftRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -316,6 +316,27 @@ export default function KitchenToolOpeningsPage() {
                     />
                   </div>
                 </div>
+                {selectedOpening.type === "door" && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full font-bold"
+                    onClick={() =>
+                      updateOpening(selectedOpening.id, {
+                        swing: (selectedOpening.swing ?? "in") === "in" ? "out" : "in",
+                      })
+                    }
+                    data-testid="button-toggle-swing"
+                  >
+                    <ArrowLeftRight className="w-4 h-4 me-2" />
+                    {t("عكس اتجاه الفتح", "Flip Swing Direction")}
+                    <span className="text-xs text-muted-foreground font-normal ms-2">
+                      {(selectedOpening.swing ?? "in") === "in"
+                        ? t("(للداخل)", "(inward)")
+                        : t("(للخارج)", "(outward)")}
+                    </span>
+                  </Button>
+                )}
               </div>
             ) : (
               <p className="text-sm text-muted-foreground bg-muted/50 rounded-lg p-3" data-testid="text-openings-hint">
