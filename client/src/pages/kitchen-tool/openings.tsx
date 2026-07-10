@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
-import { ChevronRight, ChevronLeft, DoorOpen, AppWindow, X, ArrowLeftRight } from "lucide-react";
+import { ChevronRight, ChevronLeft, DoorOpen, AppWindow, X, ArrowLeftRight, FlipHorizontal2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
