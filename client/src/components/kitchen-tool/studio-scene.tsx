@@ -1,7 +1,7 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { Canvas } from "@react-three/fiber";
-import { OrbitControls, Environment, useGLTF, useTexture } from "@react-three/drei";
+import { OrbitControls, Environment, useGLTF, useTexture, Html } from "@react-three/drei";
 import {
   type KitchenLayout,
   type KitchenWall,
@@ -536,6 +536,107 @@ function UtilityMarkers({
   );
 }
 
+/* ── Live drag measurements ──────────────────────────────── */
+interface DragMeasureInfo {
+  wallId: string;
+  offset: number;
+  width: number;
+  mountY: number;
+  height: number;
+  depth: number;
+  leftEdge: number;
+  rightEdge: number;
+  leftIsWall: boolean;
+  rightIsWall: boolean;
+}
+
+function MeasureLabel({
+  position,
+  text,
+  sub,
+  testId,
+}: {
+  position: THREE.Vector3;
+  text: string;
+  sub?: string;
+  testId: string;
+}) {
+  return (
+    <Html position={position} center zIndexRange={[100, 0]} style={{ pointerEvents: "none" }}>
+      <div
+        data-testid={testId}
+        style={{
+          background: "rgba(20, 22, 26, 0.85)",
+          color: "#fff",
+          borderRadius: 6,
+          padding: "2px 8px",
+          fontSize: 12,
+          fontWeight: 700,
+          whiteSpace: "nowrap",
+          textAlign: "center",
+          direction: "rtl",
+          boxShadow: "0 1px 4px rgba(0,0,0,0.35)",
+          lineHeight: 1.3,
+        }}
+      >
+        {text}
+        {sub && (
+          <div style={{ fontSize: 9, fontWeight: 500, opacity: 0.75 }}>{sub}</div>
+        )}
+      </div>
+    </Html>
+  );
+}
+
+function DragMeasurements({
+  info,
+  segments,
+}: {
+  info: DragMeasureInfo;
+  segments: WallSegment[];
+}) {
+  const seg = segments.find((s) => s.id === info.wallId);
+  if (!seg) return null;
+  const { origin, dir, out } = segVectors(seg);
+  const inward = out.clone().negate();
+  const labelY = info.mountY + info.height + 0.14;
+  const frontOff = info.depth + 0.06;
+
+  const at = (along: number) =>
+    origin
+      .clone()
+      .addScaledVector(dir, along)
+      .addScaledVector(inward, frontOff)
+      .setY(labelY);
+
+  const leftGap = Math.max(info.offset - info.leftEdge, 0);
+  const rightGap = Math.max(info.rightEdge - (info.offset + info.width), 0);
+  const cm = (m: number) => `${Math.round(m / CM)} سم`;
+
+  return (
+    <>
+      <MeasureLabel
+        position={at((info.leftEdge + info.offset) / 2)}
+        text={cm(leftGap)}
+        sub={info.leftIsWall ? "من بداية الجدار" : "من العنصر المجاور"}
+        testId="label-drag-gap-left"
+      />
+      <MeasureLabel
+        position={at(info.offset + info.width / 2)}
+        text={cm(info.width)}
+        sub={`الإزاحة ${cm(info.offset)}`}
+        testId="label-drag-offset"
+      />
+      <MeasureLabel
+        position={at((info.offset + info.width + info.rightEdge) / 2)}
+        text={cm(rightGap)}
+        sub={info.rightIsWall ? "إلى نهاية الجدار" : "إلى العنصر المجاور"}
+        testId="label-drag-gap-right"
+      />
+    </>
+  );
+}
+
 /* ── Scene contents (inside Suspense) ────────────────────── */
 function SceneContents({
   layout,
@@ -560,11 +661,62 @@ function SceneContents({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const controlsRef = useRef<any>(null);
   const [drag, setDrag] = useState<{ id: string; def: CabinetDef } | null>(null);
+  const [dragInfo, setDragInfo] = useState<DragMeasureInfo | null>(null);
+
+  /** Compute live measurement info for a cabinet at (wallId, offset). Read-only
+      use of blockedIntervals — no collision-engine changes. */
+  const computeDragInfo = (
+    wallId: string,
+    offset: number,
+    def: CabinetDef,
+    excludeId: string
+  ): DragMeasureInfo | null => {
+    const seg = segments.find((s) => s.id === wallId);
+    if (!seg) return null;
+    const wallLenM = seg.length * CM;
+    const intervals = blockedIntervals(
+      wallId,
+      def.level,
+      placedCabinets,
+      segments,
+      openings,
+      excludeId
+    );
+    const left = offset;
+    const right = offset + def.width;
+    let leftEdge = 0;
+    let leftIsWall = true;
+    let rightEdge = wallLenM;
+    let rightIsWall = true;
+    for (const iv of intervals) {
+      if (iv.b <= left + 1e-4 && iv.b > leftEdge) {
+        leftEdge = iv.b;
+        leftIsWall = false;
+      }
+      if (iv.a >= right - 1e-4 && iv.a < rightEdge) {
+        rightEdge = iv.a;
+        rightIsWall = false;
+      }
+    }
+    return {
+      wallId,
+      offset,
+      width: def.width,
+      mountY: def.mountY,
+      height: def.height,
+      depth: def.depth,
+      leftEdge,
+      rightEdge,
+      leftIsWall,
+      rightIsWall,
+    };
+  };
 
   useEffect(() => {
     if (!drag) return;
     const up = () => {
       setDrag(null);
+      setDragInfo(null);
       if (controlsRef.current) controlsRef.current.enabled = true;
     };
     window.addEventListener("pointerup", up);
@@ -582,6 +734,8 @@ function SceneContents({
     // OrbitControls' native DOM listeners on the same pointerdown.
     if (controlsRef.current) controlsRef.current.enabled = false;
     setDrag({ id, def });
+    const placed = placedCabinets.find((c) => c.id === id);
+    if (placed) setDragInfo(computeDragInfo(placed.wallId, placed.offset, def, id));
   };
 
   const handleDragMove = (e: ThreeEvent<PointerEvent>) => {
@@ -608,6 +762,7 @@ function SceneContents({
     if (pp.nearestWallId !== placed.wallId || Math.abs(resolved - placed.offset) > 1e-4) {
       movePlacedCabinet(placed.id, pp.nearestWallId, resolved);
     }
+    setDragInfo(computeDragInfo(pp.nearestWallId, resolved, def, placed.id));
   };
 
   const handleFloorDown = () => {
@@ -689,6 +844,8 @@ function SceneContents({
         />
       </Suspense>
       <UtilityMarkers utilities={utilities} segments={segments} />
+
+      {drag && dragInfo && <DragMeasurements info={dragInfo} segments={segments} />}
 
       <OrbitControls
         ref={controlsRef}
