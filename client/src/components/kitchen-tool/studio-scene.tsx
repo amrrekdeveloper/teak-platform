@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, Environment, useGLTF, useTexture } from "@react-three/drei";
@@ -557,26 +557,38 @@ function SceneContents({
 
   const placedCabinets = useKitchenToolStore((s) => s.placedCabinets ?? []);
   const movePlacedCabinet = useKitchenToolStore((s) => s.movePlacedCabinet);
-  const [dragId, setDragId] = useState<string | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const controlsRef = useRef<any>(null);
+  const [drag, setDrag] = useState<{ id: string; def: CabinetDef } | null>(null);
 
   useEffect(() => {
-    if (!dragId) return;
-    const up = () => setDragId(null);
+    if (!drag) return;
+    const up = () => {
+      setDrag(null);
+      if (controlsRef.current) controlsRef.current.enabled = true;
+    };
     window.addEventListener("pointerup", up);
-    return () => window.removeEventListener("pointerup", up);
-  }, [dragId]);
+    window.addEventListener("pointercancel", up);
+    return () => {
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+    };
+  }, [drag]);
 
   const handleGrab = (id: string, def: CabinetDef) => {
     onSelectCabinet?.(id);
-    if (!def.corner) setDragId(id);
+    if (def.corner) return;
+    // Disable orbit synchronously — the React prop update alone races with
+    // OrbitControls' native DOM listeners on the same pointerdown.
+    if (controlsRef.current) controlsRef.current.enabled = false;
+    setDrag({ id, def });
   };
 
-  const handleFloorMove = (e: ThreeEvent<PointerEvent>) => {
-    if (!dragId) return;
-    const placed = placedCabinets.find((c) => c.id === dragId);
+  const handleDragMove = (e: ThreeEvent<PointerEvent>) => {
+    if (!drag) return;
+    const placed = placedCabinets.find((c) => c.id === drag.id);
     if (!placed) return;
-    const def = findCabinetDef(placed.catalogId);
-    if (!def) return;
+    const def = drag.def;
     const pp = planPointAt(segments, e.point.x / CM, e.point.z / CM);
     if (!pp.nearestWallId) return;
     const seg = segments.find((s) => s.id === pp.nearestWallId);
@@ -639,10 +651,27 @@ function SceneContents({
         <Floor
           bounds={bounds}
           option={floorOption}
-          onPointerMove={handleFloorMove}
           onPointerDown={handleFloorDown}
         />
       </Suspense>
+
+      {/* Invisible drag plane at the grabbed cabinet's height — captures
+          pointer movement anywhere on screen, independent of the floor. */}
+      {drag && (
+        <mesh
+          position={[center.x, drag.def.mountY, center.z]}
+          rotation={[-Math.PI / 2, 0, 0]}
+          onPointerMove={handleDragMove}
+        >
+          <planeGeometry args={[Math.max(roomSpan * 12, 60), Math.max(roomSpan * 12, 60)]} />
+          <meshBasicMaterial
+            transparent
+            opacity={0}
+            depthWrite={false}
+            side={THREE.DoubleSide}
+          />
+        </mesh>
+      )}
       <Ceiling bounds={bounds} ceilingM={ceilingM} />
       <Suspense fallback={null}>
         <Walls
@@ -662,12 +691,13 @@ function SceneContents({
       <UtilityMarkers utilities={utilities} segments={segments} />
 
       <OrbitControls
+        ref={controlsRef}
         target={[center.x, 1, center.z]}
         maxPolarAngle={Math.PI / 2 - 0.06}
         minDistance={0.9}
         maxDistance={Math.max(roomSpan * 2.4, 7)}
         enableDamping
-        enabled={!dragId}
+        enabled={!drag}
       />
     </>
   );

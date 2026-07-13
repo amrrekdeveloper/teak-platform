@@ -1,0 +1,31 @@
+TASK: Fix cabinet drag-and-drop in the 3D kitchen studio.
+
+CONTEXT: In client/src/components/kitchen-tool/studio-scene.tsx, cabinet dragging currently works by computing the drag position from the mouse ray's intersection with the FLOOR mesh only (onPointerMove is wired on the <Floor> component, handled in handleFloorMove inside SceneContents). This is broken:
+- Upper (wall-mounted) cabinets sit ~1.05m-1.4m above the floor. When the user's cursor is visually near the wall/cabinet, the camera ray through that screen point often does NOT intersect the floor plane at all, so pointer-move events barely fire and the cabinet barely moves.
+- Base cabinets sit near the floor but movement is still jerky/intermittent, because the ray only registers when the cursor is precisely over an unobstructed patch of visible floor — if the cursor drifts over a wall, another cabinet, or outside the floor bounds, the floor stops receiving pointer-move events and dragging stalls.
+- Separately, OrbitControls is disabled via a React state variable (dragId) that is set inside handleGrab (an onPointerDown handler on the cabinet). Because OrbitControls attaches its own native DOM listeners directly to the canvas (outside React's synthetic event system), there is a race: on the same press that grabs a cabinet, OrbitControls may already start a native drag-to-orbit before the React state update disabling it takes effect. Result: the camera sometimes rotates instead of (or while) moving the cabinet.
+
+REQUIRED FIX:
+
+1. Replace the floor-only drag detection with an invisible, always-present horizontal "drag plane" that is repositioned to match the Y height of the cabinet currently being dragged (use the cabinet's mountY, e.g. def.mountY converted appropriately) whenever a drag starts. Raycast pointer movement against this plane instead of the floor mesh, so movement is captured reliably no matter where on screen the cursor is, regardless of what's visually behind it. This plane should be large enough to cover the whole room and can be invisible (visible={false} or an material with transparent + opacity 0, but must still be raycastable — do NOT set raycast to null).
+
+2. Keep all existing placement logic UNCHANGED: the collision/overlap engine in client/src/components/kitchen-tool/cabinets.ts (blockedIntervals, resolveDragOffset, canPlaceAt, findFreeOffset) must continue to be used exactly as today to resolve the final wall + offset from the raycast hit point. Only change HOW the raw drag point is captured (drag-plane vs floor), not the resolution logic.
+
+3. Fix the camera race: disable OrbitControls synchronously and immediately when a cabinet pointerDown fires, not only via the React state re-render. Use a ref to the OrbitControls instance (or its "enabled" property) and set it directly (e.g. controlsRef.current.enabled = false) inside the same handler that starts the drag, in addition to (or instead of) relying solely on the enabled={!dragId} prop. Re-enable it on pointer up the same way.
+
+4. Corner cabinets remain non-draggable exactly as today (handleGrab already skips setDragId for def.corner — do not change that behavior).
+
+SAFETY RULES:
+- Only modify client/src/components/kitchen-tool/studio-scene.tsx (and client/src/pages/kitchen-tool/studio.tsx ONLY if strictly necessary for wiring — explain why if you touch it).
+- Do NOT modify any other file, page, or route in the project. Do NOT touch client/src/pages/design-studio.tsx, designer-board.tsx, or scene-3d.tsx (unrelated legacy tool).
+- Do NOT change any package.json dependency versions.
+- Do NOT modify the collision engine logic in cabinets.ts.
+- Make a Checkpoint only after the fix is verified working.
+
+ACCEPTANCE (verify visually in the browser before declaring done — actually drag cabinets with the mouse, don't just read the code):
+- Add an upper (wall) cabinet and a base cabinet. Drag each by clicking and moving the mouse in one continuous motion (no need to keep the cursor over the visible floor) — movement must track the cursor smoothly and continuously along the wall, for BOTH levels equally.
+- While dragging, the camera must NEVER rotate/orbit — only the cabinet moves.
+- Cabinets still cannot overlap each other or pass through door/window openings (existing collision rules still enforced).
+- Corner cabinets still cannot be dragged (unchanged).
+- Releasing the mouse drops the cabinet at a valid resolved position; releasing outside any valid position snaps it back to the nearest legal spot (current behavior).
+- No console errors. All previously approved phases (materials, plan, dimensions, openings, utilities) remain untouched and working.
