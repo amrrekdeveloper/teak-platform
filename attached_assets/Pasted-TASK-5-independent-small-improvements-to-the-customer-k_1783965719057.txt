@@ -1,0 +1,46 @@
+TASK: 5 independent small improvements to the customer kitchen designer tool. Treat each as a separate sub-task — complete and verify each one, even if another is harder than expected.
+
+──────────────────────────────
+1) FULL-WIDTH STUDIO LAYOUT
+File: client/src/pages/kitchen-tool/studio.tsx
+Currently the wrapping div uses `max-w-6xl mx-auto w-full px-6 py-6` which caps the whole content (including the 3D canvas + cabinet catalog sidebar) to ~1152px centered on screen, wasting side space on wide monitors — unlike IKEA Kitchen Planner which uses near-full browser width for the design view.
+Fix: remove the max-w-6xl cap specifically for the row containing the 3D viewport + cabinet catalog (`<div className="flex gap-4 h-[calc(100vh-340px)] min-h-[400px]">`) so it spans nearly the full browser width with small edge padding (e.g. px-4 md:px-6), not centered/capped. The header title and material bar above it can stay as-is or widen too for consistency — your call.
+
+──────────────────────────────
+2) RENAME CTA BUTTON
+File: client/src/pages/kitchen-tool/landing.tsx
+Change the button text from "صمّم وأبدع" / "Design & Create" to "أداة تصميم مطابخ تيك الذكية" / "Teak Smart Kitchen Design Tool" — in BOTH places it appears (hero section button, and the bottom CTA button near the end of the page).
+
+──────────────────────────────
+3) EDITABLE UTILITY MOUNTING HEIGHT
+File: client/src/pages/kitchen-tool/utilities.tsx
+Currently, when a utility (water/outlet/switch/drain) is selected, only "distance from wall start" is editable. The height (heightFromFloor) is silently fixed to UTILITY_DEFAULT_HEIGHT at creation and can never be changed afterward.
+Fix: add a numeric input "الارتفاع من الأرضية (سم)" / "Height from floor (cm)" next to the existing distance field — for WALL-MOUNTED utilities only (water, outlet, switch, and wall-mounted drains). Wire it to the existing store action `updateUtility(id, { heightFromFloor: value })`. Floor drains (no wallId) keep height fixed at 0 as today — do not show this field for them.
+
+──────────────────────────────
+4) ADD "GAS OUTLET" UTILITY TYPE
+Files: client/src/components/kitchen-tool/store.ts, client/src/pages/kitchen-tool/utilities.tsx, client/src/components/kitchen-tool/studio-scene.tsx
+Add "gas" to the `UtilityKind` union type in store.ts, with a default height entry in UTILITY_DEFAULT_HEIGHT (55cm is a reasonable default, same as water — user can adjust it via Task 3). Add it to KIND_LABELS ("مخرج غاز" / "Gas Outlet") and to the `paletteButtons` array in utilities.tsx with a distinct lucide-react icon (e.g. Flame). Add a matching 3D marker in the `UtilityMarkers` function in studio-scene.tsx — follow the same `WallMarker` pattern already used for water/outlet/switch/drain, with a simple visually-distinct shape (e.g. a small valve/knob).
+
+──────────────────────────────
+5) PROFESSIONAL 2D FLOOR PLAN INSIDE THE STUDIO PAGE
+Files: client/src/components/kitchen-tool/plan-svg.tsx, client/src/pages/kitchen-tool/studio.tsx
+The Studio page currently shows only the 3D view — no 2D top-down floor plan, even though the KitchenPlanSvg component (already working in the dimensions/openings/utilities steps) exists.
+5a. In plan-svg.tsx, add a new OPTIONAL prop `placedCabinets` (default empty array) to KitchenPlanSvg's props. When provided, render each placed cabinet as a simple rectangular footprint on its wall — derive position/size from the cabinet's wallId + offset + width, and depth per level from CABINET_DEFS/findCabinetDef in cabinets.ts. This must be PURELY ADDITIVE: when `placedCabinets` is omitted, rendering must stay pixel-identical to today for the three existing pages (dimensions.tsx, openings.tsx, utilities.tsx) that use this component WITHOUT that prop — do not change their behavior at all.
+5b. In studio.tsx, add a 2D top-down plan panel using KitchenPlanSvg (layout, walls, openings, utilities, and placedCabinets from the store), read-only, live-updating. Fit it into the layout sensibly after Task 1's width change (e.g. a toggleable panel, or alongside the 3D view) — your choice of placement, prioritize not cluttering the 3D view.
+
+──────────────────────────────
+SAFETY RULES:
+- Only touch these files: client/src/pages/kitchen-tool/studio.tsx, client/src/pages/kitchen-tool/landing.tsx, client/src/pages/kitchen-tool/utilities.tsx, client/src/components/kitchen-tool/store.ts, client/src/components/kitchen-tool/studio-scene.tsx, client/src/components/kitchen-tool/plan-svg.tsx. No other file anywhere in the project.
+- Do NOT touch client/src/pages/design-studio.tsx, designer-board.tsx, or scene-3d.tsx (unrelated legacy tool).
+- Do NOT change any package.json dependency versions.
+- Do NOT modify the collision/placement engine in cabinets.ts.
+- Make a Checkpoint only after ALL 5 sub-tasks are verified working.
+
+ACCEPTANCE (verify each visually in the browser before declaring done):
+1. Studio 3D view + cabinet catalog now span near-full browser width, not boxed in the center like before.
+2. Both "صمّم وأبدع" buttons on the landing page now read "أداة تصميم مطابخ تيك الذكية".
+3. Selecting a wall-mounted utility shows an editable height field; changing it moves its 3D marker up/down accordingly. Floor drains show no height field.
+4. "مخرج غاز" appears as a 5th option in the utilities palette, placeable on a wall, with its own icon and a visually distinct 3D marker.
+5. The Studio page shows a live 2D top-down plan including placed cabinet footprints. The dimensions/openings/utilities pages still render their 2D plans exactly as before — no visual regression there.
+- No console errors anywhere in the tool.

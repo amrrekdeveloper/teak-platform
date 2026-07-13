@@ -105,7 +105,7 @@ export default function KitchenToolLandingPage() {
               </p>
               <a href="/kitchen-designer/setup" data-testid="link-kitchen-cta">
                 <Button size="lg" className="text-lg font-bold px-10 h-14 shadow-lg shadow-primary/25">
-                  {t("صمّم وأبدع", "Design & Create")}
+                  {t("أداة تصميم مطابخ تيك الذكية", "Teak Smart Kitchen Design Tool")}
                   <ArrowLeft className="w-5 h-5 ms-2 rtl:rotate-0 ltr:rotate-180" />
                 </Button>
               </a>
@@ -166,7 +166,7 @@ export default function KitchenToolLandingPage() {
             </p>
             <a href="/kitchen-designer/setup" data-testid="link-kitchen-cta-bottom">
               <Button size="lg" className="text-lg font-bold px-10 h-14">
-                {t("صمّم وأبدع", "Design & Create")}
+                {t("أداة تصميم مطابخ تيك الذكية", "Teak Smart Kitchen Design Tool")}
               </Button>
             </a>
           </div>

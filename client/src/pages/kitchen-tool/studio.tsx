@@ -1,6 +1,6 @@
 import { Component, Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useLocation } from "wouter";
-import { ChevronRight, ChevronLeft, Home, Loader2, Trash2, Plus } from "lucide-react";
+import { ChevronRight, ChevronLeft, Home, Loader2, Trash2, Plus, Map, X } from "lucide-react";
 import { useProgress } from "@react-three/drei";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -17,7 +17,7 @@ import {
   WALL_OPTIONS,
   type MaterialOption,
 } from "@/components/kitchen-tool/materials";
-import { getWallSegments } from "@/components/kitchen-tool/plan-svg";
+import KitchenPlanSvg, { getWallSegments } from "@/components/kitchen-tool/plan-svg";
 import {
   CABINET_DEFS,
   findCabinetDef,
@@ -254,6 +254,7 @@ export default function KitchenToolStudioPage() {
   const addPlacedCabinet = useKitchenToolStore((s) => s.addPlacedCabinet);
   const removePlacedCabinet = useKitchenToolStore((s) => s.removePlacedCabinet);
   const [selectedCabinetId, setSelectedCabinetId] = useState<string | null>(null);
+  const [showPlan, setShowPlan] = useState(true);
   const layout: KitchenLayout = answers.layout ?? "L";
   const BackIcon = isRTL ? ChevronRight : ChevronLeft;
 
@@ -311,7 +312,7 @@ export default function KitchenToolStudioPage() {
           <ToolStages current="studio" />
         </div>
 
-        <div className="flex-1 max-w-6xl mx-auto w-full px-6 py-6 flex flex-col gap-4">
+        <div className="flex-1 w-full px-4 md:px-6 py-6 flex flex-col gap-4">
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div>
               <h1 className="text-2xl font-bold" data-testid="text-studio-title">
@@ -364,6 +365,48 @@ export default function KitchenToolStudioPage() {
                   />
                 </Suspense>
               </SceneErrorBoundary>
+              <div className="absolute bottom-3 start-3 z-10">
+                {showPlan ? (
+                  <div
+                    className="rounded-lg border border-border bg-card/95 backdrop-blur shadow-md p-2 w-[280px]"
+                    data-testid="panel-studio-plan"
+                  >
+                    <div className="flex items-center justify-between mb-1 px-1">
+                      <span className="text-[11px] font-bold text-muted-foreground">
+                        {t("المخطط ثنائي الأبعاد", "2D Plan")}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setShowPlan(false)}
+                        className="text-muted-foreground hover:text-foreground"
+                        data-testid="button-hide-plan"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    <KitchenPlanSvg
+                      layout={layout}
+                      walls={walls}
+                      openings={openings}
+                      utilities={utilities}
+                      placedCabinets={placedCabinets}
+                      t={t}
+                      className="w-full max-h-[200px] pointer-events-none"
+                    />
+                  </div>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="font-bold bg-card/95 backdrop-blur"
+                    onClick={() => setShowPlan(true)}
+                    data-testid="button-show-plan"
+                  >
+                    <Map className="w-4 h-4 me-1" />
+                    {t("المخطط", "2D Plan")}
+                  </Button>
+                )}
+              </div>
               {selectedCabinetId && selectedDef && (
                 <div
                   className="absolute top-3 start-3 z-10 flex items-center gap-2 rounded-lg border border-border bg-card/95 backdrop-blur px-3 py-2 shadow-md"

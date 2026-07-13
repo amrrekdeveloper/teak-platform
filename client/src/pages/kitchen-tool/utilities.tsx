@@ -7,6 +7,7 @@ import {
   Plug,
   Lightbulb,
   Waves,
+  Flame,
   Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -46,6 +47,7 @@ const KIND_LABELS: Record<UtilityKind, { ar: string; en: string }> = {
   outlet: { ar: "فيش كهرباء", en: "Power Outlet" },
   switch: { ar: "مفتاح إضاءة", en: "Light Switch" },
   drain: { ar: "تصريف", en: "Drain" },
+  gas: { ar: "مخرج غاز", en: "Gas Outlet" },
 };
 
 export default function KitchenToolUtilitiesPage() {
@@ -168,6 +170,12 @@ export default function KitchenToolUtilitiesPage() {
     updateUtility(selectedUtility.id, { positionAlongWall: pos });
   };
 
+  const handleHeightChange = (raw: number) => {
+    if (!selectedUtility || !selectedUtility.wallId || !Number.isFinite(raw)) return;
+    const h = Math.round(Math.min(Math.max(Math.trunc(raw), 0), 300));
+    updateUtility(selectedUtility.id, { heightFromFloor: h });
+  };
+
   const handleDelete = () => {
     if (!selectedUtility) return;
     removeUtility(selectedUtility.id);
@@ -187,6 +195,7 @@ export default function KitchenToolUtilitiesPage() {
     { kind: "outlet", icon: Plug, color: "border-amber-500/40 text-amber-600 hover:bg-amber-500/10", testid: "button-util-outlet" },
     { kind: "switch", icon: Lightbulb, color: "border-violet-500/40 text-violet-600 hover:bg-violet-500/10", testid: "button-util-switch" },
     { kind: "drain", icon: Waves, color: "border-teal-500/40 text-teal-600 hover:bg-teal-500/10", testid: "button-util-drain" },
+    { kind: "gas", icon: Flame, color: "border-orange-500/40 text-orange-600 hover:bg-orange-500/10", testid: "button-util-gas" },
   ];
 
   const selectedKindLabel = selectedUtility
@@ -284,17 +293,31 @@ export default function KitchenToolUtilitiesPage() {
                   </Button>
                 </div>
                 {selectedUtility.wallId ? (
-                  <div className="space-y-2">
-                    <Label className="text-xs">
-                      {t("البعد عن بداية الجدار (سم)", "Distance from wall start (cm)")}
-                    </Label>
-                    <Input
-                      type="number"
-                      inputMode="numeric"
-                      value={Math.round(selectedUtility.positionAlongWall ?? 0)}
-                      onChange={(e) => handleDistanceChange(Number(e.target.value))}
-                      data-testid="input-utility-distance"
-                    />
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <Label className="text-xs">
+                        {t("البعد عن بداية الجدار (سم)", "Distance from wall start (cm)")}
+                      </Label>
+                      <Input
+                        type="number"
+                        inputMode="numeric"
+                        value={Math.round(selectedUtility.positionAlongWall ?? 0)}
+                        onChange={(e) => handleDistanceChange(Number(e.target.value))}
+                        data-testid="input-utility-distance"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs">
+                        {t("الارتفاع من الأرضية (سم)", "Height from floor (cm)")}
+                      </Label>
+                      <Input
+                        type="number"
+                        inputMode="numeric"
+                        value={Math.round(selectedUtility.heightFromFloor)}
+                        onChange={(e) => handleHeightChange(Number(e.target.value))}
+                        data-testid="input-utility-height"
+                      />
+                    </div>
                   </div>
                 ) : (
                   <p className="text-xs text-muted-foreground" data-testid="text-floor-position">

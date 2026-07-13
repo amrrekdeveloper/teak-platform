@@ -42,7 +42,7 @@ export interface PlacedCabinetState {
   offset: number;
 }
 
-export type UtilityKind = "water" | "outlet" | "switch" | "drain";
+export type UtilityKind = "water" | "outlet" | "switch" | "drain" | "gas";
 
 export interface KitchenUtility {
   id: string;
@@ -63,6 +63,7 @@ export const UTILITY_DEFAULT_HEIGHT: Record<UtilityKind, number> = {
   outlet: 30,
   switch: 110,
   drain: 40,
+  gas: 55,
 };
 
 export const WALL_MIN = 120;

@@ -4,8 +4,10 @@ import {
   type KitchenWall,
   type KitchenOpening,
   type KitchenUtility,
+  type PlacedCabinetState,
   clampWallLength,
 } from "@/components/kitchen-tool/store";
+import { findCabinetDef } from "@/components/kitchen-tool/cabinets";
 
 export interface WallSegment {
   id: string;
@@ -153,6 +155,8 @@ interface PlanSvgProps {
   /** When true, a click anywhere on the plan reports a PlanPoint (placement mode). */
   placementActive?: boolean;
   onPlacePoint?: (p: PlanPoint) => void;
+  /** Optional cabinet footprints (studio view). Purely additive — omitted = unchanged rendering. */
+  placedCabinets?: PlacedCabinetState[];
   className?: string;
   t: (ar: string, en: string) => string;
 }
@@ -172,6 +176,7 @@ export default function KitchenPlanSvg({
   onDragUtilityPoint,
   placementActive = false,
   onPlacePoint,
+  placedCabinets = [],
   className,
   t,
 }: PlanSvgProps) {
@@ -410,6 +415,42 @@ export default function KitchenPlanSvg({
         );
       })}
 
+      {/* Placed cabinet footprints (studio only — purely additive) */}
+      {placedCabinets.map((c) => {
+        const seg = segById.get(c.wallId);
+        const def = findCabinetDef(c.catalogId);
+        if (!seg || !def) return null;
+        const offCm = c.offset * 100;
+        const wCm = def.width * 100;
+        const dCm = def.depth * 100;
+        const ix = -seg.nx;
+        const iy = -seg.ny;
+        const P0 = pointAlong(seg, offCm);
+        const P1 = pointAlong(seg, offCm + wCm);
+        const pts = [
+          `${P0.x},${P0.y}`,
+          `${P1.x},${P1.y}`,
+          `${P1.x + ix * dCm},${P1.y + iy * dCm}`,
+          `${P0.x + ix * dCm},${P0.y + iy * dCm}`,
+        ].join(" ");
+        const isUpper = def.level === "upper";
+        return (
+          <polygon
+            key={c.id}
+            points={pts}
+            strokeWidth={SYM_STROKE * (isUpper ? 0.8 : 1)}
+            strokeDasharray={isUpper ? `${5 * k} ${4 * k}` : undefined}
+            className={
+              isUpper
+                ? "fill-none stroke-foreground/45"
+                : "fill-foreground/10 stroke-foreground/60"
+            }
+            style={{ pointerEvents: "none" }}
+            data-testid={`plan-cabinet-${c.id}`}
+          />
+        );
+      })}
+
       {/* Openings as architectural symbols */}
       {openings.map((o) => {
         const seg = segById.get(o.wallId);
@@ -630,6 +671,7 @@ const UTILITY_FILL: Record<KitchenUtility["kind"], string> = {
   outlet: "fill-amber-500",
   switch: "fill-violet-500",
   drain: "fill-teal-600",
+  gas: "fill-orange-600",
 };
 
 function UtilitySymbol({
@@ -688,6 +730,15 @@ function UtilitySymbol({
           className="stroke-white"
         />
       </>
+    );
+  } else if (kind === "gas") {
+    // Gas: flame silhouette
+    icon = (
+      <path
+        d={`M 0 ${-r * 0.55} C ${r * 0.3} ${-r * 0.22} ${r * 0.44} ${r * 0.02} ${r * 0.44} ${r * 0.22} A ${r * 0.44} ${r * 0.44} 0 0 1 ${-r * 0.44} ${r * 0.22} C ${-r * 0.44} ${-r * 0.05} ${-r * 0.18} ${-r * 0.18} 0 ${-r * 0.55} Z M 0 ${r * 0.02} C ${r * 0.14} ${r * 0.14} ${r * 0.18} ${r * 0.22} ${r * 0.18} ${r * 0.3} A ${r * 0.18} ${r * 0.18} 0 0 1 ${-r * 0.18} ${r * 0.3} C ${-r * 0.18} ${r * 0.22} ${-r * 0.14} ${r * 0.14} 0 ${r * 0.02} Z`}
+        fillRule="evenodd"
+        className="fill-white"
+      />
     );
   } else {
     // Drain: circle with X (grate)

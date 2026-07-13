@@ -518,6 +518,22 @@ function UtilityMarkers({
                   <meshStandardMaterial color="#3c4046" roughness={0.6} metalness={0.35} />
                 </mesh>
               )}
+              {u.kind === "gas" && (
+                <group>
+                  <mesh rotation={[Math.PI / 2, 0, 0]}>
+                    <cylinderGeometry args={[0.045, 0.045, 0.018, 24]} />
+                    <meshStandardMaterial color="#e8842c" roughness={0.45} />
+                  </mesh>
+                  <mesh position={[0, 0, 0.028]} rotation={[Math.PI / 2, 0, 0]}>
+                    <cylinderGeometry args={[0.014, 0.014, 0.045, 16]} />
+                    <meshStandardMaterial color="#c9a227" metalness={0.75} roughness={0.3} />
+                  </mesh>
+                  <mesh position={[0, 0.026, 0.045]}>
+                    <boxGeometry args={[0.012, 0.038, 0.012]} />
+                    <meshStandardMaterial color="#b3261e" roughness={0.4} />
+                  </mesh>
+                </group>
+              )}
             </WallMarker>
           );
         }
