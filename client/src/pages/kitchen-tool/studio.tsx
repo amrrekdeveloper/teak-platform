@@ -60,8 +60,8 @@ function adekoDefFromProduct(p: AdekoPilotProduct): CabinetDef {
   return {
     id: `adeko-${p.id}`,
     url: "",
-    nameAr: "خزانة سفلية بباب — من كتالوجك",
-    nameEn: "Base Door Unit — From Your Catalog",
+    nameAr: p.descriptionAr || p.code,
+    nameEn: p.descriptionEn || p.code,
     level: "base",
     width: p.designW / 100,
     depth: p.designD / 100,
@@ -411,7 +411,7 @@ function CabinetCatalog({
                 {t("من كتالوجك", "From your catalog")}
               </span>
               <span className="block text-xs font-bold leading-tight">
-                {t("خزانة سفلية بباب", "Base Door Unit")}
+                {t(adekoDef.nameAr, adekoDef.nameEn)}
               </span>
               <span className="block text-[10px] text-muted-foreground mt-0.5" dir="ltr">
                 {adekoDef.adeko?.code} • {Math.round(adekoDef.width * 100)}×
