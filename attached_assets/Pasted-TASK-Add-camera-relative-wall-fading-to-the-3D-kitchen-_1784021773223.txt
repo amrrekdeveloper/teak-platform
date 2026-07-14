@@ -1,0 +1,30 @@
+TASK: Add camera-relative wall fading to the 3D kitchen studio (like IKEA Kitchen Planner's "dollhouse" cutaway view) — walls that currently block the view into the room from the camera's angle should smoothly fade to near-transparent, and smoothly restore to fully opaque once they no longer block the view, as the user orbits the camera.
+
+FILE: client/src/components/kitchen-tool/studio-scene.tsx only.
+
+CONTEXT: Rooms are built from wall segments (WallSegment, from getWallSegments in plan-svg.tsx), each with an outward-facing normal already available as seg.nx / seg.ny (confirmed by existing usage: `inwardOf()` negates it to get the inward direction). Each wall segment is currently split into 1+ WallPiece rectangles (around door/window cutouts) and rendered by WallPieceMesh using the SurfaceMaterial component, with no opacity control today.
+
+REQUIRED BEHAVIOR:
+- Every frame, for each wall SEGMENT (not each individual piece — all pieces belonging to the same wall must fade together as one unit), determine if that wall is currently "between" the camera and the room: compute the vector from the wall segment's horizontal midpoint (in world X/Z) to the current camera position (camera.position.x, camera.position.z from useThree/useFrame — ignore Y/height), normalize it, and take its dot product with the wall's outward normal (seg.nx, seg.ny mapped to X/Z, same convention already used elsewhere in this file).
+- If that dot product is POSITIVE (camera sits on the outward/exterior side of this wall — meaning this wall would occlude the interior from the current angle), the wall's target opacity is low (use ~0.08, not necessarily fully 0). Otherwise target opacity is 1 (fully opaque, normal appearance, unchanged from today).
+- Smoothly interpolate (lerp) each wall segment's actual rendered opacity toward its target opacity every frame (e.g. a rate that reaches the target in roughly 200-350ms) — no instant popping, no flicker. A small amount of hysteresis/deadzone around the dot-product threshold is fine if it helps avoid jitter exactly at the boundary angle.
+- Since a typical kitchen has only 1-4 wall segments and a handful of pieces total, a straightforward implementation (compute per-segment opacity in a useFrame at the Walls/SceneContents level, store smoothed values e.g. in a ref keyed by segment id, and drive each wall piece's material opacity from it) is acceptable — it does not need to be hyper-optimized, just smooth and correct. Prefer avoiding a full React re-render every single frame if easy to do (e.g. mutate material.opacity directly via a material ref in useFrame), but a simple React-state-per-frame approach is also acceptable given the low geometry count — prioritize correctness and smoothness over micro-optimization here.
+- Update SurfaceMaterial (and its PbrSurfaceMaterial branch) to accept and apply a dynamic `opacity` prop (default 1): set `transparent` and `opacity` on the underlying meshStandardMaterial in both the plain-color and PBR-textured branches.
+
+WHAT MUST NOT CHANGE:
+- Wall collision geometry, cabinet placement, and door/window cutouts are unaffected — this is a purely visual/material change.
+- The floor, ceiling, cabinets, and utility markers are NOT affected by this fade — only wall pieces.
+- The existing cabinet drag system (drag plane, OrbitControls ref lock) and the material swatches for floor/wall must keep working exactly as before.
+
+SAFETY RULES:
+- Only modify client/src/components/kitchen-tool/studio-scene.tsx.
+- Do not touch any other file in the project.
+- Do not change package.json dependency versions.
+- Make a Checkpoint only after visual verification succeeds.
+
+ACCEPTANCE (verify visually in the browser — actually orbit the camera around the room, don't just read the code):
+- Orbit the camera slowly around a kitchen with at least an L or U layout. The wall(s) nearest the camera (that would block seeing inside) smoothly fade down as you approach that angle, and smoothly fade back to fully solid as you rotate away — no sudden pop, no flicker at any angle.
+- At all times you can clearly see the room's interior (cabinets, floor, materials) regardless of camera angle, exactly like the IKEA reference behavior.
+- Doors/windows cutouts in a fading wall fade together consistently with the rest of that wall (no mismatched pieces).
+- No console errors, no drop in framerate/stutter while orbiting.
+- Everything from previous phases (drag-and-drop, materials, cabinet catalog, utilities, 2D plan panel) still works unchanged.

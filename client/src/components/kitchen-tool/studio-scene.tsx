@@ -1,6 +1,6 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
-import { Canvas } from "@react-three/fiber";
+import { Canvas, useFrame } from "@react-three/fiber";
 import { OrbitControls, Environment, useGLTF, useTexture, Html } from "@react-three/drei";
 import {
   type KitchenLayout,
@@ -64,10 +64,12 @@ function PbrSurfaceMaterial({
   opt,
   repeatX,
   repeatY,
+  opacity = 1,
 }: {
   opt: MaterialOption;
   repeatX: number;
   repeatY: number;
+  opacity?: number;
 }) {
   const maps = opt.maps!;
   const urls = useMemo(() => {
@@ -103,6 +105,8 @@ function PbrSurfaceMaterial({
       aoMap={prepped.armMap}
       metalnessMap={prepped.armMap}
       color={opt.color ?? "#ffffff"}
+      transparent={opacity < 1}
+      opacity={opacity}
     />
   );
 }
@@ -111,20 +115,26 @@ function SurfaceMaterial({
   opt,
   repeatX,
   repeatY,
+  opacity = 1,
 }: {
   opt: MaterialOption;
   repeatX: number;
   repeatY: number;
+  opacity?: number;
 }) {
   if (!opt.maps) {
     return (
       <meshStandardMaterial
         color={opt.color ?? "#eeeeee"}
         roughness={opt.roughness ?? 0.85}
+        transparent={opacity < 1}
+        opacity={opacity}
       />
     );
   }
-  return <PbrSurfaceMaterial opt={opt} repeatX={repeatX} repeatY={repeatY} />;
+  return (
+    <PbrSurfaceMaterial opt={opt} repeatX={repeatX} repeatY={repeatY} opacity={opacity} />
+  );
 }
 
 /* ── Wall geometry: real cut openings ────────────────────── */
@@ -193,15 +203,31 @@ function segVectors(seg: WallSegment) {
   };
 }
 
+/* ── Camera-relative wall fading (IKEA-style cutaway) ────── */
+const WALL_FADE_MIN = 0.08;
+/** Hysteresis deadzone around the dot-product threshold to avoid jitter. */
+const WALL_FADE_DEADZONE = 0.04;
+/** Lerp rate constant — settles in roughly 250ms. */
+const WALL_FADE_RATE = 14;
+
+interface WallFadeEntry {
+  value: number;
+  target: number;
+}
+type WallFadeMap = Record<string, WallFadeEntry>;
+
 function WallPieceMesh({
   seg,
   piece,
   option,
+  fadeMap,
 }: {
   seg: WallSegment;
   piece: WallPiece;
   option: MaterialOption;
+  fadeMap: React.MutableRefObject<WallFadeMap>;
 }) {
+  const meshRef = useRef<THREE.Mesh>(null);
   const { origin, dir, out, theta } = useMemo(() => segVectors(seg), [seg]);
   const w = piece.u1 - piece.u0;
   const h = piece.h1 - piece.h0;
@@ -214,8 +240,25 @@ function WallPieceMesh({
     return p;
   }, [origin, dir, out, piece]);
 
+  // Drive material opacity imperatively each frame — no React re-render.
+  useFrame(() => {
+    const mesh = meshRef.current;
+    if (!mesh) return;
+    const entry = fadeMap.current[seg.id];
+    const opacity = entry ? entry.value : 1;
+    const mat = mesh.material as THREE.MeshStandardMaterial;
+    if (!mat) return;
+    const solid = opacity > 0.995;
+    if (mat.opacity !== opacity || mat.transparent === solid) {
+      mat.opacity = opacity;
+      mat.transparent = !solid;
+      mat.depthWrite = solid;
+    }
+    mesh.castShadow = opacity > 0.5;
+  });
+
   return (
-    <mesh position={position} rotation={[0, theta, 0]} castShadow receiveShadow>
+    <mesh ref={meshRef} position={position} rotation={[0, theta, 0]} castShadow receiveShadow>
       <boxGeometry args={[w, h, WALL_T]} />
       <SurfaceMaterial key={option.id} opt={option} repeatX={w} repeatY={h} />
     </mesh>
@@ -233,6 +276,35 @@ function Walls({
   openings: KitchenOpening[];
   option: MaterialOption;
 }) {
+  const fadeMap = useRef<WallFadeMap>({});
+
+  // Per-segment fade: if the camera sits on the outward side of a wall
+  // (it would occlude the interior), fade that whole segment down.
+  useFrame((state, delta) => {
+    const cam = state.camera.position;
+    const alpha = 1 - Math.exp(-WALL_FADE_RATE * Math.min(delta, 0.1));
+    for (const seg of segments) {
+      const midX = ((seg.x1 + seg.x2) / 2) * CM;
+      const midZ = ((seg.y1 + seg.y2) / 2) * CM;
+      let vx = cam.x - midX;
+      let vz = cam.z - midZ;
+      const len = Math.hypot(vx, vz) || 1;
+      vx /= len;
+      vz /= len;
+      const dot = vx * seg.nx + vz * seg.ny;
+      let entry = fadeMap.current[seg.id];
+      if (!entry) {
+        entry = { value: 1, target: 1 };
+        fadeMap.current[seg.id] = entry;
+      }
+      // Hysteresis: only flip the target outside the deadzone.
+      if (dot > WALL_FADE_DEADZONE) entry.target = WALL_FADE_MIN;
+      else if (dot < -WALL_FADE_DEADZONE) entry.target = 1;
+      entry.value += (entry.target - entry.value) * alpha;
+      if (Math.abs(entry.target - entry.value) < 0.002) entry.value = entry.target;
+    }
+  });
+
   return (
     <>
       {segments.map((seg) => {
@@ -242,7 +314,13 @@ function Walls({
           openings.filter((o) => o.wallId === seg.id)
         );
         return pieces.map((p, i) => (
-          <WallPieceMesh key={`${seg.id}-${i}`} seg={seg} piece={p} option={option} />
+          <WallPieceMesh
+            key={`${seg.id}-${i}`}
+            seg={seg}
+            piece={p}
+            option={option}
+            fadeMap={fadeMap}
+          />
         ));
       })}
     </>
