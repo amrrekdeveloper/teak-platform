@@ -1,0 +1,30 @@
+TASK: Upgrade the flat white ceiling into a two-tier gypsum cove ceiling (common Saudi/Gulf interior design: a lowered perimeter border/frame around the room edge, with a recessed pocket between it and the main flat ceiling — that pocket will hold hidden LED strip lighting in a future task), and give the ceiling a proper painted-plaster texture instead of a flat color.
+
+FILE: client/src/components/kitchen-tool/studio-scene.tsx only.
+
+CURRENT STATE: The `Ceiling` component (around line 390) renders one flat plane at ceilingM height, sized to the room bounds, with `meshStandardMaterial color="#fbfaf7"` (flat color, no texture). It only receives {bounds, ceilingM} — no wall segment data.
+
+REQUIRED CHANGES:
+
+1) TEXTURE: Replace the flat color material with the existing plaster texture set already used for walls (the "plaster" entry in WALL_OPTIONS from materials.ts — reuse it via the existing `SurfaceMaterial` component, same one WallPieceMesh already uses). The ceiling should always use this plaster look regardless of whichever wall paint color the customer has picked for the actual walls (ceilings are conventionally always plain painted plaster/white, independent of wall accent color).
+
+2) GYPSUM COVE GEOMETRY: Add a new prop `segments: WallSegment[]` to Ceiling (pass the same `segments` array already computed in SceneContents and already passed to `Walls`). Build two tiers:
+   a. MAIN CEILING: a flat plane at height `ceilingM`, but inset inward from the room bounds by a cove width of 0.25m on every side (shrink the rectangle, not the full wall-to-wall bounds like today).
+   b. PERIMETER BORDER: for each wall segment, add a box piece running along that wall (use the same origin/dir/inward vectors already used for walls and the baseboard, e.g. via segVectors/inwardOf), positioned at a slightly LOWER height — `ceilingM - 0.07m` — spanning from the wall inward by the 0.25m cove width, with a thin thickness (~0.03m). Extend each border piece's length by the cove width at both ends (same overlap trick already used for the baseboard fix, so adjacent border pieces cover the corners cleanly without needing precise miter joins). Use the same plaster texture/material as the main ceiling for these border pieces too.
+   The vertical gap this naturally creates between the lower border's inner edge and the higher main ceiling's edge is the intentional recessed cove pocket — you do not need to close it with extra geometry (it will hold a hidden light strip in a later task), but if leaving it fully open looks visually odd from typical camera angles, use your judgment to add a thin dark closing strip there instead.
+
+WHAT MUST NOT CHANGE:
+- Wall fading, environment/backdrop selector, baseboard (with its door gaps), drag-and-drop, materials, cabinet catalog, utilities, and the 2D plan panel all keep working exactly as before.
+- This must work correctly for ALL layout shapes (I/L/U/parallel), following whatever wall segments that layout produces.
+
+SAFETY RULES:
+- Only modify the Ceiling component and its call site in client/src/components/kitchen-tool/studio-scene.tsx.
+- Do not touch any other file.
+- Do not change package.json dependency versions.
+- Checkpoint only after visual verification.
+
+ACCEPTANCE (verify visually in the browser, check multiple layout shapes):
+- The ceiling now shows a visible plaster texture (not a flat solid color).
+- A lowered perimeter border/frame is visible running around the full edge of the ceiling, clearly stepped down from the main central ceiling area, following the room's actual wall shape correctly for at least an L-shape and a U-shape kitchen.
+- No gaps or visible holes at wall corners in the border.
+- No console errors, no performance stutter.

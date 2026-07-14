@@ -429,21 +429,67 @@ function Floor({
   );
 }
 
+/** Two-tier gypsum cove ceiling (Gulf style): lowered perimeter border +
+ *  recessed pocket + inset main ceiling, always in plaster. */
+const COVE_W = 0.25;
+const COVE_DROP = 0.07;
+const COVE_T = 0.03;
+
 function Ceiling({
   bounds,
   ceilingM,
+  segments,
 }: {
   bounds: { minX: number; minY: number; maxX: number; maxY: number };
   ceilingM: number;
+  segments: WallSegment[];
 }) {
-  const w = (bounds.maxX - bounds.minX) * CM;
-  const d = (bounds.maxY - bounds.minY) * CM;
+  const plaster = useMemo(() => findWallOption("plaster"), []);
+
+  // Main flat ceiling, inset by the cove width on every side.
+  const w = Math.max((bounds.maxX - bounds.minX) * CM - 2 * COVE_W, 0.1);
+  const d = Math.max((bounds.maxY - bounds.minY) * CM - 2 * COVE_W, 0.1);
   const cx = ((bounds.minX + bounds.maxX) / 2) * CM;
   const cz = ((bounds.minY + bounds.maxY) / 2) * CM;
+
   return (
-    <mesh position={[cx, ceilingM, cz]} rotation={[Math.PI / 2, 0, 0]}>
-      <planeGeometry args={[w, d]} />
-      <meshStandardMaterial color="#fbfaf7" side={THREE.FrontSide} />
+    <>
+      <mesh position={[cx, ceilingM, cz]} rotation={[Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[w, d]} />
+        <SurfaceMaterial key={plaster.id} opt={plaster} repeatX={w} repeatY={d} />
+      </mesh>
+      {segments.map((seg) => (
+        <CeilingBorder key={`cb-${seg.id}`} seg={seg} ceilingM={ceilingM} opt={plaster} />
+      ))}
+    </>
+  );
+}
+
+function CeilingBorder({
+  seg,
+  ceilingM,
+  opt,
+}: {
+  seg: WallSegment;
+  ceilingM: number;
+  opt: MaterialOption;
+}) {
+  const { origin, dir, theta, lengthM } = useMemo(() => segVectors(seg), [seg]);
+  const inward = useMemo(() => inwardOf(seg), [seg]);
+  const len = lengthM + 2 * COVE_W;
+  const position = useMemo(() => {
+    const p = origin.clone();
+    p.addScaledVector(dir, lengthM / 2);
+    p.addScaledVector(inward, COVE_W / 2);
+    // Underside sits at ceilingM - COVE_DROP; pocket above stays open.
+    p.y = ceilingM - COVE_DROP + COVE_T / 2;
+    return p;
+  }, [origin, dir, inward, lengthM, ceilingM]);
+
+  return (
+    <mesh position={position} rotation={[0, theta, 0]}>
+      <boxGeometry args={[len, COVE_T, COVE_W]} />
+      <SurfaceMaterial key={opt.id} opt={opt} repeatX={len} repeatY={COVE_W} />
     </mesh>
   );
 }
@@ -993,7 +1039,9 @@ function SceneContents({
           />
         </mesh>
       )}
-      <Ceiling bounds={bounds} ceilingM={ceilingM} />
+      <Suspense fallback={null}>
+        <Ceiling bounds={bounds} ceilingM={ceilingM} segments={segments} />
+      </Suspense>
       <Suspense fallback={null}>
         <Walls
           segments={segments}
