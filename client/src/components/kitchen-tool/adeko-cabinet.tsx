@@ -110,7 +110,9 @@ function AdekoDoor({
   const railW = Math.max(dw - 2 * STILE_W, 0.02);
   const panelW = Math.max(dw - 2 * STILE_W + 0.02, 0.03);
   const panelH = Math.max(dh - 2 * STILE_W + 0.02, 0.03);
-  const handleX = hingeLeft ? contentX + dw / 2 - 0.05 : contentX - dw / 2 + 0.05;
+  // Relative to the inner content group (already offset by contentX):
+  // near the opening edge, 5cm from the door edge.
+  const handleX = hingeLeft ? dw / 2 - 0.05 : -dw / 2 + 0.05;
 
   const handleClick = (e: ThreeEvent<MouseEvent>) => {
     e.stopPropagation();
