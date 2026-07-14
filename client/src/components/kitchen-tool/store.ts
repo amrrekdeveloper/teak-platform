@@ -41,6 +41,8 @@ export interface PlacedCabinetState {
   wallId: string;
   /** Distance (m) from wall start to the cabinet's near edge. */
   offset: number;
+  /** Optional per-instance mounting height (m); undefined = catalog default. */
+  mountY?: number;
 }
 
 export type UtilityKind = "water" | "outlet" | "switch" | "drain" | "gas";
@@ -123,6 +125,7 @@ interface KitchenToolState {
   setEnvironment: (id: string) => void;
   addPlacedCabinet: (cabinet: PlacedCabinetState) => void;
   movePlacedCabinet: (id: string, wallId: string, offset: number) => void;
+  setPlacedCabinetHeight: (id: string, mountY: number) => void;
   removePlacedCabinet: (id: string) => void;
   reset: () => void;
 }
@@ -214,6 +217,12 @@ export const useKitchenToolStore = create<KitchenToolState>()(
         set((state) => ({
           placedCabinets: (state.placedCabinets ?? []).map((c) =>
             c.id === id ? { ...c, wallId, offset } : c
+          ),
+        })),
+      setPlacedCabinetHeight: (id, mountY) =>
+        set((state) => ({
+          placedCabinets: (state.placedCabinets ?? []).map((c) =>
+            c.id === id ? { ...c, mountY } : c
           ),
         })),
       removePlacedCabinet: (id) =>

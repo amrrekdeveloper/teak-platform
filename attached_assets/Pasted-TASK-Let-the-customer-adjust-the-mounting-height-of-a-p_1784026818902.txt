@@ -1,0 +1,32 @@
+TASK: Let the customer adjust the mounting height of a placed UPPER (wall) cabinet after placing it.
+
+FILES: client/src/components/kitchen-tool/store.ts, client/src/components/kitchen-tool/studio-scene.tsx, client/src/pages/kitchen-tool/studio.tsx.
+
+CONTEXT: Every cabinet's vertical mounting height (mountY) currently comes only from its fixed catalog definition (CabinetDef.mountY in cabinets.ts) and cannot be changed per placed instance. Real kitchens vary this based on ceiling height and user preference — customers should be able to nudge an upper cabinet up or down after placing it.
+
+REQUIRED CHANGES:
+
+1) store.ts: Add an optional `mountY?: number` field to the `PlacedCabinetState` interface (undefined = use the catalog default, same as today). Add a new action `setPlacedCabinetHeight(id: string, mountY: number)` that patches just that field on the matching placed cabinet, following the same pattern as the existing `movePlacedCabinet` action.
+
+2) studio-scene.tsx (PlacedCabinetMesh): where the cabinet's Y position is currently set to `def.mountY`, use `placed.mountY ?? def.mountY` instead, so a per-instance override takes priority when present.
+
+3) studio.tsx: In the "selected cabinet" info bar (the one that currently shows the cabinet name + delete button when a cabinet is selected — search for where selectedDef/selectedCabinetId are used), when the selected cabinet's `def.level === "upper"`, add a small height control: a numeric input or +/- stepper (your choice, keep it compact) labeled "الارتفاع من الأرضية (سم)" / "Height from floor (cm)", showing the current effective height (`(placed.mountY ?? def.mountY) * 100`, rounded), calling `setPlacedCabinetHeight(id, valueInMeters)` on change. Do NOT show this control for base-level cabinets (their height is fixed to the floor, unaffected by this task).
+
+4) Enforce sensible bounds when applying a new height: minimum 0.90m (must stay clear above base cabinet/countertop height), maximum so the cabinet's top doesn't exceed the ceiling minus a 5cm clearance — i.e. `mountY + def.height <= ceilingHeight_in_meters - 0.05`. Clamp any input to this range (use the current room's ceiling height from the store, already available in studio.tsx).
+
+WHAT MUST NOT CHANGE:
+- Base cabinets are entirely unaffected — no height control shown, no behavior change.
+- Cabinet drag-and-drop (horizontal movement along the wall), collision/overlap prevention, corner cabinet placement, and everything else already working stays exactly as-is — this task only adds vertical height override, it does not touch horizontal placement logic.
+- New placed cabinets without an explicit height set still use the catalog default exactly as today.
+
+SAFETY RULES:
+- Only modify the 3 files listed above.
+- Do not touch cabinets.ts (the catalog definitions and collision engine stay unchanged).
+- Do not touch any other file.
+- Checkpoint only after visual verification.
+
+ACCEPTANCE (verify visually):
+- Place an upper cabinet, select it, and see a height control appear (not shown for base cabinets).
+- Adjusting it moves the cabinet up/down live in the 3D view within the allowed range, and it cannot be pushed through the ceiling or down into the base cabinet/countertop zone.
+- The value persists (doesn't reset) when you deselect and reselect the same cabinet, and after reloading the page (state is already persisted via the existing store).
+- No console errors.

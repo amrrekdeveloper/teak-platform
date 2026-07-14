@@ -601,7 +601,7 @@ function PlacedCabinetMesh({
         .addScaledVector(dir, placed.offset + def.width / 2)
         .addScaledVector(inward, def.depth / 2 + 0.005);
     }
-    pos.y = def.mountY;
+    pos.y = placed.mountY ?? def.mountY;
     return { pos, rotY };
   }, [seg, placed, def, segments]);
 

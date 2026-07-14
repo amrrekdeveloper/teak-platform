@@ -1,6 +1,6 @@
 import { Component, Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useLocation } from "wouter";
-import { ChevronRight, ChevronLeft, Home, Loader2, Trash2, Plus, Map, X } from "lucide-react";
+import { ChevronRight, ChevronLeft, Home, Loader2, Trash2, Plus, Minus, Map, X } from "lucide-react";
 import { useProgress } from "@react-three/drei";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -278,6 +278,7 @@ export default function KitchenToolStudioPage() {
   const placedCabinets = useKitchenToolStore((s) => s.placedCabinets ?? []);
   const addPlacedCabinet = useKitchenToolStore((s) => s.addPlacedCabinet);
   const removePlacedCabinet = useKitchenToolStore((s) => s.removePlacedCabinet);
+  const setPlacedCabinetHeight = useKitchenToolStore((s) => s.setPlacedCabinetHeight);
   const [selectedCabinetId, setSelectedCabinetId] = useState<string | null>(null);
   const [showPlan, setShowPlan] = useState(true);
   const layout: KitchenLayout = answers.layout ?? "L";
@@ -323,11 +324,30 @@ export default function KitchenToolStudioPage() {
     setSelectedCabinetId(null);
   };
 
-  const selectedDef = selectedCabinetId
-    ? findCabinetDef(
-        placedCabinets.find((c) => c.id === selectedCabinetId)?.catalogId ?? ""
-      )
+  const selectedPlaced = selectedCabinetId
+    ? placedCabinets.find((c) => c.id === selectedCabinetId)
     : undefined;
+  const selectedDef = selectedPlaced
+    ? findCabinetDef(selectedPlaced.catalogId)
+    : undefined;
+
+  const ceilingM = ceilingHeight / 100;
+  const heightBounds = selectedDef
+    ? { min: 0.9, max: ceilingM - 0.05 - selectedDef.height }
+    : null;
+  const effectiveMountY =
+    selectedPlaced && selectedDef
+      ? selectedPlaced.mountY ?? selectedDef.mountY
+      : 0;
+
+  const nudgeHeight = (deltaM: number) => {
+    if (!selectedPlaced || !selectedDef || !heightBounds) return;
+    const next = Math.min(
+      Math.max(effectiveMountY + deltaM, heightBounds.min),
+      Math.max(heightBounds.max, heightBounds.min)
+    );
+    setPlacedCabinetHeight(selectedPlaced.id, next);
+  };
 
   return (
     <DesktopGate>
@@ -440,6 +460,40 @@ export default function KitchenToolStudioPage() {
                   <span className="text-xs font-bold" data-testid="text-selected-cabinet">
                     {t(selectedDef.nameAr, selectedDef.nameEn)}
                   </span>
+                  {selectedDef.level === "upper" && (
+                    <div
+                      className="flex items-center gap-1 border-e border-border pe-2 me-1"
+                      data-testid="control-cabinet-height"
+                    >
+                      <span className="text-[10px] text-muted-foreground font-bold whitespace-nowrap">
+                        {t("الارتفاع من الأرضية (سم)", "Height from floor (cm)")}
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 w-7 p-0"
+                        onClick={() => nudgeHeight(-0.05)}
+                        data-testid="button-height-down"
+                      >
+                        <Minus className="w-3.5 h-3.5" />
+                      </Button>
+                      <span
+                        className="text-xs font-bold tabular-nums w-8 text-center"
+                        data-testid="text-cabinet-height"
+                      >
+                        {Math.round(effectiveMountY * 100)}
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 w-7 p-0"
+                        onClick={() => nudgeHeight(0.05)}
+                        data-testid="button-height-up"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                  )}
                   <Button
                     size="sm"
                     variant="destructive"
