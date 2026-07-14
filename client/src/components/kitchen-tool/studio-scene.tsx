@@ -434,7 +434,7 @@ function Floor({
 /** Two-tier gypsum cove ceiling (Gulf style): lowered perimeter border +
  *  recessed pocket + inset main ceiling, always in plaster. */
 const COVE_W = 0.25;
-const COVE_DROP = 0.12;
+export const COVE_DROP = 0.12;
 const COVE_T = 0.03;
 
 /* Artificial lighting colors */
@@ -1355,9 +1355,9 @@ function SceneContents({
       <OrbitControls
         ref={controlsRef}
         target={[center.x, 1, center.z]}
-        maxPolarAngle={Math.PI / 2 - 0.06}
+        maxPolarAngle={Math.PI / 2 + 0.5}
         minDistance={0.9}
-        maxDistance={Math.max(roomSpan * 2.4, 7)}
+        maxDistance={Math.max(roomSpan * 3, 10)}
         enableDamping
         enabled={!drag}
       />

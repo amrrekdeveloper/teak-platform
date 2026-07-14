@@ -18,7 +18,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/components/language-provider";
 import DesktopGate from "@/components/kitchen-tool/desktop-gate";
 import { ToolStages, ToolNav } from "@/components/kitchen-tool/tool-stages";
-import StudioScene from "@/components/kitchen-tool/studio-scene";
+import StudioScene, { COVE_DROP } from "@/components/kitchen-tool/studio-scene";
 import {
   useKitchenToolStore,
   type KitchenLayout,
@@ -426,7 +426,10 @@ export default function KitchenToolStudioPage() {
 
   const ceilingM = ceilingHeight / 100;
   const heightBounds = selectedDef
-    ? { min: 0.9, max: ceilingM - 0.05 - selectedDef.height }
+    ? {
+        min: 0.9,
+        max: Math.max(ceilingM - COVE_DROP - 0.03 - selectedDef.height, 0.9),
+      }
     : null;
   const effectiveMountY =
     selectedPlaced && selectedDef

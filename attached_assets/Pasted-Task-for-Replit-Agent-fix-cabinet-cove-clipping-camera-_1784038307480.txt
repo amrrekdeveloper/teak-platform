@@ -1,0 +1,30 @@
+Task for Replit Agent — fix cabinet/cove clipping + camera vertical range
+Scope: edit client/src/pages/kitchen-tool/studio.tsx and client/src/components/kitchen-tool/studio-scene.tsx only. Do not touch cabinets.ts, plan-svg.tsx, materials.ts, store.ts, or design-studio/designer-board/scene-3d files.
+Part A — stop raised cabinets from clipping into the ceiling cove:
+
+In studio-scene.tsx, export the existing COVE_DROP constant (add export to its declaration) so it can be imported elsewhere.
+In studio.tsx, import COVE_DROP from @/components/kitchen-tool/studio-scene.
+Find the existing heightBounds calculation:
+
+   const heightBounds = selectedDef
+     ? { min: 0.9, max: ceilingM - 0.05 - selectedDef.height }
+     : null;
+Change max to respect the cove clearance instead of the flat 0.05 gap:
+   max: ceilingM - COVE_DROP - 0.03 - selectedDef.height
+(matches the same 3cm clearance already used by the soffit box logic, so a cabinet can never be raised into the cove or the soffit above it).
+4. If this makes max < min for a very low ceiling, clamp so max = Math.max(max, min) (avoid inverted range — same defensive pattern likely already used nearby).
+Part B — let the camera tilt up to frame upper cabinets + ceiling together:
+In studio-scene.tsx, find the OrbitControls props at the bottom of SceneContents:
+maxPolarAngle={Math.PI / 2 - 0.06}
+maxDistance={Math.max(roomSpan * 2.4, 7)}
+Change to:
+maxPolarAngle={Math.PI / 2 + 0.5}
+maxDistance={Math.max(roomSpan * 3, 10)}
+This lets the camera drop slightly below eye-level and tilt upward (needed to see a wall cabinet together with the ceiling detail above it up close), and gives more pull-back room in larger layouts. If testing shows the camera can dip below the floor or clip through it at this new angle, reduce Math.PI / 2 + 0.5 down toward Math.PI / 2 + 0.3 until it no longer clips — verify visually, don't just trust the math.
+Arabic summary (اشرح لخالد إذا سأل): أوقفنا الخزائن من الدخول جوا الكورنيش لما ترفعها، ووسّعنا حرية الكاميرا حتى تقدر تشوف الخزانة العلوية مع السقف بزاوية طبيعية من تحت شوي، خصوصاً بالغرف الكبيرة.
+Acceptance (verify visually before checkpoint):
+
+Try to raise an upper cabinet to max height using the height control → it must stop cleanly below the cove/soffit, no visible clipping/overlap at any camera angle.
+In a 4×6m (or similar large) room, orbit/zoom the camera near a wall with upper cabinets → you must be able to frame the cabinets together with the ceiling/cove above them without the camera going underground or through walls.
+Confirm normal camera behavior elsewhere (small I-shape room, walking around) still feels correct — no new clipping through the floor.
+Checkpoint only after this visual verification passes.
