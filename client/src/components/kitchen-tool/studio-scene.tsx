@@ -205,6 +205,153 @@ function segVectors(seg: WallSegment) {
   };
 }
 
+/* ── Window sunlight ─────────────────────────────────────── */
+interface WindowSun {
+  /** Window rect corners (world, meters). */
+  corners: THREE.Vector3[];
+  /** Normalized direction the sun rays travel (from sun into the room). */
+  rayDir: THREE.Vector3;
+  /** Sun light position (outside, behind the window). */
+  sunPos: THREE.Vector3;
+  /** Light target (inside the room, on the floor). */
+  targetPos: THREE.Vector3;
+  /** Window size (m). */
+  width: number;
+  height: number;
+}
+
+/** Derive a sun beam from the largest window: rays enter through the
+    opening at ~38° elevation, slightly angled along the wall. */
+function computeWindowSun(
+  segments: WallSegment[],
+  openings: KitchenOpening[],
+  ceilingM: number
+): WindowSun | null {
+  const windows = openings.filter((o) => o.type === "window");
+  if (windows.length === 0) return null;
+  const win = windows.reduce((a, b) => (b.width > a.width ? b : a));
+  const seg = segments.find((s) => s.id === win.wallId);
+  if (!seg) return null;
+
+  const { origin, dir, out } = segVectors(seg);
+  const wallLenM = seg.length * CM;
+  const w = Math.min(win.width * CM, wallLenM);
+  const u0 = Math.min(Math.max(win.distanceFromWallStart * CM, 0), Math.max(wallLenM - w, 0));
+  const u1 = u0 + w;
+  const sill = WINDOW_SILL_CM * CM;
+  const top = Math.min((WINDOW_SILL_CM + WINDOW_HEIGHT_CM) * CM, ceilingM - 0.1);
+  const height = Math.max(top - sill, 0.2);
+
+  const at = (u: number, y: number) => {
+    const p = origin.clone();
+    p.addScaledVector(dir, u);
+    p.y = y;
+    return p;
+  };
+  const corners = [at(u0, sill), at(u1, sill), at(u1, top), at(u0, top)];
+  const center = at((u0 + u1) / 2, (sill + top) / 2);
+
+  // Ray direction: inward (opposite the wall's outward normal), tilted
+  // 38° down and skewed a little along the wall for a natural angle.
+  const elevation = (38 * Math.PI) / 180;
+  const inward = out.clone().multiplyScalar(-1);
+  const rayDir = inward
+    .clone()
+    .addScaledVector(dir, 0.28)
+    .normalize()
+    .multiplyScalar(Math.cos(elevation));
+  rayDir.y = -Math.sin(elevation);
+  rayDir.normalize();
+
+  const sunPos = center.clone().addScaledVector(rayDir, -6);
+  const targetPos = center.clone().addScaledVector(rayDir, (sill + top) / 2 / Math.sin(elevation));
+  return { corners, rayDir, sunPos, targetPos, width: w, height };
+}
+
+/** Sun tint/strength per ambiance (HDRI) option. */
+function sunParamsForEnv(envId: string): { color: string; intensity: number } {
+  switch (envId) {
+    case "brown_photostudio_02":
+      return { color: "#ffcf94", intensity: 2.6 }; // warm sunset
+    case "studio_small_03":
+      return { color: "#fff0c9", intensity: 2.8 }; // high contrast
+    case "photo_studio_01":
+      return { color: "#fffaf0", intensity: 2.0 }; // neutral day
+    default:
+      return { color: "#fff3d6", intensity: 2.3 }; // soft daylight
+  }
+}
+
+/** Directional sun shining through the window + translucent light shaft. */
+function WindowSunlight({ sun, envId }: { sun: WindowSun; envId: string }) {
+  const target = useMemo(() => new THREE.Object3D(), []);
+  const { color, intensity } = sunParamsForEnv(envId);
+
+  useEffect(() => {
+    target.position.copy(sun.targetPos);
+    target.updateMatrixWorld();
+  }, [sun, target]);
+
+  // Beam volume: window rect extruded along the ray direction to the floor.
+  const beamGeom = useMemo(() => {
+    const floorPt = (c: THREE.Vector3) => {
+      const t = sun.rayDir.y < -1e-4 ? c.y / -sun.rayDir.y : 0;
+      return c.clone().addScaledVector(sun.rayDir, t);
+    };
+    const near = sun.corners;
+    const far = near.map(floorPt);
+    const verts: number[] = [];
+    const push = (p: THREE.Vector3) => verts.push(p.x, p.y, p.z);
+    // 4 side quads (two triangles each) around the volume.
+    for (let i = 0; i < 4; i++) {
+      const j = (i + 1) % 4;
+      push(near[i]); push(near[j]); push(far[j]);
+      push(near[i]); push(far[j]); push(far[i]);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(verts, 3));
+    g.computeVertexNormals();
+    return g;
+  }, [sun]);
+
+  useEffect(() => () => beamGeom.dispose(), [beamGeom]);
+
+  const shadowW = Math.max(sun.width * 1.4, 1.2);
+  const shadowH = Math.max(sun.height * 1.8, 1.6);
+
+  return (
+    <>
+      <directionalLight
+        position={sun.sunPos.toArray()}
+        target={target}
+        color={color}
+        intensity={intensity}
+        castShadow
+        shadow-mapSize={[1024, 1024]}
+        shadow-bias={-0.0004}
+        shadow-normalBias={0.02}
+        shadow-camera-left={-shadowW}
+        shadow-camera-right={shadowW}
+        shadow-camera-top={shadowH}
+        shadow-camera-bottom={-shadowH}
+        shadow-camera-near={0.5}
+        shadow-camera-far={25}
+      />
+      <primitive object={target} />
+      <mesh geometry={beamGeom} renderOrder={2}>
+        <meshBasicMaterial
+          color={color}
+          transparent
+          opacity={0.06}
+          blending={THREE.AdditiveBlending}
+          side={THREE.DoubleSide}
+          depthWrite={false}
+        />
+      </mesh>
+    </>
+  );
+}
+
 /* ── Camera-relative wall fading (IKEA-style cutaway) ────── */
 const WALL_FADE_MIN = 0.08;
 /** Hysteresis deadzone around the dot-product threshold to avoid jitter. */
@@ -1290,13 +1437,18 @@ function SceneContents({
     (bounds.maxX - bounds.minX) * CM,
     (bounds.maxY - bounds.minY) * CM
   );
+  const windowSun = useMemo(
+    () => computeWindowSun(segments, openings, ceilingM),
+    [segments, openings, ceilingM]
+  );
 
   return (
     <>
       <Environment files={envOption.file} background blur={0.7} />
+      {windowSun && <WindowSunlight sun={windowSun} envId={envOption.id} />}
       <directionalLight
         position={[center.x + roomSpan * 0.9, ceilingM + 2.6, center.z + roomSpan * 1.2]}
-        intensity={1.35}
+        intensity={windowSun ? 0.7 : 1.35}
         castShadow
         shadow-mapSize={[2048, 2048]}
         shadow-bias={-0.0004}
