@@ -4,7 +4,7 @@ import { ChevronRight, ChevronLeft, SkipForward, Check, Home } from "lucide-reac
 import { Button } from "@/components/ui/button";
 import { useLanguage } from "@/components/language-provider";
 import DesktopGate from "@/components/kitchen-tool/desktop-gate";
-import { useKitchenToolStore, type KitchenAnswers } from "@/components/kitchen-tool/store";
+import { useKitchenToolStore, canCloseLayout, type KitchenAnswers, type KitchenLayout } from "@/components/kitchen-tool/store";
 import { ToolStages } from "@/components/kitchen-tool/tool-stages";
 import {
   OvenUnderCounterIllustration,
@@ -88,7 +88,7 @@ const questions: Question[] = [
 export default function KitchenToolSetupPage() {
   const { t, isRTL } = useLanguage();
   const [, setLocation] = useLocation();
-  const { answers, step, setAnswer, setStep } = useKitchenToolStore();
+  const { answers, step, closed, setAnswer, setStep, setClosed } = useKitchenToolStore();
 
   const numericStep = Number.isFinite(step) ? Math.trunc(step) : 0;
   const safeStep = Math.min(Math.max(numericStep, 0), questions.length - 1);
@@ -204,6 +204,25 @@ export default function KitchenToolSetupPage() {
                   );
                 })}
               </div>
+
+              {question.key === "layout" &&
+                canCloseLayout((selected ?? "") as KitchenLayout) && (
+                  <label
+                    className="mt-8 inline-flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-3 cursor-pointer hover:border-primary/40 transition-colors"
+                    data-testid="toggle-close-room"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={closed}
+                      onChange={(e) => setClosed(e.target.checked)}
+                      className="w-4 h-4 accent-primary"
+                      data-testid="checkbox-close-room"
+                    />
+                    <span className="text-sm font-bold">
+                      {t("أغلق الغرفة بالكامل", "Fully close the room")}
+                    </span>
+                  </label>
+                )}
             </motion.div>
           </AnimatePresence>
         </div>

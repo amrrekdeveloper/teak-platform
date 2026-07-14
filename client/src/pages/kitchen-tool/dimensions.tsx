@@ -16,6 +16,8 @@ import {
   WALL_MAX,
   CEILING_MIN,
   CEILING_MAX,
+  canCloseLayout,
+  isSyncedWall,
   type KitchenLayout,
 } from "@/components/kitchen-tool/store";
 
@@ -32,10 +34,12 @@ export default function KitchenToolDimensionsPage() {
   const {
     answers,
     walls,
+    closed,
     ceilingHeight,
     openings,
     setAnswer,
     ensureWalls,
+    setClosed,
     setWallLength,
     setCeilingHeight,
   } = useKitchenToolStore();
@@ -100,10 +104,29 @@ export default function KitchenToolDimensionsPage() {
                   </button>
                 ))}
               </div>
+              {canCloseLayout(layout) && (
+                <label
+                  className="mt-2 flex items-center gap-2 cursor-pointer"
+                  data-testid="toggle-close-room-dimensions"
+                >
+                  <input
+                    type="checkbox"
+                    checked={closed}
+                    onChange={(e) => setClosed(e.target.checked)}
+                    className="w-4 h-4 accent-primary"
+                    data-testid="checkbox-close-room-dimensions"
+                  />
+                  <span className="text-sm font-bold">
+                    {t("أغلق الغرفة بالكامل", "Fully close the room")}
+                  </span>
+                </label>
+              )}
             </div>
 
             <div className="space-y-4">
-              {walls.map((wall) => (
+              {walls.map((wall) => {
+                const synced = isSyncedWall(layout, closed, wall.id);
+                return (
                 <div key={wall.id} className="space-y-1.5">
                   <Label htmlFor={`wall-${wall.id}`} className="font-bold flex items-center gap-2">
                     <Ruler className="w-4 h-4 text-primary" />
@@ -123,14 +146,18 @@ export default function KitchenToolDimensionsPage() {
                     onBlur={(e) =>
                       setWallLength(wall.id, clampWallLength(e.target.valueAsNumber))
                     }
-                    className="text-lg font-bold"
+                    disabled={synced}
+                    className="text-lg font-bold disabled:opacity-60"
                     data-testid={`input-wall-${wall.id}`}
                   />
                   <p className="text-xs text-muted-foreground">
-                    {t(`من ${WALL_MIN} إلى ${WALL_MAX} سم`, `${WALL_MIN} to ${WALL_MAX} cm`)}
+                    {synced
+                      ? t("يتحدد تلقائيًا عند إغلاق الغرفة", "Set automatically when the room is closed")
+                      : t(`من ${WALL_MIN} إلى ${WALL_MAX} سم`, `${WALL_MIN} to ${WALL_MAX} cm`)}
                   </p>
                 </div>
-              ))}
+                );
+              })}
             </div>
 
             <div className="pt-2 border-t border-border/60">

@@ -6,6 +6,7 @@ import {
   type KitchenUtility,
   type PlacedCabinetState,
   clampWallLength,
+  PARALLEL_GAP,
 } from "@/components/kitchen-tool/store";
 import { findCabinetDef } from "@/components/kitchen-tool/cabinets";
 
@@ -20,10 +21,9 @@ export interface WallSegment {
   ny: number;
 }
 
-const PARALLEL_GAP = 300;
-
 export function getWallSegments(layout: KitchenLayout, walls: KitchenWall[]): WallSegment[] {
   const len = (i: number) => clampWallLength(walls[i]?.length ?? NaN);
+  const has = (id: string) => walls.some((w) => w.id === id);
   switch (layout) {
     case "I": {
       const a = len(0);
@@ -32,28 +32,47 @@ export function getWallSegments(layout: KitchenLayout, walls: KitchenWall[]): Wa
     case "L": {
       const a = len(0);
       const b = len(1);
-      return [
+      const segs: WallSegment[] = [
         { id: "A", x1: 0, y1: 0, x2: a, y2: 0, length: a, nx: 0, ny: -1 },
         { id: "B", x1: a, y1: 0, x2: a, y2: b, length: b, nx: 1, ny: 0 },
       ];
+      // Closing wall C: parallel to A, same length, at the far side.
+      if (has("C")) {
+        segs.push({ id: "C", x1: 0, y1: b, x2: a, y2: b, length: a, nx: 0, ny: 1 });
+      }
+      return segs;
     }
     case "U": {
       const a = len(0);
       const b = len(1);
-      const c = len(2);
-      return [
+      const c = has("D") ? b : len(2);
+      const segs: WallSegment[] = [
         { id: "A", x1: 0, y1: 0, x2: a, y2: 0, length: a, nx: 0, ny: -1 },
         { id: "B", x1: a, y1: 0, x2: a, y2: b, length: b, nx: 1, ny: 0 },
         { id: "C", x1: 0, y1: 0, x2: 0, y2: c, length: c, nx: -1, ny: 0 },
       ];
+      // Closing wall D: parallel to A, same length, at the far side.
+      if (has("D")) {
+        segs.push({ id: "D", x1: 0, y1: b, x2: a, y2: b, length: a, nx: 0, ny: 1 });
+      }
+      return segs;
     }
     case "parallel": {
       const a = len(0);
-      const b = len(1);
-      return [
+      const closed = has("C") && has("D");
+      const b = closed ? a : len(1);
+      const segs: WallSegment[] = [
         { id: "A", x1: 0, y1: 0, x2: a, y2: 0, length: a, nx: 0, ny: -1 },
         { id: "B", x1: 0, y1: PARALLEL_GAP, x2: b, y2: PARALLEL_GAP, length: b, nx: 0, ny: 1 },
       ];
+      // Closing side walls C (near end) and D (far end).
+      if (closed) {
+        segs.push(
+          { id: "C", x1: 0, y1: 0, x2: 0, y2: PARALLEL_GAP, length: PARALLEL_GAP, nx: -1, ny: 0 },
+          { id: "D", x1: a, y1: 0, x2: a, y2: PARALLEL_GAP, length: PARALLEL_GAP, nx: 1, ny: 0 }
+        );
+      }
+      return segs;
     }
   }
 }
@@ -66,6 +85,8 @@ export function wallLabelAr(id: string): string {
       return "الجدار ب";
     case "C":
       return "الجدار ج";
+    case "D":
+      return "الجدار د";
     default:
       return `الجدار ${id}`;
   }

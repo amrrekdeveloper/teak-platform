@@ -1,0 +1,32 @@
+TASK: Add an optional "Close the room" toggle (adds an extra wall to fully enclose L, U, and parallel layouts — not available for I-shape), placed together WITH the shape selector in both places it already appears (the shape question in setup.tsx, and the shape selector on dimensions.tsx) — not on its own separate from the shape choice.
+
+FILES: client/src/components/kitchen-tool/store.ts, client/src/components/kitchen-tool/plan-svg.tsx, client/src/pages/kitchen-tool/setup.tsx, client/src/pages/kitchen-tool/dimensions.tsx.
+
+DESIGN (backend logic — same as before):
+- Add `closed: boolean` (default false) to the persisted store state, plus `setClosed(value: boolean)`. Include in reset().
+- When `closed` is true:
+  - L-shape: add wall "C", parallel to A, same length as A, completing the rectangle.
+  - U-shape: add wall "D", parallel to A, same length as A. Auto-sync C's length to always match B's length while closed (B is master).
+  - Parallel: add walls "C" and "D", each length = PARALLEL_GAP, closing both ends. Auto-sync B's length to always match A's length while closed (A is master).
+  - I-shape: not supported, no toggle shown.
+- Implement the extra segment(s) in `getWallSegments` (plan-svg.tsx), add sensible wallLabelAr/wallLabelEn for the new IDs.
+- In store.ts's `ensureWalls`, keep synced walls (C for U, B for parallel) updated automatically while closed, and not independently editable.
+
+UI PLACEMENT (this is the key change from the previous version of this task):
+- In setup.tsx, right next to/below the 4 shape option cards (Q4 "ما شكل توزيع مطبخك؟"), add a simple toggle "أغلق الغرفة بالكامل" / "Fully close the room" — visible only when the currently selected shape is L, U, or parallel (hidden when I is selected). Wire it to setClosed.
+- In dimensions.tsx, next to the existing shape selector (the 4 buttons already duplicated there), add the SAME toggle in the same style, reading/writing the same `closed` store value — so it stays in sync no matter which page the user adjusts it from. When closed and shape is U or parallel, the synced wall's length input becomes disabled/read-only (shows the synced value).
+
+WHAT MUST NOT CHANGE:
+- Everything else (openings, utilities, cabinets, studio, materials, lighting) already works generically off the segments array — no changes needed there.
+- Default (closed: false) behavior is identical to today for every shape, on every page.
+
+SAFETY RULES:
+- Only modify the 4 files listed above.
+- Do not touch cabinets.ts, studio-scene.tsx, openings.tsx, or utilities.tsx.
+- Checkpoint only after visual verification.
+
+ACCEPTANCE:
+- The "أغلق الغرفة بالكامل" toggle appears in BOTH setup.tsx (question 4) and dimensions.tsx, always showing the same state, for L/U/parallel shapes only (hidden for I).
+- Toggling it in either place adds/removes the extra wall correctly, verified in the 2D plan and 3D studio, for all three supported shapes.
+- A door can be added to the new wall and behaves normally.
+- No console errors.

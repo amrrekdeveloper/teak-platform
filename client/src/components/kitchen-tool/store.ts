@@ -93,12 +93,92 @@ export function wallCountForLayout(layout: KitchenLayout): number {
   }
 }
 
-const WALL_IDS = ["A", "B", "C"];
+/** Gap between the two runs of a parallel (galley) kitchen, in cm. */
+export const PARALLEL_GAP = 300;
+
+const WALL_IDS = ["A", "B", "C", "D"];
+
+/** Whether the "close the room" option applies to this layout. */
+export function canCloseLayout(layout: KitchenLayout): boolean {
+  return layout === "L" || layout === "U" || layout === "parallel";
+}
+
+/** Wall ids for a layout, including the extra closing wall(s) when closed. */
+export function wallIdsForLayout(layout: KitchenLayout, closed: boolean): string[] {
+  const base = WALL_IDS.slice(0, wallCountForLayout(layout));
+  if (!closed || !canCloseLayout(layout)) return base;
+  switch (layout) {
+    case "L":
+      return ["A", "B", "C"];
+    case "U":
+      return ["A", "B", "C", "D"];
+    case "parallel":
+      return ["A", "B", "C", "D"];
+    default:
+      return base;
+  }
+}
+
+/** True when this wall's length is auto-synced (not editable) while closed. */
+export function isSyncedWall(layout: KitchenLayout, closed: boolean, id: string): boolean {
+  if (!closed || !canCloseLayout(layout)) return false;
+  switch (layout) {
+    case "L":
+      return id === "C";
+    case "U":
+      return id === "C" || id === "D";
+    case "parallel":
+      return id === "B" || id === "C" || id === "D";
+    default:
+      return false;
+  }
+}
+
+/** Apply the closing sync rules (master → synced wall lengths). */
+function syncWallLengths(
+  layout: KitchenLayout,
+  closed: boolean,
+  walls: KitchenWall[]
+): KitchenWall[] {
+  if (!closed || !canCloseLayout(layout)) return walls;
+  const lengthOf = (id: string) =>
+    walls.find((w) => w.id === id)?.length ?? WALL_DEFAULT;
+  return walls.map((w) => {
+    if (layout === "L" && w.id === "C") return { ...w, length: lengthOf("A") };
+    if (layout === "U" && w.id === "C") return { ...w, length: lengthOf("B") };
+    if (layout === "U" && w.id === "D") return { ...w, length: lengthOf("A") };
+    if (layout === "parallel" && w.id === "B") return { ...w, length: lengthOf("A") };
+    if (layout === "parallel" && (w.id === "C" || w.id === "D"))
+      return { ...w, length: PARALLEL_GAP };
+    return w;
+  });
+}
+
+/** Rebuild the walls list for a layout + closed flag, preserving lengths. */
+function buildWalls(
+  layout: KitchenLayout,
+  closed: boolean,
+  prev: KitchenWall[]
+): KitchenWall[] {
+  const ids = wallIdsForLayout(layout, closed);
+  const prevById = new Map(prev.map((w) => [w.id, w]));
+  const walls: KitchenWall[] = ids.map((id) => {
+    const existing = prevById.get(id);
+    const length =
+      existing && Number.isFinite(existing.length) ? existing.length : WALL_DEFAULT;
+    return { id, length };
+  });
+  return syncWallLengths(layout, closed, walls);
+}
 
 interface KitchenToolState {
   answers: KitchenAnswers;
   step: number;
   walls: KitchenWall[];
+  /** Layout the current walls array was built for (detects layout switches). */
+  wallsLayout: KitchenLayout | null;
+  /** Fully close the room with an extra wall (L/U/parallel only). */
+  closed: boolean;
   ceilingHeight: number;
   openings: KitchenOpening[];
   utilities: KitchenUtility[];
@@ -115,6 +195,7 @@ interface KitchenToolState {
   setAnswer: <K extends keyof KitchenAnswers>(key: K, value: KitchenAnswers[K]) => void;
   setStep: (step: number) => void;
   ensureWalls: (layout: KitchenLayout) => void;
+  setClosed: (value: boolean) => void;
   setWallLength: (id: string, length: number) => void;
   setCeilingHeight: (height: number) => void;
   addOpening: (opening: KitchenOpening) => void;
@@ -148,6 +229,8 @@ export const useKitchenToolStore = create<KitchenToolState>()(
       answers: initialAnswers,
       step: 0,
       walls: [],
+      wallsLayout: null,
+      closed: false,
       ceilingHeight: CEILING_DEFAULT,
       openings: [],
       utilities: [],
@@ -162,15 +245,16 @@ export const useKitchenToolStore = create<KitchenToolState>()(
       setStep: (step) => set({ step }),
       ensureWalls: (layout) =>
         set((state) => {
-          const count = wallCountForLayout(layout);
-          const walls: KitchenWall[] = WALL_IDS.slice(0, count).map((id, i) => {
-            const existing = state.walls[i];
-            const length =
-              existing && Number.isFinite(existing.length)
-                ? existing.length
-                : WALL_DEFAULT;
-            return { id, length };
-          });
+          const prevLayout = state.wallsLayout ?? layout;
+          const prevClosed = (state.closed ?? false) && canCloseLayout(prevLayout);
+          // Drop walls whose length was auto-synced under the previous layout
+          // so stale closing-wall values don't leak into the new layout.
+          const prevWalls =
+            prevLayout === layout
+              ? state.walls
+              : state.walls.filter((w) => !isSyncedWall(prevLayout, prevClosed, w.id));
+          const closed = (state.closed ?? false) && canCloseLayout(layout);
+          const walls = buildWalls(layout, closed, prevWalls);
           const wallById = new Map(walls.map((w) => [w.id, w]));
           const openings = state.openings.filter((o) => wallById.has(o.wallId));
           const utilities = (state.utilities ?? [])
@@ -186,12 +270,35 @@ export const useKitchenToolStore = create<KitchenToolState>()(
                 ? u
                 : { ...u, positionAlongWall: pos };
             });
-          return { walls, openings, utilities };
+          return { walls, wallsLayout: layout, openings, utilities };
+        }),
+      setClosed: (value) =>
+        set((state) => {
+          const layout = state.answers.layout ?? state.wallsLayout ?? "L";
+          const closed = value && canCloseLayout(layout);
+          const walls = buildWalls(layout, closed, state.walls);
+          const wallById = new Map(walls.map((w) => [w.id, w]));
+          const openings = state.openings.filter((o) => wallById.has(o.wallId));
+          const utilities = (state.utilities ?? []).filter(
+            (u) => !u.wallId || wallById.has(u.wallId)
+          );
+          const placedCabinets = (state.placedCabinets ?? []).filter((c) =>
+            wallById.has(c.wallId)
+          );
+          return { closed, walls, wallsLayout: layout, openings, utilities, placedCabinets };
         }),
       setWallLength: (id, length) =>
-        set((state) => ({
-          walls: state.walls.map((w) => (w.id === id ? { ...w, length } : w)),
-        })),
+        set((state) => {
+          const layout = state.answers.layout ?? "L";
+          const closed = state.closed ?? false;
+          if (isSyncedWall(layout, closed, id)) return {};
+          const walls = syncWallLengths(
+            layout,
+            closed,
+            state.walls.map((w) => (w.id === id ? { ...w, length } : w))
+          );
+          return { walls };
+        }),
       setCeilingHeight: (height) => set({ ceilingHeight: height }),
       addOpening: (opening) =>
         set((state) => ({ openings: [...state.openings, opening] })),
@@ -243,6 +350,8 @@ export const useKitchenToolStore = create<KitchenToolState>()(
           answers: initialAnswers,
           step: 0,
           walls: [],
+          wallsLayout: null,
+          closed: false,
           ceilingHeight: CEILING_DEFAULT,
           openings: [],
           utilities: [],
