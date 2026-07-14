@@ -74,12 +74,15 @@ export interface AdekoCabinetOptions {
   topFinish?: AdekoTopFinish;
   handleStyle?: AdekoHandleStyle;
   handleColor?: AdekoHandleColor;
+  /** Door opening: hinge side for single-door units, or "top" = lift-up (wall units). */
+  doorHinge?: "left" | "right" | "top";
 }
 
 /** One door on a hinge pivot — animates open/close on click. */
 function AdekoDoor({
   x,
   hingeLeft,
+  topHinge,
   dw,
   dh,
   doorY,
@@ -93,6 +96,8 @@ function AdekoDoor({
 }: {
   x: number;
   hingeLeft: boolean;
+  /** Lift-up door: hinge at the top edge, opens upward (wall units). */
+  topHinge?: boolean;
   dw: number;
   dh: number;
   doorY: number;
@@ -105,17 +110,27 @@ function AdekoDoor({
   onToggle: () => void;
 }) {
   const pivotRef = useRef<THREE.Group>(null);
-  const hingeX = hingeLeft ? x - dw / 2 : x + dw / 2;
-  const contentX = hingeLeft ? dw / 2 : -dw / 2;
+  const hingeX = topHinge ? x : hingeLeft ? x - dw / 2 : x + dw / 2;
+  const hingeY = topHinge ? doorY + dh / 2 : doorY;
+  const contentX = topHinge ? 0 : hingeLeft ? dw / 2 : -dw / 2;
+  const contentY = topHinge ? -dh / 2 : 0;
   // Left-hinged door swings free edge toward +Z ⇒ negative Y rotation.
-  const target = open ? (hingeLeft ? -DOOR_OPEN_ANGLE : DOOR_OPEN_ANGLE) : 0;
+  // Lift-up door rotates about X at its top edge ⇒ negative X rotation opens up/out.
+  const target = open
+    ? topHinge
+      ? -DOOR_OPEN_ANGLE
+      : hingeLeft
+        ? -DOOR_OPEN_ANGLE
+        : DOOR_OPEN_ANGLE
+    : 0;
 
   useFrame((_, delta) => {
     const g = pivotRef.current;
     if (!g) return;
     const alpha = 1 - Math.exp(-DOOR_LERP_RATE * Math.min(delta, 0.1));
-    g.rotation.y += (target - g.rotation.y) * alpha;
-    if (Math.abs(target - g.rotation.y) < 0.002) g.rotation.y = target;
+    const axis = topHinge ? "x" : "y";
+    g.rotation[axis] += (target - g.rotation[axis]) * alpha;
+    if (Math.abs(target - g.rotation[axis]) < 0.002) g.rotation[axis] = target;
   });
 
   // Narrow/short doors degrade the shaker frame gracefully.
@@ -125,8 +140,8 @@ function AdekoDoor({
   const panelH = Math.max(dh - 2 * stile + 0.02, 0.03);
   // Relative to the inner content group (already offset by contentX):
   // near the opening edge, 5cm from the door edge.
-  const handleX = hingeLeft ? dw / 2 - 0.05 : -dw / 2 + 0.05;
-  const handleLen = Math.min(0.16, dh * 0.4);
+  const handleX = topHinge ? 0 : hingeLeft ? dw / 2 - 0.05 : -dw / 2 + 0.05;
+  const handleLen = Math.min(0.16, (topHinge ? dw : dh) * 0.4);
 
   const handleClick = (e: ThreeEvent<MouseEvent>) => {
     e.stopPropagation();
@@ -136,8 +151,8 @@ function AdekoDoor({
   };
 
   return (
-    <group ref={pivotRef} position={[hingeX, doorY, doorZ]} onClick={handleClick}>
-      <group position={[contentX, 0, 0]}>
+    <group ref={pivotRef} position={[hingeX, hingeY, doorZ]} onClick={handleClick}>
+      <group position={[contentX, contentY, 0]}>
         {/* Stiles (full height, left + right) */}
         <mesh position={[-dw / 2 + stile / 2, 0, 0]} material={doorMat} castShadow>
           <boxGeometry args={[stile, dh, DOOR_T]} />
@@ -156,9 +171,13 @@ function AdekoDoor({
         <mesh position={[0, 0, -PANEL_REC]} material={panelMat}>
           <boxGeometry args={[panelW, panelH, DOOR_T - PANEL_REC]} />
         </mesh>
-        {/* Bar handle (vertical, near opening edge) */}
+        {/* Bar handle — vertical near the opening edge, or horizontal at the
+            bottom edge for lift-up doors */}
         {showHandle && (
-          <group position={[handleX, dh / 2 - 0.14, DOOR_T / 2 + 0.02]}>
+          <group
+            position={[handleX, topHinge ? -dh / 2 + 0.05 : dh / 2 - 0.14, DOOR_T / 2 + 0.02]}
+            rotation={topHinge ? [0, 0, Math.PI / 2] : [0, 0, 0]}
+          >
             <mesh material={handleMat} castShadow>
               <cylinderGeometry args={[0.006, 0.006, handleLen, 12]} />
             </mesh>
@@ -546,7 +565,12 @@ export default function AdekoBaseCabinet({
         <AdekoDoor
           key={`door-${i}`}
           x={d.x}
-          hingeLeft={d.hingeLeft}
+          topHinge={options?.doorHinge === "top" && kind.place === "wall"}
+          hingeLeft={
+            kind.doors === 1
+              ? (options?.doorHinge ?? "left") !== "right"
+              : d.hingeLeft
+          }
           dw={dw}
           dh={rows[d.row].dh}
           doorY={rows[d.row].y}

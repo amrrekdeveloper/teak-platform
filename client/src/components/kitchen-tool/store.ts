@@ -51,6 +51,9 @@ export interface PlacedCabinetState {
   handleColor?: "black" | "white" | "gray";
   /** Adeko parametric cabinets only — countertop finish id. */
   topFinishId?: string;
+  /** Adeko parametric cabinets only — door opening direction.
+   * "left"/"right" = hinge side (single-door units); "top" = lift-up (wall units). */
+  doorHinge?: "left" | "right" | "top";
 }
 
 export type UtilityKind = "water" | "outlet" | "switch" | "drain" | "gas";
@@ -228,7 +231,10 @@ interface KitchenToolState {
   updatePlacedCabinet: (
     id: string,
     patch: Partial<
-      Pick<PlacedCabinetState, "finishWoodTypeId" | "handleStyle" | "handleColor" | "topFinishId">
+      Pick<
+        PlacedCabinetState,
+        "finishWoodTypeId" | "handleStyle" | "handleColor" | "topFinishId" | "doorHinge"
+      >
     >
   ) => void;
   removePlacedCabinet: (id: string) => void;

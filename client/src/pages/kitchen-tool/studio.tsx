@@ -926,6 +926,74 @@ export default function KitchenToolStudioPage() {
                       )}
                     </div>
                   </div>
+                  {(selectedDef.adeko?.kind.doors ?? 0) > 0 && (
+                    <div>
+                      <p className="text-[11px] font-bold text-muted-foreground mb-1.5">
+                        {t("اتجاه فتح الباب", "Door opening direction")}
+                      </p>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {selectedDef.adeko?.kind.doors === 1 && (
+                          <>
+                            <Button
+                              size="sm"
+                              variant={
+                                (selectedPlaced.doorHinge ?? "left") === "left"
+                                  ? "default"
+                                  : "outline"
+                              }
+                              className="h-7 px-2 text-[11px] font-bold"
+                              onClick={() =>
+                                updatePlacedCabinet(selectedPlaced.id, { doorHinge: "left" })
+                              }
+                              data-testid="button-hinge-left"
+                            >
+                              {t("مفصلة يسار", "Hinge left")}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant={
+                                selectedPlaced.doorHinge === "right" ? "default" : "outline"
+                              }
+                              className="h-7 px-2 text-[11px] font-bold"
+                              onClick={() =>
+                                updatePlacedCabinet(selectedPlaced.id, { doorHinge: "right" })
+                              }
+                              data-testid="button-hinge-right"
+                            >
+                              {t("مفصلة يمين", "Hinge right")}
+                            </Button>
+                          </>
+                        )}
+                        {selectedDef.adeko?.kind.place === "wall" && (
+                          <Button
+                            size="sm"
+                            variant={selectedPlaced.doorHinge === "top" ? "default" : "outline"}
+                            className="h-7 px-2 text-[11px] font-bold"
+                            onClick={() =>
+                              updatePlacedCabinet(selectedPlaced.id, { doorHinge: "top" })
+                            }
+                            data-testid="button-hinge-top"
+                          >
+                            {t("فتح علوي", "Lift-up")}
+                          </Button>
+                        )}
+                        {selectedDef.adeko?.kind.doors !== 1 &&
+                          selectedPlaced.doorHinge === "top" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 px-2 text-[11px] font-bold"
+                              onClick={() =>
+                                updatePlacedCabinet(selectedPlaced.id, { doorHinge: "left" })
+                              }
+                              data-testid="button-hinge-side"
+                            >
+                              {t("فتح جانبي", "Side opening")}
+                            </Button>
+                          )}
+                      </div>
+                    </div>
+                  )}
                   <p className="text-[10px] text-muted-foreground leading-relaxed">
                     {t(
                       "اضغط على باب الخزانة في المشهد لفتحه وإغلاقه.",

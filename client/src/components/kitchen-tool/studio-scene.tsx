@@ -1042,6 +1042,7 @@ function PlacedCabinetMesh({
             topFinish: findAdekoTopFinish(placed.topFinishId),
             handleStyle: placed.handleStyle ?? "bar",
             handleColor: placed.handleColor ?? "gray",
+            doorHinge: placed.doorHinge,
           }}
         />
       ) : (

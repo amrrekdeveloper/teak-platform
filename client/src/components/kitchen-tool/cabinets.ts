@@ -130,6 +130,34 @@ export function defaultWallMountY(heightM: number): number {
   return Math.min(Math.max(2.2 - heightM, 0.95), 1.9);
 }
 
+/** Clear generated Arabic name, e.g. "خزانة سفلية بباب" — DB names are English. */
+export function arabicNameForProduct(p: AdekoProductRow, kind: AdekoKind): string {
+  const desc = (p.descriptionEn || "").toLowerCase();
+  const corner = /corner/.test(desc);
+  const isSink = /sink/.test(desc);
+
+  const family =
+    kind.place === "wall" ? "علوية" : kind.place === "tall" ? "طويلة" : "سفلية";
+
+  if (kind.filler) return `سدادة ${family}`;
+  if (kind.open) return `وحدة أرفف مفتوحة ${family}`;
+
+  let base = isSink ? "خزانة حوض" : `خزانة ${family}`;
+  if (corner) base += " ركنية";
+
+  const parts: string[] = [];
+  if (kind.drawers === 2) parts.push("بدرجين");
+  else if (kind.drawers > 2) parts.push(`بـ${kind.drawers} أدراج`);
+  else if (kind.drawers === 1) parts.push("بدرج");
+
+  if (kind.doors === 1) parts.push(kind.glass ? "بباب زجاجي" : "بباب");
+  else if (kind.doors === 2) parts.push(kind.glass ? "ببابين زجاجيين" : "ببابين");
+
+  if (kind.topDrawer) parts.push("ودرج علوي");
+
+  return parts.length ? `${base} ${parts.join(" ")}` : base;
+}
+
 /** Build a CabinetDef from a catalog product row (cm → m). Null if unrenderable. */
 export function adekoDefFromProduct(p: AdekoProductRow): CabinetDef | null {
   const kind = classifyAdekoProduct(p);
@@ -141,7 +169,7 @@ export function adekoDefFromProduct(p: AdekoProductRow): CabinetDef | null {
   return {
     id: `adeko-${p.id}`,
     url: "",
-    nameAr: p.descriptionAr || p.code,
+    nameAr: arabicNameForProduct(p, kind),
     nameEn: p.descriptionEn || p.code,
     level: kind.place === "wall" ? "upper" : "base",
     width,
