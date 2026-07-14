@@ -1273,6 +1273,38 @@ export async function registerRoutes(
     }
   });
 
+  // Public pilot product for the 3D kitchen studio (Task: realistic catalog cabinet pilot).
+  // Returns ONE real base cabinet from the Adeko catalog to render parametrically in 3D.
+  app.get("/api/kitchen-tool/pilot-product", async (_req, res) => {
+    try {
+      const result = await pool.query(
+        `SELECT id, code, description_ar, description_en, group_code,
+                design_w, design_h, design_d, price_after_vat, thumbnail
+         FROM adeko_products
+         WHERE code = 'A1K 60 72' AND active = TRUE
+         LIMIT 1`
+      );
+      if (result.rows.length === 0) {
+        return res.status(404).json({ message: "المنتج التجريبي غير موجود" });
+      }
+      const r = result.rows[0];
+      res.json({
+        id: r.id,
+        code: r.code,
+        descriptionAr: r.description_ar,
+        descriptionEn: r.description_en,
+        groupCode: r.group_code,
+        designW: parseFloat(r.design_w),
+        designH: parseFloat(r.design_h),
+        designD: parseFloat(r.design_d),
+        priceAfterVat: parseFloat(r.price_after_vat),
+        thumbnail: r.thumbnail,
+      });
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ في جلب المنتج" });
+    }
+  });
+
   app.get("/api/adeko-products/groups", requireAuth, async (_req, res) => {
     try {
       const groups = await storage.getAdekoProductGroups();

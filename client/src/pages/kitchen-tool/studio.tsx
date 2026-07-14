@@ -36,9 +36,45 @@ import {
   findCabinetDef,
   findSlotForCabinet,
   findCornerSlot,
+  registerAdekoDef,
   type CabinetDef,
   type CabinetLevel,
 } from "@/components/kitchen-tool/cabinets";
+import { useQuery } from "@tanstack/react-query";
+
+interface AdekoPilotProduct {
+  id: number;
+  code: string;
+  descriptionAr: string | null;
+  descriptionEn: string | null;
+  groupCode: string;
+  designW: number;
+  designH: number;
+  designD: number;
+  priceAfterVat: number;
+  thumbnail: string | null;
+}
+
+/** Build a CabinetDef from a real Adeko catalog product (dims in cm → m). */
+function adekoDefFromProduct(p: AdekoPilotProduct): CabinetDef {
+  return {
+    id: `adeko-${p.id}`,
+    url: "",
+    nameAr: "خزانة سفلية بباب — من كتالوجك",
+    nameEn: "Base Door Unit — From Your Catalog",
+    level: "base",
+    width: p.designW / 100,
+    depth: p.designD / 100,
+    height: p.designH / 100,
+    mountY: 0,
+    adeko: {
+      productId: p.id,
+      code: p.code,
+      priceAfterVat: p.priceAfterVat,
+      thumbnail: p.thumbnail,
+    },
+  };
+}
 
 function LoadingOverlay() {
   const { t } = useLanguage();
@@ -326,8 +362,10 @@ function MaterialBar() {
 
 function CabinetCatalog({
   onAdd,
+  adekoDef,
 }: {
   onAdd: (def: CabinetDef) => void;
+  adekoDef?: CabinetDef;
 }) {
   const { t } = useLanguage();
   const [tab, setTab] = useState<CabinetLevel>("base");
@@ -361,6 +399,28 @@ function CabinetCatalog({
         ))}
       </div>
       <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-1.5">
+        {tab === "base" && adekoDef && (
+          <button
+            type="button"
+            onClick={() => onAdd(adekoDef)}
+            className="flex items-center justify-between gap-2 rounded-lg border-2 border-primary/50 bg-primary/5 px-3 py-2.5 text-start hover:border-primary hover:bg-primary/10 transition-colors"
+            data-testid={`button-add-cabinet-${adekoDef.id}`}
+          >
+            <span className="min-w-0">
+              <span className="inline-block text-[9px] font-bold text-primary bg-primary/15 rounded px-1.5 py-0.5 mb-1">
+                {t("من كتالوجك", "From your catalog")}
+              </span>
+              <span className="block text-xs font-bold leading-tight">
+                {t("خزانة سفلية بباب", "Base Door Unit")}
+              </span>
+              <span className="block text-[10px] text-muted-foreground mt-0.5" dir="ltr">
+                {adekoDef.adeko?.code} • {Math.round(adekoDef.width * 100)}×
+                {Math.round(adekoDef.height * 100)}×{Math.round(adekoDef.depth * 100)} {t("سم", "cm")}
+              </span>
+            </span>
+            <Plus className="w-4 h-4 shrink-0 text-primary" />
+          </button>
+        )}
         {items.map((def) => (
           <button
             key={def.id}
@@ -405,6 +465,29 @@ export default function KitchenToolStudioPage() {
   const setPlacedCabinetHeight = useKitchenToolStore((s) => s.setPlacedCabinetHeight);
   const [selectedCabinetId, setSelectedCabinetId] = useState<string | null>(null);
   const [showPlan, setShowPlan] = useState(true);
+
+  // Pilot: one real product from the Adeko catalog, rendered parametrically.
+  const { data: pilotProduct } = useQuery<AdekoPilotProduct>({
+    queryKey: ["/api/kitchen-tool/pilot-product"],
+    staleTime: 5 * 60 * 1000,
+  });
+  const adekoDef = useMemo(() => {
+    if (
+      !pilotProduct?.id ||
+      !Number.isFinite(pilotProduct.designW) ||
+      !Number.isFinite(pilotProduct.designH) ||
+      !Number.isFinite(pilotProduct.designD) ||
+      pilotProduct.designW <= 0 ||
+      pilotProduct.designH <= 0 ||
+      pilotProduct.designD <= 0
+    ) {
+      return undefined;
+    }
+    return adekoDefFromProduct(pilotProduct);
+  }, [pilotProduct]);
+  useEffect(() => {
+    if (adekoDef) registerAdekoDef(adekoDef);
+  }, [adekoDef]);
   const layout: KitchenLayout = answers.layout ?? "L";
   const BackIcon = isRTL ? ChevronRight : ChevronLeft;
 
@@ -676,7 +759,7 @@ export default function KitchenToolStudioPage() {
                 </div>
               )}
             </div>
-            <CabinetCatalog onAdd={handleAddCabinet} />
+            <CabinetCatalog onAdd={handleAddCabinet} adekoDef={adekoDef} />
           </div>
         </div>
         <div className="pb-6" />

@@ -32,6 +32,13 @@ export interface CabinetDef {
   corner?: boolean;
   /** Extra Y-rotation fix (radians) for models with baked rotations. */
   rotYFix?: number;
+  /** Real product from the Adeko catalog — rendered parametrically (no GLB). */
+  adeko?: {
+    productId: number;
+    code: string;
+    priceAfterVat: number;
+    thumbnail?: string | null;
+  };
 }
 
 export const CABINET_DEFS: CabinetDef[] = [
@@ -55,8 +62,18 @@ export const CABINET_DEFS: CabinetDef[] = [
   { id: "upper-small-wine", url: `${ASSETS}/cabinet-upper-small-wine.glb`, nameAr: "علوية بأرفف زجاجات", nameEn: "Bottle Rack Cabinet", level: "upper", width: 0.91, depth: 0.35, height: 0.9, mountY: 1.17 },
 ];
 
+/** Dynamic defs built from the real Adeko catalog (registered at runtime). */
+const ADEKO_DEFS: CabinetDef[] = [];
+
+/** Register (or replace) a catalog-backed def. Idempotent by id. */
+export function registerAdekoDef(def: CabinetDef) {
+  const i = ADEKO_DEFS.findIndex((d) => d.id === def.id);
+  if (i >= 0) ADEKO_DEFS[i] = def;
+  else ADEKO_DEFS.push(def);
+}
+
 export function findCabinetDef(id: string): CabinetDef | undefined {
-  return CABINET_DEFS.find((d) => d.id === id);
+  return CABINET_DEFS.find((d) => d.id === id) ?? ADEKO_DEFS.find((d) => d.id === id);
 }
 
 export interface PlacedCabinet {

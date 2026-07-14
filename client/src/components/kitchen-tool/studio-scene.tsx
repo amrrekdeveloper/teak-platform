@@ -24,6 +24,7 @@ import {
   type CabinetDef,
 } from "@/components/kitchen-tool/cabinets";
 import type { ThreeEvent } from "@react-three/fiber";
+import AdekoBaseCabinet from "@/components/kitchen-tool/adeko-cabinet";
 import type { PlacedCabinetState } from "@/components/kitchen-tool/store";
 import {
   findFloorOption,
@@ -944,22 +945,9 @@ function inwardOf(seg: WallSegment): THREE.Vector3 {
   return new THREE.Vector3(-seg.nx, 0, -seg.ny);
 }
 
-function PlacedCabinetMesh({
-  placed,
-  def,
-  segments,
-  selected,
-  onGrab,
-}: {
-  placed: PlacedCabinetState;
-  def: CabinetDef;
-  segments: WallSegment[];
-  selected: boolean;
-  onGrab: (id: string, def: CabinetDef) => void;
-}) {
-  const { scene } = useGLTF(def.url);
-  const { lightsOn, lightColor } = useLighting();
-  const seg = segments.find((s) => s.id === placed.wallId);
+/** GLB-based cabinet body — isolated so useGLTF never runs for parametric defs. */
+function GltfCabinetObject({ url }: { url: string }) {
+  const { scene } = useGLTF(url);
 
   // Clone + recenter once per model — NOT on every drag move.
   const object = useMemo(() => {
@@ -976,6 +964,25 @@ function PlacedCabinetMesh({
     obj.position.set(-center.x, -box.min.y, -center.z);
     return obj;
   }, [scene]);
+
+  return <primitive object={object} />;
+}
+
+function PlacedCabinetMesh({
+  placed,
+  def,
+  segments,
+  selected,
+  onGrab,
+}: {
+  placed: PlacedCabinetState;
+  def: CabinetDef;
+  segments: WallSegment[];
+  selected: boolean;
+  onGrab: (id: string, def: CabinetDef) => void;
+}) {
+  const { lightsOn, lightColor } = useLighting();
+  const seg = segments.find((s) => s.id === placed.wallId);
 
   const built = useMemo(() => {
     if (!seg) return null;
@@ -1020,7 +1027,7 @@ function PlacedCabinetMesh({
         onGrab(placed.id, def);
       }}
     >
-      <primitive object={object} />
+      {def.adeko ? <AdekoBaseCabinet def={def} /> : <GltfCabinetObject url={def.url} />}
       {def.level === "upper" && lightsOn && (
         <mesh position={[0, -0.008, def.depth / 2 - 0.02]}>
           <boxGeometry args={[Math.max(def.width - 0.04, 0.1), 0.014, 0.025]} />
