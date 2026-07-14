@@ -205,7 +205,7 @@ export const CEILING_OPTIONS: MaterialOption[] = [
   { id: "white", nameAr: "أبيض", nameEn: "White", color: "#f9f8f5", roughness: 0.92 },
   { id: "warm-white", nameAr: "أبيض دافئ", nameEn: "Warm White", color: "#f5f0e6", roughness: 0.92 },
   { id: "beige-light", nameAr: "بيج فاتح", nameEn: "Light Beige", color: "#ece5d8", roughness: 0.92 },
-  { id: "navy-matte", nameAr: "أزرق كحلي مطفي", nameEn: "Matte Navy Blue", color: "#2b3a55", roughness: 0.95 },
+  { id: "navy-matte", nameAr: "رمادي غامق مطفي", nameEn: "Matte Dark Grey", color: "#4e4e4f", roughness: 0.95 },
 ];
 
 export const DEFAULT_FLOOR_ID = "laminate";
