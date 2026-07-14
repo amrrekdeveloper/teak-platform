@@ -1,0 +1,32 @@
+Task for Replit Agent — make ceiling soffit optional + follow individual cabinet heights
+Scope: edit client/src/components/kitchen-tool/store.ts, client/src/components/kitchen-tool/studio-scene.tsx, and client/src/pages/kitchen-tool/studio.tsx only. Do not touch cabinets.ts, plan-svg.tsx, materials.ts, or design-studio/designer-board/scene-3d files.
+Part A — make it optional:
+
+In store.ts, add showSoffit: boolean to state (default true, since it already looks good by default) and a setShowSoffit(value: boolean) action — same pattern as setClosed/setLightsOn.
+In studio.tsx, add a checkbox toggle near the existing lighting controls, label ar: "إظهار صندوق الجبس فوق الخزائن", en: "Show cabinet soffit box". Wire it to showSoffit/setShowSoffit.
+In studio-scene.tsx, wrap the WallSoffit rendering (inside Ceiling) with showSoffit &&.
+
+Part B — follow individual cabinet heights instead of one flat box per wall:
+Rewrite WallSoffit so that instead of computing ONE box per wall spanning the min/max offset of all upper cabinets, it renders ONE box PER individual non-corner upper cabinet on that wall:
+
+For each non-corner upper cabinet on the wall (def.level === "upper" && !def.corner):
+
+bottomY = (placed.mountY ?? def.mountY) + def.height + 0.03
+topY = ceilingM - COVE_DROP (same fixed value for all — this stays constant, only bottomY changes per cabinet)
+if topY - bottomY <= 0.02, skip this cabinet (no box — ceiling too low relative to it)
+along-wall span: placed.offset to placed.offset + def.width, expanded by a 0.04m margin each side (smaller than before, so adjacent cabinets' boxes overlap only slightly and don't visibly gap or z-fight)
+depth from wall inward: keep the fixed 0.42 used before
+render as its own box mesh, same rotation/position logic as the current implementation, same ceiling material passed in, castShadow/receiveShadow true
+
+
+Where two adjacent cabinets are at the SAME height, their boxes will naturally overlap slightly and look like one continuous box — this is correct and expected, no special-casing needed.
+Where two adjacent cabinets are at DIFFERENT heights (e.g., one raised via the height-control feature), their boxes will naturally show a small vertical step between them (the side face of each box) — this is the "stepped" look requested. Do not add extra connector geometry; the overlapping solid boxes already produce it correctly.
+Delete the old single-aggregate-box logic (uMin/uMax across the whole wall) entirely — replaced by the per-cabinet loop above.
+
+Arabic summary (اشرح لخالد إذا سأل): صار صندوق الجبس اختياري بزر تشغيل/إخفاء، وصار يتبع كل خزانة بارتفاعها الفعلي بدل صندوق واحد ثابت — فوق كل خزانة مربوط بمستواها بالضبط.
+Acceptance (verify visually before checkpoint):
+
+Toggle off → soffit disappears completely, ceiling stays flat + cove border only. Toggle on → returns.
+Place two adjacent upper cabinets of different types/heights (or raise one using the existing height control) on the same wall → soffit should visibly step down/up between them, no floating gap, no z-fighting flicker.
+A single cabinet alone on a wall still gets a clean soffit box above it.
+Checkpoint only after this visual verification passes.

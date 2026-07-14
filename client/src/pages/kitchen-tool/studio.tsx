@@ -155,6 +155,8 @@ function MaterialBar() {
   const lightTemp = useKitchenToolStore((s) => s.lightTemp ?? "warm");
   const toggleLights = useKitchenToolStore((s) => s.toggleLights);
   const setLightTemp = useKitchenToolStore((s) => s.setLightTemp);
+  const showSoffit = useKitchenToolStore((s) => s.showSoffit ?? true);
+  const setShowSoffit = useKitchenToolStore((s) => s.setShowSoffit);
 
   return (
     <div
@@ -273,6 +275,19 @@ function MaterialBar() {
             ))}
           </div>
         )}
+        <label
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs font-bold text-muted-foreground hover:border-primary/50 hover:text-foreground transition-colors cursor-pointer select-none"
+          data-testid="label-toggle-soffit"
+        >
+          <input
+            type="checkbox"
+            checked={showSoffit}
+            onChange={(e) => setShowSoffit(e.target.checked)}
+            className="accent-primary w-3.5 h-3.5"
+            data-testid="checkbox-toggle-soffit"
+          />
+          {t("إظهار صندوق الجبس فوق الخزائن", "Show cabinet soffit box")}
+        </label>
       </div>
     </div>
   );

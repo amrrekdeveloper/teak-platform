@@ -191,6 +191,8 @@ interface KitchenToolState {
   /** Artificial lighting (downlights + cove + under-cabinet LED). */
   lightsOn: boolean;
   lightTemp: "warm" | "cool";
+  /** Gypsum soffit box above upper cabinets in the 3D studio. */
+  showSoffit: boolean;
   /** Cabinets placed in the 3D studio. */
   placedCabinets: PlacedCabinetState[];
   setAnswer: <K extends keyof KitchenAnswers>(key: K, value: KitchenAnswers[K]) => void;
@@ -211,6 +213,7 @@ interface KitchenToolState {
   setEnvironment: (id: string) => void;
   toggleLights: () => void;
   setLightTemp: (temp: "warm" | "cool") => void;
+  setShowSoffit: (value: boolean) => void;
   addPlacedCabinet: (cabinet: PlacedCabinetState) => void;
   movePlacedCabinet: (id: string, wallId: string, offset: number) => void;
   setPlacedCabinetHeight: (id: string, mountY: number) => void;
@@ -243,6 +246,7 @@ export const useKitchenToolStore = create<KitchenToolState>()(
       environmentId: DEFAULT_ENVIRONMENT_ID,
       lightsOn: false,
       lightTemp: "warm",
+      showSoffit: true,
       placedCabinets: [],
       setAnswer: (key, value) =>
         set((state) => ({ answers: { ...state.answers, [key]: value } })),
@@ -330,6 +334,7 @@ export const useKitchenToolStore = create<KitchenToolState>()(
       setEnvironment: (id) => set({ environmentId: id }),
       toggleLights: () => set((state) => ({ lightsOn: !state.lightsOn })),
       setLightTemp: (temp) => set({ lightTemp: temp }),
+      setShowSoffit: (value) => set({ showSoffit: value }),
       addPlacedCabinet: (cabinet) =>
         set((state) => ({
           placedCabinets: [...(state.placedCabinets ?? []), cabinet],
@@ -367,6 +372,7 @@ export const useKitchenToolStore = create<KitchenToolState>()(
           environmentId: DEFAULT_ENVIRONMENT_ID,
           lightsOn: false,
           lightTemp: "warm",
+          showSoffit: true,
           placedCabinets: [],
         }),
     }),
