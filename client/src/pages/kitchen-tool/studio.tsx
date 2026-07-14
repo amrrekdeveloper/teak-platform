@@ -157,12 +157,37 @@ function MaterialBar() {
   const setLightTemp = useKitchenToolStore((s) => s.setLightTemp);
   const showSoffit = useKitchenToolStore((s) => s.showSoffit ?? true);
   const setShowSoffit = useKitchenToolStore((s) => s.setShowSoffit);
+  const [tab, setTab] = useState<"materials" | "ambiance">("materials");
 
   return (
     <div
-      className="flex flex-wrap items-start gap-x-8 gap-y-3 rounded-xl border border-border bg-card px-4 py-3"
+      className="rounded-xl border border-border bg-card px-4 py-3"
       data-testid="bar-studio-materials"
     >
+      <div className="flex items-center gap-2 mb-3">
+        {(
+          [
+            { id: "materials", ar: "الخامات والألوان", en: "Materials & Colors" },
+            { id: "ambiance", ar: "الإضاءة والأجواء", en: "Lighting & Ambiance" },
+          ] as const
+        ).map((tb) => (
+          <button
+            key={tb.id}
+            type="button"
+            onClick={() => setTab(tb.id)}
+            className={`px-3 py-1.5 rounded-lg border text-xs font-bold transition-colors ${
+              tab === tb.id
+                ? "border-primary bg-primary/10 text-primary"
+                : "border-border text-muted-foreground hover:border-primary/50 hover:text-foreground"
+            }`}
+            data-testid={`button-materialbar-tab-${tb.id}`}
+          >
+            {t(tb.ar, tb.en)}
+          </button>
+        ))}
+      </div>
+      {tab === "materials" && (
+      <div className="flex flex-wrap items-start gap-x-8 gap-y-3">
       <div className="flex items-center gap-3 flex-wrap">
         <span className="text-xs font-bold text-foreground whitespace-nowrap">
           {t("الأرضية:", "Floor:")}
@@ -211,6 +236,10 @@ function MaterialBar() {
           ))}
         </div>
       </div>
+      </div>
+      )}
+      {tab === "ambiance" && (
+      <div className="flex flex-wrap items-start gap-x-8 gap-y-3">
       <div className="flex items-center gap-3 flex-wrap">
         <span className="text-xs font-bold text-foreground whitespace-nowrap">
           {t("الإضاءة والأجواء:", "Lighting & Ambiance:")}
@@ -289,6 +318,8 @@ function MaterialBar() {
           {t("إظهار صندوق الجبس فوق الخزائن", "Show cabinet soffit box")}
         </label>
       </div>
+      </div>
+      )}
     </div>
   );
 }
