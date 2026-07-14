@@ -3,6 +3,17 @@ import { useLocation } from "wouter";
 import { ChevronRight, ChevronLeft, Home, Loader2, Trash2, Plus, Minus, Map, X, Lightbulb } from "lucide-react";
 import { useProgress } from "@react-three/drei";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/components/language-provider";
 import DesktopGate from "@/components/kitchen-tool/desktop-gate";
@@ -325,6 +336,7 @@ export default function KitchenToolStudioPage() {
   const placedCabinets = useKitchenToolStore((s) => s.placedCabinets ?? []);
   const addPlacedCabinet = useKitchenToolStore((s) => s.addPlacedCabinet);
   const removePlacedCabinet = useKitchenToolStore((s) => s.removePlacedCabinet);
+  const clearPlacedCabinets = useKitchenToolStore((s) => s.clearPlacedCabinets);
   const setPlacedCabinetHeight = useKitchenToolStore((s) => s.setPlacedCabinetHeight);
   const [selectedCabinetId, setSelectedCabinetId] = useState<string | null>(null);
   const [showPlan, setShowPlan] = useState(true);
@@ -418,6 +430,48 @@ export default function KitchenToolStudioPage() {
               </p>
             </div>
             <div className="flex items-center gap-2">
+              {placedCabinets.length > 0 && (
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      variant="destructive"
+                      className="font-bold"
+                      data-testid="button-clear-cabinets"
+                    >
+                      <Trash2 className="w-4 h-4 me-1" />
+                      {t("حذف كل الخزائن", "Delete All Cabinets")}
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>
+                        {t("حذف كل الخزائن؟", "Delete all cabinets?")}
+                      </AlertDialogTitle>
+                      <AlertDialogDescription>
+                        {t(
+                          `سيتم حذف ${placedCabinets.length} خزانة (علوية وسفلية) من التصميم. الجدران والأبواب والنوافذ لن تتأثر.`,
+                          `${placedCabinets.length} cabinets (upper and base) will be removed from the design. Walls, doors and windows are not affected.`
+                        )}
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel data-testid="button-clear-cabinets-cancel">
+                        {t("إلغاء", "Cancel")}
+                      </AlertDialogCancel>
+                      <AlertDialogAction
+                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        onClick={() => {
+                          clearPlacedCabinets();
+                          setSelectedCabinetId(null);
+                        }}
+                        data-testid="button-clear-cabinets-confirm"
+                      >
+                        {t("حذف الكل", "Delete All")}
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              )}
               <Button
                 variant="outline"
                 onClick={() => setLocation("/kitchen-designer/utilities")}

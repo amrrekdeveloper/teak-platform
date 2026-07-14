@@ -213,6 +213,7 @@ interface KitchenToolState {
   movePlacedCabinet: (id: string, wallId: string, offset: number) => void;
   setPlacedCabinetHeight: (id: string, mountY: number) => void;
   removePlacedCabinet: (id: string) => void;
+  clearPlacedCabinets: () => void;
   reset: () => void;
 }
 
@@ -345,6 +346,7 @@ export const useKitchenToolStore = create<KitchenToolState>()(
         set((state) => ({
           placedCabinets: (state.placedCabinets ?? []).filter((c) => c.id !== id),
         })),
+      clearPlacedCabinets: () => set({ placedCabinets: [] }),
       reset: () =>
         set({
           answers: initialAnswers,
