@@ -135,6 +135,18 @@ export const WALL_OPTIONS: MaterialOption[] = [
     roughness: 0.85,
   },
   {
+    id: "wall-marble-white",
+    nameAr: "رخام أبيض فاخر",
+    nameEn: "Luxury White Marble",
+    thumb: `${ASSETS}/thumbs/floor-marble-white.jpg`,
+    tileSizeM: 1.6,
+    maps: {
+      map: `${ASSETS}/floor-marble-white/textures/marble_01_diff_2k.jpg`,
+      normalMap: `${ASSETS}/floor-marble-white/textures/marble_01_nor_gl_2k.jpg`,
+      armMap: `${ASSETS}/floor-marble-white/textures/marble_01_arm_2k.jpg`,
+    },
+  },
+  {
     id: "wall-granite-dark",
     nameAr: "غرانيت رمادي غامق",
     nameEn: "Dark Grey Granite",
