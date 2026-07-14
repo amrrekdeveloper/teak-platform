@@ -265,7 +265,7 @@ function WallPieceMesh({
   return (
     <mesh ref={meshRef} position={position} rotation={[0, theta, 0]} castShadow receiveShadow>
       <boxGeometry args={[w, h, WALL_T]} />
-      <SurfaceMaterial key={option.id} opt={option} repeatX={w} repeatY={h} />
+      <SurfaceMaterial key={option.id} opt={option} repeatX={w / (option.tileSizeM ?? 1)} repeatY={h / (option.tileSizeM ?? 1)} />
     </mesh>
   );
 }

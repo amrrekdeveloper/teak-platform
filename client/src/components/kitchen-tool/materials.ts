@@ -135,11 +135,16 @@ export const WALL_OPTIONS: MaterialOption[] = [
     roughness: 0.85,
   },
   {
-    id: "paint-sage",
-    nameAr: "أخضر هادئ",
-    nameEn: "Soft Sage",
-    color: "#ccd6c9",
-    roughness: 0.85,
+    id: "wall-granite-dark",
+    nameAr: "غرانيت رمادي غامق",
+    nameEn: "Dark Grey Granite",
+    thumb: `${ASSETS}/thumbs/floor-granite-dark.jpg`,
+    tileSizeM: 1.3,
+    maps: {
+      map: `${ASSETS}/floor-granite-dark/textures/granite_tile_diff_2k.jpg`,
+      normalMap: `${ASSETS}/floor-granite-dark/textures/granite_tile_nor_gl_2k.jpg`,
+      armMap: `${ASSETS}/floor-granite-dark/textures/granite_tile_arm_2k.jpg`,
+    },
   },
 ];
 
