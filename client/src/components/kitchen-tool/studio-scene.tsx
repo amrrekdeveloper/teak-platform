@@ -504,17 +504,29 @@ function CeilingBorder({
   // (fills the corner miter); open ends stay flush with the wall.
   const { extStart, extEnd } = useMemo(() => {
     const jns = getJunctions(segments);
-    const has = (end: "start" | "end") =>
-      jns.some(
-        (jn) =>
+    const { dir: myDir } = segVectors(seg);
+    // Extend only when the extension actually fills a corner miter:
+    // the adjacent wall must exist at this end AND the extension
+    // direction must point into that wall's inward (cove band) side.
+    // Convex/outward corners and open ends stay flush.
+    const fillsMiter = (end: "start" | "end") => {
+      const extDir = end === "end" ? myDir.clone() : myDir.clone().negate();
+      return jns.some((jn) => {
+        const mine =
           (jn.aId === seg.id && jn.aEnd === end) ||
-          (jn.bId === seg.id && jn.bEnd === end)
-      );
-    return {
-      extStart: has("start") ? COVE_W : 0,
-      extEnd: has("end") ? COVE_W : 0,
+          (jn.bId === seg.id && jn.bEnd === end);
+        if (!mine) return false;
+        const otherId = jn.aId === seg.id ? jn.bId : jn.aId;
+        const other = segments.find((s) => s.id === otherId);
+        if (!other) return false;
+        return extDir.dot(inwardOf(other)) > 0.1;
+      });
     };
-  }, [segments, seg.id]);
+    return {
+      extStart: fillsMiter("start") ? COVE_W : 0,
+      extEnd: fillsMiter("end") ? COVE_W : 0,
+    };
+  }, [segments, seg]);
   const len = lengthM + extStart + extEnd;
   const RISER_T = 0.02;
   const { position, riserPos } = useMemo(() => {
