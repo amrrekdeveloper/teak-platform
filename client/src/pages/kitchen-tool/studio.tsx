@@ -28,7 +28,9 @@ import {
   WALL_OPTIONS,
   CEILING_OPTIONS,
   ENVIRONMENT_OPTIONS,
+  adekoFinishForWoodType,
   type MaterialOption,
+  type AdekoFinish,
 } from "@/components/kitchen-tool/materials";
 import KitchenPlanSvg, { getWallSegments } from "@/components/kitchen-tool/plan-svg";
 import {
@@ -41,6 +43,14 @@ import {
   type CabinetLevel,
 } from "@/components/kitchen-tool/cabinets";
 import { useQuery } from "@tanstack/react-query";
+
+interface KitchenToolMaterial {
+  id: number;
+  nameAr: string;
+  nameEn: string;
+  pricePerMeter: string;
+  category: string | null;
+}
 
 interface AdekoPilotProduct {
   id: number;
@@ -463,6 +473,7 @@ export default function KitchenToolStudioPage() {
   const removePlacedCabinet = useKitchenToolStore((s) => s.removePlacedCabinet);
   const clearPlacedCabinets = useKitchenToolStore((s) => s.clearPlacedCabinets);
   const setPlacedCabinetHeight = useKitchenToolStore((s) => s.setPlacedCabinetHeight);
+  const updatePlacedCabinet = useKitchenToolStore((s) => s.updatePlacedCabinet);
   const [selectedCabinetId, setSelectedCabinetId] = useState<string | null>(null);
   const [showPlan, setShowPlan] = useState(true);
 
@@ -488,6 +499,19 @@ export default function KitchenToolStudioPage() {
   useEffect(() => {
     if (adekoDef) registerAdekoDef(adekoDef);
   }, [adekoDef]);
+
+  // Factory wood types = material/finish choices for the Adeko pilot cabinet.
+  const { data: woodMaterials } = useQuery<KitchenToolMaterial[]>({
+    queryKey: ["/api/kitchen-tool/materials"],
+    staleTime: 5 * 60 * 1000,
+  });
+  const adekoFinishById = useMemo(() => {
+    const map: Record<number, AdekoFinish> = {};
+    for (const w of woodMaterials ?? []) {
+      map[w.id] = adekoFinishForWoodType(w.nameAr, w.nameEn);
+    }
+    return map;
+  }, [woodMaterials]);
   const layout: KitchenLayout = answers.layout ?? "L";
   const BackIcon = isRTL ? ChevronRight : ChevronLeft;
 
@@ -659,6 +683,7 @@ export default function KitchenToolStudioPage() {
                     utilities={utilities}
                     selectedCabinetId={selectedCabinetId}
                     onSelectCabinet={setSelectedCabinetId}
+                    adekoFinishById={adekoFinishById}
                   />
                 </Suspense>
               </SceneErrorBoundary>
@@ -756,6 +781,104 @@ export default function KitchenToolStudioPage() {
                     <Trash2 className="w-3.5 h-3.5 me-1" />
                     {t("حذف", "Delete")}
                   </Button>
+                </div>
+              )}
+              {selectedPlaced && selectedDef?.adeko && (
+                <div
+                  className="absolute top-16 start-3 z-10 w-[250px] rounded-lg border border-border bg-card/95 backdrop-blur p-3 shadow-md flex flex-col gap-3"
+                  data-testid="panel-adeko-options"
+                >
+                  <div>
+                    <p className="text-[11px] font-bold text-muted-foreground mb-1.5">
+                      {t("الخامة / التشطيب", "Material / Finish")}
+                    </p>
+                    <div className="flex flex-col gap-1 max-h-[180px] overflow-y-auto">
+                      {(woodMaterials ?? []).map((w) => {
+                        const active = selectedPlaced.finishWoodTypeId === w.id;
+                        return (
+                          <button
+                            key={w.id}
+                            type="button"
+                            onClick={() =>
+                              updatePlacedCabinet(selectedPlaced.id, { finishWoodTypeId: w.id })
+                            }
+                            className={`flex items-center justify-between gap-2 rounded-md border px-2 py-1.5 text-start transition-colors ${
+                              active
+                                ? "border-primary bg-primary/10"
+                                : "border-border hover:border-primary/50"
+                            }`}
+                            data-testid={`button-finish-${w.id}`}
+                          >
+                            <span className="text-[11px] font-bold leading-tight">
+                              {t(w.nameAr, w.nameEn)}
+                            </span>
+                            <span className="text-[10px] text-muted-foreground whitespace-nowrap" dir="ltr">
+                              {parseFloat(w.pricePerMeter).toLocaleString()} {t("ر.س/م", "SAR/m")}
+                            </span>
+                          </button>
+                        );
+                      })}
+                      {(woodMaterials ?? []).length === 0 && (
+                        <p className="text-[10px] text-muted-foreground">
+                          {t("لا توجد خامات متاحة حالياً", "No materials available yet")}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-bold text-muted-foreground mb-1.5">
+                      {t("المقبض", "Handle")}
+                    </p>
+                    <div className="flex items-center gap-1.5">
+                      <Button
+                        size="sm"
+                        variant={(selectedPlaced.handleStyle ?? "bar") === "bar" ? "default" : "outline"}
+                        className="h-7 px-2 text-[11px] font-bold"
+                        onClick={() => updatePlacedCabinet(selectedPlaced.id, { handleStyle: "bar" })}
+                        data-testid="button-handle-bar"
+                      >
+                        {t("مقبض", "Bar")}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={selectedPlaced.handleStyle === "none" ? "default" : "outline"}
+                        className="h-7 px-2 text-[11px] font-bold"
+                        onClick={() => updatePlacedCabinet(selectedPlaced.id, { handleStyle: "none" })}
+                        data-testid="button-handle-none"
+                      >
+                        {t("بدون", "None")}
+                      </Button>
+                      {(selectedPlaced.handleStyle ?? "bar") === "bar" && (
+                        <div className="flex items-center gap-1 ms-1">
+                          {(["black", "white", "gray"] as const).map((c) => (
+                            <button
+                              key={c}
+                              type="button"
+                              onClick={() =>
+                                updatePlacedCabinet(selectedPlaced.id, { handleColor: c })
+                              }
+                              className={`w-5 h-5 rounded-full border-2 ${
+                                (selectedPlaced.handleColor ?? "gray") === c
+                                  ? "border-primary"
+                                  : "border-border"
+                              }`}
+                              style={{
+                                background:
+                                  c === "black" ? "#232427" : c === "white" ? "#f2f2ef" : "#c9ccd1",
+                              }}
+                              data-testid={`button-handle-color-${c}`}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground leading-relaxed">
+                    {t(
+                      "اضغط على باب الخزانة في المشهد لفتحه وإغلاقه.",
+                      "Click the cabinet door in the scene to open and close it."
+                    )}
+                  </p>
                 </div>
               )}
             </div>

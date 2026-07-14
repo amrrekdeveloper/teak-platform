@@ -1305,6 +1305,26 @@ export async function registerRoutes(
     }
   });
 
+  // Public materials list for the 3D kitchen studio — active factory wood types.
+  app.get("/api/kitchen-tool/materials", async (_req, res) => {
+    try {
+      const list = await storage.getWoodTypes();
+      res.json(
+        list
+          .filter((w) => w.active)
+          .map((w) => ({
+            id: w.id,
+            nameAr: w.nameAr,
+            nameEn: w.nameEn,
+            pricePerMeter: w.pricePerMeter,
+            category: w.category,
+          }))
+      );
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ في جلب الخامات" });
+    }
+  });
+
   app.get("/api/adeko-products/groups", requireAuth, async (_req, res) => {
     try {
       const groups = await storage.getAdekoProductGroups();

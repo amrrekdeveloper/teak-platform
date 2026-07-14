@@ -32,6 +32,7 @@ import {
   findCeilingOption,
   findEnvironmentOption,
   type MaterialOption,
+  type AdekoFinish,
 } from "@/components/kitchen-tool/materials";
 import { useKitchenToolStore } from "@/components/kitchen-tool/store";
 
@@ -974,12 +975,14 @@ function PlacedCabinetMesh({
   segments,
   selected,
   onGrab,
+  adekoFinishById,
 }: {
   placed: PlacedCabinetState;
   def: CabinetDef;
   segments: WallSegment[];
   selected: boolean;
   onGrab: (id: string, def: CabinetDef) => void;
+  adekoFinishById?: Record<number, AdekoFinish>;
 }) {
   const { lightsOn, lightColor } = useLighting();
   const seg = segments.find((s) => s.id === placed.wallId);
@@ -1027,7 +1030,21 @@ function PlacedCabinetMesh({
         onGrab(placed.id, def);
       }}
     >
-      {def.adeko ? <AdekoBaseCabinet def={def} /> : <GltfCabinetObject url={def.url} />}
+      {def.adeko ? (
+        <AdekoBaseCabinet
+          def={def}
+          options={{
+            finish:
+              placed.finishWoodTypeId != null
+                ? adekoFinishById?.[placed.finishWoodTypeId]
+                : undefined,
+            handleStyle: placed.handleStyle ?? "bar",
+            handleColor: placed.handleColor ?? "gray",
+          }}
+        />
+      ) : (
+        <GltfCabinetObject url={def.url} />
+      )}
       {def.level === "upper" && lightsOn && (
         <mesh position={[0, -0.008, def.depth / 2 - 0.02]}>
           <boxGeometry args={[Math.max(def.width - 0.04, 0.1), 0.014, 0.025]} />
@@ -1053,10 +1070,12 @@ function PlacedCabinets({
   segments,
   selectedId,
   onGrab,
+  adekoFinishById,
 }: {
   segments: WallSegment[];
   selectedId: string | null;
   onGrab: (id: string, def: CabinetDef) => void;
+  adekoFinishById?: Record<number, AdekoFinish>;
 }) {
   const placed = useKitchenToolStore((s) => s.placedCabinets ?? []);
   return (
@@ -1072,6 +1091,7 @@ function PlacedCabinets({
             segments={segments}
             selected={p.id === selectedId}
             onGrab={onGrab}
+            adekoFinishById={adekoFinishById}
           />
         );
       })}
@@ -1321,6 +1341,7 @@ function SceneContents({
   utilities,
   selectedCabinetId = null,
   onSelectCabinet,
+  adekoFinishById,
 }: StudioSceneProps) {
   const segments = useMemo(() => getWallSegments(layout, walls), [layout, walls]);
   const bounds = useMemo(() => getFloorBounds(segments), [segments]);
@@ -1525,6 +1546,7 @@ function SceneContents({
           segments={segments}
           selectedId={selectedCabinetId}
           onGrab={handleGrab}
+          adekoFinishById={adekoFinishById}
         />
       </Suspense>
       <UtilityMarkers utilities={utilities} segments={segments} />
@@ -1553,6 +1575,8 @@ export interface StudioSceneProps {
   utilities: KitchenUtility[];
   selectedCabinetId?: string | null;
   onSelectCabinet?: (id: string | null) => void;
+  /** Wood-type id → 3D finish, for Adeko parametric cabinets. */
+  adekoFinishById?: Record<number, AdekoFinish>;
 }
 
 export default function StudioScene(props: StudioSceneProps) {

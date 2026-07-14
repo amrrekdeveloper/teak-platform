@@ -223,3 +223,52 @@ export function findWallOption(id: string | undefined | null): MaterialOption {
 export function findCeilingOption(id: string | undefined | null): MaterialOption {
   return CEILING_OPTIONS.find((o) => o.id === id) ?? CEILING_OPTIONS[0];
 }
+
+/* ── Adeko cabinet finishes (mapped from factory wood_types) ── */
+
+/** How a factory wood type renders in 3D on the parametric Adeko cabinet. */
+export interface AdekoFinish {
+  id: string;
+  /** Tint color applied on top of the wood texture (or the flat color). */
+  tint: string;
+  /** Use the oak veneer PBR texture set (true) or a flat painted finish. */
+  wood: boolean;
+  /** Roughness for flat (non-wood) finishes. */
+  roughness?: number;
+}
+
+const ADEKO_FINISHES: Record<string, AdekoFinish> = {
+  chipboard: { id: "chipboard", tint: "#d9c9a8", wood: true },
+  "mr-chipboard": { id: "mr-chipboard", tint: "#cdd6c8", wood: true },
+  mdf: { id: "mdf", tint: "#f1ede4", wood: false, roughness: 0.6 },
+  beech: { id: "beech", tint: "#e2b586", wood: true },
+  oak: { id: "oak", tint: "#ffffff", wood: true },
+  hpl: { id: "hpl", tint: "#b7babe", wood: false, roughness: 0.28 },
+  pvc: { id: "pvc", tint: "#f7f6f2", wood: false, roughness: 0.22 },
+};
+
+export const DEFAULT_ADEKO_FINISH: AdekoFinish = ADEKO_FINISHES.oak;
+
+/** Map a factory wood type (by name) to a realistic 3D finish. */
+export function adekoFinishForWoodType(nameAr: string, nameEn: string): AdekoFinish {
+  const en = (nameEn || "").toLowerCase();
+  const ar = nameAr || "";
+  if (en.includes("moisture") || en.includes("mr") || ar.includes("رطوب"))
+    return ADEKO_FINISHES["mr-chipboard"];
+  if (en.includes("chip") || ar.includes("شيبورد")) return ADEKO_FINISHES.chipboard;
+  if (en.includes("mdf") || ar.includes("MDF")) return ADEKO_FINISHES.mdf;
+  if (en.includes("beech") || ar.includes("زان")) return ADEKO_FINISHES.beech;
+  if (en.includes("oak") || ar.includes("بلوط")) return ADEKO_FINISHES.oak;
+  if (en.includes("hpl") || ar.includes("HPL")) return ADEKO_FINISHES.hpl;
+  if (en.includes("pvc") || ar.includes("PVC")) return ADEKO_FINISHES.pvc;
+  return DEFAULT_ADEKO_FINISH;
+}
+
+export type AdekoHandleStyle = "bar" | "none";
+export type AdekoHandleColor = "black" | "white" | "gray";
+
+export const ADEKO_HANDLE_COLORS: Record<AdekoHandleColor, string> = {
+  black: "#232427",
+  white: "#f2f2ef",
+  gray: "#c9ccd1",
+};

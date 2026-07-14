@@ -43,6 +43,12 @@ export interface PlacedCabinetState {
   offset: number;
   /** Optional per-instance mounting height (m); undefined = catalog default. */
   mountY?: number;
+  /** Adeko parametric cabinets only — chosen factory wood type (finish). */
+  finishWoodTypeId?: number;
+  /** Adeko parametric cabinets only — handle style ("bar" | "none"). */
+  handleStyle?: "bar" | "none";
+  /** Adeko parametric cabinets only — handle color. */
+  handleColor?: "black" | "white" | "gray";
 }
 
 export type UtilityKind = "water" | "outlet" | "switch" | "drain" | "gas";
@@ -217,6 +223,10 @@ interface KitchenToolState {
   addPlacedCabinet: (cabinet: PlacedCabinetState) => void;
   movePlacedCabinet: (id: string, wallId: string, offset: number) => void;
   setPlacedCabinetHeight: (id: string, mountY: number) => void;
+  updatePlacedCabinet: (
+    id: string,
+    patch: Partial<Pick<PlacedCabinetState, "finishWoodTypeId" | "handleStyle" | "handleColor">>
+  ) => void;
   removePlacedCabinet: (id: string) => void;
   clearPlacedCabinets: () => void;
   reset: () => void;
@@ -349,6 +359,12 @@ export const useKitchenToolStore = create<KitchenToolState>()(
         set((state) => ({
           placedCabinets: (state.placedCabinets ?? []).map((c) =>
             c.id === id ? { ...c, mountY } : c
+          ),
+        })),
+      updatePlacedCabinet: (id, patch) =>
+        set((state) => ({
+          placedCabinets: (state.placedCabinets ?? []).map((c) =>
+            c.id === id ? { ...c, ...patch } : c
           ),
         })),
       removePlacedCabinet: (id) =>
