@@ -301,29 +301,7 @@ function getPoolTexture(): THREE.Texture {
   return poolTexCache;
 }
 
-const BEAM_VERT = /* glsl */ `
-  attribute float aFade;
-  attribute float aEdge;
-  varying float vFade;
-  varying float vEdge;
-  void main() {
-    vFade = aFade;
-    vEdge = aEdge;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-  }
-`;
-const BEAM_FRAG = /* glsl */ `
-  uniform vec3 uColor;
-  uniform float uOpacity;
-  varying float vFade;
-  varying float vEdge;
-  void main() {
-    float a = pow(clamp(vFade, 0.0, 1.0), 1.8) * smoothstep(0.0, 0.35, vEdge) * uOpacity;
-    gl_FragColor = vec4(uColor, a);
-  }
-`;
-
-/** Directional sun shining through the window + translucent light shaft. */
+/** Directional sun shining through the window + soft warm pool on the floor. */
 function WindowSunlight({ sun, envId }: { sun: WindowSun; envId: string }) {
   const target = useMemo(() => new THREE.Object3D(), []);
   const { color, intensity } = sunParamsForEnv(envId);
@@ -333,71 +311,20 @@ function WindowSunlight({ sun, envId }: { sun: WindowSun; envId: string }) {
     target.updateMatrixWorld();
   }, [sun, target]);
 
-  // Beam volume: window rect extruded along the ray direction to the floor.
-  // aFade: 1 at the window → 0 at the floor (lengthwise gradient).
-  // aEdge: 0 at side edges → 1 mid-face (soft borders).
-  const { beamGeom, poolCenter, poolRadius } = useMemo(() => {
+  // Where the sun rays land on the floor — a soft warm pool of light.
+  const { poolCenter, poolRadius } = useMemo(() => {
     const floorPt = (c: THREE.Vector3) => {
       const t = sun.rayDir.y < -1e-4 ? c.y / -sun.rayDir.y : 0;
       return c.clone().addScaledVector(sun.rayDir, t);
     };
-    const near = sun.corners;
-    const far = near.map(floorPt);
-    const verts: number[] = [];
-    const fades: number[] = [];
-    const edges: number[] = [];
-    const push = (p: THREE.Vector3, fade: number, edge: number) => {
-      verts.push(p.x, p.y, p.z);
-      fades.push(fade);
-      edges.push(edge);
-    };
-    // 4 side quads (two triangles each) around the volume.
-    for (let i = 0; i < 4; i++) {
-      const j = (i + 1) % 4;
-      // corner i = edge 0, corner j = edge 1 → interpolates across the face.
-      push(near[i], 1, 0); push(near[j], 1, 1); push(far[j], 0, 1);
-      push(near[i], 1, 0); push(far[j], 0, 1); push(far[i], 0, 0);
-    }
-    const g = new THREE.BufferGeometry();
-    g.setAttribute("position", new THREE.Float32BufferAttribute(verts, 3));
-    g.setAttribute("aFade", new THREE.Float32BufferAttribute(fades, 1));
-    g.setAttribute("aEdge", new THREE.Float32BufferAttribute(edges, 1));
-
+    const far = sun.corners.map(floorPt);
     const center = far
       .reduce((acc, p) => acc.add(p), new THREE.Vector3())
       .multiplyScalar(1 / far.length);
     let radius = 0.6;
     for (const p of far) radius = Math.max(radius, p.distanceTo(center));
-    return { beamGeom: g, poolCenter: center, poolRadius: radius * 1.15 };
+    return { poolCenter: center, poolRadius: radius * 1.15 };
   }, [sun]);
-
-  const beamMat = useMemo(
-    () =>
-      new THREE.ShaderMaterial({
-        transparent: true,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-        side: THREE.DoubleSide,
-        uniforms: {
-          uColor: { value: new THREE.Color("#ffffff") },
-          uOpacity: { value: 0.16 },
-        },
-        vertexShader: BEAM_VERT,
-        fragmentShader: BEAM_FRAG,
-      }),
-    []
-  );
-  useEffect(() => {
-    beamMat.uniforms.uColor.value.set(color);
-  }, [beamMat, color]);
-
-  useEffect(
-    () => () => {
-      beamGeom.dispose();
-    },
-    [beamGeom]
-  );
-  useEffect(() => () => beamMat.dispose(), [beamMat]);
 
   const shadowW = Math.max(sun.width * 1.4, 1.2);
   const shadowH = Math.max(sun.height * 1.8, 1.6);
@@ -421,7 +348,6 @@ function WindowSunlight({ sun, envId }: { sun: WindowSun; envId: string }) {
         shadow-camera-far={25}
       />
       <primitive object={target} />
-      <mesh geometry={beamGeom} material={beamMat} renderOrder={2} />
       <mesh
         position={[poolCenter.x, 0.012, poolCenter.z]}
         rotation={[-Math.PI / 2, 0, 0]}
