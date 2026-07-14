@@ -249,11 +249,14 @@ function WallPieceMesh({
     const mat = mesh.material as THREE.MeshStandardMaterial;
     if (!mat) return;
     const solid = opacity > 0.995;
-    if (mat.opacity !== opacity || mat.transparent === solid) {
-      mat.opacity = opacity;
+    if (mat.transparent !== !solid) {
+      // Toggling `transparent` swaps the compiled shader variant (OPAQUE
+      // define), so the material must be recompiled or opacity is ignored.
       mat.transparent = !solid;
       mat.depthWrite = solid;
+      mat.needsUpdate = true;
     }
+    mat.opacity = opacity;
     mesh.castShadow = opacity > 0.5;
   });
 
