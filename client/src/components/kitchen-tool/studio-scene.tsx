@@ -28,6 +28,7 @@ import type { PlacedCabinetState } from "@/components/kitchen-tool/store";
 import {
   findFloorOption,
   findWallOption,
+  findCeilingOption,
   findEnvironmentOption,
   type MaterialOption,
 } from "@/components/kitchen-tool/materials";
@@ -454,7 +455,11 @@ function Ceiling({
   ceilingM: number;
   segments: WallSegment[];
 }) {
-  const plaster = useMemo(() => findWallOption("plaster"), []);
+  const ceilingMaterialId = useKitchenToolStore((s) => s.ceilingMaterialId);
+  const plaster = useMemo(
+    () => findCeilingOption(ceilingMaterialId),
+    [ceilingMaterialId]
+  );
 
   // Main flat ceiling, inset by the cove width on every side.
   const w = Math.max((bounds.maxX - bounds.minX) * CM - 2 * COVE_W, 0.1);

@@ -26,6 +26,7 @@ import {
 import {
   FLOOR_OPTIONS,
   WALL_OPTIONS,
+  CEILING_OPTIONS,
   ENVIRONMENT_OPTIONS,
   type MaterialOption,
 } from "@/components/kitchen-tool/materials";
@@ -146,6 +147,8 @@ function MaterialBar() {
   const wallMaterialId = useKitchenToolStore((s) => s.wallMaterialId);
   const setFloorMaterial = useKitchenToolStore((s) => s.setFloorMaterial);
   const setWallMaterial = useKitchenToolStore((s) => s.setWallMaterial);
+  const ceilingMaterialId = useKitchenToolStore((s) => s.ceilingMaterialId);
+  const setCeilingMaterial = useKitchenToolStore((s) => s.setCeilingMaterial);
   const environmentId = useKitchenToolStore((s) => s.environmentId);
   const setEnvironment = useKitchenToolStore((s) => s.setEnvironment);
   const lightsOn = useKitchenToolStore((s) => s.lightsOn ?? false);
@@ -186,6 +189,22 @@ function MaterialBar() {
               group="wall"
               active={opt.id === wallMaterialId}
               onSelect={() => setWallMaterial(opt.id)}
+            />
+          ))}
+        </div>
+      </div>
+      <div className="flex items-center gap-3 flex-wrap">
+        <span className="text-xs font-bold text-foreground whitespace-nowrap">
+          {t("السقف:", "Ceiling:")}
+        </span>
+        <div className="flex items-start gap-2 flex-wrap">
+          {CEILING_OPTIONS.map((opt) => (
+            <MaterialSwatch
+              key={opt.id}
+              opt={opt}
+              group="ceiling"
+              active={opt.id === ceilingMaterialId}
+              onSelect={() => setCeilingMaterial(opt.id)}
             />
           ))}
         </div>

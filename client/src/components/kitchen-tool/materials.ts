@@ -180,8 +180,16 @@ export function findEnvironmentOption(id: string | undefined | null): Environmen
   return ENVIRONMENT_OPTIONS.find((o) => o.id === id) ?? ENVIRONMENT_OPTIONS[0];
 }
 
+/** Ceiling paint options — flat matte gypsum colors, no PBR maps. */
+export const CEILING_OPTIONS: MaterialOption[] = [
+  { id: "white", nameAr: "أبيض", nameEn: "White", color: "#f9f8f5", roughness: 0.92 },
+  { id: "warm-white", nameAr: "أبيض دافئ", nameEn: "Warm White", color: "#f5f0e6", roughness: 0.92 },
+  { id: "beige-light", nameAr: "بيج فاتح", nameEn: "Light Beige", color: "#ece5d8", roughness: 0.92 },
+];
+
 export const DEFAULT_FLOOR_ID = "laminate";
 export const DEFAULT_WALL_ID = "plaster";
+export const DEFAULT_CEILING_ID = "white";
 
 export function findFloorOption(id: string | undefined | null): MaterialOption {
   return FLOOR_OPTIONS.find((o) => o.id === id) ?? FLOOR_OPTIONS[0];
@@ -189,4 +197,8 @@ export function findFloorOption(id: string | undefined | null): MaterialOption {
 
 export function findWallOption(id: string | undefined | null): MaterialOption {
   return WALL_OPTIONS.find((o) => o.id === id) ?? WALL_OPTIONS[0];
+}
+
+export function findCeilingOption(id: string | undefined | null): MaterialOption {
+  return CEILING_OPTIONS.find((o) => o.id === id) ?? CEILING_OPTIONS[0];
 }

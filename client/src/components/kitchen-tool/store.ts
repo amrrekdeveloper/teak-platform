@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { DEFAULT_ENVIRONMENT_ID } from "@/components/kitchen-tool/materials";
+import { DEFAULT_ENVIRONMENT_ID, DEFAULT_CEILING_ID } from "@/components/kitchen-tool/materials";
 
 export type OvenPlacement = "under_counter" | "tall_cabinet";
 export type HoodType = "wall" | "integrated";
@@ -185,6 +185,7 @@ interface KitchenToolState {
   /** Selected material ids for the 3D studio. */
   floorMaterialId: string;
   wallMaterialId: string;
+  ceilingMaterialId: string;
   /** Selected environment (HDRI ambiance) for the 3D studio. */
   environmentId: string;
   /** Artificial lighting (downlights + cove + under-cabinet LED). */
@@ -206,6 +207,7 @@ interface KitchenToolState {
   removeUtility: (id: string) => void;
   setFloorMaterial: (id: string) => void;
   setWallMaterial: (id: string) => void;
+  setCeilingMaterial: (id: string) => void;
   setEnvironment: (id: string) => void;
   toggleLights: () => void;
   setLightTemp: (temp: "warm" | "cool") => void;
@@ -237,6 +239,7 @@ export const useKitchenToolStore = create<KitchenToolState>()(
       utilities: [],
       floorMaterialId: "laminate",
       wallMaterialId: "plaster",
+      ceilingMaterialId: DEFAULT_CEILING_ID,
       environmentId: DEFAULT_ENVIRONMENT_ID,
       lightsOn: false,
       lightTemp: "warm",
@@ -323,6 +326,7 @@ export const useKitchenToolStore = create<KitchenToolState>()(
         })),
       setFloorMaterial: (id) => set({ floorMaterialId: id }),
       setWallMaterial: (id) => set({ wallMaterialId: id }),
+      setCeilingMaterial: (id) => set({ ceilingMaterialId: id }),
       setEnvironment: (id) => set({ environmentId: id }),
       toggleLights: () => set((state) => ({ lightsOn: !state.lightsOn })),
       setLightTemp: (temp) => set({ lightTemp: temp }),
@@ -359,6 +363,7 @@ export const useKitchenToolStore = create<KitchenToolState>()(
           utilities: [],
           floorMaterialId: "laminate",
           wallMaterialId: "plaster",
+          ceilingMaterialId: DEFAULT_CEILING_ID,
           environmentId: DEFAULT_ENVIRONMENT_ID,
           lightsOn: false,
           lightTemp: "warm",
