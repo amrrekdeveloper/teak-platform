@@ -20,6 +20,7 @@ import {
   junctionOfPlaced,
   getJunctions,
   blockedIntervals,
+  verticalSpan,
   resolveDragOffset,
   type CabinetDef,
 } from "@/components/kitchen-tool/cabinets";
@@ -1375,9 +1376,10 @@ function SceneContents({
     const seg = segments.find((s) => s.id === wallId);
     if (!seg) return null;
     const wallLenM = seg.length * CM;
+    const subject = placedCabinets.find((c) => c.id === excludeId);
     const intervals = blockedIntervals(
       wallId,
-      def.level,
+      verticalSpan(def, subject?.mountY),
       placedCabinets,
       segments,
       openings,
@@ -1452,7 +1454,7 @@ function SceneContents({
     const desired = pp.distanceAlongWall * CM - def.width / 2;
     const intervals = blockedIntervals(
       pp.nearestWallId,
-      def.level,
+      verticalSpan(def, placed.mountY),
       placedCabinets,
       segments,
       openings,

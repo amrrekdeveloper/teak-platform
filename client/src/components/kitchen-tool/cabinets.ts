@@ -228,6 +228,25 @@ export interface PlacedCabinet {
   wallId: string;
   /** Distance (m) from wall start to the cabinet's near edge. */
   offset: number;
+  /** Optional per-instance mounting height (m); undefined = catalog default. */
+  mountY?: number;
+}
+
+/** Vertical extent [bottom, top] in meters a cabinet occupies on the wall. */
+export function verticalSpan(
+  def: CabinetDef,
+  mountYOverride?: number
+): { y0: number; y1: number } {
+  const y0 = mountYOverride ?? def.mountY;
+  return { y0, y1: y0 + def.height };
+}
+
+function spansIntersect(
+  a: { y0: number; y1: number },
+  b: { y0: number; y1: number }
+): boolean {
+  // 2cm tolerance so a wall unit sitting exactly on a tall unit's top is legal.
+  return a.y0 < b.y1 - 0.02 && a.y1 > b.y0 + 0.02;
 }
 
 /* ── Junctions (corners between adjacent walls) ──────────── */
@@ -312,7 +331,7 @@ function cornerIntervalOn(
  */
 export function blockedIntervals(
   wallId: string,
-  level: CabinetLevel,
+  span: { y0: number; y1: number },
   placed: PlacedCabinet[],
   segments: WallSegment[],
   openings: KitchenOpening[],
@@ -323,7 +342,7 @@ export function blockedIntervals(
   for (const p of placed) {
     if (p.id === excludeId) continue;
     const def = findCabinetDef(p.catalogId);
-    if (!def || def.level !== level) continue;
+    if (!def || !spansIntersect(span, verticalSpan(def, p.mountY))) continue;
     if (p.wallId === wallId) {
       out.push({ a: p.offset, b: p.offset + def.width });
     } else if (def.corner) {
@@ -336,8 +355,10 @@ export function blockedIntervals(
 
   for (const o of openings) {
     if (o.wallId !== wallId) continue;
-    // Doors block both levels; windows only block uppers (base fits under a sill).
-    if (o.type === "window" && level === "base") continue;
+    // Doors block anything below ~2.1m; windows block only what reaches
+    // above the sill (~0.9m) — base units fit under a window sill.
+    if (o.type === "door" && span.y0 >= 2.1 - 0.02) continue;
+    if (o.type === "window" && span.y1 <= 0.9 + 0.02) continue;
     out.push({
       a: o.distanceFromWallStart * CM - DOOR_MARGIN,
       b: (o.distanceFromWallStart + o.width) * CM + DOOR_MARGIN,
@@ -414,7 +435,7 @@ export function findSlotForCabinet(
 ): PlacementSlot | null {
   for (const seg of segments) {
     const len = seg.length * CM;
-    const intervals = blockedIntervals(seg.id, def.level, placed, segments, openings);
+    const intervals = blockedIntervals(seg.id, verticalSpan(def), placed, segments, openings);
     const off = findFreeOffset(len, intervals, def.width);
     if (off !== null) return { wallId: seg.id, offset: off };
   }
@@ -437,7 +458,7 @@ export function findCornerSlot(
       const seg = segments.find((s) => s.id === wallId)!;
       const len = seg.length * CM;
       const iv = cornerIntervalOn(wallId, end, def.width, segments);
-      const intervals = blockedIntervals(wallId, def.level, placed, segments, openings);
+      const intervals = blockedIntervals(wallId, verticalSpan(def), placed, segments, openings);
       return iv.a >= -EPS && iv.b <= len + EPS && !overlaps(intervals, iv.a, iv.b);
     });
     if (free) {

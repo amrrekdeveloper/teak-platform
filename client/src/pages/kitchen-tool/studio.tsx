@@ -39,6 +39,7 @@ import {
   findCabinetDef,
   findSlotForCabinet,
   findCornerSlot,
+  blockedIntervals,
   registerAdekoDef,
   adekoDefFromProduct,
   type AdekoProductRow,
@@ -487,11 +488,11 @@ export default function KitchenToolStudioPage() {
       const def = adekoDefFromProduct(p);
       if (def) defs.push(def);
     }
+    // Register synchronously (idempotent) so collision checks never see a
+    // placed cabinet with an unknown def during the first render.
+    defs.forEach(registerAdekoDef);
     return defs;
   }, [adekoProducts]);
-  useEffect(() => {
-    adekoDefs.forEach(registerAdekoDef);
-  }, [adekoDefs]);
 
   // Factory wood types = material/finish choices for the Adeko pilot cabinet.
   const { data: woodMaterials } = useQuery<KitchenToolMaterial[]>({
@@ -573,6 +574,29 @@ export default function KitchenToolStudioPage() {
       Math.max(effectiveMountY + deltaM, heightBounds.min),
       Math.max(heightBounds.max, heightBounds.min)
     );
+    // Reject height changes that would make this cabinet overlap another
+    // cabinet or an opening on the same wall.
+    const intervals = blockedIntervals(
+      selectedPlaced.wallId,
+      { y0: next, y1: next + selectedDef.height },
+      placedCabinets,
+      segments,
+      openings,
+      selectedPlaced.id
+    );
+    const a = selectedPlaced.offset;
+    const b = selectedPlaced.offset + selectedDef.width;
+    if (intervals.some((iv) => a < iv.b - 1e-4 && b > iv.a + 1e-4)) {
+      toast({
+        title: t("لا يمكن التحريك", "Cannot move"),
+        description: t(
+          "الارتفاع الجديد يتعارض مع خزانة أو فتحة أخرى.",
+          "The new height collides with another cabinet or opening."
+        ),
+        variant: "destructive",
+      });
+      return;
+    }
     setPlacedCabinetHeight(selectedPlaced.id, next);
   };
 
