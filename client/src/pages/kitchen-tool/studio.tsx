@@ -40,6 +40,8 @@ import {
   findSlotForCabinet,
   findCornerSlot,
   registerAdekoDef,
+  adekoDefFromProduct,
+  type AdekoProductRow,
   type CabinetDef,
   type CabinetLevel,
 } from "@/components/kitchen-tool/cabinets";
@@ -53,39 +55,6 @@ interface KitchenToolMaterial {
   category: string | null;
 }
 
-interface AdekoPilotProduct {
-  id: number;
-  code: string;
-  descriptionAr: string | null;
-  descriptionEn: string | null;
-  groupCode: string;
-  designW: number;
-  designH: number;
-  designD: number;
-  priceAfterVat: number;
-  thumbnail: string | null;
-}
-
-/** Build a CabinetDef from a real Adeko catalog product (dims in cm → m). */
-function adekoDefFromProduct(p: AdekoPilotProduct): CabinetDef {
-  return {
-    id: `adeko-${p.id}`,
-    url: "",
-    nameAr: p.descriptionAr || p.code,
-    nameEn: p.descriptionEn || p.code,
-    level: "base",
-    width: p.designW / 100,
-    depth: p.designD / 100,
-    height: p.designH / 100,
-    mountY: 0,
-    adeko: {
-      productId: p.id,
-      code: p.code,
-      priceAfterVat: p.priceAfterVat,
-      thumbnail: p.thumbnail,
-    },
-  };
-}
 
 function LoadingOverlay() {
   const { t } = useLanguage();
@@ -373,14 +342,24 @@ function MaterialBar() {
 
 function CabinetCatalog({
   onAdd,
-  adekoDef,
+  adekoDefs,
 }: {
   onAdd: (def: CabinetDef) => void;
-  adekoDef?: CabinetDef;
+  adekoDefs: CabinetDef[];
 }) {
   const { t } = useLanguage();
   const [tab, setTab] = useState<CabinetLevel>("base");
+  const [search, setSearch] = useState("");
   const items = CABINET_DEFS.filter((d) => d.level === tab);
+  const q = search.trim().toLowerCase();
+  const adekoItems = adekoDefs.filter(
+    (d) =>
+      d.level === tab &&
+      (!q ||
+        d.nameAr.toLowerCase().includes(q) ||
+        d.nameEn.toLowerCase().includes(q) ||
+        (d.adeko?.code ?? "").toLowerCase().includes(q))
+  );
 
   return (
     <div
@@ -409,30 +388,49 @@ function CabinetCatalog({
           </button>
         ))}
       </div>
+      <div className="p-2 pb-0">
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder={t("ابحث في المنتجات...", "Search products...")}
+          className="w-full h-8 rounded-md border border-border bg-background px-2 text-xs focus:outline-none focus:border-primary"
+          data-testid="input-catalog-search"
+        />
+      </div>
       <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-1.5">
-        {tab === "base" && adekoDef && (
+        {adekoItems.map((def) => (
           <button
+            key={def.id}
             type="button"
-            onClick={() => onAdd(adekoDef)}
-            className="flex items-center justify-between gap-2 rounded-lg border-2 border-primary/50 bg-primary/5 px-3 py-2.5 text-start hover:border-primary hover:bg-primary/10 transition-colors"
-            data-testid={`button-add-cabinet-${adekoDef.id}`}
+            onClick={() => onAdd(def)}
+            className="flex items-center gap-2 rounded-lg border border-border bg-background px-2 py-2 text-start hover:border-primary/60 hover:bg-primary/5 transition-colors"
+            data-testid={`button-add-cabinet-${def.id}`}
           >
-            <span className="min-w-0">
-              <span className="inline-block text-[9px] font-bold text-primary bg-primary/15 rounded px-1.5 py-0.5 mb-1">
-                {t("من كتالوجك", "From your catalog")}
+            {def.adeko?.thumbnail ? (
+              <img
+                src={def.adeko.thumbnail}
+                alt=""
+                loading="lazy"
+                className="w-9 h-9 shrink-0 rounded border border-border object-contain bg-white"
+              />
+            ) : (
+              <span className="w-9 h-9 shrink-0 rounded border border-border bg-muted" />
+            )}
+            <span className="min-w-0 flex-1">
+              <span className="block text-xs font-bold leading-tight truncate">
+                {t(def.nameAr, def.nameEn)}
               </span>
-              <span className="block text-xs font-bold leading-tight">
-                {t(adekoDef.nameAr, adekoDef.nameEn)}
-              </span>
-              <span className="block text-[10px] text-muted-foreground mt-0.5" dir="ltr">
-                {adekoDef.adeko?.code} • {Math.round(adekoDef.width * 100)}×
-                {Math.round(adekoDef.height * 100)}×{Math.round(adekoDef.depth * 100)} {t("سم", "cm")}
+              <span className="block text-[10px] text-muted-foreground mt-0.5 truncate" dir="ltr">
+                {def.adeko?.code} • {Math.round(def.width * 100)}×{Math.round(def.height * 100)}×
+                {Math.round(def.depth * 100)} {t("سم", "cm")}
+                {def.corner ? t(" • ركن", " • corner") : ""}
               </span>
             </span>
             <Plus className="w-4 h-4 shrink-0 text-primary" />
           </button>
-        )}
-        {items.map((def) => (
+        ))}
+        {!q && items.map((def) => (
           <button
             key={def.id}
             type="button"
@@ -478,28 +476,22 @@ export default function KitchenToolStudioPage() {
   const [selectedCabinetId, setSelectedCabinetId] = useState<string | null>(null);
   const [showPlan, setShowPlan] = useState(true);
 
-  // Pilot: one real product from the Adeko catalog, rendered parametrically.
-  const { data: pilotProduct } = useQuery<AdekoPilotProduct>({
-    queryKey: ["/api/kitchen-tool/pilot-product"],
+  // Full Adeko catalog — every renderable product becomes a parametric cabinet.
+  const { data: adekoProducts } = useQuery<AdekoProductRow[]>({
+    queryKey: ["/api/kitchen-tool/products"],
     staleTime: 5 * 60 * 1000,
   });
-  const adekoDef = useMemo(() => {
-    if (
-      !pilotProduct?.id ||
-      !Number.isFinite(pilotProduct.designW) ||
-      !Number.isFinite(pilotProduct.designH) ||
-      !Number.isFinite(pilotProduct.designD) ||
-      pilotProduct.designW <= 0 ||
-      pilotProduct.designH <= 0 ||
-      pilotProduct.designD <= 0
-    ) {
-      return undefined;
+  const adekoDefs = useMemo(() => {
+    const defs: CabinetDef[] = [];
+    for (const p of adekoProducts ?? []) {
+      const def = adekoDefFromProduct(p);
+      if (def) defs.push(def);
     }
-    return adekoDefFromProduct(pilotProduct);
-  }, [pilotProduct]);
+    return defs;
+  }, [adekoProducts]);
   useEffect(() => {
-    if (adekoDef) registerAdekoDef(adekoDef);
-  }, [adekoDef]);
+    adekoDefs.forEach(registerAdekoDef);
+  }, [adekoDefs]);
 
   // Factory wood types = material/finish choices for the Adeko pilot cabinet.
   const { data: woodMaterials } = useQuery<KitchenToolMaterial[]>({
@@ -825,7 +817,31 @@ export default function KitchenToolStudioPage() {
                         </p>
                       )}
                     </div>
+                    {(() => {
+                      const mat = (woodMaterials ?? []).find(
+                        (w) => w.id === selectedPlaced.finishWoodTypeId
+                      );
+                      if (!mat || !selectedDef) return null;
+                      const total = selectedDef.width * parseFloat(mat.pricePerMeter);
+                      if (!Number.isFinite(total)) return null;
+                      return (
+                        <div
+                          className="mt-2 flex items-center justify-between rounded-md bg-primary/10 px-2 py-1.5"
+                          data-testid="text-cabinet-total"
+                        >
+                          <span className="text-[11px] font-bold">
+                            {t("الإجمالي التقريبي", "Estimated total")}
+                          </span>
+                          <span className="text-[12px] font-bold text-primary" dir="ltr">
+                            {total.toLocaleString(undefined, { maximumFractionDigits: 0 })}{" "}
+                            {t("ر.س", "SAR")}
+                          </span>
+                        </div>
+                      );
+                    })()}
                   </div>
+                  {selectedDef.adeko?.kind.place === "base" &&
+                    !selectedDef.adeko?.kind.filler && (
                   <div>
                     <p className="text-[11px] font-bold text-muted-foreground mb-1.5">
                       {t("سطح الرخامة", "Countertop")}
@@ -861,6 +877,7 @@ export default function KitchenToolStudioPage() {
                       })}
                     </div>
                   </div>
+                  )}
                   <div>
                     <p className="text-[11px] font-bold text-muted-foreground mb-1.5">
                       {t("المقبض", "Handle")}
@@ -918,7 +935,7 @@ export default function KitchenToolStudioPage() {
                 </div>
               )}
             </div>
-            <CabinetCatalog onAdd={handleAddCabinet} adekoDef={adekoDef} />
+            <CabinetCatalog onAdd={handleAddCabinet} adekoDefs={adekoDefs} />
           </div>
         </div>
         <div className="pb-6" />

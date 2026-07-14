@@ -1305,6 +1305,35 @@ export async function registerRoutes(
     }
   });
 
+  // Public full product catalog for the 3D kitchen studio — all active Adeko products.
+  app.get("/api/kitchen-tool/products", async (_req, res) => {
+    try {
+      const result = await pool.query(
+        `SELECT id, code, description_ar, description_en, group_code,
+                design_w, design_h, design_d, price_after_vat, thumbnail
+         FROM adeko_products
+         WHERE active = TRUE
+         ORDER BY group_code, design_w, design_h`
+      );
+      res.json(
+        result.rows.map((r) => ({
+          id: r.id,
+          code: r.code,
+          descriptionAr: r.description_ar,
+          descriptionEn: r.description_en,
+          groupCode: r.group_code,
+          designW: parseFloat(r.design_w),
+          designH: parseFloat(r.design_h),
+          designD: parseFloat(r.design_d),
+          priceAfterVat: parseFloat(r.price_after_vat),
+          thumbnail: r.thumbnail,
+        }))
+      );
+    } catch (error) {
+      res.status(500).json({ message: "حدث خطأ في جلب المنتجات" });
+    }
+  });
+
   // Public materials list for the 3D kitchen studio — active factory wood types.
   app.get("/api/kitchen-tool/materials", async (_req, res) => {
     try {

@@ -38,6 +38,124 @@ export interface CabinetDef {
     code: string;
     priceAfterVat: number;
     thumbnail?: string | null;
+    kind: AdekoKind;
+  };
+}
+
+/** How to build a parametric 3D cabinet for an Adeko catalog product. */
+export interface AdekoKind {
+  /** Vertical placement family. */
+  place: "base" | "wall" | "tall";
+  /** Number of hinged doors (0 = none). */
+  doors: number;
+  /** Number of full-front drawer faces (drawer stack units). */
+  drawers: number;
+  /** One top drawer band above the doors (e.g. A1C1K). */
+  topDrawer: boolean;
+  /** Doors have glass center panels. */
+  glass: boolean;
+  /** Open unit — no fronts, visible shelves. */
+  open: boolean;
+  /** Thin filler strip — plain slab, no fronts. */
+  filler: boolean;
+}
+
+/** Raw product row from /api/kitchen-tool/products. */
+export interface AdekoProductRow {
+  id: number;
+  code: string;
+  descriptionAr: string | null;
+  descriptionEn: string | null;
+  groupCode: string;
+  designW: number;
+  designH: number;
+  designD: number;
+  priceAfterVat: number;
+  thumbnail: string | null;
+}
+
+/**
+ * Classify a catalog product into a renderable parametric kind, or null when
+ * the product can't be rendered sensibly (panels, parametric-height rows...).
+ */
+export function classifyAdekoProduct(p: AdekoProductRow): AdekoKind | null {
+  const wM = p.designW / 100;
+  const hM = p.designH / 100;
+  const dM = p.designD / 100;
+  if (!Number.isFinite(wM) || !Number.isFinite(hM) || !Number.isFinite(dM)) return null;
+  // Skip shelf/panel accessories and rows with implausible dims (param heights).
+  if (p.groupCode === "TK6") return null;
+  if (wM < 0.05 || hM < 0.25 || hM > 2.5 || dM < 0.1) return null;
+
+  const desc = (p.descriptionEn || "").toLowerCase();
+  const code = p.code.toUpperCase();
+
+  const filler = /filler/.test(desc) || /(^|\s)(KPM|UKP|BKPM)\b/.test(code);
+  const glass = /gla[sd]s/.test(desc) || /^(AG|UG|TGD|HKSC|HKC|HLC)/.test(code);
+  const open =
+    !filler &&
+    (/open|shelf unit|bottleholder|trolly/.test(desc) ||
+      /^(ARAF|UARAF|RAF|AS |US |S\d+ MKNZ)/.test(code));
+
+  // Vertical family.
+  let place: "base" | "wall" | "tall";
+  if (hM >= 1.3) place = "tall";
+  else if (p.groupCode === "TK3") place = "wall";
+  else if (dM <= 0.4 && /wall/.test(desc)) place = "wall";
+  else place = "base";
+
+  // Drawer stacks: 2C.../3C... codes or "N drawers" descriptions.
+  let drawers = 0;
+  if (/^3C|three drawers/.test(code.startsWith("3C") ? code : desc)) drawers = 3;
+  else if (/^2C/.test(code) || /two drawers|double metal sided drawer/.test(desc)) drawers = 2;
+  else if (/drawer unit/.test(desc)) drawers = 3;
+
+  // One top drawer over doors (A1C1K / A1C2K / "Base 1 Drawer").
+  const topDrawer = drawers === 0 && (/^A1C/.test(code) || /\b1 drawer\b/.test(desc));
+
+  // Door count.
+  let doors = 0;
+  if (!open && !filler && drawers === 0) {
+    if (/double/.test(desc) || /^(A2K|U2K|E2K|AG2K|UG2K)/.test(code)) doors = 2;
+    else doors = wM >= 0.7 ? 2 : 1;
+  } else if (topDrawer) {
+    doors = wM >= 0.7 ? 2 : 1;
+  }
+
+  return { place, doors, drawers, topDrawer, glass, open, filler };
+}
+
+/** Default bottom height (m) for a wall unit: top aligned near 2.2m. */
+export function defaultWallMountY(heightM: number): number {
+  return Math.min(Math.max(2.2 - heightM, 0.95), 1.9);
+}
+
+/** Build a CabinetDef from a catalog product row (cm → m). Null if unrenderable. */
+export function adekoDefFromProduct(p: AdekoProductRow): CabinetDef | null {
+  const kind = classifyAdekoProduct(p);
+  if (!kind) return null;
+  const width = p.designW / 100;
+  const height = p.designH / 100;
+  const depth = p.designD / 100;
+  const corner = /corner/i.test(p.descriptionEn || "");
+  return {
+    id: `adeko-${p.id}`,
+    url: "",
+    nameAr: p.descriptionAr || p.code,
+    nameEn: p.descriptionEn || p.code,
+    level: kind.place === "wall" ? "upper" : "base",
+    width,
+    depth,
+    height,
+    mountY: kind.place === "wall" ? defaultWallMountY(height) : 0,
+    corner: corner || undefined,
+    adeko: {
+      productId: p.id,
+      code: p.code,
+      priceAfterVat: p.priceAfterVat,
+      thumbnail: p.thumbnail,
+      kind,
+    },
   };
 }
 
