@@ -482,7 +482,89 @@ function Ceiling({
           opt={plaster}
         />
       ))}
+      {segments.map((seg) => (
+        <WallSoffit
+          key={`sf-${seg.id}`}
+          seg={seg}
+          segments={segments}
+          ceilingM={ceilingM}
+          opt={plaster}
+        />
+      ))}
     </>
+  );
+}
+
+/** Gypsum soffit box: drops from the perimeter cove's underside down to just
+ *  above the upper wall cabinets on this segment (Gulf-kitchen style). */
+const SOFFIT_DEPTH = 0.42;
+const SOFFIT_MARGIN = 0.08;
+
+function WallSoffit({
+  seg,
+  segments,
+  ceilingM,
+  opt,
+}: {
+  seg: WallSegment;
+  segments: WallSegment[];
+  ceilingM: number;
+  opt: MaterialOption;
+}) {
+  const placed = useKitchenToolStore((s) => s.placedCabinets ?? []);
+
+  const built = useMemo(() => {
+    const uppers = placed
+      .map((p) => ({ p, def: findCabinetDef(p.catalogId) }))
+      .filter(
+        (x): x is { p: PlacedCabinetState; def: CabinetDef } =>
+          !!x.def &&
+          x.p.wallId === seg.id &&
+          x.def.level === "upper" &&
+          !x.def.corner
+      );
+    if (uppers.length === 0) return null;
+
+    const { origin, dir, out, theta, lengthM } = segVectors(seg);
+    const inward = out.clone().negate();
+
+    let uMin = Infinity;
+    let uMax = -Infinity;
+    let topOfCabs = -Infinity;
+    for (const { p, def } of uppers) {
+      uMin = Math.min(uMin, p.offset);
+      uMax = Math.max(uMax, p.offset + def.width);
+      topOfCabs = Math.max(topOfCabs, (p.mountY ?? def.mountY) + def.height);
+    }
+    uMin = Math.max(uMin - SOFFIT_MARGIN, 0);
+    uMax = Math.min(uMax + SOFFIT_MARGIN, lengthM);
+
+    const bottomY = topOfCabs + 0.03;
+    const topY = ceilingM - COVE_DROP;
+    if (topY - bottomY <= 0.02) return null;
+
+    const len = uMax - uMin;
+    const h = topY - bottomY;
+    const pos = origin
+      .clone()
+      .addScaledVector(dir, (uMin + uMax) / 2)
+      .addScaledVector(inward, SOFFIT_DEPTH / 2);
+    pos.y = (bottomY + topY) / 2;
+    return { pos, theta, len, h };
+  }, [placed, seg, ceilingM]);
+
+  if (!built) return null;
+
+  return (
+    <mesh
+      position={built.pos}
+      rotation={[0, built.theta, 0]}
+      castShadow
+      receiveShadow
+    >
+      <boxGeometry args={[built.len, built.h, SOFFIT_DEPTH]} />
+      <SurfaceMaterial key={opt.id} opt={opt} repeatX={built.len} repeatY={built.h} />
+    </mesh>
   );
 }
 
