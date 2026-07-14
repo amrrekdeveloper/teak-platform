@@ -18,6 +18,7 @@ import {
   CABINET_DEFS,
   findCabinetDef,
   junctionOfPlaced,
+  getJunctions,
   blockedIntervals,
   resolveDragOffset,
   type CabinetDef,
@@ -464,7 +465,13 @@ function Ceiling({
         <SurfaceMaterial key={plaster.id} opt={plaster} repeatX={w} repeatY={d} />
       </mesh>
       {segments.map((seg) => (
-        <CeilingBorder key={`cb-${seg.id}`} seg={seg} ceilingM={ceilingM} opt={plaster} />
+        <CeilingBorder
+          key={`cb-${seg.id}`}
+          seg={seg}
+          segments={segments}
+          ceilingM={ceilingM}
+          opt={plaster}
+        />
       ))}
     </>
   );
@@ -472,30 +479,48 @@ function Ceiling({
 
 function CeilingBorder({
   seg,
+  segments,
   ceilingM,
   opt,
 }: {
   seg: WallSegment;
+  segments: WallSegment[];
   ceilingM: number;
   opt: MaterialOption;
 }) {
   const { origin, dir, theta, lengthM } = useMemo(() => segVectors(seg), [seg]);
   const inward = useMemo(() => inwardOf(seg), [seg]);
-  const len = lengthM + 2 * COVE_W;
+  // Only extend past an end if another wall actually meets it there
+  // (fills the corner miter); open ends stay flush with the wall.
+  const { extStart, extEnd } = useMemo(() => {
+    const jns = getJunctions(segments);
+    const has = (end: "start" | "end") =>
+      jns.some(
+        (jn) =>
+          (jn.aId === seg.id && jn.aEnd === end) ||
+          (jn.bId === seg.id && jn.bEnd === end)
+      );
+    return {
+      extStart: has("start") ? COVE_W : 0,
+      extEnd: has("end") ? COVE_W : 0,
+    };
+  }, [segments, seg.id]);
+  const len = lengthM + extStart + extEnd;
   const RISER_T = 0.02;
   const { position, riserPos } = useMemo(() => {
+    const mid = lengthM / 2 + (extEnd - extStart) / 2;
     const p = origin.clone();
-    p.addScaledVector(dir, lengthM / 2);
+    p.addScaledVector(dir, mid);
     p.addScaledVector(inward, COVE_W / 2);
     // Underside sits at ceilingM - COVE_DROP.
     p.y = ceilingM - COVE_DROP + COVE_T / 2;
     // Dark riser closing the recess pocket at the border's inner edge.
     const r = origin.clone();
-    r.addScaledVector(dir, lengthM / 2);
+    r.addScaledVector(dir, mid);
     r.addScaledVector(inward, COVE_W - RISER_T / 2);
     r.y = ceilingM - COVE_DROP / 2;
     return { position: p, riserPos: r };
-  }, [origin, dir, inward, lengthM, ceilingM]);
+  }, [origin, dir, inward, lengthM, ceilingM, extStart, extEnd]);
 
   return (
     <>
