@@ -1,6 +1,6 @@
 import { Component, Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useLocation } from "wouter";
-import { ChevronRight, ChevronLeft, Home, Loader2, Trash2, Plus, Minus, Map, X } from "lucide-react";
+import { ChevronRight, ChevronLeft, Home, Loader2, Trash2, Plus, Minus, Map, X, Lightbulb } from "lucide-react";
 import { useProgress } from "@react-three/drei";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -137,6 +137,10 @@ function MaterialBar() {
   const setWallMaterial = useKitchenToolStore((s) => s.setWallMaterial);
   const environmentId = useKitchenToolStore((s) => s.environmentId);
   const setEnvironment = useKitchenToolStore((s) => s.setEnvironment);
+  const lightsOn = useKitchenToolStore((s) => s.lightsOn ?? false);
+  const lightTemp = useKitchenToolStore((s) => s.lightTemp ?? "warm");
+  const toggleLights = useKitchenToolStore((s) => s.toggleLights);
+  const setLightTemp = useKitchenToolStore((s) => s.setLightTemp);
 
   return (
     <div
@@ -196,6 +200,49 @@ function MaterialBar() {
             </button>
           ))}
         </div>
+      </div>
+      <div className="flex items-center gap-2 flex-wrap">
+        <button
+          type="button"
+          onClick={toggleLights}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold transition-colors ${
+            lightsOn
+              ? "border-primary bg-primary/10 text-primary"
+              : "border-border text-muted-foreground hover:border-primary/50 hover:text-foreground"
+          }`}
+          data-testid="button-toggle-lights"
+        >
+          <Lightbulb className="w-3.5 h-3.5" />
+          {lightsOn ? t("تشغيل الإضاءة", "Lights on") : t("بدون إضاءة", "Lights off")}
+        </button>
+        {lightsOn && (
+          <div className="flex items-center gap-1.5">
+            {(
+              [
+                { id: "warm", nameAr: "دافئ", nameEn: "Warm", swatch: "#ffcc80" },
+                { id: "cool", nameAr: "بارد", nameEn: "Cool", swatch: "#eaf2ff" },
+              ] as const
+            ).map((opt) => (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => setLightTemp(opt.id)}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-bold transition-colors ${
+                  lightTemp === opt.id
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-border text-muted-foreground hover:border-primary/50 hover:text-foreground"
+                }`}
+                data-testid={`button-light-temp-${opt.id}`}
+              >
+                <span
+                  className="w-3 h-3 rounded-full border border-border"
+                  style={{ backgroundColor: opt.swatch }}
+                />
+                {t(opt.nameAr, opt.nameEn)}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

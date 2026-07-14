@@ -436,6 +436,15 @@ const COVE_W = 0.25;
 const COVE_DROP = 0.12;
 const COVE_T = 0.03;
 
+/* Artificial lighting colors */
+const WARM_LIGHT = "#ffcc80";
+const COOL_LIGHT = "#eaf2ff";
+function useLighting() {
+  const lightsOn = useKitchenToolStore((s) => s.lightsOn ?? false);
+  const lightTemp = useKitchenToolStore((s) => s.lightTemp ?? "warm");
+  return { lightsOn, lightColor: lightTemp === "cool" ? COOL_LIGHT : WARM_LIGHT };
+}
+
 function Ceiling({
   bounds,
   ceilingM,
@@ -488,6 +497,7 @@ function CeilingBorder({
   ceilingM: number;
   opt: MaterialOption;
 }) {
+  const { lightsOn, lightColor } = useLighting();
   const { origin, dir, theta, lengthM } = useMemo(() => segVectors(seg), [seg]);
   const inward = useMemo(() => inwardOf(seg), [seg]);
   // Only extend past an end if another wall actually meets it there
@@ -532,6 +542,126 @@ function CeilingBorder({
         <boxGeometry args={[len, COVE_DROP, RISER_T]} />
         <meshStandardMaterial color="#2a2a2c" roughness={0.7} />
       </mesh>
+      {lightsOn && (
+        <>
+          {/* Hidden LED strip inside the cove pocket */}
+          <mesh
+            position={[
+              riserPos.x,
+              ceilingM - COVE_DROP + COVE_T + 0.01,
+              riserPos.z,
+            ]}
+            rotation={[0, theta, 0]}
+          >
+            <boxGeometry args={[len, 0.012, 0.03]} />
+            <meshStandardMaterial
+              color={lightColor}
+              emissive={lightColor}
+              emissiveIntensity={2.4}
+              toneMapped={false}
+            />
+          </mesh>
+          {/* One soft wash light per wall segment (max 3 walls) */}
+          <pointLight
+            position={[position.x, ceilingM - COVE_DROP / 2, position.z]}
+            color={lightColor}
+            intensity={5}
+            distance={5}
+            decay={1.6}
+          />
+        </>
+      )}
+    </>
+  );
+}
+
+/* ── Recessed ceiling downlights ─────────────────────────── */
+function Downlights({
+  bounds,
+  ceilingM,
+}: {
+  bounds: { minX: number; minY: number; maxX: number; maxY: number };
+  ceilingM: number;
+}) {
+  const { lightsOn, lightColor } = useLighting();
+  const spots = useMemo(() => {
+    const minX = bounds.minX * CM + COVE_W + 0.3;
+    const maxX = bounds.maxX * CM - COVE_W - 0.3;
+    const minZ = bounds.minY * CM + COVE_W + 0.3;
+    const maxZ = bounds.maxY * CM - COVE_W - 0.3;
+    const w = Math.max(maxX - minX, 0.1);
+    const d = Math.max(maxZ - minZ, 0.1);
+    let nx = Math.min(3, Math.max(1, Math.round(w / 1.6)));
+    let nz = Math.min(2, Math.max(1, Math.round(d / 1.6)));
+    while (nx * nz > 6) (nx > nz ? nx-- : nz--);
+    const pts: [number, number][] = [];
+    for (let i = 0; i < nx; i++)
+      for (let j = 0; j < nz; j++)
+        pts.push([
+          nx === 1 ? (minX + maxX) / 2 : minX + (w * i) / (nx - 1),
+          nz === 1 ? (minZ + maxZ) / 2 : minZ + (d * j) / (nz - 1),
+        ]);
+    return pts;
+  }, [bounds]);
+
+  return (
+    <>
+      {spots.map(([x, z], i) => (
+        <group key={`dl-${i}`}>
+          {/* Recessed fixture housing (always visible) */}
+          <mesh position={[x, ceilingM - 0.006, z]} rotation={[Math.PI / 2, 0, 0]}>
+            <circleGeometry args={[0.07, 24]} />
+            <meshStandardMaterial color="#26262a" roughness={0.5} />
+          </mesh>
+          {lightsOn && (
+            <>
+              <mesh position={[x, ceilingM - 0.01, z]} rotation={[Math.PI / 2, 0, 0]}>
+                <circleGeometry args={[0.05, 24]} />
+                <meshStandardMaterial
+                  color={lightColor}
+                  emissive={lightColor}
+                  emissiveIntensity={3}
+                  toneMapped={false}
+                />
+              </mesh>
+              <SpotDown x={x} z={z} ceilingM={ceilingM} color={lightColor} />
+            </>
+          )}
+        </group>
+      ))}
+    </>
+  );
+}
+
+function SpotDown({
+  x,
+  z,
+  ceilingM,
+  color,
+}: {
+  x: number;
+  z: number;
+  ceilingM: number;
+  color: string;
+}) {
+  const target = useMemo(() => {
+    const t = new THREE.Object3D();
+    t.position.set(x, 0, z);
+    return t;
+  }, [x, z]);
+  return (
+    <>
+      <spotLight
+        position={[x, ceilingM - 0.02, z]}
+        target={target}
+        angle={0.6}
+        penumbra={0.5}
+        color={color}
+        intensity={14}
+        distance={ceilingM + 2}
+        decay={1.4}
+      />
+      <primitive object={target} />
     </>
   );
 }
@@ -555,6 +685,7 @@ function PlacedCabinetMesh({
   onGrab: (id: string, def: CabinetDef) => void;
 }) {
   const { scene } = useGLTF(def.url);
+  const { lightsOn, lightColor } = useLighting();
   const seg = segments.find((s) => s.id === placed.wallId);
 
   // Clone + recenter once per model — NOT on every drag move.
@@ -617,6 +748,17 @@ function PlacedCabinetMesh({
       }}
     >
       <primitive object={object} />
+      {def.level === "upper" && lightsOn && (
+        <mesh position={[0, -0.008, def.depth / 2 - 0.02]}>
+          <boxGeometry args={[Math.max(def.width - 0.04, 0.1), 0.014, 0.025]} />
+          <meshStandardMaterial
+            color={lightColor}
+            emissive={lightColor}
+            emissiveIntensity={2.2}
+            toneMapped={false}
+          />
+        </mesh>
+      )}
       {selected && (
         <mesh position={[0, def.height / 2, 0]}>
           <boxGeometry args={[def.width + 0.05, def.height + 0.05, def.depth + 0.05]} />
@@ -1084,6 +1226,7 @@ function SceneContents({
       <Suspense fallback={null}>
         <Ceiling bounds={bounds} ceilingM={ceilingM} segments={segments} />
       </Suspense>
+      <Downlights bounds={bounds} ceilingM={ceilingM} />
       <Suspense fallback={null}>
         <Walls
           segments={segments}

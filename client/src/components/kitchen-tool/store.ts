@@ -107,6 +107,9 @@ interface KitchenToolState {
   wallMaterialId: string;
   /** Selected environment (HDRI ambiance) for the 3D studio. */
   environmentId: string;
+  /** Artificial lighting (downlights + cove + under-cabinet LED). */
+  lightsOn: boolean;
+  lightTemp: "warm" | "cool";
   /** Cabinets placed in the 3D studio. */
   placedCabinets: PlacedCabinetState[];
   setAnswer: <K extends keyof KitchenAnswers>(key: K, value: KitchenAnswers[K]) => void;
@@ -123,6 +126,8 @@ interface KitchenToolState {
   setFloorMaterial: (id: string) => void;
   setWallMaterial: (id: string) => void;
   setEnvironment: (id: string) => void;
+  toggleLights: () => void;
+  setLightTemp: (temp: "warm" | "cool") => void;
   addPlacedCabinet: (cabinet: PlacedCabinetState) => void;
   movePlacedCabinet: (id: string, wallId: string, offset: number) => void;
   setPlacedCabinetHeight: (id: string, mountY: number) => void;
@@ -149,6 +154,8 @@ export const useKitchenToolStore = create<KitchenToolState>()(
       floorMaterialId: "laminate",
       wallMaterialId: "plaster",
       environmentId: DEFAULT_ENVIRONMENT_ID,
+      lightsOn: false,
+      lightTemp: "warm",
       placedCabinets: [],
       setAnswer: (key, value) =>
         set((state) => ({ answers: { ...state.answers, [key]: value } })),
@@ -209,6 +216,8 @@ export const useKitchenToolStore = create<KitchenToolState>()(
       setFloorMaterial: (id) => set({ floorMaterialId: id }),
       setWallMaterial: (id) => set({ wallMaterialId: id }),
       setEnvironment: (id) => set({ environmentId: id }),
+      toggleLights: () => set((state) => ({ lightsOn: !state.lightsOn })),
+      setLightTemp: (temp) => set({ lightTemp: temp }),
       addPlacedCabinet: (cabinet) =>
         set((state) => ({
           placedCabinets: [...(state.placedCabinets ?? []), cabinet],
@@ -240,6 +249,8 @@ export const useKitchenToolStore = create<KitchenToolState>()(
           floorMaterialId: "laminate",
           wallMaterialId: "plaster",
           environmentId: DEFAULT_ENVIRONMENT_ID,
+          lightsOn: false,
+          lightTemp: "warm",
           placedCabinets: [],
         }),
     }),
