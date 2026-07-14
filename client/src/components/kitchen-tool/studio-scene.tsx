@@ -311,7 +311,11 @@ function Walls({
   return (
     <>
       {segments.map((seg) => (
-        <Baseboard key={`bb-${seg.id}`} seg={seg} />
+        <Baseboard
+          key={`bb-${seg.id}`}
+          seg={seg}
+          openings={openings.filter((o) => o.wallId === seg.id)}
+        />
       ))}
       {segments.map((seg) => {
         const pieces = wallPieces(
@@ -337,22 +341,60 @@ function Walls({
 const BASEBOARD_H = 0.08;
 const BASEBOARD_T = 0.02;
 
-function Baseboard({ seg }: { seg: WallSegment }) {
+function Baseboard({
+  seg,
+  openings,
+}: {
+  seg: WallSegment;
+  openings: KitchenOpening[];
+}) {
   const { origin, dir, out, theta, lengthM } = useMemo(() => segVectors(seg), [seg]);
-  const position = useMemo(() => {
-    const p = origin.clone();
-    p.addScaledVector(dir, lengthM / 2);
-    // Proud of the inner wall face (inner face sits at out*0).
-    p.addScaledVector(out, -BASEBOARD_T / 2);
-    p.y = BASEBOARD_H / 2;
-    return p;
-  }, [origin, dir, out, lengthM]);
+
+  // Split into runs broken only by DOOR openings (doors reach the floor);
+  // windows keep the baseboard continuous underneath.
+  const runs = useMemo(() => {
+    const doors = openings
+      .filter((o) => o.type === "door")
+      .map((o) => {
+        const w = o.width * CM;
+        const start = Math.min(
+          Math.max(o.distanceFromWallStart * CM, 0),
+          Math.max(lengthM - w, 0)
+        );
+        return { startM: start, endM: Math.min(start + w, lengthM) };
+      })
+      .filter((d) => d.endM - d.startM > 0.01)
+      .sort((a, b) => a.startM - b.startM);
+
+    const out: Array<{ u0: number; u1: number }> = [];
+    let cursor = 0;
+    for (const d of doors) {
+      const s = Math.max(d.startM, cursor);
+      const e = Math.max(d.endM, s);
+      if (s - cursor > 0.005) out.push({ u0: cursor, u1: s });
+      cursor = e;
+    }
+    if (lengthM - cursor > 0.005) out.push({ u0: cursor, u1: lengthM });
+    return out;
+  }, [openings, lengthM]);
 
   return (
-    <mesh position={position} rotation={[0, theta, 0]} receiveShadow>
-      <boxGeometry args={[lengthM, BASEBOARD_H, BASEBOARD_T]} />
-      <meshStandardMaterial color="#3a3a3c" roughness={0.6} />
-    </mesh>
+    <>
+      {runs.map((run, i) => {
+        const len = run.u1 - run.u0;
+        const p = origin.clone();
+        p.addScaledVector(dir, (run.u0 + run.u1) / 2);
+        // Proud of the inner wall face (inner face sits at out*0).
+        p.addScaledVector(out, -BASEBOARD_T / 2);
+        p.y = BASEBOARD_H / 2;
+        return (
+          <mesh key={i} position={p} rotation={[0, theta, 0]} receiveShadow>
+            <boxGeometry args={[len, BASEBOARD_H, BASEBOARD_T]} />
+            <meshStandardMaterial color="#3a3a3c" roughness={0.6} />
+          </mesh>
+        );
+      })}
+    </>
   );
 }
 
