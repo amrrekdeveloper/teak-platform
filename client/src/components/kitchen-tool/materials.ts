@@ -51,6 +51,30 @@ export const FLOOR_OPTIONS: MaterialOption[] = [
     },
   },
   {
+    id: "marble-white",
+    nameAr: "رخام أبيض فاخر",
+    nameEn: "Luxury White Marble",
+    thumb: `${ASSETS}/thumbs/floor-marble-white.jpg`,
+    tileSizeM: 1.6,
+    maps: {
+      map: `${ASSETS}/floor-marble-white/textures/marble_01_diff_2k.jpg`,
+      normalMap: `${ASSETS}/floor-marble-white/textures/marble_01_nor_gl_2k.jpg`,
+      armMap: `${ASSETS}/floor-marble-white/textures/marble_01_arm_2k.jpg`,
+    },
+  },
+  {
+    id: "cartago-grey",
+    nameAr: "بلاط رمادي فاتح",
+    nameEn: "Light Grey Tile",
+    thumb: `${ASSETS}/thumbs/floor-cartago-grey.jpg`,
+    tileSizeM: 1.6,
+    maps: {
+      map: `${ASSETS}/floor-cartago-grey/textures/grey_cartago_01_diff_2k.jpg`,
+      normalMap: `${ASSETS}/floor-cartago-grey/textures/grey_cartago_01_nor_gl_2k.jpg`,
+      armMap: `${ASSETS}/floor-cartago-grey/textures/grey_cartago_01_arm_2k.jpg`,
+    },
+  },
+  {
     id: "granite-dark",
     nameAr: "غرانيت رمادي غامق",
     nameEn: "Dark Grey Granite",
