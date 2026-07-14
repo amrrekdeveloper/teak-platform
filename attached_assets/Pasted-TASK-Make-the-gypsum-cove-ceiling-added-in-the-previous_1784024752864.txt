@@ -1,0 +1,24 @@
+TASK: Make the gypsum cove ceiling (added in the previous task) actually read visually as a recessed step — it is geometrically correct but currently too subtle to notice.
+
+FILE: client/src/components/kitchen-tool/studio-scene.tsx only.
+
+CONTEXT: Ceiling and CeilingBorder (around lines 432-495) already build a two-tier ceiling correctly (inset main plane at ceilingM, lowered perimeter border at ceilingM - COVE_DROP), but it's barely visible in practice because: the drop is small (COVE_DROP = 0.07), the vertical recess pocket between the two tiers has no geometry at all (so it doesn't read as a shadowed gap), and neither the main ceiling plane nor the CeilingBorder mesh have castShadow/receiveShadow enabled.
+
+REQUIRED CHANGES:
+1) Increase COVE_DROP from 0.07 to 0.12 (12cm) for a clearly visible step.
+2) Add a closing "riser" surface in the vertical recess pocket: a thin vertical box (or plane) connecting the inner edge of each CeilingBorder piece up to the outer edge of the main ceiling plane, following the same wall segment layout. Give it a dark/shadowed material (e.g. meshStandardMaterial color around #2a2a2c, roughness ~0.7) — this is intentional: a real unlit cove recess looks dark/shadowed until a light is placed inside it (a future task will add hidden LED strip lighting here).
+3) Add `castShadow` and `receiveShadow` to the main ceiling plane mesh, the CeilingBorder mesh, and the new riser mesh, so the existing directional light casts real shading into the recess for extra depth.
+
+WHAT MUST NOT CHANGE:
+- Everything else (walls, wall-fade, baseboard with door gaps, environment/backdrop selector, floor, cabinets, drag-and-drop, utilities, 2D plan) stays exactly as-is.
+- Must keep working correctly for all layout shapes (I/L/U/parallel).
+
+SAFETY RULES:
+- Only modify the Ceiling/CeilingBorder code (and add the new riser piece) in client/src/components/kitchen-tool/studio-scene.tsx.
+- Do not touch any other file.
+- Checkpoint only after visual verification.
+
+ACCEPTANCE (verify visually, from a normal orbit distance, not zoomed in extremely close):
+- The ceiling now clearly shows a visibly stepped, shadowed recess running around the full perimeter — obviously a two-tier gypsum design, not just a faint line.
+- Works correctly on at least an L-shape and U-shape kitchen with no gaps at corners.
+- No console errors, no performance stutter.

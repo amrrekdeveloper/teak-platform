@@ -432,7 +432,7 @@ function Floor({
 /** Two-tier gypsum cove ceiling (Gulf style): lowered perimeter border +
  *  recessed pocket + inset main ceiling, always in plaster. */
 const COVE_W = 0.25;
-const COVE_DROP = 0.07;
+const COVE_DROP = 0.12;
 const COVE_T = 0.03;
 
 function Ceiling({
@@ -454,7 +454,12 @@ function Ceiling({
 
   return (
     <>
-      <mesh position={[cx, ceilingM, cz]} rotation={[Math.PI / 2, 0, 0]}>
+      <mesh
+        position={[cx, ceilingM, cz]}
+        rotation={[Math.PI / 2, 0, 0]}
+        castShadow
+        receiveShadow
+      >
         <planeGeometry args={[w, d]} />
         <SurfaceMaterial key={plaster.id} opt={plaster} repeatX={w} repeatY={d} />
       </mesh>
@@ -477,20 +482,32 @@ function CeilingBorder({
   const { origin, dir, theta, lengthM } = useMemo(() => segVectors(seg), [seg]);
   const inward = useMemo(() => inwardOf(seg), [seg]);
   const len = lengthM + 2 * COVE_W;
-  const position = useMemo(() => {
+  const RISER_T = 0.02;
+  const { position, riserPos } = useMemo(() => {
     const p = origin.clone();
     p.addScaledVector(dir, lengthM / 2);
     p.addScaledVector(inward, COVE_W / 2);
-    // Underside sits at ceilingM - COVE_DROP; pocket above stays open.
+    // Underside sits at ceilingM - COVE_DROP.
     p.y = ceilingM - COVE_DROP + COVE_T / 2;
-    return p;
+    // Dark riser closing the recess pocket at the border's inner edge.
+    const r = origin.clone();
+    r.addScaledVector(dir, lengthM / 2);
+    r.addScaledVector(inward, COVE_W - RISER_T / 2);
+    r.y = ceilingM - COVE_DROP / 2;
+    return { position: p, riserPos: r };
   }, [origin, dir, inward, lengthM, ceilingM]);
 
   return (
-    <mesh position={position} rotation={[0, theta, 0]}>
-      <boxGeometry args={[len, COVE_T, COVE_W]} />
-      <SurfaceMaterial key={opt.id} opt={opt} repeatX={len} repeatY={COVE_W} />
-    </mesh>
+    <>
+      <mesh position={position} rotation={[0, theta, 0]} castShadow receiveShadow>
+        <boxGeometry args={[len, COVE_T, COVE_W]} />
+        <SurfaceMaterial key={opt.id} opt={opt} repeatX={len} repeatY={COVE_W} />
+      </mesh>
+      <mesh position={riserPos} rotation={[0, theta, 0]} castShadow receiveShadow>
+        <boxGeometry args={[len, COVE_DROP, RISER_T]} />
+        <meshStandardMaterial color="#2a2a2c" roughness={0.7} />
+      </mesh>
+    </>
   );
 }
 
