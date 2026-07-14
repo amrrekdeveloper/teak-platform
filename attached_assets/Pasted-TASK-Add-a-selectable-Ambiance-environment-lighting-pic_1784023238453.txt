@@ -1,0 +1,43 @@
+TASK: Add a selectable "Ambiance" (environment/lighting) picker to the 3D kitchen studio, make the environment visible as a blurred backdrop instead of a flat color, and add a baseboard/skirting trim for visual definition.
+
+FILES: client/src/components/kitchen-tool/materials.ts, client/src/components/kitchen-tool/store.ts, client/src/components/kitchen-tool/studio-scene.tsx, client/src/pages/kitchen-tool/studio.tsx.
+
+CONTEXT: The studio currently uses one hardcoded HDRI file (kitchen-tool-assets/hdri/relax_inn_seaview_suite_2k.hdr) purely as an invisible light source (Environment with no visible background — a flat color `#efece7` is used as the background instead). Four new HDRI files have been uploaded to kitchen-tool-assets/hdri/: provence_studio_2k.hdr, photo_studio_01_2k.hdr, brown_photostudio_02_2k.hdr, studio_small_03_2k.hdr. These are professional photo-studio environments (soft neutral backdrops), much better suited to a kitchen product visualization than the old hotel-room one.
+
+REQUIRED CHANGES:
+
+1) In materials.ts, add a new exported array (separate from FLOOR_OPTIONS/WALL_OPTIONS, does not need PBR maps — just an id, Arabic/English label, and the .hdr file path under /kitchen-tool-assets/hdri/):
+   ENVIRONMENT_OPTIONS = [
+     { id: "provence_studio", nameAr: "استوديو بروفانس", nameEn: "Provence Studio", file: "/kitchen-tool-assets/hdri/provence_studio_2k.hdr" },
+     { id: "photo_studio_01", nameAr: "استوديو تصوير 1", nameEn: "Photo Studio 01", file: "/kitchen-tool-assets/hdri/photo_studio_01_2k.hdr" },
+     { id: "brown_photostudio_02", nameAr: "استوديو دافئ", nameEn: "Warm Studio", file: "/kitchen-tool-assets/hdri/brown_photostudio_02_2k.hdr" },
+     { id: "studio_small_03", nameAr: "استوديو تباين عالي", nameEn: "High Contrast Studio", file: "/kitchen-tool-assets/hdri/studio_small_03_2k.hdr" },
+   ]
+   Set DEFAULT_ENVIRONMENT_ID = "provence_studio". Add a findEnvironmentOption(id) helper matching the existing findFloorOption/findWallOption pattern. Do NOT include the old relax_inn_seaview_suite file in this list (leave the file itself in place, just unused).
+
+2) In store.ts, add `environmentId: string` (default DEFAULT_ENVIRONMENT_ID) to the persisted state, plus a `setEnvironment(id: string)` action, and include it in the `reset()` function. Follow the exact same pattern as floorMaterialId/setFloorMaterial.
+
+3) In studio-scene.tsx:
+   - Replace the hardcoded HDR_URL usage with the file from the currently selected environment option (read environmentId from the store, resolve via findEnvironmentOption).
+   - Make the environment visibly the background: use drei's <Environment> with `background` enabled and a blur value (try `blur={0.7}`) so it reads as a soft, out-of-focus studio backdrop rather than a sharp photo. Remove the flat `<color attach="background" .../>` — the blurred HDRI is the new background.
+   - Add a thin baseboard/skirting trim along the base of every wall segment (all layouts): a low box strip (~8cm tall, ~2cm proud of the wall face) running the full length of each wall at floor level, in a fixed neutral dark tone (e.g. a dark charcoal grey, roughness ~0.6, not tied to the wall/floor material picker — keep it simple and fixed for now). Add this in the Walls component, iterating over the same wall segments already used for the wall pieces. This must render on ALL walls regardless of which floor/wall material or layout shape is selected.
+
+4) In studio.tsx, add a new row to the existing MaterialBar (or a clearly separated new section right after it) labeled "الإضاءة والأجواء" / "Lighting & Ambiance", with one button per ENVIRONMENT_OPTIONS entry (simple labeled buttons are fine — no thumbnail images exist for these, follow the plain-text-button style already used for the layout-shape selector in dimensions.tsx, not the image-swatch style used for floor/wall). Selecting one calls store's setEnvironment and updates the 3D scene live.
+
+WHAT MUST NOT CHANGE:
+- Floor and wall material pickers keep working exactly as before.
+- Cabinet placement, drag-and-drop, utilities, 2D plan panel, and wall-fade-on-camera-angle behavior (from the previous task) all keep working unchanged.
+- Lighting intensity/exposure (ACES tone mapping) should still look natural — not blown out or too dark — with the new visible backdrop; adjust the existing directionalLight/ambientLight intensities slightly if needed to stay balanced with the new environment, but do not remove them.
+
+SAFETY RULES:
+- Only touch the 4 files listed above. Do not touch any other file.
+- Do not touch client/src/pages/design-studio.tsx, designer-board.tsx, or scene-3d.tsx.
+- Do not change package.json dependency versions.
+- Do not delete kitchen-tool-assets/hdri/relax_inn_seaview_suite_2k.hdr — just stop using it as the default.
+- Checkpoint only after visual verification succeeds.
+
+ACCEPTANCE (verify visually in the browser before declaring done):
+- The 3D studio background is now a soft, blurred, professional studio backdrop (not a flat beige color), and it changes when a different ambiance option is selected.
+- A new "الإضاءة والأجواء" selector with 4 options appears in the studio, matching the floor/wall selector style, and switching between them visibly changes both the backdrop and the room's lighting/shadows.
+- A visible thin dark baseboard trim runs along the bottom of every wall in every layout shape (I/L/U/parallel), clearly separating wall from floor even when both are very light-colored (test with white walls + light floor).
+- No console errors. Everything from previous tasks (drag-and-drop, materials, cabinet catalog, utilities, 2D plan, wall fading) still works.

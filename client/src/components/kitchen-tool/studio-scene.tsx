@@ -27,6 +27,7 @@ import type { PlacedCabinetState } from "@/components/kitchen-tool/store";
 import {
   findFloorOption,
   findWallOption,
+  findEnvironmentOption,
   type MaterialOption,
 } from "@/components/kitchen-tool/materials";
 import { useKitchenToolStore } from "@/components/kitchen-tool/store";
@@ -39,7 +40,6 @@ const WINDOW_HEIGHT_CM = 120;
 const CM = 1 / 100;
 
 const ASSETS = "/kitchen-tool-assets";
-const HDR_URL = `${ASSETS}/hdri/relax_inn_seaview_suite_2k.hdr`;
 
 /** Oak veneer countertop maps — prepared for later phases (cabinet runs). */
 export const COUNTERTOP_TEX = {
@@ -310,6 +310,9 @@ function Walls({
 
   return (
     <>
+      {segments.map((seg) => (
+        <Baseboard key={`bb-${seg.id}`} seg={seg} />
+      ))}
       {segments.map((seg) => {
         const pieces = wallPieces(
           seg.length * CM,
@@ -327,6 +330,29 @@ function Walls({
         ));
       })}
     </>
+  );
+}
+
+/** Thin dark skirting strip along the base of a wall segment. */
+const BASEBOARD_H = 0.08;
+const BASEBOARD_T = 0.02;
+
+function Baseboard({ seg }: { seg: WallSegment }) {
+  const { origin, dir, out, theta, lengthM } = useMemo(() => segVectors(seg), [seg]);
+  const position = useMemo(() => {
+    const p = origin.clone();
+    p.addScaledVector(dir, lengthM / 2);
+    // Proud of the inner wall face (inner face sits at out*0).
+    p.addScaledVector(out, -BASEBOARD_T / 2);
+    p.y = BASEBOARD_H / 2;
+    return p;
+  }, [origin, dir, out, lengthM]);
+
+  return (
+    <mesh position={position} rotation={[0, theta, 0]} receiveShadow>
+      <boxGeometry args={[lengthM, BASEBOARD_H, BASEBOARD_T]} />
+      <meshStandardMaterial color="#3a3a3c" roughness={0.6} />
+    </mesh>
   );
 }
 
@@ -752,6 +778,8 @@ function SceneContents({
   const wallMaterialId = useKitchenToolStore((s) => s.wallMaterialId);
   const floorOption = findFloorOption(floorMaterialId);
   const wallOption = findWallOption(wallMaterialId);
+  const environmentId = useKitchenToolStore((s) => s.environmentId);
+  const envOption = findEnvironmentOption(environmentId);
 
   const placedCabinets = useKitchenToolStore((s) => s.placedCabinets ?? []);
   const movePlacedCabinet = useKitchenToolStore((s) => s.movePlacedCabinet);
@@ -882,8 +910,7 @@ function SceneContents({
 
   return (
     <>
-      <color attach="background" args={["#efece7"]} />
-      <Environment files={HDR_URL} />
+      <Environment files={envOption.file} background blur={0.7} />
       <directionalLight
         position={[center.x + roomSpan * 0.9, ceilingM + 2.6, center.z + roomSpan * 1.2]}
         intensity={1.35}

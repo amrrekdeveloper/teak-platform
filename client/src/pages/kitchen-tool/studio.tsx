@@ -15,6 +15,7 @@ import {
 import {
   FLOOR_OPTIONS,
   WALL_OPTIONS,
+  ENVIRONMENT_OPTIONS,
   type MaterialOption,
 } from "@/components/kitchen-tool/materials";
 import KitchenPlanSvg, { getWallSegments } from "@/components/kitchen-tool/plan-svg";
@@ -134,6 +135,8 @@ function MaterialBar() {
   const wallMaterialId = useKitchenToolStore((s) => s.wallMaterialId);
   const setFloorMaterial = useKitchenToolStore((s) => s.setFloorMaterial);
   const setWallMaterial = useKitchenToolStore((s) => s.setWallMaterial);
+  const environmentId = useKitchenToolStore((s) => s.environmentId);
+  const setEnvironment = useKitchenToolStore((s) => s.setEnvironment);
 
   return (
     <div
@@ -169,6 +172,28 @@ function MaterialBar() {
               active={opt.id === wallMaterialId}
               onSelect={() => setWallMaterial(opt.id)}
             />
+          ))}
+        </div>
+      </div>
+      <div className="flex items-center gap-3 flex-wrap">
+        <span className="text-xs font-bold text-foreground whitespace-nowrap">
+          {t("الإضاءة والأجواء:", "Lighting & Ambiance:")}
+        </span>
+        <div className="flex items-center gap-2 flex-wrap">
+          {ENVIRONMENT_OPTIONS.map((opt) => (
+            <button
+              key={opt.id}
+              type="button"
+              onClick={() => setEnvironment(opt.id)}
+              className={`px-3 py-1.5 rounded-lg border text-xs font-bold transition-colors ${
+                opt.id === environmentId
+                  ? "border-primary bg-primary/10 text-primary"
+                  : "border-border text-muted-foreground hover:border-primary/50 hover:text-foreground"
+              }`}
+              data-testid={`button-environment-${opt.id}`}
+            >
+              {t(opt.nameAr, opt.nameEn)}
+            </button>
           ))}
         </div>
       </div>

@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { DEFAULT_ENVIRONMENT_ID } from "@/components/kitchen-tool/materials";
 
 export type OvenPlacement = "under_counter" | "tall_cabinet";
 export type HoodType = "wall" | "integrated";
@@ -102,6 +103,8 @@ interface KitchenToolState {
   /** Selected material ids for the 3D studio. */
   floorMaterialId: string;
   wallMaterialId: string;
+  /** Selected environment (HDRI ambiance) for the 3D studio. */
+  environmentId: string;
   /** Cabinets placed in the 3D studio. */
   placedCabinets: PlacedCabinetState[];
   setAnswer: <K extends keyof KitchenAnswers>(key: K, value: KitchenAnswers[K]) => void;
@@ -117,6 +120,7 @@ interface KitchenToolState {
   removeUtility: (id: string) => void;
   setFloorMaterial: (id: string) => void;
   setWallMaterial: (id: string) => void;
+  setEnvironment: (id: string) => void;
   addPlacedCabinet: (cabinet: PlacedCabinetState) => void;
   movePlacedCabinet: (id: string, wallId: string, offset: number) => void;
   removePlacedCabinet: (id: string) => void;
@@ -141,6 +145,7 @@ export const useKitchenToolStore = create<KitchenToolState>()(
       utilities: [],
       floorMaterialId: "laminate",
       wallMaterialId: "plaster",
+      environmentId: DEFAULT_ENVIRONMENT_ID,
       placedCabinets: [],
       setAnswer: (key, value) =>
         set((state) => ({ answers: { ...state.answers, [key]: value } })),
@@ -200,6 +205,7 @@ export const useKitchenToolStore = create<KitchenToolState>()(
         })),
       setFloorMaterial: (id) => set({ floorMaterialId: id }),
       setWallMaterial: (id) => set({ wallMaterialId: id }),
+      setEnvironment: (id) => set({ environmentId: id }),
       addPlacedCabinet: (cabinet) =>
         set((state) => ({
           placedCabinets: [...(state.placedCabinets ?? []), cabinet],
@@ -224,6 +230,7 @@ export const useKitchenToolStore = create<KitchenToolState>()(
           utilities: [],
           floorMaterialId: "laminate",
           wallMaterialId: "plaster",
+          environmentId: DEFAULT_ENVIRONMENT_ID,
           placedCabinets: [],
         }),
     }),
