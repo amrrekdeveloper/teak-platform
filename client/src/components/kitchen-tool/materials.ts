@@ -22,6 +22,8 @@ export interface MaterialOption {
   maps?: PbrMaps;
   /** Roughness for paint options. */
   roughness?: number;
+  /** Real-world meters one texture repeat spans (defaults to 1). */
+  tileSizeM?: number;
 }
 
 export const FLOOR_OPTIONS: MaterialOption[] = [
@@ -37,51 +39,28 @@ export const FLOOR_OPTIONS: MaterialOption[] = [
     },
   },
   {
-    id: "plank",
-    nameAr: "باركيه متداخل",
-    nameEn: "Parquet Planks",
-    thumb: `${ASSETS}/thumbs/floor-plank.jpg`,
+    id: "tile-beige",
+    nameAr: "بلاط بيج فاخر",
+    nameEn: "Luxury Beige Tile",
+    thumb: `${ASSETS}/thumbs/floor-tile-beige.jpg`,
+    tileSizeM: 1.9,
     maps: {
-      map: `${ASSETS}/floor-plank/textures/plank_flooring_diff_2k.jpg`,
-      normalMap: `${ASSETS}/floor-plank/textures/plank_flooring_nor_gl_2k.jpg`,
-      roughnessMap: `${ASSETS}/floor-plank/textures/plank_flooring_rough_2k.jpg`,
+      map: `${ASSETS}/floor-tile-beige/textures/interior_tiles_diff_2k.jpg`,
+      normalMap: `${ASSETS}/floor-tile-beige/textures/interior_tiles_nor_gl_2k.jpg`,
+      armMap: `${ASSETS}/floor-tile-beige/textures/interior_tiles_arm_2k.jpg`,
     },
   },
   {
-    id: "deck",
-    nameAr: "خشب داكن",
-    nameEn: "Dark Wood Deck",
-    thumb: `${ASSETS}/thumbs/floor-deck.jpg`,
+    id: "granite-dark",
+    nameAr: "غرانيت رمادي غامق",
+    nameEn: "Dark Grey Granite",
+    thumb: `${ASSETS}/thumbs/floor-granite-dark.jpg`,
+    tileSizeM: 1.3,
     maps: {
-      map: `${ASSETS}/floor-deck/textures/wood_floor_deck_diff_2k.jpg`,
-      normalMap: `${ASSETS}/floor-deck/textures/wood_floor_deck_nor_gl_2k.jpg`,
-      armMap: `${ASSETS}/floor-deck/textures/wood_floor_deck_arm_2k.jpg`,
+      map: `${ASSETS}/floor-granite-dark/textures/granite_tile_diff_2k.jpg`,
+      normalMap: `${ASSETS}/floor-granite-dark/textures/granite_tile_nor_gl_2k.jpg`,
+      armMap: `${ASSETS}/floor-granite-dark/textures/granite_tile_arm_2k.jpg`,
     },
-  },
-  {
-    id: "worn",
-    nameAr: "خشب عتيق",
-    nameEn: "Rustic Wood",
-    thumb: `${ASSETS}/thumbs/floor-worn.jpg`,
-    maps: {
-      map: `${ASSETS}/floor-worn/textures/wood_cabinet_worn_long_diff_2k.jpg`,
-      normalMap: `${ASSETS}/floor-worn/textures/wood_cabinet_worn_long_nor_gl_2k.jpg`,
-      roughnessMap: `${ASSETS}/floor-worn/textures/wood_cabinet_worn_long_rough_2k.jpg`,
-    },
-  },
-  {
-    id: "porcelain",
-    nameAr: "بورسلان رمادي",
-    nameEn: "Gray Porcelain",
-    color: "#d7d5d0",
-    roughness: 0.18,
-  },
-  {
-    id: "ceramic-beige",
-    nameAr: "سيراميك بيج",
-    nameEn: "Beige Ceramic",
-    color: "#e5dccb",
-    roughness: 0.28,
   },
 ];
 

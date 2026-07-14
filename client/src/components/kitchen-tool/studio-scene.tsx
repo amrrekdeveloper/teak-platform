@@ -426,7 +426,12 @@ function Floor({
       onPointerDown={onPointerDown}
     >
       <planeGeometry args={[w, d]} />
-      <SurfaceMaterial key={option.id} opt={option} repeatX={w} repeatY={d} />
+      <SurfaceMaterial
+        key={option.id}
+        opt={option}
+        repeatX={w / (option.tileSizeM ?? 1)}
+        repeatY={d / (option.tileSizeM ?? 1)}
+      />
     </mesh>
   );
 }

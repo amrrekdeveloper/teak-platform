@@ -1,0 +1,51 @@
+Task for Replit Agent — place attached floor textures + clean up floor materials list
+I've attached two folders exported from Poly Haven: interior_tiles_2k.gltf (beige tile) and granite_tile_2k.gltf (dark granite tile), each containing a textures/ folder with 3 JPGs (diff, nor_gl, arm).
+Scope: only edit client/src/components/kitchen-tool/materials.ts and client/src/components/kitchen-tool/studio-scene.tsx, plus add/remove files under client/public/kitchen-tool-assets/. Do not touch any other file.
+Step 1 — place the attached texture files:
+
+Copy the 3 files from the attached interior_tiles_2k.gltf/textures/ into a new folder: client/public/kitchen-tool-assets/floor-tile-beige/textures/ (keep the same filenames: interior_tiles_diff_2k.jpg, interior_tiles_nor_gl_2k.jpg, interior_tiles_arm_2k.jpg).
+Copy the 3 files from the attached granite_tile_2k.gltf/textures/ into a new folder: client/public/kitchen-tool-assets/floor-granite-dark/textures/ (keep filenames: granite_tile_diff_2k.jpg, granite_tile_nor_gl_2k.jpg, granite_tile_arm_2k.jpg).
+The .gltf/.bin files themselves are not needed (we only use the JPG texture maps) — don't copy those.
+
+Step 2 — clean up FLOOR_OPTIONS in materials.ts:
+
+Remove the 5 entries with id "plank", "deck", "worn", "porcelain", "ceramic-beige". Keep "laminate" unchanged.
+Add tileSizeM?: number as a new optional field on the MaterialOption interface (real-world meters one texture repeat spans; treat as 1 wherever not set, so nothing else changes).
+Add these 2 new entries to FLOOR_OPTIONS:
+
+  {
+    id: "tile-beige",
+    nameAr: "بلاط بيج فاخر",
+    nameEn: "Luxury Beige Tile",
+    tileSizeM: 1.9,
+    maps: {
+      map: `${ASSETS}/floor-tile-beige/textures/interior_tiles_diff_2k.jpg`,
+      normalMap: `${ASSETS}/floor-tile-beige/textures/interior_tiles_nor_gl_2k.jpg`,
+      armMap: `${ASSETS}/floor-tile-beige/textures/interior_tiles_arm_2k.jpg`,
+    },
+  },
+  {
+    id: "granite-dark",
+    nameAr: "غرانيت رمادي غامق",
+    nameEn: "Dark Grey Granite",
+    tileSizeM: 1.3,
+    maps: {
+      map: `${ASSETS}/floor-granite-dark/textures/granite_tile_diff_2k.jpg`,
+      normalMap: `${ASSETS}/floor-granite-dark/textures/granite_tile_nor_gl_2k.jpg`,
+      armMap: `${ASSETS}/floor-granite-dark/textures/granite_tile_arm_2k.jpg`,
+    },
+  },
+(Skip the thumb field for both if no preview image exists yet — don't block on generating one, just make sure the swatch picker still renders something reasonable without crashing.)
+Step 3 — fix tile scale in studio-scene.tsx:
+In the Floor component, change:
+<SurfaceMaterial key={option.id} opt={option} repeatX={w} repeatY={d} />
+to:
+<SurfaceMaterial key={option.id} opt={option} repeatX={w / (option.tileSizeM ?? 1)} repeatY={d / (option.tileSizeM ?? 1)} />
+Step 4 — remove now-unused old asset folders:
+Delete client/public/kitchen-tool-assets/floor-plank/, floor-deck/, floor-worn/ entirely. Do not delete floor/ (still used by laminate) or anything else.
+Acceptance (verify visually before checkpoint):
+
+Floor picker shows exactly 3 options: لاميناي فاتح، بلاط بيج فاخر، غرانيت رمادي غامق.
+Both new textures load correctly (no black/pink broken-texture squares), with clean large tile scale — not tiny/repetitive.
+Switching between all 3 floors works with no console errors.
+Checkpoint only after this visual verification passes.
