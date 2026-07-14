@@ -17,8 +17,10 @@ import { useTexture } from "@react-three/drei";
 import type { CabinetDef } from "@/components/kitchen-tool/cabinets";
 import {
   DEFAULT_ADEKO_FINISH,
+  DEFAULT_ADEKO_TOP_FINISH,
   ADEKO_HANDLE_COLORS,
   type AdekoFinish,
+  type AdekoTopFinish,
   type AdekoHandleStyle,
   type AdekoHandleColor,
 } from "@/components/kitchen-tool/materials";
@@ -28,10 +30,6 @@ const ASSETS = "/kitchen-tool-assets";
 const WOOD_MAPS = {
   map: `${ASSETS}/countertop/textures/oak_veneer_01_diff_2k.jpg`,
   armMap: `${ASSETS}/countertop/textures/oak_veneer_01_arm_2k.jpg`,
-};
-const STONE_MAPS = {
-  map: `${ASSETS}/floor-granite-dark/textures/granite_tile_diff_2k.jpg`,
-  armMap: `${ASSETS}/floor-granite-dark/textures/granite_tile_arm_2k.jpg`,
 };
 
 /* Construction constants (m) — Saudi/Gulf standard base cabinet build. */
@@ -61,6 +59,7 @@ function prepWood(src: THREE.Texture, repX: number, repY: number, rot = 0) {
 
 export interface AdekoCabinetOptions {
   finish?: AdekoFinish;
+  topFinish?: AdekoTopFinish;
   handleStyle?: AdekoHandleStyle;
   handleColor?: AdekoHandleColor;
 }
@@ -173,11 +172,12 @@ export default function AdekoBaseCabinet({
   const D = def.depth;
 
   const finish = options?.finish ?? DEFAULT_ADEKO_FINISH;
+  const topFinish = options?.topFinish ?? DEFAULT_ADEKO_TOP_FINISH;
   const handleStyle = options?.handleStyle ?? "bar";
   const handleColorHex = ADEKO_HANDLE_COLORS[options?.handleColor ?? "gray"];
 
   const wood = useTexture(WOOD_MAPS);
-  const stone = useTexture(STONE_MAPS);
+  const stone = useTexture({ map: topFinish.map, armMap: topFinish.armMap });
 
   const [openDoors, setOpenDoors] = useState<boolean[]>([]);
 
@@ -239,6 +239,7 @@ export default function AdekoBaseCabinet({
         metalnessMap: stArm,
         roughness: 1,
         metalness: 1,
+        ...(topFinish.tint ? { color: new THREE.Color(topFinish.tint) } : {}),
       });
       const kickMat = new THREE.MeshStandardMaterial({ color: "#2d2d30", roughness: 0.55 });
       const metalMat = new THREE.MeshStandardMaterial({
@@ -247,7 +248,7 @@ export default function AdekoBaseCabinet({
         roughness: handleColorHex === ADEKO_HANDLE_COLORS.gray ? 0.22 : 0.45,
       });
       return { doorMat, carcassMat, interiorMat, stoneMat, kickMat, panelMat, metalMat, clones };
-    }, [wood.map, wood.armMap, stone.map, stone.armMap, W, finish, handleColorHex]);
+    }, [wood.map, wood.armMap, stone.map, stone.armMap, W, finish, topFinish, handleColorHex]);
 
   // Dispose cloned textures + materials on unmount (see r3f texture memory).
   useEffect(() => {

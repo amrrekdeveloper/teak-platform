@@ -29,6 +29,7 @@ import {
   CEILING_OPTIONS,
   ENVIRONMENT_OPTIONS,
   adekoFinishForWoodType,
+  ADEKO_TOP_FINISHES,
   type MaterialOption,
   type AdekoFinish,
 } from "@/components/kitchen-tool/materials";
@@ -823,6 +824,41 @@ export default function KitchenToolStudioPage() {
                           {t("لا توجد خامات متاحة حالياً", "No materials available yet")}
                         </p>
                       )}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-bold text-muted-foreground mb-1.5">
+                      {t("سطح الرخامة", "Countertop")}
+                    </p>
+                    <div className="grid grid-cols-5 gap-1.5">
+                      {ADEKO_TOP_FINISHES.map((f) => {
+                        const active =
+                          (selectedPlaced.topFinishId ?? ADEKO_TOP_FINISHES[0].id) === f.id;
+                        return (
+                          <button
+                            key={f.id}
+                            type="button"
+                            title={t(f.nameAr, f.nameEn)}
+                            onClick={() =>
+                              updatePlacedCabinet(selectedPlaced.id, { topFinishId: f.id })
+                            }
+                            className={`flex flex-col items-center gap-0.5 rounded-md border p-1 transition-colors ${
+                              active
+                                ? "border-primary bg-primary/10"
+                                : "border-border hover:border-primary/50"
+                            }`}
+                            data-testid={`button-top-finish-${f.id}`}
+                          >
+                            <span
+                              className="w-6 h-6 rounded border border-black/10"
+                              style={{ background: f.swatch }}
+                            />
+                            <span className="text-[8px] leading-tight text-center">
+                              {t(f.nameAr, f.nameEn)}
+                            </span>
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                   <div>

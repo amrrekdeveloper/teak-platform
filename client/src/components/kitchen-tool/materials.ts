@@ -264,6 +264,74 @@ export function adekoFinishForWoodType(nameAr: string, nameEn: string): AdekoFin
   return DEFAULT_ADEKO_FINISH;
 }
 
+/* ── Adeko cabinet countertop finishes ── */
+
+/** A countertop (worktop) finish option for the parametric Adeko cabinet. */
+export interface AdekoTopFinish {
+  id: string;
+  nameAr: string;
+  nameEn: string;
+  /** Diffuse texture path. */
+  map: string;
+  /** ARM (AO/roughness/metalness) texture path. */
+  armMap: string;
+  /** Swatch color for the UI button. */
+  swatch: string;
+  /** Optional tint applied over the texture. */
+  tint?: string;
+}
+
+const KT_ASSETS = "/kitchen-tool-assets";
+
+export const ADEKO_TOP_FINISHES: AdekoTopFinish[] = [
+  {
+    id: "granite-dark",
+    nameAr: "جرانيت غامق",
+    nameEn: "Dark Granite",
+    map: `${KT_ASSETS}/floor-granite-dark/textures/granite_tile_diff_2k.jpg`,
+    armMap: `${KT_ASSETS}/floor-granite-dark/textures/granite_tile_arm_2k.jpg`,
+    swatch: "#3a3a3c",
+  },
+  {
+    id: "marble-white",
+    nameAr: "رخام أبيض",
+    nameEn: "White Marble",
+    map: `${KT_ASSETS}/floor-marble-white/textures/marble_01_diff_2k.jpg`,
+    armMap: `${KT_ASSETS}/floor-marble-white/textures/marble_01_arm_2k.jpg`,
+    swatch: "#e9e7e2",
+  },
+  {
+    id: "grey-stone",
+    nameAr: "حجر رمادي",
+    nameEn: "Grey Stone",
+    map: `${KT_ASSETS}/floor-cartago-grey/textures/grey_cartago_01_diff_2k.jpg`,
+    armMap: `${KT_ASSETS}/floor-cartago-grey/textures/grey_cartago_01_arm_2k.jpg`,
+    swatch: "#9a9b9d",
+  },
+  {
+    id: "beige-tile",
+    nameAr: "بيج فاتح",
+    nameEn: "Light Beige",
+    map: `${KT_ASSETS}/floor-tile-beige/textures/interior_tiles_diff_2k.jpg`,
+    armMap: `${KT_ASSETS}/floor-tile-beige/textures/interior_tiles_arm_2k.jpg`,
+    swatch: "#d8cbb4",
+  },
+  {
+    id: "oak-wood",
+    nameAr: "خشب بلوط",
+    nameEn: "Oak Wood",
+    map: `${KT_ASSETS}/countertop/textures/oak_veneer_01_diff_2k.jpg`,
+    armMap: `${KT_ASSETS}/countertop/textures/oak_veneer_01_arm_2k.jpg`,
+    swatch: "#b78a5a",
+  },
+];
+
+export const DEFAULT_ADEKO_TOP_FINISH = ADEKO_TOP_FINISHES[0];
+
+export function findAdekoTopFinish(id: string | undefined | null): AdekoTopFinish {
+  return ADEKO_TOP_FINISHES.find((f) => f.id === id) ?? DEFAULT_ADEKO_TOP_FINISH;
+}
+
 export type AdekoHandleStyle = "bar" | "none";
 export type AdekoHandleColor = "black" | "white" | "gray";
 

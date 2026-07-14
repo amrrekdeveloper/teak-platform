@@ -30,6 +30,7 @@ import {
   findFloorOption,
   findWallOption,
   findCeilingOption,
+  findAdekoTopFinish,
   findEnvironmentOption,
   type MaterialOption,
   type AdekoFinish,
@@ -1038,6 +1039,7 @@ function PlacedCabinetMesh({
               placed.finishWoodTypeId != null
                 ? adekoFinishById?.[placed.finishWoodTypeId]
                 : undefined,
+            topFinish: findAdekoTopFinish(placed.topFinishId),
             handleStyle: placed.handleStyle ?? "bar",
             handleColor: placed.handleColor ?? "gray",
           }}

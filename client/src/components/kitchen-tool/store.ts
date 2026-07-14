@@ -49,6 +49,8 @@ export interface PlacedCabinetState {
   handleStyle?: "bar" | "none";
   /** Adeko parametric cabinets only — handle color. */
   handleColor?: "black" | "white" | "gray";
+  /** Adeko parametric cabinets only — countertop finish id. */
+  topFinishId?: string;
 }
 
 export type UtilityKind = "water" | "outlet" | "switch" | "drain" | "gas";
@@ -225,7 +227,9 @@ interface KitchenToolState {
   setPlacedCabinetHeight: (id: string, mountY: number) => void;
   updatePlacedCabinet: (
     id: string,
-    patch: Partial<Pick<PlacedCabinetState, "finishWoodTypeId" | "handleStyle" | "handleColor">>
+    patch: Partial<
+      Pick<PlacedCabinetState, "finishWoodTypeId" | "handleStyle" | "handleColor" | "topFinishId">
+    >
   ) => void;
   removePlacedCabinet: (id: string) => void;
   clearPlacedCabinets: () => void;
