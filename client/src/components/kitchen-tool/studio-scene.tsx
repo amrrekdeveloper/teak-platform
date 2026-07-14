@@ -272,15 +272,56 @@ function computeWindowSun(
 function sunParamsForEnv(envId: string): { color: string; intensity: number } {
   switch (envId) {
     case "brown_photostudio_02":
-      return { color: "#ffcf94", intensity: 2.6 }; // warm sunset
+      return { color: "#ffb877", intensity: 2.6 }; // warm sunset
     case "studio_small_03":
-      return { color: "#fff0c9", intensity: 2.8 }; // high contrast
+      return { color: "#ffdfa3", intensity: 2.8 }; // high contrast
     case "photo_studio_01":
-      return { color: "#fffaf0", intensity: 2.0 }; // neutral day
+      return { color: "#fff0d4", intensity: 2.0 }; // neutral day
     default:
-      return { color: "#fff3d6", intensity: 2.3 }; // soft daylight
+      return { color: "#ffe3ae", intensity: 2.3 }; // soft golden daylight
   }
 }
+
+/** Soft radial-gradient texture for the warm light pool on the floor. */
+let poolTexCache: THREE.Texture | null = null;
+function getPoolTexture(): THREE.Texture {
+  if (poolTexCache) return poolTexCache;
+  const size = 256;
+  const cnv = document.createElement("canvas");
+  cnv.width = size;
+  cnv.height = size;
+  const ctx = cnv.getContext("2d")!;
+  const grad = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  grad.addColorStop(0, "rgba(255,255,255,0.9)");
+  grad.addColorStop(0.55, "rgba(255,255,255,0.35)");
+  grad.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, size, size);
+  poolTexCache = new THREE.CanvasTexture(cnv);
+  return poolTexCache;
+}
+
+const BEAM_VERT = /* glsl */ `
+  attribute float aFade;
+  attribute float aEdge;
+  varying float vFade;
+  varying float vEdge;
+  void main() {
+    vFade = aFade;
+    vEdge = aEdge;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+const BEAM_FRAG = /* glsl */ `
+  uniform vec3 uColor;
+  uniform float uOpacity;
+  varying float vFade;
+  varying float vEdge;
+  void main() {
+    float a = pow(clamp(vFade, 0.0, 1.0), 1.8) * smoothstep(0.0, 0.35, vEdge) * uOpacity;
+    gl_FragColor = vec4(uColor, a);
+  }
+`;
 
 /** Directional sun shining through the window + translucent light shaft. */
 function WindowSunlight({ sun, envId }: { sun: WindowSun; envId: string }) {
@@ -293,7 +334,9 @@ function WindowSunlight({ sun, envId }: { sun: WindowSun; envId: string }) {
   }, [sun, target]);
 
   // Beam volume: window rect extruded along the ray direction to the floor.
-  const beamGeom = useMemo(() => {
+  // aFade: 1 at the window → 0 at the floor (lengthwise gradient).
+  // aEdge: 0 at side edges → 1 mid-face (soft borders).
+  const { beamGeom, poolCenter, poolRadius } = useMemo(() => {
     const floorPt = (c: THREE.Vector3) => {
       const t = sun.rayDir.y < -1e-4 ? c.y / -sun.rayDir.y : 0;
       return c.clone().addScaledVector(sun.rayDir, t);
@@ -301,20 +344,60 @@ function WindowSunlight({ sun, envId }: { sun: WindowSun; envId: string }) {
     const near = sun.corners;
     const far = near.map(floorPt);
     const verts: number[] = [];
-    const push = (p: THREE.Vector3) => verts.push(p.x, p.y, p.z);
+    const fades: number[] = [];
+    const edges: number[] = [];
+    const push = (p: THREE.Vector3, fade: number, edge: number) => {
+      verts.push(p.x, p.y, p.z);
+      fades.push(fade);
+      edges.push(edge);
+    };
     // 4 side quads (two triangles each) around the volume.
     for (let i = 0; i < 4; i++) {
       const j = (i + 1) % 4;
-      push(near[i]); push(near[j]); push(far[j]);
-      push(near[i]); push(far[j]); push(far[i]);
+      // corner i = edge 0, corner j = edge 1 → interpolates across the face.
+      push(near[i], 1, 0); push(near[j], 1, 1); push(far[j], 0, 1);
+      push(near[i], 1, 0); push(far[j], 0, 1); push(far[i], 0, 0);
     }
     const g = new THREE.BufferGeometry();
     g.setAttribute("position", new THREE.Float32BufferAttribute(verts, 3));
-    g.computeVertexNormals();
-    return g;
+    g.setAttribute("aFade", new THREE.Float32BufferAttribute(fades, 1));
+    g.setAttribute("aEdge", new THREE.Float32BufferAttribute(edges, 1));
+
+    const center = far
+      .reduce((acc, p) => acc.add(p), new THREE.Vector3())
+      .multiplyScalar(1 / far.length);
+    let radius = 0.6;
+    for (const p of far) radius = Math.max(radius, p.distanceTo(center));
+    return { beamGeom: g, poolCenter: center, poolRadius: radius * 1.15 };
   }, [sun]);
 
-  useEffect(() => () => beamGeom.dispose(), [beamGeom]);
+  const beamMat = useMemo(
+    () =>
+      new THREE.ShaderMaterial({
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        side: THREE.DoubleSide,
+        uniforms: {
+          uColor: { value: new THREE.Color("#ffffff") },
+          uOpacity: { value: 0.16 },
+        },
+        vertexShader: BEAM_VERT,
+        fragmentShader: BEAM_FRAG,
+      }),
+    []
+  );
+  useEffect(() => {
+    beamMat.uniforms.uColor.value.set(color);
+  }, [beamMat, color]);
+
+  useEffect(
+    () => () => {
+      beamGeom.dispose();
+    },
+    [beamGeom]
+  );
+  useEffect(() => () => beamMat.dispose(), [beamMat]);
 
   const shadowW = Math.max(sun.width * 1.4, 1.2);
   const shadowH = Math.max(sun.height * 1.8, 1.6);
@@ -338,13 +421,19 @@ function WindowSunlight({ sun, envId }: { sun: WindowSun; envId: string }) {
         shadow-camera-far={25}
       />
       <primitive object={target} />
-      <mesh geometry={beamGeom} renderOrder={2}>
+      <mesh geometry={beamGeom} material={beamMat} renderOrder={2} />
+      <mesh
+        position={[poolCenter.x, 0.012, poolCenter.z]}
+        rotation={[-Math.PI / 2, 0, 0]}
+        renderOrder={1}
+      >
+        <circleGeometry args={[poolRadius, 40]} />
         <meshBasicMaterial
           color={color}
+          map={getPoolTexture()}
           transparent
-          opacity={0.06}
+          opacity={0.32}
           blending={THREE.AdditiveBlending}
-          side={THREE.DoubleSide}
           depthWrite={false}
         />
       </mesh>
