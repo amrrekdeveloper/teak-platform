@@ -51,7 +51,7 @@ export const DECOR_ITEMS: DecorItem[] = [
     height: 0.6,
     placement: "wall",
     defaultMountY: 0.6,
-    rotYOffset: Math.PI,
+    rotYOffset: -Math.PI / 2,
     recolorable: true,
   },
   {
@@ -64,7 +64,7 @@ export const DECOR_ITEMS: DecorItem[] = [
     depth: 0.86,
     height: 1.9,
     placement: "wall",
-    rotYOffset: Math.PI,
+    rotYOffset: -Math.PI / 2,
     recolorable: true,
   },
   {
@@ -77,7 +77,7 @@ export const DECOR_ITEMS: DecorItem[] = [
     depth: 0.85,
     height: 1.94,
     placement: "wall",
-    rotYOffset: Math.PI,
+    rotYOffset: Math.PI / 2,
     recolorable: true,
   },
   {

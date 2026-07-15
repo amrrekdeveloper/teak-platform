@@ -11,4 +11,5 @@
 - [Toast lifetime & error UX](toast-and-error-ux.md) — shadcn toast on-screen time = Radix `duration` prop, not TOAST_REMOVE_DELAY; all API errors normalized to Arabic via queryClient + errors.ts (backend Arabic msgs trusted).
 - [R3F texture switching](r3f-texture-switching.md) — swappable PBR materials: dispose cloned textures in effect cleanup, localize Suspense per mesh, isolate useTexture in a keyed PBR-only component.
 - [Kitchen 3D corner geometry](kitchen-corner-geometry.md) — L-corners: origin at junction, pick the wall frame whose +X points away from junction (no mirror scale); corners block asymmetric intervals on both walls.
+- [Decor glTF front axis](decor-gltf-front-axis.md) — find a model's facing by computing front-feature mesh world centers from the gltf JSON; set rotYOffset to bring that axis to +Z, don't guess 180°.
 - [SVG drag hit target](svg-drag-hit-target.md) — pointerdown+testid go on the painted rect (not the label-holding `<g>`, whose bbox center may be unpainted); drag moves via window listeners, not svg handlers.
