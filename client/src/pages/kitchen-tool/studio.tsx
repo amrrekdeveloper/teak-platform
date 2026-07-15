@@ -1,6 +1,6 @@
 import { Component, Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useLocation } from "wouter";
-import { ChevronRight, ChevronLeft, ChevronUp, ChevronDown, Home, Loader2, Trash2, Plus, Minus, Map as MapIcon, X, Lightbulb } from "lucide-react";
+import { ChevronRight, ChevronLeft, ChevronUp, ChevronDown, Home, Loader2, Trash2, Plus, Minus, Map as MapIcon, X, Lightbulb, Play, Pause, Presentation } from "lucide-react";
 import { useProgress } from "@react-three/drei";
 import { Button } from "@/components/ui/button";
 import {
@@ -584,6 +584,136 @@ function CabinetCatalog({
   );
 }
 
+/* ── Presentation mode: clean fullscreen client view ─────── */
+function PresentationOverlay({
+  layout,
+  walls,
+  ceilingHeight,
+  openings,
+  utilities,
+  adekoFinishById,
+  onExit,
+}: {
+  layout: KitchenLayout;
+  walls: ReturnType<typeof useKitchenToolStore.getState>["walls"];
+  ceilingHeight: number;
+  openings: ReturnType<typeof useKitchenToolStore.getState>["openings"];
+  utilities: ReturnType<typeof useKitchenToolStore.getState>["utilities"];
+  adekoFinishById?: Record<number, AdekoFinish>;
+  onExit: () => void;
+}) {
+  const { t } = useLanguage();
+  const [tourActive, setTourActive] = useState(true);
+  const lightsOn = useKitchenToolStore((s) => s.lightsOn ?? false);
+  const lightTemp = useKitchenToolStore((s) => s.lightTemp ?? "warm");
+  const toggleLights = useKitchenToolStore((s) => s.toggleLights);
+  const setLightTemp = useKitchenToolStore((s) => s.setLightTemp);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onExit();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onExit]);
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black" data-testid="overlay-presentation">
+      <SceneErrorBoundary fallback={<SceneFallback />}>
+        <Suspense fallback={null}>
+          <StudioScene
+            layout={layout}
+            walls={walls}
+            ceilingHeight={ceilingHeight}
+            openings={openings}
+            utilities={utilities}
+            adekoFinishById={adekoFinishById}
+            presentation
+            tourActive={tourActive}
+            onTourEnd={() => setTourActive(false)}
+          />
+        </Suspense>
+      </SceneErrorBoundary>
+
+      {/* Top bar */}
+      <div className="absolute top-4 inset-x-0 flex items-center justify-center pointer-events-none">
+        <span className="rounded-full bg-black/55 backdrop-blur text-white/90 text-xs font-bold px-4 py-1.5">
+          {tourActive
+            ? t("جولة تلقائية — المس الشاشة للتحكم بنفسك", "Auto tour — touch to take control")
+            : t("اسحب للدوران وعجلة التمرير للتقريب", "Drag to orbit, scroll to zoom")}
+        </span>
+      </div>
+
+      {/* Bottom controls */}
+      <div className="absolute bottom-5 inset-x-0 flex items-center justify-center gap-2 flex-wrap px-4">
+        <button
+          type="button"
+          onClick={() => setTourActive((v) => !v)}
+          className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold backdrop-blur transition-colors ${
+            tourActive
+              ? "bg-primary text-primary-foreground"
+              : "bg-black/55 text-white hover:bg-black/70"
+          }`}
+          data-testid="button-presentation-tour"
+        >
+          {tourActive ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+          {tourActive ? t("إيقاف الجولة", "Pause tour") : t("جولة تلقائية", "Auto tour")}
+        </button>
+        <button
+          type="button"
+          onClick={toggleLights}
+          className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold backdrop-blur transition-colors ${
+            lightsOn
+              ? "bg-primary text-primary-foreground"
+              : "bg-black/55 text-white hover:bg-black/70"
+          }`}
+          data-testid="button-presentation-lights"
+        >
+          <Lightbulb className="w-3.5 h-3.5" />
+          {lightsOn ? t("الإضاءة تعمل", "Lights on") : t("تشغيل الإضاءة", "Lights")}
+        </button>
+        {lightsOn && (
+          <>
+            <button
+              type="button"
+              onClick={() => setLightTemp("warm")}
+              className={`px-3 py-2 rounded-full text-xs font-bold backdrop-blur transition-colors ${
+                lightTemp === "warm"
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-black/55 text-white hover:bg-black/70"
+              }`}
+              data-testid="button-presentation-warm"
+            >
+              {t("دافئ", "Warm")}
+            </button>
+            <button
+              type="button"
+              onClick={() => setLightTemp("cool")}
+              className={`px-3 py-2 rounded-full text-xs font-bold backdrop-blur transition-colors ${
+                lightTemp === "cool"
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-black/55 text-white hover:bg-black/70"
+              }`}
+              data-testid="button-presentation-cool"
+            >
+              {t("بارد", "Cool")}
+            </button>
+          </>
+        )}
+        <button
+          type="button"
+          onClick={onExit}
+          className="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold bg-black/55 text-white hover:bg-black/70 backdrop-blur transition-colors"
+          data-testid="button-presentation-exit"
+        >
+          <X className="w-3.5 h-3.5" />
+          {t("خروج", "Exit")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function KitchenToolStudioPage() {
   const { t, isRTL } = useLanguage();
   const { toast } = useToast();
@@ -603,6 +733,7 @@ export default function KitchenToolStudioPage() {
   const updatePlacedDecor = useKitchenToolStore((s) => s.updatePlacedDecor);
   const removePlacedDecor = useKitchenToolStore((s) => s.removePlacedDecor);
   const [selectedDecorId, setSelectedDecorId] = useState<string | null>(null);
+  const [presentationMode, setPresentationMode] = useState(false);
 
   // Full Adeko catalog — every renderable product becomes a parametric cabinet.
   const { data: adekoProducts } = useQuery<AdekoProductRow[]>({
@@ -794,6 +925,17 @@ export default function KitchenToolStudioPage() {
 
   return (
     <DesktopGate>
+      {presentationMode && (
+        <PresentationOverlay
+          layout={layout}
+          walls={walls}
+          ceilingHeight={ceilingHeight}
+          openings={openings}
+          utilities={utilities}
+          adekoFinishById={adekoFinishById}
+          onExit={() => setPresentationMode(false)}
+        />
+      )}
       <div className="min-h-screen bg-background flex flex-col">
         <ToolNav homeTestId="link-studio-home" />
         <div className="max-w-6xl mx-auto w-full px-6 pt-6">
@@ -814,6 +956,14 @@ export default function KitchenToolStudioPage() {
               </p>
             </div>
             <div className="flex items-center gap-2">
+              <Button
+                onClick={() => setPresentationMode(true)}
+                className="font-bold"
+                data-testid="button-presentation-mode"
+              >
+                <Presentation className="w-4 h-4 me-1" />
+                {t("عرض للعميل", "Client View")}
+              </Button>
               {placedCabinets.length > 0 && (
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
@@ -881,23 +1031,27 @@ export default function KitchenToolStudioPage() {
               className="relative flex-1 rounded-xl overflow-hidden border border-border bg-muted/30"
               data-testid="container-studio-3d"
             >
-              <SceneErrorBoundary fallback={<SceneFallback />}>
-                <LoadingOverlay />
-                <Suspense fallback={null}>
-                  <StudioScene
-                    layout={layout}
-                    walls={walls}
-                    ceilingHeight={ceilingHeight}
-                    openings={openings}
-                    utilities={utilities}
-                    selectedCabinetId={selectedCabinetId}
-                    onSelectCabinet={setSelectedCabinetId}
-                    selectedDecorId={selectedDecorId}
-                    onSelectDecor={setSelectedDecorId}
-                    adekoFinishById={adekoFinishById}
-                  />
-                </Suspense>
-              </SceneErrorBoundary>
+              {/* Unmounted while presentation overlay is open — never render
+                  two WebGL canvases at the same time. */}
+              {!presentationMode && (
+                <SceneErrorBoundary fallback={<SceneFallback />}>
+                  <LoadingOverlay />
+                  <Suspense fallback={null}>
+                    <StudioScene
+                      layout={layout}
+                      walls={walls}
+                      ceilingHeight={ceilingHeight}
+                      openings={openings}
+                      utilities={utilities}
+                      selectedCabinetId={selectedCabinetId}
+                      onSelectCabinet={setSelectedCabinetId}
+                      selectedDecorId={selectedDecorId}
+                      onSelectDecor={setSelectedDecorId}
+                      adekoFinishById={adekoFinishById}
+                    />
+                  </Suspense>
+                </SceneErrorBoundary>
+              )}
               <div className="absolute bottom-3 start-3 z-10">
                 {showPlan ? (
                   <div

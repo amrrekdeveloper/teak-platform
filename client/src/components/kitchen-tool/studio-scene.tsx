@@ -1,6 +1,6 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
-import { Canvas, useFrame } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls, Environment, useTexture, useGLTF, Html } from "@react-three/drei";
 import {
   type KitchenLayout,
@@ -1558,6 +1558,55 @@ function DragMeasurements({
   );
 }
 
+/* ── Auto camera tour (presentation mode) ────────────────── */
+function CameraTour({
+  center,
+  roomSpan,
+  ceilingM,
+  onEnd,
+}: {
+  center: THREE.Vector3;
+  roomSpan: number;
+  ceilingM: number;
+  onEnd?: () => void;
+}) {
+  const tRef = useRef(0);
+  const { camera, gl } = useThree();
+
+  useEffect(() => {
+    // A press or scroll on the 3D canvas itself stops the tour and hands
+    // control back. UI buttons outside the canvas are unaffected.
+    const stop = () => onEnd?.();
+    const el = gl.domElement;
+    el.addEventListener("pointerdown", stop);
+    el.addEventListener("wheel", stop, { passive: true });
+    return () => {
+      el.removeEventListener("pointerdown", stop);
+      el.removeEventListener("wheel", stop);
+    };
+  }, [onEnd, gl]);
+
+  useFrame((_, delta) => {
+    tRef.current += Math.min(delta, 0.05);
+    const t = tRef.current;
+    const angle = t * 0.22; // slow orbit
+    // Radius breathes: sweeps in close then back out (cinematic feel).
+    const far = Math.max(roomSpan * 1.6, 3.4);
+    const near = Math.max(roomSpan * 0.55, 1.6);
+    const radius = near + (far - near) * (0.5 + 0.5 * Math.cos(t * 0.13));
+    // Eye height drifts between standing height and a gentle high shot.
+    const y = 1.5 + (Math.min(ceilingM + 1.2, 3.4) - 1.5) * (0.5 + 0.5 * Math.sin(t * 0.09));
+    camera.position.set(
+      center.x + radius * Math.cos(angle),
+      y,
+      center.z + radius * Math.sin(angle)
+    );
+    camera.lookAt(center.x, 0.95, center.z);
+  });
+
+  return null;
+}
+
 /* ── Scene contents (inside Suspense) ────────────────────── */
 function SceneContents({
   layout,
@@ -1570,6 +1619,9 @@ function SceneContents({
   selectedDecorId = null,
   onSelectDecor,
   adekoFinishById,
+  presentation = false,
+  tourActive = false,
+  onTourEnd,
 }: StudioSceneProps) {
   const segments = useMemo(() => getWallSegments(layout, walls), [layout, walls]);
   const bounds = useMemo(() => getFloorBounds(segments), [segments]);
@@ -1662,6 +1714,7 @@ function SceneContents({
   }, [drag, decorDrag]);
 
   const handleGrab = (id: string, def: CabinetDef) => {
+    if (presentation) return;
     onSelectCabinet?.(id);
     onSelectDecor?.(null);
     if (def.corner) return;
@@ -1706,6 +1759,7 @@ function SceneContents({
   };
 
   const handleDecorGrab = (placed: PlacedDecorState, item: DecorItem) => {
+    if (presentation) return;
     onSelectDecor?.(placed.id);
     onSelectCabinet?.(null);
     if (controlsRef.current) controlsRef.current.enabled = false;
@@ -1872,6 +1926,15 @@ function SceneContents({
 
       {drag && dragInfo && <DragMeasurements info={dragInfo} segments={segments} />}
 
+      {tourActive && (
+        <CameraTour
+          center={center}
+          roomSpan={roomSpan}
+          ceilingM={ceilingM}
+          onEnd={onTourEnd}
+        />
+      )}
+
       <OrbitControls
         ref={controlsRef}
         target={[center.x, 1, center.z]}
@@ -1879,7 +1942,7 @@ function SceneContents({
         minDistance={0.9}
         maxDistance={Math.max(roomSpan * 3, 10)}
         enableDamping
-        enabled={!drag && !decorDrag}
+        enabled={!drag && !decorDrag && !tourActive}
       />
     </>
   );
@@ -1898,6 +1961,12 @@ export interface StudioSceneProps {
   onSelectDecor?: (id: string | null) => void;
   /** Wood-type id → 3D finish, for Adeko parametric cabinets. */
   adekoFinishById?: Record<number, AdekoFinish>;
+  /** Presentation mode: viewing only — no grabbing/dragging of items. */
+  presentation?: boolean;
+  /** Auto camera tour around the kitchen (presentation mode). */
+  tourActive?: boolean;
+  /** Called when the user interrupts the auto tour. */
+  onTourEnd?: () => void;
 }
 
 export default function StudioScene(props: StudioSceneProps) {
