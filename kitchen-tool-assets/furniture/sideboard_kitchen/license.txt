@@ -1,0 +1,11 @@
+Model Information:
+* title:	Sideboard Kitchen
+* source:	https://sketchfab.com/3d-models/sideboard-kitchen-d4f7793695ec45cdb2a6b9327d9eb285
+* author:	hate94neu (https://sketchfab.com/hate94neu)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Sideboard Kitchen" (https://sketchfab.com/3d-models/sideboard-kitchen-d4f7793695ec45cdb2a6b9327d9eb285) by hate94neu (https://sketchfab.com/hate94neu) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

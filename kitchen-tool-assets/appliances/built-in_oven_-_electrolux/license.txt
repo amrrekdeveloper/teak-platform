@@ -1,0 +1,11 @@
+Model Information:
+* title:	Built-in oven - Electrolux
+* source:	https://sketchfab.com/3d-models/built-in-oven-electrolux-69b8e036e0664f7988c66ff3745d210b
+* author:	Eduardo Cardoso (https://sketchfab.com/ducardoso)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Built-in oven - Electrolux" (https://sketchfab.com/3d-models/built-in-oven-electrolux-69b8e036e0664f7988c66ff3745d210b) by Eduardo Cardoso (https://sketchfab.com/ducardoso) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

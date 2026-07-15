@@ -1,0 +1,11 @@
+Model Information:
+* title:	Potted Plant
+* source:	https://sketchfab.com/3d-models/potted-plant-1a68fc8877b847c6834ea29a7e65de7a
+* author:	Gonçalo Miranda (https://sketchfab.com/GoncMira02)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Potted Plant" (https://sketchfab.com/3d-models/potted-plant-1a68fc8877b847c6834ea29a7e65de7a) by Gonçalo Miranda (https://sketchfab.com/GoncMira02) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

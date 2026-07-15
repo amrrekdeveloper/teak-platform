@@ -1,0 +1,412 @@
+{
+  "accessors": [
+    {
+      "bufferView": 2,
+      "componentType": 5126,
+      "count": 1164,
+      "max": [
+        0.044331926852464676,
+        0.04240468144416809,
+        0.10475645214319229
+      ],
+      "min": [
+        -0.04428424313664436,
+        -0.00013384893827605993,
+        -0.04592115804553032
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 2,
+      "byteOffset": 13968,
+      "componentType": 5126,
+      "count": 1164,
+      "max": [
+        1.0,
+        0.0002419854572508484,
+        1.0
+      ],
+      "min": [
+        -1.0,
+        -0.9998382329940796,
+        -1.0
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "count": 1164,
+      "max": [
+        0.544308066368103,
+        0.5753387808799744
+      ],
+      "min": [
+        0.4556919038295746,
+        0.42466115951538086
+      ],
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 0,
+      "componentType": 5125,
+      "count": 1692,
+      "type": "SCALAR"
+    },
+    {
+      "bufferView": 2,
+      "byteOffset": 27936,
+      "componentType": 5126,
+      "count": 24,
+      "max": [
+        0.016313979402184486,
+        0.004994687158614397,
+        0.07665693759918213
+      ],
+      "min": [
+        -0.016267230734229088,
+        0.004994597285985947,
+        -0.019464483484625816
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 2,
+      "byteOffset": 28224,
+      "componentType": 5126,
+      "count": 24,
+      "max": [
+        0.0,
+        -1.0,
+        0.0
+      ],
+      "min": [
+        0.0,
+        -1.0,
+        0.0
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 1,
+      "byteOffset": 9312,
+      "componentType": 5126,
+      "count": 24,
+      "max": [
+        0.5121406316757202,
+        0.5518124103546143
+      ],
+      "min": [
+        0.48385918140411377,
+        0.4480234980583191
+      ],
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 0,
+      "byteOffset": 6768,
+      "componentType": 5125,
+      "count": 36,
+      "type": "SCALAR"
+    },
+    {
+      "bufferView": 2,
+      "byteOffset": 28512,
+      "componentType": 5126,
+      "count": 416,
+      "max": [
+        0.04652152955532074,
+        0.026597807183861732,
+        0.04731025546789169
+      ],
+      "min": [
+        -0.04652152955532074,
+        -0.020651623606681824,
+        -0.10305126011371613
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 2,
+      "byteOffset": 33504,
+      "componentType": 5126,
+      "count": 416,
+      "max": [
+        0.9999945163726807,
+        0.9998859167098999,
+        0.9999854564666748
+      ],
+      "min": [
+        -0.9999945163726807,
+        -0.9999048113822937,
+        -0.9999854564666748
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 1,
+      "byteOffset": 9504,
+      "componentType": 5126,
+      "count": 416,
+      "max": [
+        0.5476148128509521,
+        0.5769475102424622
+      ],
+      "min": [
+        0.45238521695137024,
+        0.42356422543525696
+      ],
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 0,
+      "byteOffset": 6912,
+      "componentType": 5125,
+      "count": 606,
+      "type": "SCALAR"
+    }
+  ],
+  "asset": {
+    "extras": {
+      "author": "denniswoo1993 (https://sketchfab.com/denniswoo1993)",
+      "license": "CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)",
+      "source": "https://sketchfab.com/3d-models/free-wall-outlets-and-switches-pack-2bb10b5967624d659c83e5ee1701fe56",
+      "title": "Free Wall outlets and switches pack"
+    },
+    "generator": "Sketchfab-12.65.0",
+    "version": "2.0"
+  },
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteLength": 9336,
+      "name": "floatBufferViews",
+      "target": 34963
+    },
+    {
+      "buffer": 0,
+      "byteLength": 12832,
+      "byteOffset": 9336,
+      "byteStride": 8,
+      "name": "floatBufferViews",
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 38496,
+      "byteOffset": 22168,
+      "byteStride": 12,
+      "name": "floatBufferViews",
+      "target": 34962
+    }
+  ],
+  "buffers": [
+    {
+      "byteLength": 60664,
+      "uri": "scene.bin"
+    }
+  ],
+  "materials": [
+    {
+      "doubleSided": true,
+      "name": "Wall_socket_white",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [
+          0.8,
+          0.8,
+          0.8,
+          1.0
+        ],
+        "metallicFactor": 0.0,
+        "roughnessFactor": 0.17138640108470282
+      }
+    },
+    {
+      "doubleSided": true,
+      "name": "Wall_socket_black",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "metallicFactor": 0.0
+      }
+    }
+  ],
+  "meshes": [
+    {
+      "name": "Wall outlet.007_Wall socket white_0",
+      "primitives": [
+        {
+          "attributes": {
+            "NORMAL": 1,
+            "POSITION": 0,
+            "TEXCOORD_0": 2
+          },
+          "indices": 3,
+          "material": 0,
+          "mode": 4
+        }
+      ]
+    },
+    {
+      "name": "Wall outlet.007_Wall socket black_0",
+      "primitives": [
+        {
+          "attributes": {
+            "NORMAL": 5,
+            "POSITION": 4,
+            "TEXCOORD_0": 6
+          },
+          "indices": 7,
+          "material": 1,
+          "mode": 4
+        }
+      ]
+    },
+    {
+      "name": "Light switch.003_Wall socket white_0",
+      "primitives": [
+        {
+          "attributes": {
+            "NORMAL": 9,
+            "POSITION": 8,
+            "TEXCOORD_0": 10
+          },
+          "indices": 11,
+          "material": 0,
+          "mode": 4
+        }
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "children": [
+        1
+      ],
+      "matrix": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        2.220446049250313e-16,
+        -1.0,
+        0.0,
+        0.0,
+        1.0,
+        2.220446049250313e-16,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "name": "Sketchfab_model"
+    },
+    {
+      "children": [
+        2
+      ],
+      "matrix": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        -1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "name": "bc120ca178744f4d81fea1b4941304b6.fbx"
+    },
+    {
+      "children": [
+        3,
+        6
+      ],
+      "name": "RootNode"
+    },
+    {
+      "children": [
+        4,
+        5
+      ],
+      "matrix": [
+        -99.99999999999885,
+        1.2246465878873718e-14,
+        -1.5099579909783704e-05,
+        0.0,
+        -1.509957990978366e-05,
+        7.549789993177569e-06,
+        99.99999999999856,
+        0.0,
+        1.1522330358069753e-12,
+        99.9999999999997,
+        -7.549789970973109e-06,
+        0.0,
+        40.71846008300781,
+        27.752239227294922,
+        -12.867021560668945,
+        1.0
+      ],
+      "name": "Wall outlet.007"
+    },
+    {
+      "mesh": 0,
+      "name": "Wall outlet.007_Wall socket white_0"
+    },
+    {
+      "mesh": 1,
+      "name": "Wall outlet.007_Wall socket black_0"
+    },
+    {
+      "children": [
+        7
+      ],
+      "matrix": [
+        -99.99999999999241,
+        1.2246465878873718e-14,
+        3.8941437775530106e-05,
+        0.0,
+        3.894143777553e-05,
+        7.549789982075339e-06,
+        99.99999999999213,
+        0.0,
+        -2.9277502948264183e-12,
+        99.9999999999997,
+        -7.549789970973109e-06,
+        0.0,
+        30.776548385620117,
+        33.43673324584961,
+        -11.423921585083008,
+        1.0
+      ],
+      "name": "Light switch.003"
+    },
+    {
+      "mesh": 2,
+      "name": "Light switch.003_Wall socket white_0"
+    }
+  ],
+  "scene": 0,
+  "scenes": [
+    {
+      "name": "Sketchfab_Scene",
+      "nodes": [
+        0
+      ]
+    }
+  ]
+}
