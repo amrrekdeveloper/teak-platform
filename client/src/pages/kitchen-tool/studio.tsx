@@ -33,7 +33,14 @@ import {
   type MaterialOption,
   type AdekoFinish,
 } from "@/components/kitchen-tool/materials";
-import KitchenPlanSvg, { getWallSegments } from "@/components/kitchen-tool/plan-svg";
+import KitchenPlanSvg, { getWallSegments, getFloorBounds } from "@/components/kitchen-tool/plan-svg";
+import {
+  DECOR_ITEMS,
+  DECOR_CATEGORY_LABELS,
+  findDecorItem,
+  type DecorItem,
+  type DecorCategory,
+} from "@/components/kitchen-tool/decor-items";
 import {
   findCabinetDef,
   findSlotForCabinet,
@@ -361,13 +368,15 @@ interface CabinetFamily {
 
 function CabinetCatalog({
   onAdd,
+  onAddDecor,
   adekoDefs,
 }: {
   onAdd: (def: CabinetDef) => void;
+  onAddDecor: (item: DecorItem) => void;
   adekoDefs: CabinetDef[];
 }) {
   const { t } = useLanguage();
-  const [tab, setTab] = useState<CabinetLevel>("base");
+  const [tab, setTab] = useState<CabinetLevel | "decor">("base");
   const [search, setSearch] = useState("");
   const [openFamily, setOpenFamily] = useState<string | null>(null);
   const q = search.trim().toLowerCase();
@@ -399,6 +408,13 @@ function CabinetCatalog({
     return all;
   }, [adekoDefs]);
 
+  const shownDecor = DECOR_ITEMS.filter(
+    (d) =>
+      !q ||
+      d.nameAr.toLowerCase().includes(q) ||
+      d.nameEn.toLowerCase().includes(q)
+  );
+
   const shownFamilies = families.filter(
     (f) =>
       f.defs[0].level === tab &&
@@ -421,6 +437,7 @@ function CabinetCatalog({
           [
             { id: "base" as const, ar: "سفلية", en: "Base" },
             { id: "upper" as const, ar: "علوية", en: "Wall" },
+            { id: "decor" as const, ar: "ديكور", en: "Decor" },
           ]
         ).map((tb) => (
           <button
@@ -448,6 +465,45 @@ function CabinetCatalog({
           data-testid="input-catalog-search"
         />
       </div>
+      {tab === "decor" ? (
+        <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-1.5">
+          {(Object.keys(DECOR_CATEGORY_LABELS) as DecorCategory[]).map((cat) => {
+            const items = shownDecor.filter((d) => d.category === cat);
+            if (items.length === 0) return null;
+            return (
+              <div key={cat} className="flex flex-col gap-1.5">
+                <p className="text-[10px] font-bold text-muted-foreground px-1 pt-1">
+                  {t(DECOR_CATEGORY_LABELS[cat].ar, DECOR_CATEGORY_LABELS[cat].en)}
+                </p>
+                {items.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => onAddDecor(item)}
+                    className="w-full flex items-center gap-2 px-2 py-2 text-start rounded-lg border border-border bg-background hover:bg-primary/5 hover:border-primary/60 transition-colors"
+                    data-testid={`button-add-decor-${item.id}`}
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-xs font-bold leading-tight truncate">
+                        {t(item.nameAr, item.nameEn)}
+                      </span>
+                      <span className="block text-[10px] text-muted-foreground mt-0.5 truncate" dir="ltr">
+                        {Math.round(item.width * 100)}×{Math.round(item.height * 100)} {t("سم", "cm")}
+                      </span>
+                    </span>
+                    <Plus className="w-4 h-4 shrink-0 text-primary" />
+                  </button>
+                ))}
+              </div>
+            );
+          })}
+          {shownDecor.length === 0 && (
+            <p className="text-[11px] text-muted-foreground text-center py-4">
+              {t("لا توجد نتائج", "No results")}
+            </p>
+          )}
+        </div>
+      ) : (
       <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-1.5">
         {shownFamilies.map((fam) => {
           const isOpen = openFamily === fam.key;
@@ -517,6 +573,7 @@ function CabinetCatalog({
           </p>
         )}
       </div>
+      )}
       <p className="px-3 py-2 text-[10px] text-muted-foreground border-t border-border leading-relaxed">
         {t(
           "اضغط على المنتج لاختيار المقاس، ثم اسحبه في المشهد لتحريكه على الجدران.",
@@ -541,6 +598,11 @@ export default function KitchenToolStudioPage() {
   const updatePlacedCabinet = useKitchenToolStore((s) => s.updatePlacedCabinet);
   const [selectedCabinetId, setSelectedCabinetId] = useState<string | null>(null);
   const [showPlan, setShowPlan] = useState(true);
+  const placedDecor = useKitchenToolStore((s) => s.placedDecor ?? []);
+  const addPlacedDecor = useKitchenToolStore((s) => s.addPlacedDecor);
+  const updatePlacedDecor = useKitchenToolStore((s) => s.updatePlacedDecor);
+  const removePlacedDecor = useKitchenToolStore((s) => s.removePlacedDecor);
+  const [selectedDecorId, setSelectedDecorId] = useState<string | null>(null);
 
   // Full Adeko catalog — every renderable product becomes a parametric cabinet.
   const { data: adekoProducts } = useQuery<AdekoProductRow[]>({
@@ -624,6 +686,7 @@ export default function KitchenToolStudioPage() {
     const id = `cab-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     addPlacedCabinet({ id, catalogId: def.id, wallId: slot.wallId, offset: slot.offset });
     setSelectedCabinetId(id);
+    setSelectedDecorId(null);
     if (doorClashAdvice(def, slot.wallId, slot.offset, placedCabinets, segments)) {
       toast({
         title: t("اقتراح: أضف سدادة (فلر)", "Tip: add a filler strip"),
@@ -640,6 +703,43 @@ export default function KitchenToolStudioPage() {
     removePlacedCabinet(selectedCabinetId);
     setSelectedCabinetId(null);
   };
+
+  const handleAddDecor = (item: DecorItem) => {
+    const id = `dec-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    if (item.placement === "wall") {
+      const seg =
+        segments.slice().sort((a, b) => b.length - a.length)[0] ?? segments[0];
+      if (!seg) return;
+      const wallLenM = seg.length / 100;
+      const offset = Math.max((wallLenM - item.width) / 2, 0);
+      addPlacedDecor({ id, decorId: item.id, wallId: seg.id, offset });
+    } else {
+      const b = getFloorBounds(segments);
+      addPlacedDecor({
+        id,
+        decorId: item.id,
+        x: ((b.minX + b.maxX) / 2) / 100,
+        z: ((b.minY + b.maxY) / 2) / 100,
+        rotY: 0,
+      });
+    }
+    setSelectedDecorId(id);
+    setSelectedCabinetId(null);
+    toast({
+      title: t("تمت الإضافة", "Added"),
+      description: t(
+        "اسحب القطعة في المشهد لتغيير مكانها.",
+        "Drag the item in the scene to reposition it."
+      ),
+    });
+  };
+
+  const selectedDecorPlaced = selectedDecorId
+    ? placedDecor.find((d) => d.id === selectedDecorId)
+    : undefined;
+  const selectedDecorItem = selectedDecorPlaced
+    ? findDecorItem(selectedDecorPlaced.decorId)
+    : undefined;
 
   const selectedPlaced = selectedCabinetId
     ? placedCabinets.find((c) => c.id === selectedCabinetId)
@@ -792,6 +892,8 @@ export default function KitchenToolStudioPage() {
                     utilities={utilities}
                     selectedCabinetId={selectedCabinetId}
                     onSelectCabinet={setSelectedCabinetId}
+                    selectedDecorId={selectedDecorId}
+                    onSelectDecor={setSelectedDecorId}
                     adekoFinishById={adekoFinishById}
                   />
                 </Suspense>
@@ -886,6 +988,44 @@ export default function KitchenToolStudioPage() {
                     className="h-7 px-2 font-bold"
                     onClick={handleDeleteSelected}
                     data-testid="button-delete-cabinet"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 me-1" />
+                    {t("حذف", "Delete")}
+                  </Button>
+                </div>
+              )}
+              {selectedDecorPlaced && selectedDecorItem && (
+                <div
+                  className="absolute top-3 start-3 z-10 flex items-center gap-2 rounded-lg border border-border bg-card/95 backdrop-blur px-3 py-2 shadow-md"
+                  data-testid="bar-selected-decor"
+                >
+                  <span className="text-xs font-bold" data-testid="text-selected-decor">
+                    {t(selectedDecorItem.nameAr, selectedDecorItem.nameEn)}
+                  </span>
+                  {selectedDecorItem.placement === "floor" && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 px-2 font-bold"
+                      onClick={() =>
+                        updatePlacedDecor(selectedDecorPlaced.id, {
+                          rotY: ((selectedDecorPlaced.rotY ?? 0) + Math.PI / 2) % (Math.PI * 2),
+                        })
+                      }
+                      data-testid="button-rotate-decor"
+                    >
+                      {t("تدوير 90°", "Rotate 90°")}
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    className="h-7 px-2 font-bold"
+                    onClick={() => {
+                      removePlacedDecor(selectedDecorPlaced.id);
+                      setSelectedDecorId(null);
+                    }}
+                    data-testid="button-delete-decor"
                   >
                     <Trash2 className="w-3.5 h-3.5 me-1" />
                     {t("حذف", "Delete")}
@@ -1178,7 +1318,7 @@ export default function KitchenToolStudioPage() {
                 </div>
               )}
             </div>
-            <CabinetCatalog onAdd={handleAddCabinet} adekoDefs={adekoDefs} />
+            <CabinetCatalog onAdd={handleAddCabinet} onAddDecor={handleAddDecor} adekoDefs={adekoDefs} />
           </div>
         </div>
         <div className="pb-6" />

@@ -1,0 +1,26 @@
+Scope constraint (do not violate): Only work inside client/src/pages/kitchen-tool/*, client/src/components/kitchen-tool/*, and kitchen-tool-assets/*. Do NOT touch design-studio.tsx, designer-board.tsx, scene-3d.tsx, or their routes.
+Task: Add appliances, furniture, and plants catalog to the kitchen 3D tool
+New assets have been uploaded to kitchen-tool-assets/ in these folders (each is a full glTF folder — .gltf + .bin + textures, keep folder structure intact, do not flatten):
+appliances/built-in_oven_-_electrolux/     (oven)
+appliances/fridge_-_modern_furniture_game-ready/   (fridge option A)
+appliances/modern_fridge/                  (fridge option B)
+appliances/range_hood_kitchen_hood/        (range hood)
+furniture/sideboard_kitchen/               (sideboard)
+furniture/streamline_modular_kitchen_storage/  (modular storage)
+plants/bamboo_with_plant_pot/
+plants/monstera_deliciosa_potted_mid-century_plant/
+plants/potted_plant/
+plants/potted_plant_01_4k.gltf/
+plants/potted_plant_02_4k.gltf/
+details/free_wall_outlets_and_switches_pack/
+Steps:
+
+Create a new catalog file client/src/components/kitchen-tool/decor-items.ts defining each item above as an object: id, nameAr, nameEn, category ("appliance" | "furniture" | "plant" | "detail"), modelPath (path to the .gltf file), and reasonable default width/depth/height in meters (inspect each GLB's bounding box to get accurate values, don't guess blindly).
+Add a new tab/section in the existing catalog UI (reuse the same pattern as CabinetCatalog in studio.tsx) so the customer can browse and drag these items into the 3D scene, same interaction model as cabinets (click to place, then reposition/rotate).
+Appliances (oven, fridge, hood) should support free positioning against a wall or counter, similar to how cabinets are placed. Plants and furniture should support free floor placement anywhere in the room, with 90°-increment rotation only.
+For appliances/built-in_oven_-_electrolux/: inspect all texture files in that model for any visible "Electrolux" logo/text (check control panel and glass textures). If found, edit/replace that texture region so it reads "Teak" instead, or remove the text entirely if editing is impractical.
+Add a small "Credits" section (a modal or footer link is fine) listing this attribution text, required by the CC-BY-4.0 license on these models:
+
+This project uses 3D models by: Eduardo Cardoso, Ishxxn, dylanheyes, hate94neu, Tom Au, Snowism, Giora, Gonçalo Miranda, govindu94, denniswoo1993 — licensed under CC-BY-4.0 via Sketchfab.
+
+Test that all models load without console errors and textures display correctly (no gray/missing-texture placeholders) before marking complete.

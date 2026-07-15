@@ -1,7 +1,7 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { OrbitControls, Environment, useTexture, Html } from "@react-three/drei";
+import { OrbitControls, Environment, useTexture, useGLTF, Html } from "@react-three/drei";
 import {
   type KitchenLayout,
   type KitchenWall,
@@ -37,7 +37,8 @@ import {
   type MaterialOption,
   type AdekoFinish,
 } from "@/components/kitchen-tool/materials";
-import { useKitchenToolStore } from "@/components/kitchen-tool/store";
+import { useKitchenToolStore, type PlacedDecorState } from "@/components/kitchen-tool/store";
+import { findDecorItem, type DecorItem } from "@/components/kitchen-tool/decor-items";
 
 /* ── Constants (meters unless noted) ─────────────────────── */
 const WALL_T = 0.12;
@@ -1134,6 +1135,142 @@ function PlacedCabinets({
   );
 }
 
+/* ── Decor items (appliances / furniture / plants / details) ── */
+
+/**
+ * Loads a glTF model and normalizes it: optionally isolates a named node,
+ * uniform-scales to the item's target height, centers on X/Z and rests the
+ * bottom at y=0. Handles the wildly different native units of the assets.
+ */
+function DecorModel({ item }: { item: DecorItem }) {
+  const gltf = useGLTF(item.modelPath);
+
+  const normalized = useMemo(() => {
+    let source: THREE.Object3D = gltf.scene;
+    if (item.nodeName) {
+      const node = gltf.scene.getObjectByName(item.nodeName);
+      if (node) source = node;
+    }
+    const clone = source.clone(true);
+    const holder = new THREE.Group();
+    holder.add(clone);
+    // Neutralize inherited world transform when isolating a nested node.
+    if (item.nodeName && source !== gltf.scene) {
+      source.updateWorldMatrix(true, false);
+      clone.matrix.copy(source.matrixWorld);
+      clone.matrix.decompose(clone.position, clone.quaternion, clone.scale);
+    }
+    holder.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(holder);
+    const size = new THREE.Vector3();
+    const center = new THREE.Vector3();
+    box.getSize(size);
+    box.getCenter(center);
+    const s = size.y > 1e-6 ? item.height / size.y : 1;
+    holder.scale.setScalar(s);
+    holder.position.set(-center.x * s, -box.min.y * s, -center.z * s);
+    holder.traverse((o) => {
+      if ((o as THREE.Mesh).isMesh) {
+        o.castShadow = true;
+        o.receiveShadow = true;
+      }
+    });
+    const wrapper = new THREE.Group();
+    wrapper.add(holder);
+    return wrapper;
+  }, [gltf.scene, item]);
+
+  return <primitive object={normalized} />;
+}
+
+function PlacedDecorMesh({
+  placed,
+  item,
+  segments,
+  selected,
+  onGrab,
+}: {
+  placed: PlacedDecorState;
+  item: DecorItem;
+  segments: WallSegment[];
+  selected: boolean;
+  onGrab: (placed: PlacedDecorState, item: DecorItem) => void;
+}) {
+  const built = useMemo(() => {
+    if (item.placement === "wall") {
+      const seg = segments.find((s) => s.id === placed.wallId);
+      if (!seg) return null;
+      const { origin, dir } = segVectors(seg);
+      const inward = inwardOf(seg);
+      const rotY = Math.atan2(inward.x, inward.z);
+      const pos = origin
+        .clone()
+        .addScaledVector(dir, (placed.offset ?? 0) + item.width / 2)
+        .addScaledVector(inward, item.depth / 2 + 0.005);
+      pos.y = placed.mountY ?? item.defaultMountY ?? 0;
+      return { pos, rotY };
+    }
+    if (placed.x == null || placed.z == null) return null;
+    return {
+      pos: new THREE.Vector3(placed.x, 0, placed.z),
+      rotY: placed.rotY ?? 0,
+    };
+  }, [placed, item, segments]);
+
+  if (!built) return null;
+
+  return (
+    <group
+      position={built.pos}
+      rotation={[0, built.rotY, 0]}
+      onPointerDown={(e) => {
+        e.stopPropagation();
+        onGrab(placed, item);
+      }}
+    >
+      <Suspense fallback={null}>
+        <DecorModel item={item} />
+      </Suspense>
+      {selected && (
+        <mesh position={[0, item.height / 2, 0]}>
+          <boxGeometry args={[item.width + 0.06, item.height + 0.06, item.depth + 0.06]} />
+          <meshBasicMaterial color="#d92626" transparent opacity={0.16} depthWrite={false} />
+        </mesh>
+      )}
+    </group>
+  );
+}
+
+function PlacedDecorItems({
+  segments,
+  selectedId,
+  onGrab,
+}: {
+  segments: WallSegment[];
+  selectedId: string | null;
+  onGrab: (placed: PlacedDecorState, item: DecorItem) => void;
+}) {
+  const placed = useKitchenToolStore((s) => s.placedDecor ?? []);
+  return (
+    <>
+      {placed.map((p) => {
+        const item = findDecorItem(p.decorId);
+        if (!item) return null;
+        return (
+          <PlacedDecorMesh
+            key={p.id}
+            placed={p}
+            item={item}
+            segments={segments}
+            selected={p.id === selectedId}
+            onGrab={onGrab}
+          />
+        );
+      })}
+    </>
+  );
+}
+
 /* ── Utility markers ─────────────────────────────────────── */
 function WallMarker({
   seg,
@@ -1376,6 +1513,8 @@ function SceneContents({
   utilities,
   selectedCabinetId = null,
   onSelectCabinet,
+  selectedDecorId = null,
+  onSelectDecor,
   adekoFinishById,
 }: StudioSceneProps) {
   const segments = useMemo(() => getWallSegments(layout, walls), [layout, walls]);
@@ -1395,6 +1534,8 @@ function SceneContents({
   const controlsRef = useRef<any>(null);
   const [drag, setDrag] = useState<{ id: string; def: CabinetDef } | null>(null);
   const [dragInfo, setDragInfo] = useState<DragMeasureInfo | null>(null);
+  const [decorDrag, setDecorDrag] = useState<{ id: string; item: DecorItem } | null>(null);
+  const updatePlacedDecor = useKitchenToolStore((s) => s.updatePlacedDecor);
 
   /** Compute live measurement info for a cabinet at (wallId, offset). Read-only
       use of blockedIntervals — no collision-engine changes. */
@@ -1447,10 +1588,11 @@ function SceneContents({
   };
 
   useEffect(() => {
-    if (!drag) return;
+    if (!drag && !decorDrag) return;
     const up = () => {
       setDrag(null);
       setDragInfo(null);
+      setDecorDrag(null);
       if (controlsRef.current) controlsRef.current.enabled = true;
     };
     window.addEventListener("pointerup", up);
@@ -1459,10 +1601,11 @@ function SceneContents({
       window.removeEventListener("pointerup", up);
       window.removeEventListener("pointercancel", up);
     };
-  }, [drag]);
+  }, [drag, decorDrag]);
 
   const handleGrab = (id: string, def: CabinetDef) => {
     onSelectCabinet?.(id);
+    onSelectDecor?.(null);
     if (def.corner) return;
     // Disable orbit synchronously — the React prop update alone races with
     // OrbitControls' native DOM listeners on the same pointerdown.
@@ -1501,6 +1644,40 @@ function SceneContents({
 
   const handleFloorDown = () => {
     onSelectCabinet?.(null);
+    onSelectDecor?.(null);
+  };
+
+  const handleDecorGrab = (placed: PlacedDecorState, item: DecorItem) => {
+    onSelectDecor?.(placed.id);
+    onSelectCabinet?.(null);
+    if (controlsRef.current) controlsRef.current.enabled = false;
+    setDecorDrag({ id: placed.id, item });
+  };
+
+  const handleDecorDragMove = (e: ThreeEvent<PointerEvent>) => {
+    if (!decorDrag) return;
+    const item = decorDrag.item;
+    if (item.placement === "wall") {
+      const pp = planPointAt(segments, e.point.x / CM, e.point.z / CM);
+      if (!pp.nearestWallId) return;
+      const seg = segments.find((s) => s.id === pp.nearestWallId);
+      if (!seg) return;
+      const wallLenM = seg.length * CM;
+      const desired = pp.distanceAlongWall * CM - item.width / 2;
+      const offset = Math.min(Math.max(desired, 0), Math.max(wallLenM - item.width, 0));
+      updatePlacedDecor(decorDrag.id, { wallId: pp.nearestWallId, offset });
+    } else {
+      const margin = Math.max(item.width, item.depth) / 2;
+      const x = Math.min(
+        Math.max(e.point.x, bounds.minX * CM + margin),
+        bounds.maxX * CM - margin
+      );
+      const z = Math.min(
+        Math.max(e.point.z, bounds.minY * CM + margin),
+        bounds.maxY * CM - margin
+      );
+      updatePlacedDecor(decorDrag.id, { x, z });
+    }
   };
 
   const center = useMemo(
@@ -1548,13 +1725,21 @@ function SceneContents({
         />
       </Suspense>
 
-      {/* Invisible drag plane at the grabbed cabinet's height — captures
+      {/* Invisible drag plane at the grabbed item's height — captures
           pointer movement anywhere on screen, independent of the floor. */}
-      {drag && (
+      {(drag || decorDrag) && (
         <mesh
-          position={[center.x, drag.def.mountY, center.z]}
+          position={[
+            center.x,
+            drag
+              ? drag.def.mountY
+              : decorDrag!.item.placement === "wall"
+                ? (decorDrag!.item.defaultMountY ?? 0)
+                : 0.001,
+            center.z,
+          ]}
           rotation={[-Math.PI / 2, 0, 0]}
-          onPointerMove={handleDragMove}
+          onPointerMove={drag ? handleDragMove : handleDecorDragMove}
         >
           <planeGeometry args={[Math.max(roomSpan * 12, 60), Math.max(roomSpan * 12, 60)]} />
           <meshBasicMaterial
@@ -1585,6 +1770,13 @@ function SceneContents({
           adekoFinishById={adekoFinishById}
         />
       </Suspense>
+      <Suspense fallback={null}>
+        <PlacedDecorItems
+          segments={segments}
+          selectedId={selectedDecorId}
+          onGrab={handleDecorGrab}
+        />
+      </Suspense>
       <UtilityMarkers utilities={utilities} segments={segments} />
 
       {drag && dragInfo && <DragMeasurements info={dragInfo} segments={segments} />}
@@ -1596,7 +1788,7 @@ function SceneContents({
         minDistance={0.9}
         maxDistance={Math.max(roomSpan * 3, 10)}
         enableDamping
-        enabled={!drag}
+        enabled={!drag && !decorDrag}
       />
     </>
   );
@@ -1611,6 +1803,8 @@ export interface StudioSceneProps {
   utilities: KitchenUtility[];
   selectedCabinetId?: string | null;
   onSelectCabinet?: (id: string | null) => void;
+  selectedDecorId?: string | null;
+  onSelectDecor?: (id: string | null) => void;
   /** Wood-type id → 3D finish, for Adeko parametric cabinets. */
   adekoFinishById?: Record<number, AdekoFinish>;
 }

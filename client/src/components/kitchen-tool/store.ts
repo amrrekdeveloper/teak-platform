@@ -60,6 +60,23 @@ export interface PlacedCabinetState {
   rotYOffset?: number;
 }
 
+/** A placed decor item (appliance / furniture / plant / wall detail). */
+export interface PlacedDecorState {
+  id: string;
+  /** DecorItem id from decor-items.ts. */
+  decorId: string;
+  /** Wall items: wall id + distance (m) from wall start to near edge. */
+  wallId?: string;
+  offset?: number;
+  /** Wall items: bottom height above floor (m); undefined = item default. */
+  mountY?: number;
+  /** Floor items: world position (m) in scene coordinates. */
+  x?: number;
+  z?: number;
+  /** Floor items: Y rotation (radians, 90° increments). */
+  rotY?: number;
+}
+
 export type UtilityKind = "water" | "outlet" | "switch" | "drain" | "gas";
 
 export interface KitchenUtility {
@@ -210,6 +227,8 @@ interface KitchenToolState {
   showSoffit: boolean;
   /** Cabinets placed in the 3D studio. */
   placedCabinets: PlacedCabinetState[];
+  /** Decor items (appliances/furniture/plants/details) placed in the 3D studio. */
+  placedDecor: PlacedDecorState[];
   setAnswer: <K extends keyof KitchenAnswers>(key: K, value: KitchenAnswers[K]) => void;
   setStep: (step: number) => void;
   ensureWalls: (layout: KitchenLayout) => void;
@@ -243,6 +262,9 @@ interface KitchenToolState {
   ) => void;
   removePlacedCabinet: (id: string) => void;
   clearPlacedCabinets: () => void;
+  addPlacedDecor: (decor: PlacedDecorState) => void;
+  updatePlacedDecor: (id: string, patch: Partial<Omit<PlacedDecorState, "id" | "decorId">>) => void;
+  removePlacedDecor: (id: string) => void;
   reset: () => void;
 }
 
@@ -272,6 +294,7 @@ export const useKitchenToolStore = create<KitchenToolState>()(
       lightTemp: "warm",
       showSoffit: true,
       placedCabinets: [],
+      placedDecor: [],
       setAnswer: (key, value) =>
         set((state) => ({ answers: { ...state.answers, [key]: value } })),
       setStep: (step) => set({ step }),
@@ -302,7 +325,10 @@ export const useKitchenToolStore = create<KitchenToolState>()(
                 ? u
                 : { ...u, positionAlongWall: pos };
             });
-          return { walls, wallsLayout: layout, openings, utilities };
+          const placedDecor = (state.placedDecor ?? []).filter(
+            (d) => !d.wallId || wallById.has(d.wallId)
+          );
+          return { walls, wallsLayout: layout, openings, utilities, placedDecor };
         }),
       setClosed: (value) =>
         set((state) => {
@@ -317,7 +343,10 @@ export const useKitchenToolStore = create<KitchenToolState>()(
           const placedCabinets = (state.placedCabinets ?? []).filter((c) =>
             wallById.has(c.wallId)
           );
-          return { closed, walls, wallsLayout: layout, openings, utilities, placedCabinets };
+          const placedDecor = (state.placedDecor ?? []).filter(
+            (d) => !d.wallId || wallById.has(d.wallId)
+          );
+          return { closed, walls, wallsLayout: layout, openings, utilities, placedCabinets, placedDecor };
         }),
       setWallLength: (id, length) =>
         set((state) => {
@@ -386,6 +415,20 @@ export const useKitchenToolStore = create<KitchenToolState>()(
           placedCabinets: (state.placedCabinets ?? []).filter((c) => c.id !== id),
         })),
       clearPlacedCabinets: () => set({ placedCabinets: [] }),
+      addPlacedDecor: (decor) =>
+        set((state) => ({
+          placedDecor: [...(state.placedDecor ?? []), decor],
+        })),
+      updatePlacedDecor: (id, patch) =>
+        set((state) => ({
+          placedDecor: (state.placedDecor ?? []).map((d) =>
+            d.id === id ? { ...d, ...patch } : d
+          ),
+        })),
+      removePlacedDecor: (id) =>
+        set((state) => ({
+          placedDecor: (state.placedDecor ?? []).filter((d) => d.id !== id),
+        })),
       reset: () =>
         set({
           answers: initialAnswers,
@@ -404,6 +447,7 @@ export const useKitchenToolStore = create<KitchenToolState>()(
           lightTemp: "warm",
           showSoffit: true,
           placedCabinets: [],
+          placedDecor: [],
         }),
     }),
     { name: "teak-kitchen-tool" }
