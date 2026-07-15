@@ -34,6 +34,8 @@ export interface DecorItem {
   soffit?: boolean;
   /** Show color swatches in the selection bar (tint applied over textures). */
   recolorable?: boolean;
+  /** Clicking this item toggles the room lights on/off. */
+  togglesLights?: boolean;
 }
 
 const BASE = "/kitchen-tool-assets";
@@ -200,6 +202,7 @@ export const DECOR_ITEMS: DecorItem[] = [
     height: 0.09,
     placement: "wall",
     defaultMountY: 1.1,
+    togglesLights: true,
   },
 ];
 

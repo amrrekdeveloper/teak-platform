@@ -1275,6 +1275,12 @@ function PlacedDecorMesh({
         e.stopPropagation();
         onGrab(placed, item);
       }}
+      onClick={(e) => {
+        if (!item.togglesLights) return;
+        e.stopPropagation();
+        // Only a real click (no drag movement) flips the switch.
+        if (e.delta <= 4) useKitchenToolStore.getState().toggleLights();
+      }}
     >
       <Suspense fallback={null}>
         <DecorModel item={item} tint={placed.tint} />
