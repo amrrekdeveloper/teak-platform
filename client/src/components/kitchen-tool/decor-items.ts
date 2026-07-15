@@ -32,6 +32,8 @@ export interface DecorItem {
   rotYOffset?: number;
   /** Wall items: draw a gypsum soffit box above the item (like upper cabinets). */
   soffit?: boolean;
+  /** Show color swatches in the selection bar (tint applied over textures). */
+  recolorable?: boolean;
 }
 
 const BASE = "/kitchen-tool-assets";
@@ -50,6 +52,7 @@ export const DECOR_ITEMS: DecorItem[] = [
     placement: "wall",
     defaultMountY: 0.6,
     rotYOffset: Math.PI,
+    recolorable: true,
   },
   {
     id: "decor-fridge-modern-a",
@@ -62,6 +65,7 @@ export const DECOR_ITEMS: DecorItem[] = [
     height: 1.9,
     placement: "wall",
     rotYOffset: Math.PI,
+    recolorable: true,
   },
   {
     id: "decor-fridge-modern-b",
@@ -74,6 +78,7 @@ export const DECOR_ITEMS: DecorItem[] = [
     height: 1.94,
     placement: "wall",
     rotYOffset: Math.PI,
+    recolorable: true,
   },
   {
     id: "decor-range-hood",
@@ -99,6 +104,7 @@ export const DECOR_ITEMS: DecorItem[] = [
     depth: 0.59,
     height: 0.98,
     placement: "floor",
+    recolorable: true,
   },
   {
     id: "decor-modular-storage",
@@ -110,6 +116,7 @@ export const DECOR_ITEMS: DecorItem[] = [
     depth: 3.0,
     height: 2.2,
     placement: "floor",
+    recolorable: true,
   },
   // ── Plants ───────────────────────────────────────────────
   {

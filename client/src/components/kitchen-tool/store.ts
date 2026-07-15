@@ -77,8 +77,10 @@ export interface PlacedDecorState {
   /** Floor items: world position (m) in scene coordinates. */
   x?: number;
   z?: number;
-  /** Floor items: Y rotation (radians, 90° increments). */
+  /** Y rotation (radians, 90° increments). Wall items: added to the wall-facing rotation. */
   rotY?: number;
+  /** Optional color tint (hex) applied over the model's materials. */
+  tint?: string;
 }
 
 export type UtilityKind = "water" | "outlet" | "switch" | "drain" | "gas";

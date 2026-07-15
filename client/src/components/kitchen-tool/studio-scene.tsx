@@ -1167,10 +1167,11 @@ function PlacedCabinets({
  * uniform-scales to the item's target height, centers on X/Z and rests the
  * bottom at y=0. Handles the wildly different native units of the assets.
  */
-function DecorModel({ item }: { item: DecorItem }) {
+function DecorModel({ item, tint }: { item: DecorItem; tint?: string }) {
   const gltf = useGLTF(item.modelPath);
 
-  const normalized = useMemo(() => {
+  const built = useMemo(() => {
+    const clonedMats: THREE.Material[] = [];
     let source: THREE.Object3D = gltf.scene;
     if (item.nodeName) {
       const node = gltf.scene.getObjectByName(item.nodeName);
@@ -1195,18 +1196,39 @@ function DecorModel({ item }: { item: DecorItem }) {
     holder.scale.setScalar(s);
     holder.position.set(-center.x * s, -box.min.y * s, -center.z * s);
     holder.traverse((o) => {
-      if ((o as THREE.Mesh).isMesh) {
-        o.castShadow = true;
-        o.receiveShadow = true;
+      const mesh = o as THREE.Mesh;
+      if (mesh.isMesh) {
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        if (tint) {
+          const applyTint = (m: THREE.Material) => {
+            const c = m.clone();
+            if ("color" in c) (c as THREE.MeshStandardMaterial).color.set(tint);
+            clonedMats.push(c);
+            return c;
+          };
+          mesh.material = Array.isArray(mesh.material)
+            ? mesh.material.map(applyTint)
+            : applyTint(mesh.material);
+        }
       }
     });
     const wrapper = new THREE.Group();
     wrapper.add(holder);
     wrapper.rotation.y = item.rotYOffset ?? 0;
-    return wrapper;
-  }, [gltf.scene, item]);
+    return { wrapper, clonedMats };
+  }, [gltf.scene, item, tint]);
 
-  return <primitive object={normalized} />;
+  // Dispose cloned tint materials when tint changes or the item unmounts.
+  // Textures are shared with the source materials and must NOT be disposed.
+  useEffect(() => {
+    const mats = built.clonedMats;
+    return () => {
+      for (const m of mats) m.dispose();
+    };
+  }, [built]);
+
+  return <primitive object={built.wrapper} />;
 }
 
 function PlacedDecorMesh({
@@ -1228,7 +1250,7 @@ function PlacedDecorMesh({
       if (!seg) return null;
       const { origin, dir } = segVectors(seg);
       const inward = inwardOf(seg);
-      const rotY = Math.atan2(inward.x, inward.z);
+      const rotY = Math.atan2(inward.x, inward.z) + (placed.rotY ?? 0);
       const pos = origin
         .clone()
         .addScaledVector(dir, (placed.offset ?? 0) + item.width / 2)
@@ -1255,7 +1277,7 @@ function PlacedDecorMesh({
       }}
     >
       <Suspense fallback={null}>
-        <DecorModel item={item} />
+        <DecorModel item={item} tint={placed.tint} />
       </Suspense>
       {selected && (
         <mesh position={[0, item.height / 2, 0]}>

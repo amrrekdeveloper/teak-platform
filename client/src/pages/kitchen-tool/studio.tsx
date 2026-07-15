@@ -1002,20 +1002,71 @@ export default function KitchenToolStudioPage() {
                   <span className="text-xs font-bold" data-testid="text-selected-decor">
                     {t(selectedDecorItem.nameAr, selectedDecorItem.nameEn)}
                   </span>
-                  {selectedDecorItem.placement === "floor" && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-7 px-2 font-bold"
-                      onClick={() =>
-                        updatePlacedDecor(selectedDecorPlaced.id, {
-                          rotY: ((selectedDecorPlaced.rotY ?? 0) + Math.PI / 2) % (Math.PI * 2),
-                        })
-                      }
-                      data-testid="button-rotate-decor"
-                    >
-                      {t("تدوير 90°", "Rotate 90°")}
-                    </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 px-2 font-bold"
+                    onClick={() =>
+                      updatePlacedDecor(
+                        selectedDecorPlaced.id,
+                        selectedDecorItem.placement === "wall"
+                          ? {
+                              rotY:
+                                (selectedDecorPlaced.rotY ?? 0) === 0 ? Math.PI : 0,
+                            }
+                          : {
+                              rotY:
+                                ((selectedDecorPlaced.rotY ?? 0) + Math.PI / 2) %
+                                (Math.PI * 2),
+                            }
+                      )
+                    }
+                    data-testid="button-rotate-decor"
+                  >
+                    {selectedDecorItem.placement === "wall"
+                      ? t("عكس الاتجاه", "Flip 180°")
+                      : t("تدوير 90°", "Rotate 90°")}
+                  </Button>
+                  {selectedDecorItem.recolorable && (
+                    <div className="flex items-center gap-1" data-testid="row-decor-colors">
+                      {[
+                        ["#f4f4f2", "أبيض"],
+                        ["#2e2e30", "أسود"],
+                        ["#b9bec4", "ستانلس"],
+                        ["#8a8f94", "رمادي"],
+                        ["#c9a06a", "خشبي"],
+                        ["#6f4a2c", "بني"],
+                        ["#7d1f24", "نبيتي"],
+                      ].map(([hex, name]) => (
+                        <button
+                          key={hex}
+                          title={name}
+                          className={`w-5 h-5 rounded-full border-2 ${
+                            selectedDecorPlaced.tint === hex
+                              ? "border-primary scale-110"
+                              : "border-white/70"
+                          }`}
+                          style={{ backgroundColor: hex }}
+                          onClick={() =>
+                            updatePlacedDecor(selectedDecorPlaced.id, { tint: hex })
+                          }
+                          data-testid={`button-decor-tint-${hex.slice(1)}`}
+                        />
+                      ))}
+                      {selectedDecorPlaced.tint && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 px-1.5 text-[11px] font-bold"
+                          onClick={() =>
+                            updatePlacedDecor(selectedDecorPlaced.id, { tint: undefined })
+                          }
+                          data-testid="button-decor-tint-reset"
+                        >
+                          {t("الأصل", "Original")}
+                        </Button>
+                      )}
+                    </div>
                   )}
                   {selectedDecorItem.placement === "wall" && (() => {
                     const currentY =
