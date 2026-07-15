@@ -1,6 +1,6 @@
 import { Component, Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useLocation } from "wouter";
-import { ChevronRight, ChevronLeft, Home, Loader2, Trash2, Plus, Minus, Map, X, Lightbulb, RotateCw } from "lucide-react";
+import { ChevronRight, ChevronLeft, Home, Loader2, Trash2, Plus, Minus, Map as MapIcon, X, Lightbulb } from "lucide-react";
 import { useProgress } from "@react-three/drei";
 import { Button } from "@/components/ui/button";
 import {
@@ -35,7 +35,6 @@ import {
 } from "@/components/kitchen-tool/materials";
 import KitchenPlanSvg, { getWallSegments } from "@/components/kitchen-tool/plan-svg";
 import {
-  CABINET_DEFS,
   findCabinetDef,
   findSlotForCabinet,
   findCornerSlot,
@@ -343,6 +342,23 @@ function MaterialBar() {
   );
 }
 
+/** Strip size digits/codes so same-family English names collapse together. */
+function familyEnglishName(nameEn: string): string {
+  return nameEn
+    .replace(/\b\d+(\s*[xX×]\s*\d+)*\b/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+interface CabinetFamily {
+  key: string;
+  nameAr: string;
+  nameEn: string;
+  thumbnail?: string | null;
+  corner: boolean;
+  defs: CabinetDef[];
+}
+
 function CabinetCatalog({
   onAdd,
   adekoDefs,
@@ -353,15 +369,46 @@ function CabinetCatalog({
   const { t } = useLanguage();
   const [tab, setTab] = useState<CabinetLevel>("base");
   const [search, setSearch] = useState("");
-  const items = CABINET_DEFS.filter((d) => d.level === tab);
+  const [openFamily, setOpenFamily] = useState<string | null>(null);
   const q = search.trim().toLowerCase();
-  const adekoItems = adekoDefs.filter(
-    (d) =>
-      d.level === tab &&
+
+  // Merge products of the same family into one card with a size picker.
+  const families = useMemo(() => {
+    const map = new Map<string, CabinetFamily>();
+    for (const d of adekoDefs) {
+      const key = `${d.level}|${d.nameAr}`;
+      let fam = map.get(key);
+      if (!fam) {
+        fam = {
+          key,
+          nameAr: d.nameAr,
+          nameEn: familyEnglishName(d.nameEn),
+          thumbnail: d.adeko?.thumbnail,
+          corner: !!d.corner,
+          defs: [],
+        };
+        map.set(key, fam);
+      }
+      if (!fam.thumbnail && d.adeko?.thumbnail) fam.thumbnail = d.adeko.thumbnail;
+      fam.defs.push(d);
+    }
+    const all = Array.from(map.values());
+    for (const fam of all) {
+      fam.defs.sort((a, b) => a.width - b.width || a.height - b.height);
+    }
+    return all;
+  }, [adekoDefs]);
+
+  const shownFamilies = families.filter(
+    (f) =>
+      f.defs[0].level === tab &&
       (!q ||
-        d.nameAr.toLowerCase().includes(q) ||
-        d.nameEn.toLowerCase().includes(q) ||
-        (d.adeko?.code ?? "").toLowerCase().includes(q))
+        f.nameAr.toLowerCase().includes(q) ||
+        f.nameEn.toLowerCase().includes(q) ||
+        f.defs.some((d) =>
+          (d.adeko?.code ?? "").toLowerCase().includes(q) ||
+          d.nameEn.toLowerCase().includes(q)
+        ))
   );
 
   return (
@@ -402,62 +449,78 @@ function CabinetCatalog({
         />
       </div>
       <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-1.5">
-        {adekoItems.map((def) => (
-          <button
-            key={def.id}
-            type="button"
-            onClick={() => onAdd(def)}
-            className="flex items-center gap-2 rounded-lg border border-border bg-background px-2 py-2 text-start hover:border-primary/60 hover:bg-primary/5 transition-colors"
-            data-testid={`button-add-cabinet-${def.id}`}
-          >
-            {def.adeko?.thumbnail ? (
-              <img
-                src={def.adeko.thumbnail}
-                alt=""
-                loading="lazy"
-                className="w-9 h-9 shrink-0 rounded border border-border object-contain bg-white"
-              />
-            ) : (
-              <span className="w-9 h-9 shrink-0 rounded border border-border bg-muted" />
-            )}
-            <span className="min-w-0 flex-1">
-              <span className="block text-xs font-bold leading-tight truncate">
-                {t(def.nameAr, def.nameEn)}
-              </span>
-              <span className="block text-[10px] text-muted-foreground mt-0.5 truncate" dir="ltr">
-                {def.adeko?.code} • {Math.round(def.width * 100)}×{Math.round(def.height * 100)}×
-                {Math.round(def.depth * 100)} {t("سم", "cm")}
-                {def.corner ? t(" • ركن", " • corner") : ""}
-              </span>
-            </span>
-            <Plus className="w-4 h-4 shrink-0 text-primary" />
-          </button>
-        ))}
-        {!q && items.map((def) => (
-          <button
-            key={def.id}
-            type="button"
-            onClick={() => onAdd(def)}
-            className="flex items-center justify-between gap-2 rounded-lg border border-border bg-background px-3 py-2.5 text-start hover:border-primary/60 hover:bg-primary/5 transition-colors"
-            data-testid={`button-add-cabinet-${def.id}`}
-          >
-            <span className="min-w-0">
-              <span className="block text-xs font-bold leading-tight">
-                {t(def.nameAr, def.nameEn)}
-              </span>
-              <span className="block text-[10px] text-muted-foreground mt-0.5">
-                {Math.round(def.width * 100)} {t("سم", "cm")}
-                {def.corner ? t(" • ركن", " • corner") : ""}
-              </span>
-            </span>
-            <Plus className="w-4 h-4 shrink-0 text-primary" />
-          </button>
-        ))}
+        {shownFamilies.map((fam) => {
+          const isOpen = openFamily === fam.key;
+          const single = fam.defs.length === 1;
+          return (
+            <div
+              key={fam.key}
+              className={`rounded-lg border transition-colors ${
+                isOpen ? "border-primary/60 bg-primary/5" : "border-border bg-background"
+              }`}
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  if (single) onAdd(fam.defs[0]);
+                  else setOpenFamily(isOpen ? null : fam.key);
+                }}
+                className="w-full flex items-center gap-2 px-2 py-2 text-start hover:bg-primary/5 rounded-lg transition-colors"
+                data-testid={`button-family-${fam.key}`}
+              >
+                {fam.thumbnail ? (
+                  <img
+                    src={fam.thumbnail}
+                    alt=""
+                    loading="lazy"
+                    className="w-9 h-9 shrink-0 rounded border border-border object-contain bg-white"
+                  />
+                ) : (
+                  <span className="w-9 h-9 shrink-0 rounded border border-border bg-muted" />
+                )}
+                <span className="min-w-0 flex-1">
+                  <span className="block text-xs font-bold leading-tight truncate">
+                    {t(fam.nameAr, fam.nameEn)}
+                  </span>
+                  <span className="block text-[10px] text-muted-foreground mt-0.5 truncate">
+                    {single
+                      ? `${Math.round(fam.defs[0].width * 100)} ${t("سم", "cm")}`
+                      : t(`${fam.defs.length} مقاسات`, `${fam.defs.length} sizes`)}
+                    {fam.corner ? t(" • ركن", " • corner") : ""}
+                  </span>
+                </span>
+                <Plus className="w-4 h-4 shrink-0 text-primary" />
+              </button>
+              {isOpen && !single && (
+                <div className="flex flex-wrap gap-1 px-2 pb-2">
+                  {fam.defs.map((def) => (
+                    <button
+                      key={def.id}
+                      type="button"
+                      onClick={() => onAdd(def)}
+                      title={def.nameEn}
+                      className="rounded-md border border-border bg-card px-1.5 py-1 text-[10px] font-bold hover:border-primary hover:text-primary transition-colors"
+                      dir="ltr"
+                      data-testid={`button-add-cabinet-${def.id}`}
+                    >
+                      {Math.round(def.width * 100)}×{Math.round(def.height * 100)}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+        {shownFamilies.length === 0 && (
+          <p className="text-[11px] text-muted-foreground text-center py-4">
+            {t("لا توجد نتائج", "No results")}
+          </p>
+        )}
       </div>
       <p className="px-3 py-2 text-[10px] text-muted-foreground border-t border-border leading-relaxed">
         {t(
-          "اضغط لإضافة الخزانة، ثم اسحبها في المشهد لتحريكها على الجدران.",
-          "Click to add a cabinet, then drag it in the scene to move it along the walls."
+          "اضغط على المنتج لاختيار المقاس، ثم اسحبه في المشهد لتحريكه على الجدران.",
+          "Click a product to pick a size, then drag it in the scene to move it along the walls."
         )}
       </p>
     </div>
@@ -517,6 +580,16 @@ export default function KitchenToolStudioPage() {
     ensureWalls(layout);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [layout]);
+
+  // One-time cleanup: drop saved placements from the removed legacy GLB
+  // catalog (their ids never start with "adeko-"), so they don't linger
+  // as invisible ghost entries in counts and collision checks.
+  useEffect(() => {
+    for (const p of placedCabinets) {
+      if (!p.catalogId.startsWith("adeko-")) removePlacedCabinet(p.id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleAddCabinet = (def: CabinetDef) => {
     const slot = def.corner
@@ -760,7 +833,7 @@ export default function KitchenToolStudioPage() {
                     onClick={() => setShowPlan(true)}
                     data-testid="button-show-plan"
                   >
-                    <Map className="w-4 h-4 me-1" />
+                    <MapIcon className="w-4 h-4 me-1" />
                     {t("المخطط", "2D Plan")}
                   </Button>
                 )}
@@ -806,23 +879,6 @@ export default function KitchenToolStudioPage() {
                         <Plus className="w-3.5 h-3.5" />
                       </Button>
                     </div>
-                  )}
-                  {selectedPlaced && !selectedDef.adeko && !selectedDef.parametricKind && !selectedDef.corner && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-7 px-2 font-bold"
-                      onClick={() =>
-                        updatePlacedCabinet(selectedPlaced.id, {
-                          rotYOffset:
-                            (((selectedPlaced.rotYOffset ?? 0) + Math.PI / 2) % (Math.PI * 2)),
-                        })
-                      }
-                      data-testid="button-rotate-cabinet"
-                    >
-                      <RotateCw className="w-3.5 h-3.5 me-1" />
-                      {t("تدوير 90°", "Rotate 90°")}
-                    </Button>
                   )}
                   <Button
                     size="sm"
@@ -899,6 +955,65 @@ export default function KitchenToolStudioPage() {
                         </div>
                       );
                     })()}
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-bold text-muted-foreground mb-1.5">
+                      {t("لون الدهان (اختياري)", "Paint color (optional)")}
+                    </p>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <label
+                        className="relative w-7 h-7 rounded-full border-2 border-border overflow-hidden cursor-pointer shrink-0"
+                        style={{
+                          background:
+                            selectedPlaced.finishColor ??
+                            "conic-gradient(red, yellow, lime, cyan, blue, magenta, red)",
+                        }}
+                        title={t("اختر أي لون", "Pick any color")}
+                        data-testid="label-finish-color-wheel"
+                      >
+                        <input
+                          type="color"
+                          value={selectedPlaced.finishColor ?? "#e2b586"}
+                          onChange={(e) =>
+                            updatePlacedCabinet(selectedPlaced.id, {
+                              finishColor: e.target.value,
+                            })
+                          }
+                          className="absolute inset-0 opacity-0 cursor-pointer"
+                          data-testid="input-finish-color"
+                        />
+                      </label>
+                      {["#f5f2ec", "#d9c9a8", "#8a5a33", "#5d6d63", "#33415c", "#7a1f2b", "#232427"].map(
+                        (c) => (
+                          <button
+                            key={c}
+                            type="button"
+                            onClick={() =>
+                              updatePlacedCabinet(selectedPlaced.id, { finishColor: c })
+                            }
+                            className={`w-5 h-5 rounded-full border-2 ${
+                              selectedPlaced.finishColor === c
+                                ? "border-primary"
+                                : "border-border"
+                            }`}
+                            style={{ background: c }}
+                            data-testid={`button-finish-color-${c.slice(1)}`}
+                          />
+                        )
+                      )}
+                      {selectedPlaced.finishColor && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            updatePlacedCabinet(selectedPlaced.id, { finishColor: undefined })
+                          }
+                          className="text-[10px] font-bold text-muted-foreground hover:text-destructive underline"
+                          data-testid="button-finish-color-clear"
+                        >
+                          {t("إزالة اللون", "Clear color")}
+                        </button>
+                      )}
+                    </div>
                   </div>
                   {selectedDef.adeko?.kind.place === "base" &&
                     !selectedDef.adeko?.kind.filler && (

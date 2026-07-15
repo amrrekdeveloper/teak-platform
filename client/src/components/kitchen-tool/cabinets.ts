@@ -7,7 +7,6 @@
 import type { WallSegment } from "@/components/kitchen-tool/plan-svg";
 import type { KitchenOpening } from "@/components/kitchen-tool/store";
 
-const ASSETS = "/kitchen-tool-assets";
 const CM = 1 / 100;
 /** Safety gap between a cabinet and a door opening (m). */
 const DOOR_MARGIN = 0.02;
@@ -17,7 +16,6 @@ export type CabinetLevel = "base" | "upper";
 
 export interface CabinetDef {
   id: string;
-  url: string;
   nameAr: string;
   nameEn: string;
   level: CabinetLevel;
@@ -32,11 +30,9 @@ export interface CabinetDef {
   corner?: boolean;
   /** L-corner second arm length (m) along the adjacent wall (defaults to width). */
   cornerAcross?: number;
-  /** Extra Y-rotation fix (radians) for models with baked rotations. */
-  rotYFix?: number;
-  /** Render this GLB-less def parametrically with the given kind (no catalog row). */
+  /** Render this def parametrically with the given kind (no catalog row). */
   parametricKind?: AdekoKind;
-  /** Real product from the Adeko catalog — rendered parametrically (no GLB). */
+  /** Real product from the Adeko catalog — rendered parametrically. */
   adeko?: {
     productId: number;
     code: string;
@@ -178,7 +174,6 @@ export function adekoDefFromProduct(p: AdekoProductRow): CabinetDef | null {
   const cornerAcross = trueL ? p.designH / 100 : undefined;
   return {
     id: `adeko-${p.id}`,
-    url: "",
     nameAr: arabicNameForProduct(p, kind),
     nameEn: p.descriptionEn || p.code,
     level: kind.place === "wall" ? "upper" : "base",
@@ -198,26 +193,12 @@ export function adekoDefFromProduct(p: AdekoProductRow): CabinetDef | null {
   };
 }
 
-export const CABINET_DEFS: CabinetDef[] = [
-  // ── Base (سفلية) ──
-  { id: "lower-standard", url: `${ASSETS}/cabinet-lower-standard.glb`, nameAr: "خزانة سفلية بباب", nameEn: "Base Cabinet", level: "base", width: 0.61, depth: 0.65, height: 0.88, mountY: 0 },
-  { id: "lower-standard-glass", url: "", nameAr: "سفلية بباب زجاجي", nameEn: "Base Glass Door", level: "base", width: 0.61, depth: 0.65, height: 0.88, mountY: 0, parametricKind: { place: "base", doors: 1, drawers: 0, topDrawer: false, glass: true, open: false, filler: false } },
-  { id: "lower-drawers", url: `${ASSETS}/cabinet-lower-drawers.glb`, nameAr: "وحدة أدراج", nameEn: "Drawer Unit", level: "base", width: 0.61, depth: 0.65, height: 0.88, mountY: 0 },
-  { id: "lower-sink", url: `${ASSETS}/cabinet-lower-sink.glb`, nameAr: "خزانة المغسلة", nameEn: "Sink Cabinet", level: "base", width: 0.61, depth: 0.65, height: 0.88, mountY: 0 },
-  { id: "lower-large", url: `${ASSETS}/cabinet-lower-large.glb`, nameAr: "سفلية بباب كبير", nameEn: "Base Large Door", level: "base", width: 0.61, depth: 0.65, height: 0.88, mountY: 0 },
-  { id: "lower-corner", url: `${ASSETS}/cabinet-lower-corner.glb`, nameAr: "سفلية ركنية", nameEn: "Base Corner", level: "base", width: 0.84, depth: 0.84, height: 0.88, mountY: 0, corner: true },
-  { id: "lower-left-cap", url: `${ASSETS}/cabinet-lower-left-cap.glb`, nameAr: "طرف يسار", nameEn: "Left End Cap", level: "base", width: 0.62, depth: 0.61, height: 0.88, mountY: 0 },
-  { id: "lower-right-cap", url: `${ASSETS}/cabinet-lower-right-cap.glb`, nameAr: "طرف يمين", nameEn: "Right End Cap", level: "base", width: 0.62, depth: 0.61, height: 0.88, mountY: 0 },
-  // ── Upper (علوية) ──
-  { id: "upper-standard", url: `${ASSETS}/cabinet-upper-standard.glb`, nameAr: "علوية بباب", nameEn: "Wall Cabinet", level: "upper", width: 0.61, depth: 0.35, height: 1.07, mountY: 1.05 },
-  { id: "upper-standard-glass", url: `${ASSETS}/cabinet-upper-standard-glass.glb`, nameAr: "علوية بباب زجاجي", nameEn: "Wall Glass Door", level: "upper", width: 0.61, depth: 0.35, height: 1.07, mountY: 1.05 },
-  { id: "upper-shelves", url: `${ASSETS}/cabinet-upper-shelves.glb`, nameAr: "أرفف مفتوحة", nameEn: "Open Shelves", level: "upper", width: 0.61, depth: 0.31, height: 1.07, mountY: 1.05 },
-  { id: "upper-corner", url: `${ASSETS}/cabinet-upper-corner.glb`, nameAr: "علوية ركنية", nameEn: "Wall Corner", level: "upper", width: 0.54, depth: 0.54, height: 1.07, mountY: 1.05, corner: true },
-  { id: "upper-short", url: `${ASSETS}/cabinet-upper-short.glb`, nameAr: "علوية قصيرة برف نبيذ", nameEn: "Short Wall Cabinet", level: "upper", width: 0.91, depth: 0.35, height: 0.66, mountY: 1.4 },
-  { id: "upper-small-dish", url: `${ASSETS}/cabinet-upper-small-dish.glb`, nameAr: "علوية بمصفاة صحون", nameEn: "Dish Rack Cabinet", level: "upper", width: 0.91, depth: 0.35, height: 0.9, mountY: 1.17 },
-  { id: "upper-small-shelves", url: `${ASSETS}/cabinet-upper-small-shelves.glb`, nameAr: "علوية بأرفف", nameEn: "Shelved Wall Cabinet", level: "upper", width: 0.91, depth: 0.35, height: 0.9, mountY: 1.17 },
-  { id: "upper-small-wine", url: `${ASSETS}/cabinet-upper-small-wine.glb`, nameAr: "علوية بأرفف زجاجات", nameEn: "Bottle Rack Cabinet", level: "upper", width: 0.91, depth: 0.35, height: 0.9, mountY: 1.17 },
-];
+/**
+ * Legacy GLB catalog removed — every cabinet now comes from the Adeko
+ * catalog and renders parametrically. Kept as an (empty) list so old
+ * imports keep working.
+ */
+export const CABINET_DEFS: CabinetDef[] = [];
 
 /** Dynamic defs built from the real Adeko catalog (registered at runtime). */
 const ADEKO_DEFS: CabinetDef[] = [];
@@ -333,7 +314,6 @@ export interface Interval {
  */
 export function isLCorner(def: CabinetDef): boolean {
   if (!def.corner) return false;
-  if (!def.adeko) return true; // legacy GLB corner defs are square
   return /^corner/i.test(def.nameEn);
 }
 

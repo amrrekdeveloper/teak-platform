@@ -1,7 +1,7 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { OrbitControls, Environment, useGLTF, useTexture, Html } from "@react-three/drei";
+import { OrbitControls, Environment, useTexture, Html } from "@react-three/drei";
 import {
   type KitchenLayout,
   type KitchenWall,
@@ -15,7 +15,6 @@ import {
   type WallSegment,
 } from "@/components/kitchen-tool/plan-svg";
 import {
-  CABINET_DEFS,
   findCabinetDef,
   junctionOfPlaced,
   getJunctions,
@@ -34,6 +33,7 @@ import {
   findCeilingOption,
   findAdekoTopFinish,
   findEnvironmentOption,
+  DEFAULT_ADEKO_FINISH,
   type MaterialOption,
   type AdekoFinish,
 } from "@/components/kitchen-tool/materials";
@@ -949,27 +949,18 @@ function inwardOf(seg: WallSegment): THREE.Vector3 {
   return new THREE.Vector3(-seg.nx, 0, -seg.ny);
 }
 
-/** GLB-based cabinet body — isolated so useGLTF never runs for parametric defs. */
-function GltfCabinetObject({ url }: { url: string }) {
-  const { scene } = useGLTF(url);
-
-  // Clone + recenter once per model — NOT on every drag move.
-  const object = useMemo(() => {
-    const obj = scene.clone(true);
-    obj.traverse((child) => {
-      if ((child as THREE.Mesh).isMesh) {
-        child.castShadow = true;
-        child.receiveShadow = true;
-      }
-    });
-    // Recenter: bottom-center of the bounding box at the local origin
-    const box = new THREE.Box3().setFromObject(obj);
-    const center = box.getCenter(new THREE.Vector3());
-    obj.position.set(-center.x, -box.min.y, -center.z);
-    return obj;
-  }, [scene]);
-
-  return <primitive object={object} />;
+/** Wood-type finish for a placed cabinet, with optional custom color override. */
+function resolvePlacedFinish(
+  placed: PlacedCabinetState,
+  adekoFinishById?: Record<number, AdekoFinish>
+): AdekoFinish | undefined {
+  const base =
+    placed.finishWoodTypeId != null
+      ? adekoFinishById?.[placed.finishWoodTypeId]
+      : undefined;
+  if (!placed.finishColor) return base;
+  const b = base ?? DEFAULT_ADEKO_FINISH;
+  return { ...b, id: `${b.id}-custom-${placed.finishColor}`, tint: placed.finishColor };
 }
 
 function PlacedCabinetMesh({
@@ -990,13 +981,13 @@ function PlacedCabinetMesh({
   const { lightsOn, lightColor } = useLighting();
   const seg = segments.find((s) => s.id === placed.wallId);
 
-  const lCorner = isLCorner(def) && !!def.adeko;
+  const lCorner = isLCorner(def);
 
   const built = useMemo(() => {
     if (!seg) return null;
     const { origin, dir } = segVectors(seg);
     const inward = inwardOf(seg);
-    let rotY = Math.atan2(inward.x, inward.z) + (def.rotYFix ?? 0);
+    let rotY = Math.atan2(inward.x, inward.z);
     let pos: THREE.Vector3 | null = null;
     let corner = false;
     let swapArms = false;
@@ -1036,13 +1027,6 @@ function PlacedCabinetMesh({
           // frame is the OTHER wall's, the arms must be swapped so each arm
           // length matches the wall it was reserved on.
           swapArms = chosen.seg.id !== placed.wallId;
-        } else if (!def.adeko) {
-          const diag = inA.clone().add(inB);
-          // Model's default front diagonal faces (-X, +Z)
-          rotY = Math.atan2(diag.x, diag.z) + Math.PI / 4 + (def.rotYFix ?? 0);
-          pos = new THREE.Vector3(jn.x * CM, 0, jn.y * CM)
-            .addScaledVector(inA, def.width / 2 + 0.005)
-            .addScaledVector(inB, def.width / 2 + 0.005);
         }
       }
     }
@@ -1072,31 +1056,23 @@ function PlacedCabinetMesh({
           def={def}
           swapArms={built.swapArms}
           options={{
-            finish:
-              placed.finishWoodTypeId != null
-                ? adekoFinishById?.[placed.finishWoodTypeId]
-                : undefined,
+            finish: resolvePlacedFinish(placed, adekoFinishById),
             topFinish: findAdekoTopFinish(placed.topFinishId),
             handleStyle: placed.handleStyle ?? "bar",
             handleColor: placed.handleColor ?? "gray",
           }}
         />
-      ) : def.adeko || def.parametricKind ? (
+      ) : (
         <AdekoBaseCabinet
           def={def}
           options={{
-            finish:
-              placed.finishWoodTypeId != null
-                ? adekoFinishById?.[placed.finishWoodTypeId]
-                : undefined,
+            finish: resolvePlacedFinish(placed, adekoFinishById),
             topFinish: findAdekoTopFinish(placed.topFinishId),
             handleStyle: placed.handleStyle ?? "bar",
             handleColor: placed.handleColor ?? "gray",
             doorHinge: placed.doorHinge,
           }}
         />
-      ) : (
-        <GltfCabinetObject url={def.url} />
       )}
       {def.level === "upper" && lightsOn && !built.corner && (
         <mesh position={[0, -0.008, def.depth / 2 - 0.02]}>
@@ -1665,8 +1641,4 @@ export default function StudioScene(props: StudioSceneProps) {
       <SceneContents {...props} />
     </Canvas>
   );
-}
-
-for (const def of CABINET_DEFS) {
-  if (def.url) useGLTF.preload(def.url);
 }

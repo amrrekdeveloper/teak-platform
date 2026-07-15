@@ -45,6 +45,8 @@ export interface PlacedCabinetState {
   mountY?: number;
   /** Adeko parametric cabinets only — chosen factory wood type (finish). */
   finishWoodTypeId?: number;
+  /** Optional custom paint color (hex) overriding the finish tint. */
+  finishColor?: string;
   /** Adeko parametric cabinets only — handle style ("bar" | "none"). */
   handleStyle?: "bar" | "none";
   /** Adeko parametric cabinets only — handle color. */
@@ -235,7 +237,7 @@ interface KitchenToolState {
     patch: Partial<
       Pick<
         PlacedCabinetState,
-        "finishWoodTypeId" | "handleStyle" | "handleColor" | "topFinishId" | "doorHinge" | "rotYOffset"
+        "finishWoodTypeId" | "finishColor" | "handleStyle" | "handleColor" | "topFinishId" | "doorHinge" | "rotYOffset"
       >
     >
   ) => void;
