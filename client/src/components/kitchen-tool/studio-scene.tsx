@@ -999,6 +999,7 @@ function PlacedCabinetMesh({
     let rotY = Math.atan2(inward.x, inward.z) + (def.rotYFix ?? 0);
     let pos: THREE.Vector3 | null = null;
     let corner = false;
+    let swapArms = false;
 
     if (def.corner) {
       const jn = junctionOfPlaced(placed, def, segments);
@@ -1031,7 +1032,11 @@ function PlacedCabinetMesh({
             .addScaledVector(chosen.inw, 0.005)
             .addScaledVector(xAxis, 0.005);
           corner = true;
-        } else {
+          // Arm A (def.width) belongs on the placed wall; when the chosen
+          // frame is the OTHER wall's, the arms must be swapped so each arm
+          // length matches the wall it was reserved on.
+          swapArms = chosen.seg.id !== placed.wallId;
+        } else if (!def.adeko) {
           const diag = inA.clone().add(inB);
           // Model's default front diagonal faces (-X, +Z)
           rotY = Math.atan2(diag.x, diag.z) + Math.PI / 4 + (def.rotYFix ?? 0);
@@ -1048,7 +1053,7 @@ function PlacedCabinetMesh({
         .addScaledVector(inward, def.depth / 2 + 0.005);
     }
     pos.y = placed.mountY ?? def.mountY;
-    return { pos, rotY: rotY + (placed.rotYOffset ?? 0), corner };
+    return { pos, rotY: rotY + (placed.rotYOffset ?? 0), corner, swapArms };
   }, [seg, placed, def, segments, lCorner]);
 
   if (!built) return null;
@@ -1065,6 +1070,7 @@ function PlacedCabinetMesh({
       {built.corner ? (
         <AdekoCornerCabinet
           def={def}
+          swapArms={built.swapArms}
           options={{
             finish:
               placed.finishWoodTypeId != null

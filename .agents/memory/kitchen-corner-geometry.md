@@ -6,3 +6,7 @@ description: Conventions for L-corner placement, chirality, and corner collision
 - Collision model: a corner unit blocks its width on its own wall and `cornerAcrossWidth` (width for true L, depth for blind corners) on the adjacent wall; ANY straight cabinet touching a junction blocks [0..its depth] on the adjacent wall so cabinets can't intersect in the corner square.
 - **Why:** earlier diagonal-GLB corners and missing protrusion intervals let cabinets physically overlap at corners.
 - **How to apply:** when adding placement rules or new corner SKUs, keep intervals asymmetric (own-wall vs across) and test both junction orientations before rejecting a slot.
+- Adeko catalog dim ordering is DIFFERENT for true L-corner products (descriptionEn starts with "Corner"): (designW, designH, designD) = (arm A, arm B, actual height) — e.g. "Corner unit 90X90" = 90×105×74 means arms 90/105, height 74. Blind corners ("Blind ... corner", AKK codes) use the normal (width, height, depth) ordering and are physically straight boxes.
+- **Why:** interpreting L-corner dims as W/H/D produced 1.05m-"tall" base units (blocked by window sills → false "corners occupied") and 1m-deep wall corners.
+- Blind (non-L) Adeko corners must render flush along their own wall like straight cabinets — never the legacy 45° diagonal GLB pose — or the render diverges from the collision intervals and cabinets visually overlap.
+- When the chosen render frame belongs to the OTHER junction wall, swap arm lengths (arm A must lie on the wall where def.width was reserved).

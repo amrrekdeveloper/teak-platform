@@ -30,6 +30,8 @@ export interface CabinetDef {
   mountY: number;
   /** Corner units live only at wall junctions and occupy both walls. */
   corner?: boolean;
+  /** L-corner second arm length (m) along the adjacent wall (defaults to width). */
+  cornerAcross?: number;
   /** Extra Y-rotation fix (radians) for models with baked rotations. */
   rotYFix?: number;
   /** Render this GLB-less def parametrically with the given kind (no catalog row). */
@@ -162,12 +164,18 @@ export function arabicNameForProduct(p: AdekoProductRow, kind: AdekoKind): strin
 
 /** Build a CabinetDef from a catalog product row (cm → m). Null if unrenderable. */
 export function adekoDefFromProduct(p: AdekoProductRow): CabinetDef | null {
-  const kind = classifyAdekoProduct(p);
+  const corner = /corner/i.test(p.descriptionEn || "");
+  // True L-corners ("Corner unit 90X90", "Corner wall unit...") store their
+  // dims as (armA, armB, height) in (W, H, D) — unlike straight/blind units
+  // which use (width, height, depth). Normalize before classifying.
+  const trueL = corner && /^corner/i.test(p.descriptionEn || "");
+  const row: AdekoProductRow = trueL ? { ...p, designH: p.designD, designD: 60 } : p;
+  const kind = classifyAdekoProduct(row);
   if (!kind) return null;
   const width = p.designW / 100;
-  const height = p.designH / 100;
-  const depth = p.designD / 100;
-  const corner = /corner/i.test(p.descriptionEn || "");
+  const height = row.designH / 100;
+  const depth = trueL ? (kind.place === "wall" ? 0.35 : 0.65) : p.designD / 100;
+  const cornerAcross = trueL ? p.designH / 100 : undefined;
   return {
     id: `adeko-${p.id}`,
     url: "",
@@ -179,6 +187,7 @@ export function adekoDefFromProduct(p: AdekoProductRow): CabinetDef | null {
     height,
     mountY: kind.place === "wall" ? defaultWallMountY(height) : 0,
     corner: corner || undefined,
+    cornerAcross,
     adeko: {
       productId: p.id,
       code: p.code,
@@ -330,7 +339,7 @@ export function isLCorner(def: CabinetDef): boolean {
 
 /** How far a corner unit spills onto the wall it is NOT placed on (m). */
 export function cornerAcrossWidth(def: CabinetDef): number {
-  return isLCorner(def) ? def.width : def.depth;
+  return def.cornerAcross ?? (isLCorner(def) ? def.width : def.depth);
 }
 
 function cornerIntervalOn(

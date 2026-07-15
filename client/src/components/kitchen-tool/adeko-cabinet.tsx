@@ -621,13 +621,19 @@ export default function AdekoBaseCabinet({
 export function AdekoCornerCabinet({
   def,
   options,
+  swapArms,
 }: {
   def: CabinetDef;
   options?: AdekoCabinetOptions;
+  /** Render arm A along the adjacent wall instead (frame belongs to the other wall). */
+  swapArms?: boolean;
 }) {
   const kind = def.adeko?.kind ?? def.parametricKind ?? DEFAULT_KIND;
   const isWallUnit = kind.place === "wall";
-  const W = def.width;
+  const armA = def.width;
+  const armB = def.cornerAcross ?? def.width;
+  const W = swapArms ? armB : armA;
+  const WB = swapArms ? armA : armB;
   const H = def.height;
   const armD = isWallUnit ? Math.min(def.depth, 0.35) : Math.min(def.depth, 0.65);
 
@@ -650,9 +656,11 @@ export function AdekoCornerCabinet({
 
   // Door on each notch face, spanning from the notch to the arm's outer end.
   const dw = Math.max(W - armD - 2 * GAP, 0.05);
+  const dwB = Math.max(WB - armD - 2 * GAP, 0.05);
   const dh = bodyH - 2 * GAP;
   const doorY = kickH + GAP + dh / 2;
   const doorCX = armD + GAP + dw / 2;
+  const doorCXB = armD + GAP + dwB / 2;
   const doorZ = armD - DOOR_T / 2;
   const panelForDoors = kind.glass ? glassMat : panelMat;
 
@@ -670,13 +678,13 @@ export function AdekoCornerCabinet({
             <boxGeometry args={[W - armD, KICK_H, 0.02]} />
           </mesh>
           <mesh
-            position={[armD - KICK_REC - 0.01, KICK_H / 2, armD / 2 + W / 2 - 0.01]}
+            position={[armD - KICK_REC - 0.01, KICK_H / 2, armD / 2 + WB / 2 - 0.01]}
             rotation={[0, Math.PI / 2, 0]}
             material={kickMat}
             castShadow
             receiveShadow
           >
-            <boxGeometry args={[W - armD, KICK_H, 0.02]} />
+            <boxGeometry args={[WB - armD, KICK_H, 0.02]} />
           </mesh>
         </>
       )}
@@ -691,12 +699,12 @@ export function AdekoCornerCabinet({
         <boxGeometry args={[W, bodyH, armD]} />
       </mesh>
       <mesh
-        position={[armD / 2, kickH + bodyH / 2, armD + (W - armD) / 2]}
+        position={[armD / 2, kickH + bodyH / 2, armD + (WB - armD) / 2]}
         material={carcassMat}
         castShadow
         receiveShadow
       >
-        <boxGeometry args={[armD, bodyH, W - armD]} />
+        <boxGeometry args={[armD, bodyH, WB - armD]} />
       </mesh>
 
       {/* L-shaped countertop (base corner only) */}
@@ -714,13 +722,13 @@ export function AdekoCornerCabinet({
             position={[
               (armD + TOP_OVER) / 2,
               carcassTop + TOP_T / 2,
-              armD + TOP_OVER + (W - armD - TOP_OVER) / 2,
+              armD + TOP_OVER + (WB - armD - TOP_OVER) / 2,
             ]}
             material={stoneMat}
             castShadow
             receiveShadow
           >
-            <boxGeometry args={[armD + TOP_OVER, TOP_T, W - armD - TOP_OVER]} />
+            <boxGeometry args={[armD + TOP_OVER, TOP_T, WB - armD - TOP_OVER]} />
           </mesh>
         </>
       )}
@@ -744,9 +752,9 @@ export function AdekoCornerCabinet({
           local +Z points at world +X; local x = -world z. */}
       <group rotation={[0, Math.PI / 2, 0]}>
         <AdekoDoor
-          x={-doorCX}
+          x={-doorCXB}
           hingeLeft={true}
-          dw={dw}
+          dw={dwB}
           dh={dh}
           doorY={doorY}
           doorZ={doorZ}
