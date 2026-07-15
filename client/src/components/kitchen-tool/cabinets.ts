@@ -32,6 +32,8 @@ export interface CabinetDef {
   corner?: boolean;
   /** Extra Y-rotation fix (radians) for models with baked rotations. */
   rotYFix?: number;
+  /** Render this GLB-less def parametrically with the given kind (no catalog row). */
+  parametricKind?: AdekoKind;
   /** Real product from the Adeko catalog — rendered parametrically (no GLB). */
   adeko?: {
     productId: number;
@@ -190,13 +192,13 @@ export function adekoDefFromProduct(p: AdekoProductRow): CabinetDef | null {
 export const CABINET_DEFS: CabinetDef[] = [
   // ── Base (سفلية) ──
   { id: "lower-standard", url: `${ASSETS}/cabinet-lower-standard.glb`, nameAr: "خزانة سفلية بباب", nameEn: "Base Cabinet", level: "base", width: 0.61, depth: 0.65, height: 0.88, mountY: 0 },
-  { id: "lower-standard-glass", url: `${ASSETS}/cabinet-lower-standard-glass.glb`, nameAr: "سفلية بباب زجاجي", nameEn: "Base Glass Door", level: "base", width: 0.61, depth: 0.65, height: 0.88, mountY: 0 },
+  { id: "lower-standard-glass", url: "", nameAr: "سفلية بباب زجاجي", nameEn: "Base Glass Door", level: "base", width: 0.61, depth: 0.65, height: 0.88, mountY: 0, parametricKind: { place: "base", doors: 1, drawers: 0, topDrawer: false, glass: true, open: false, filler: false } },
   { id: "lower-drawers", url: `${ASSETS}/cabinet-lower-drawers.glb`, nameAr: "وحدة أدراج", nameEn: "Drawer Unit", level: "base", width: 0.61, depth: 0.65, height: 0.88, mountY: 0 },
   { id: "lower-sink", url: `${ASSETS}/cabinet-lower-sink.glb`, nameAr: "خزانة المغسلة", nameEn: "Sink Cabinet", level: "base", width: 0.61, depth: 0.65, height: 0.88, mountY: 0 },
   { id: "lower-large", url: `${ASSETS}/cabinet-lower-large.glb`, nameAr: "سفلية بباب كبير", nameEn: "Base Large Door", level: "base", width: 0.61, depth: 0.65, height: 0.88, mountY: 0 },
   { id: "lower-corner", url: `${ASSETS}/cabinet-lower-corner.glb`, nameAr: "سفلية ركنية", nameEn: "Base Corner", level: "base", width: 0.84, depth: 0.84, height: 0.88, mountY: 0, corner: true },
   { id: "lower-left-cap", url: `${ASSETS}/cabinet-lower-left-cap.glb`, nameAr: "طرف يسار", nameEn: "Left End Cap", level: "base", width: 0.62, depth: 0.61, height: 0.88, mountY: 0 },
-  { id: "lower-right-cap", url: `${ASSETS}/cabinet-lower-right-cap.glb`, nameAr: "طرف يمين", nameEn: "Right End Cap", level: "base", width: 0.62, depth: 0.61, height: 0.88, mountY: 0, rotYFix: Math.PI / 2 },
+  { id: "lower-right-cap", url: `${ASSETS}/cabinet-lower-right-cap.glb`, nameAr: "طرف يمين", nameEn: "Right End Cap", level: "base", width: 0.62, depth: 0.61, height: 0.88, mountY: 0 },
   // ── Upper (علوية) ──
   { id: "upper-standard", url: `${ASSETS}/cabinet-upper-standard.glb`, nameAr: "علوية بباب", nameEn: "Wall Cabinet", level: "upper", width: 0.61, depth: 0.35, height: 1.07, mountY: 1.05 },
   { id: "upper-standard-glass", url: `${ASSETS}/cabinet-upper-standard-glass.glb`, nameAr: "علوية بباب زجاجي", nameEn: "Wall Glass Door", level: "upper", width: 0.61, depth: 0.35, height: 1.07, mountY: 1.05 },
@@ -314,6 +316,23 @@ export interface Interval {
   b: number;
 }
 
+/**
+ * True L-shaped corner unit (e.g. "Corner unit 90X90") — occupies its width
+ * along BOTH walls. Blind corners ("Blind base corner") are straight boxes
+ * pushed into the corner: they occupy width on their own wall but only their
+ * depth on the adjacent wall.
+ */
+export function isLCorner(def: CabinetDef): boolean {
+  if (!def.corner) return false;
+  if (!def.adeko) return true; // legacy GLB corner defs are square
+  return /^corner/i.test(def.nameEn);
+}
+
+/** How far a corner unit spills onto the wall it is NOT placed on (m). */
+export function cornerAcrossWidth(def: CabinetDef): number {
+  return isLCorner(def) ? def.width : def.depth;
+}
+
 function cornerIntervalOn(
   wallId: string,
   end: "start" | "end",
@@ -348,8 +367,29 @@ export function blockedIntervals(
     } else if (def.corner) {
       const jn = junctionOfPlaced(p, def, segments);
       if (!jn) continue;
-      if (jn.aId === wallId) out.push(cornerIntervalOn(jn.aId, jn.aEnd, def.width, segments));
-      else if (jn.bId === wallId) out.push(cornerIntervalOn(jn.bId, jn.bEnd, def.width, segments));
+      const across = cornerAcrossWidth(def);
+      if (jn.aId === wallId) out.push(cornerIntervalOn(jn.aId, jn.aEnd, across, segments));
+      else if (jn.bId === wallId) out.push(cornerIntervalOn(jn.bId, jn.bEnd, across, segments));
+    } else {
+      // Straight cabinet touching a shared junction protrudes onto this wall
+      // by its depth — blocks the corner square so cabinets can't intersect.
+      const pseg = segments.find((s) => s.id === p.wallId);
+      if (!pseg) continue;
+      const plen = pseg.length * CM;
+      for (const jn of getJunctions(segments)) {
+        let pEnd: "start" | "end" | null = null;
+        let myEnd: "start" | "end" | null = null;
+        if (jn.aId === p.wallId && jn.bId === wallId) {
+          pEnd = jn.aEnd;
+          myEnd = jn.bEnd;
+        } else if (jn.bId === p.wallId && jn.aId === wallId) {
+          pEnd = jn.bEnd;
+          myEnd = jn.aEnd;
+        } else continue;
+        const touches =
+          pEnd === "start" ? p.offset <= 0.05 : p.offset + def.width >= plen - 0.05;
+        if (touches) out.push(cornerIntervalOn(wallId, myEnd, def.depth, segments));
+      }
     }
   }
 
@@ -450,26 +490,89 @@ export function findCornerSlot(
   openings: KitchenOpening[]
 ): PlacementSlot | null {
   for (const jn of getJunctions(segments)) {
-    const sides: Array<{ wallId: string; end: "start" | "end" }> = [
-      { wallId: jn.aId, end: jn.aEnd },
-      { wallId: jn.bId, end: jn.bEnd },
-    ];
-    const free = sides.every(({ wallId, end }) => {
-      const seg = segments.find((s) => s.id === wallId)!;
-      const len = seg.length * CM;
-      const iv = cornerIntervalOn(wallId, end, def.width, segments);
-      const intervals = blockedIntervals(wallId, verticalSpan(def), placed, segments, openings);
-      return iv.a >= -EPS && iv.b <= len + EPS && !overlaps(intervals, iv.a, iv.b);
-    });
-    if (free) {
-      // Represent the corner on side "a" of the junction.
-      const seg = segments.find((s) => s.id === jn.aId)!;
-      const len = seg.length * CM;
-      return {
-        wallId: jn.aId,
-        offset: jn.aEnd === "start" ? 0 : len - def.width,
-      };
+    const a = { wallId: jn.aId, end: jn.aEnd };
+    const b = { wallId: jn.bId, end: jn.bEnd };
+    // The cabinet occupies its full width on the wall it is represented on
+    // ("own") and spills cornerAcrossWidth onto the other. Try both
+    // orientations — matters for asymmetric blind corners.
+    for (const [own, other] of [
+      [a, b],
+      [b, a],
+    ]) {
+      const sides = [
+        { ...own, need: def.width },
+        { ...other, need: cornerAcrossWidth(def) },
+      ];
+      const free = sides.every(({ wallId, end, need }) => {
+        const seg = segments.find((s) => s.id === wallId)!;
+        const len = seg.length * CM;
+        const iv = cornerIntervalOn(wallId, end, need, segments);
+        const intervals = blockedIntervals(wallId, verticalSpan(def), placed, segments, openings);
+        return iv.a >= -EPS && iv.b <= len + EPS && !overlaps(intervals, iv.a, iv.b);
+      });
+      if (free) {
+        const seg = segments.find((s) => s.id === own.wallId)!;
+        const len = seg.length * CM;
+        return {
+          wallId: own.wallId,
+          offset: own.end === "start" ? 0 : len - def.width,
+        };
+      }
     }
   }
   return null;
+}
+
+/**
+ * After placing a doored cabinet flush against a corner protrusion (the side
+ * of a perpendicular neighbor), its door would hit that neighbor when opened.
+ * Returns true when a filler strip between them is advisable.
+ */
+export function doorClashAdvice(
+  def: CabinetDef,
+  wallId: string,
+  offset: number,
+  placed: PlacedCabinet[],
+  segments: WallSegment[]
+): boolean {
+  const doors = def.adeko?.kind.doors ?? def.parametricKind?.doors ?? 1;
+  if (!doors || def.corner) return false;
+  const seg = segments.find((s) => s.id === wallId);
+  if (!seg) return false;
+  const len = seg.length * CM;
+  for (const jn of getJunctions(segments)) {
+    let myEnd: "start" | "end" | null = null;
+    let otherId: string | null = null;
+    let otherEnd: "start" | "end" | null = null;
+    if (jn.aId === wallId) {
+      myEnd = jn.aEnd;
+      otherId = jn.bId;
+      otherEnd = jn.bEnd;
+    } else if (jn.bId === wallId) {
+      myEnd = jn.bEnd;
+      otherId = jn.aId;
+      otherEnd = jn.aEnd;
+    } else continue;
+    const oseg = segments.find((s) => s.id === otherId);
+    if (!oseg) continue;
+    const olen = oseg.length * CM;
+    for (const p of placed) {
+      if (p.wallId !== otherId) continue;
+      const pd = findCabinetDef(p.catalogId);
+      if (!pd) continue;
+      if (!spansIntersect(verticalSpan(def), verticalSpan(pd, p.mountY))) continue;
+      let spill = 0;
+      if (pd.corner) {
+        spill = cornerAcrossWidth(pd);
+      } else {
+        const touches =
+          otherEnd === "start" ? p.offset <= 0.05 : p.offset + pd.width >= olen - 0.05;
+        if (touches) spill = pd.depth;
+      }
+      if (spill <= 0) continue;
+      const myNear = myEnd === "start" ? offset : len - (offset + def.width);
+      if (myNear >= spill - 0.06 && myNear <= spill + 0.03) return true;
+    }
+  }
+  return false;
 }

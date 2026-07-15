@@ -22,10 +22,11 @@ import {
   blockedIntervals,
   verticalSpan,
   resolveDragOffset,
+  isLCorner,
   type CabinetDef,
 } from "@/components/kitchen-tool/cabinets";
 import type { ThreeEvent } from "@react-three/fiber";
-import AdekoBaseCabinet from "@/components/kitchen-tool/adeko-cabinet";
+import AdekoBaseCabinet, { AdekoCornerCabinet } from "@/components/kitchen-tool/adeko-cabinet";
 import type { PlacedCabinetState } from "@/components/kitchen-tool/store";
 import {
   findFloorOption,
@@ -989,12 +990,15 @@ function PlacedCabinetMesh({
   const { lightsOn, lightColor } = useLighting();
   const seg = segments.find((s) => s.id === placed.wallId);
 
+  const lCorner = isLCorner(def) && !!def.adeko;
+
   const built = useMemo(() => {
     if (!seg) return null;
     const { origin, dir } = segVectors(seg);
     const inward = inwardOf(seg);
     let rotY = Math.atan2(inward.x, inward.z) + (def.rotYFix ?? 0);
     let pos: THREE.Vector3 | null = null;
+    let corner = false;
 
     if (def.corner) {
       const jn = junctionOfPlaced(placed, def, segments);
@@ -1003,12 +1007,38 @@ function PlacedCabinetMesh({
         const segB = segments.find((s) => s.id === jn.bId)!;
         const inA = inwardOf(segA);
         const inB = inwardOf(segB);
-        const diag = inA.clone().add(inB);
-        // Model's default front diagonal faces (-X, +Z)
-        rotY = Math.atan2(diag.x, diag.z) + Math.PI / 4 + (def.rotYFix ?? 0);
-        pos = new THREE.Vector3(jn.x * CM, 0, jn.y * CM)
-          .addScaledVector(inA, def.width / 2 + 0.005)
-          .addScaledVector(inB, def.width / 2 + 0.005);
+        if (lCorner) {
+          // L-shaped corner: local origin at the junction, +X along one wall,
+          // +Z along the other. Try each wall's frame; the geometry is
+          // diagonal-symmetric so one of the two is always right-handed.
+          const frames = [
+            { seg: segA, end: jn.aEnd, inw: inA },
+            { seg: segB, end: jn.bEnd, inw: inB },
+          ];
+          let chosen = frames[0];
+          for (const f of frames) {
+            const v = segVectors(f.seg);
+            const d = f.end === "start" ? v.dir.clone() : v.dir.clone().negate();
+            const xAxis = new THREE.Vector3(f.inw.z, 0, -f.inw.x);
+            if (xAxis.dot(d) > 0) {
+              chosen = f;
+              break;
+            }
+          }
+          rotY = Math.atan2(chosen.inw.x, chosen.inw.z);
+          const xAxis = new THREE.Vector3(chosen.inw.z, 0, -chosen.inw.x);
+          pos = new THREE.Vector3(jn.x * CM, 0, jn.y * CM)
+            .addScaledVector(chosen.inw, 0.005)
+            .addScaledVector(xAxis, 0.005);
+          corner = true;
+        } else {
+          const diag = inA.clone().add(inB);
+          // Model's default front diagonal faces (-X, +Z)
+          rotY = Math.atan2(diag.x, diag.z) + Math.PI / 4 + (def.rotYFix ?? 0);
+          pos = new THREE.Vector3(jn.x * CM, 0, jn.y * CM)
+            .addScaledVector(inA, def.width / 2 + 0.005)
+            .addScaledVector(inB, def.width / 2 + 0.005);
+        }
       }
     }
     if (!pos) {
@@ -1018,8 +1048,8 @@ function PlacedCabinetMesh({
         .addScaledVector(inward, def.depth / 2 + 0.005);
     }
     pos.y = placed.mountY ?? def.mountY;
-    return { pos, rotY };
-  }, [seg, placed, def, segments]);
+    return { pos, rotY: rotY + (placed.rotYOffset ?? 0), corner };
+  }, [seg, placed, def, segments, lCorner]);
 
   if (!built) return null;
 
@@ -1032,7 +1062,20 @@ function PlacedCabinetMesh({
         onGrab(placed.id, def);
       }}
     >
-      {def.adeko ? (
+      {built.corner ? (
+        <AdekoCornerCabinet
+          def={def}
+          options={{
+            finish:
+              placed.finishWoodTypeId != null
+                ? adekoFinishById?.[placed.finishWoodTypeId]
+                : undefined,
+            topFinish: findAdekoTopFinish(placed.topFinishId),
+            handleStyle: placed.handleStyle ?? "bar",
+            handleColor: placed.handleColor ?? "gray",
+          }}
+        />
+      ) : def.adeko || def.parametricKind ? (
         <AdekoBaseCabinet
           def={def}
           options={{
@@ -1049,7 +1092,7 @@ function PlacedCabinetMesh({
       ) : (
         <GltfCabinetObject url={def.url} />
       )}
-      {def.level === "upper" && lightsOn && (
+      {def.level === "upper" && lightsOn && !built.corner && (
         <mesh position={[0, -0.008, def.depth / 2 - 0.02]}>
           <boxGeometry args={[Math.max(def.width - 0.04, 0.1), 0.014, 0.025]} />
           <meshStandardMaterial
@@ -1060,12 +1103,18 @@ function PlacedCabinetMesh({
           />
         </mesh>
       )}
-      {selected && (
-        <mesh position={[0, def.height / 2, 0]}>
-          <boxGeometry args={[def.width + 0.05, def.height + 0.05, def.depth + 0.05]} />
-          <meshBasicMaterial color="#d92626" transparent opacity={0.16} depthWrite={false} />
-        </mesh>
-      )}
+      {selected &&
+        (built.corner ? (
+          <mesh position={[def.width / 2, def.height / 2, def.width / 2]}>
+            <boxGeometry args={[def.width + 0.05, def.height + 0.05, def.width + 0.05]} />
+            <meshBasicMaterial color="#d92626" transparent opacity={0.16} depthWrite={false} />
+          </mesh>
+        ) : (
+          <mesh position={[0, def.height / 2, 0]}>
+            <boxGeometry args={[def.width + 0.05, def.height + 0.05, def.depth + 0.05]} />
+            <meshBasicMaterial color="#d92626" transparent opacity={0.16} depthWrite={false} />
+          </mesh>
+        ))}
     </group>
   );
 }
@@ -1613,5 +1662,5 @@ export default function StudioScene(props: StudioSceneProps) {
 }
 
 for (const def of CABINET_DEFS) {
-  useGLTF.preload(def.url);
+  if (def.url) useGLTF.preload(def.url);
 }

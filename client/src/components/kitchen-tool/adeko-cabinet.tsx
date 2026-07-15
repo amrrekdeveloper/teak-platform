@@ -238,39 +238,17 @@ function AdekoDrawerFace({
   );
 }
 
-export default function AdekoBaseCabinet({
-  def,
-  options,
-}: {
-  def: CabinetDef;
-  options?: AdekoCabinetOptions;
-}) {
-  const W = def.width;
-  const H = def.height;
-  const D = def.depth;
-  const kind = def.adeko?.kind ?? DEFAULT_KIND;
-
-  const finish = options?.finish ?? DEFAULT_ADEKO_FINISH;
-  const topFinish = options?.topFinish ?? DEFAULT_ADEKO_TOP_FINISH;
-  const handleStyle = options?.handleStyle ?? "bar";
-  const handleColorHex = ADEKO_HANDLE_COLORS[options?.handleColor ?? "gray"];
-
+/** Shared material set for parametric Adeko cabinets (straight + corner). */
+function useAdekoMaterials(
+  W: number,
+  finish: AdekoFinish,
+  topFinish: AdekoTopFinish,
+  handleColorHex: string
+) {
   const wood = useTexture(WOOD_MAPS);
   const stone = useTexture({ map: topFinish.map, armMap: topFinish.armMap });
 
-  const [openDoors, setOpenDoors] = useState<boolean[]>([]);
-
-  const {
-    doorMat,
-    carcassMat,
-    interiorMat,
-    stoneMat,
-    kickMat,
-    panelMat,
-    glassMat,
-    metalMat,
-    clones,
-  } = useMemo(() => {
+  const mats = useMemo(() => {
     const clones: THREE.Texture[] = [];
     const mkWood = (
       repX: number,
@@ -359,13 +337,37 @@ export default function AdekoBaseCabinet({
 
   // Dispose cloned textures + materials on unmount (see r3f texture memory).
   useEffect(() => {
+    const { clones, ...materials } = mats;
     return () => {
       clones.forEach((t) => t.dispose());
-      [doorMat, carcassMat, interiorMat, stoneMat, kickMat, panelMat, glassMat, metalMat].forEach(
-        (m) => m.dispose()
-      );
+      Object.values(materials).forEach((m) => m.dispose());
     };
-  }, [clones, doorMat, carcassMat, interiorMat, stoneMat, kickMat, panelMat, glassMat, metalMat]);
+  }, [mats]);
+
+  return mats;
+}
+
+export default function AdekoBaseCabinet({
+  def,
+  options,
+}: {
+  def: CabinetDef;
+  options?: AdekoCabinetOptions;
+}) {
+  const W = def.width;
+  const H = def.height;
+  const D = def.depth;
+  const kind = def.adeko?.kind ?? def.parametricKind ?? DEFAULT_KIND;
+
+  const finish = options?.finish ?? DEFAULT_ADEKO_FINISH;
+  const topFinish = options?.topFinish ?? DEFAULT_ADEKO_TOP_FINISH;
+  const handleStyle = options?.handleStyle ?? "bar";
+  const handleColorHex = ADEKO_HANDLE_COLORS[options?.handleColor ?? "gray"];
+
+  const [openDoors, setOpenDoors] = useState<boolean[]>([]);
+
+  const { doorMat, carcassMat, interiorMat, stoneMat, kickMat, panelMat, glassMat, metalMat } =
+    useAdekoMaterials(W, finish, topFinish, handleColorHex);
 
   const built = useMemo(() => {
     const isBase = kind.place === "base";
@@ -603,6 +605,167 @@ export default function AdekoBaseCabinet({
           showHandle={handleStyle !== "none"}
         />
       ))}
+    </group>
+  );
+}
+
+/**
+ * True L-shaped corner cabinet (e.g. Adeko "Corner unit 90X90").
+ *
+ * Local frame: origin at the wall junction (corner point), floor level.
+ * Arm A runs along +X (against the wall at z=0), arm B along +Z (against the
+ * wall at x=0). Both arms are `def.width` long and `armDepth` deep, leaving an
+ * L footprint with a notch at the inner front corner. Each notch face gets a
+ * clickable shaker door hinged at its outer edge (swings away from the corner).
+ */
+export function AdekoCornerCabinet({
+  def,
+  options,
+}: {
+  def: CabinetDef;
+  options?: AdekoCabinetOptions;
+}) {
+  const kind = def.adeko?.kind ?? def.parametricKind ?? DEFAULT_KIND;
+  const isWallUnit = kind.place === "wall";
+  const W = def.width;
+  const H = def.height;
+  const armD = isWallUnit ? Math.min(def.depth, 0.35) : Math.min(def.depth, 0.65);
+
+  const finish = options?.finish ?? DEFAULT_ADEKO_FINISH;
+  const topFinish = options?.topFinish ?? DEFAULT_ADEKO_TOP_FINISH;
+  const handleStyle = options?.handleStyle ?? "bar";
+  const handleColorHex = ADEKO_HANDLE_COLORS[options?.handleColor ?? "gray"];
+
+  const [openA, setOpenA] = useState(false);
+  const [openB, setOpenB] = useState(false);
+
+  const { doorMat, carcassMat, interiorMat, stoneMat, kickMat, panelMat, glassMat, metalMat } =
+    useAdekoMaterials(W, finish, topFinish, handleColorHex);
+
+  const hasKick = !isWallUnit;
+  const hasTop = !isWallUnit;
+  const kickH = hasKick ? KICK_H : 0;
+  const carcassTop = hasTop ? H - TOP_T : H;
+  const bodyH = carcassTop - kickH;
+
+  // Door on each notch face, spanning from the notch to the arm's outer end.
+  const dw = Math.max(W - armD - 2 * GAP, 0.05);
+  const dh = bodyH - 2 * GAP;
+  const doorY = kickH + GAP + dh / 2;
+  const doorCX = armD + GAP + dw / 2;
+  const doorZ = armD - DOOR_T / 2;
+  const panelForDoors = kind.glass ? glassMat : panelMat;
+
+  return (
+    <group>
+      {/* Kickplates along both notch faces */}
+      {hasKick && (
+        <>
+          <mesh
+            position={[armD / 2 + W / 2 - 0.01, KICK_H / 2, armD - KICK_REC - 0.01]}
+            material={kickMat}
+            castShadow
+            receiveShadow
+          >
+            <boxGeometry args={[W - armD, KICK_H, 0.02]} />
+          </mesh>
+          <mesh
+            position={[armD - KICK_REC - 0.01, KICK_H / 2, armD / 2 + W / 2 - 0.01]}
+            rotation={[0, Math.PI / 2, 0]}
+            material={kickMat}
+            castShadow
+            receiveShadow
+          >
+            <boxGeometry args={[W - armD, KICK_H, 0.02]} />
+          </mesh>
+        </>
+      )}
+
+      {/* Carcass: arm A along +X, arm B along +Z (no overlap: B starts at z=armD) */}
+      <mesh
+        position={[W / 2, kickH + bodyH / 2, armD / 2]}
+        material={carcassMat}
+        castShadow
+        receiveShadow
+      >
+        <boxGeometry args={[W, bodyH, armD]} />
+      </mesh>
+      <mesh
+        position={[armD / 2, kickH + bodyH / 2, armD + (W - armD) / 2]}
+        material={carcassMat}
+        castShadow
+        receiveShadow
+      >
+        <boxGeometry args={[armD, bodyH, W - armD]} />
+      </mesh>
+
+      {/* L-shaped countertop (base corner only) */}
+      {hasTop && (
+        <>
+          <mesh
+            position={[W / 2, carcassTop + TOP_T / 2, (armD + TOP_OVER) / 2]}
+            material={stoneMat}
+            castShadow
+            receiveShadow
+          >
+            <boxGeometry args={[W, TOP_T, armD + TOP_OVER]} />
+          </mesh>
+          <mesh
+            position={[
+              (armD + TOP_OVER) / 2,
+              carcassTop + TOP_T / 2,
+              armD + TOP_OVER + (W - armD - TOP_OVER) / 2,
+            ]}
+            material={stoneMat}
+            castShadow
+            receiveShadow
+          >
+            <boxGeometry args={[armD + TOP_OVER, TOP_T, W - armD - TOP_OVER]} />
+          </mesh>
+        </>
+      )}
+
+      {/* Door on arm A's notch face (front toward +Z), hinged at the outer end */}
+      <AdekoDoor
+        x={doorCX}
+        hingeLeft={false}
+        dw={dw}
+        dh={dh}
+        doorY={doorY}
+        doorZ={doorZ}
+        doorMat={doorMat}
+        panelMat={panelForDoors}
+        handleMat={metalMat}
+        showHandle={handleStyle !== "none"}
+        open={openA}
+        onToggle={() => setOpenA((v) => !v)}
+      />
+      {/* Door on arm B's notch face (front toward +X): rotate frame so its
+          local +Z points at world +X; local x = -world z. */}
+      <group rotation={[0, Math.PI / 2, 0]}>
+        <AdekoDoor
+          x={-doorCX}
+          hingeLeft={true}
+          dw={dw}
+          dh={dh}
+          doorY={doorY}
+          doorZ={doorZ}
+          doorMat={doorMat}
+          panelMat={panelForDoors}
+          handleMat={metalMat}
+          showHandle={handleStyle !== "none"}
+          open={openB}
+          onToggle={() => setOpenB((v) => !v)}
+        />
+      </group>
+
+      {/* Interior hint strip in the notch corner (visible when doors open) */}
+      <mesh
+        position={[armD - PANEL_T / 2, kickH + bodyH / 2, armD - PANEL_T / 2]}
+        material={interiorMat}
+      >
+        <boxGeometry args={[PANEL_T, bodyH, PANEL_T]} />
+      </mesh>
     </group>
   );
 }

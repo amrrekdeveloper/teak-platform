@@ -54,6 +54,8 @@ export interface PlacedCabinetState {
   /** Adeko parametric cabinets only — door opening direction.
    * "left"/"right" = hinge side (single-door units); "top" = lift-up (wall units). */
   doorHinge?: "left" | "right" | "top";
+  /** Extra user-applied Y rotation (radians, 90° steps) — GLB cabinets only. */
+  rotYOffset?: number;
 }
 
 export type UtilityKind = "water" | "outlet" | "switch" | "drain" | "gas";
@@ -233,7 +235,7 @@ interface KitchenToolState {
     patch: Partial<
       Pick<
         PlacedCabinetState,
-        "finishWoodTypeId" | "handleStyle" | "handleColor" | "topFinishId" | "doorHinge"
+        "finishWoodTypeId" | "handleStyle" | "handleColor" | "topFinishId" | "doorHinge" | "rotYOffset"
       >
     >
   ) => void;

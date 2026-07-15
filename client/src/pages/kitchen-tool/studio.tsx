@@ -1,6 +1,6 @@
 import { Component, Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useLocation } from "wouter";
-import { ChevronRight, ChevronLeft, Home, Loader2, Trash2, Plus, Minus, Map, X, Lightbulb } from "lucide-react";
+import { ChevronRight, ChevronLeft, Home, Loader2, Trash2, Plus, Minus, Map, X, Lightbulb, RotateCw } from "lucide-react";
 import { useProgress } from "@react-three/drei";
 import { Button } from "@/components/ui/button";
 import {
@@ -40,6 +40,8 @@ import {
   findSlotForCabinet,
   findCornerSlot,
   blockedIntervals,
+  getJunctions,
+  doorClashAdvice,
   registerAdekoDef,
   adekoDefFromProduct,
   type AdekoProductRow,
@@ -521,15 +523,23 @@ export default function KitchenToolStudioPage() {
       ? findCornerSlot(def, placedCabinets, segments, openings)
       : findSlotForCabinet(def, placedCabinets, segments, openings);
     if (!slot) {
+      const hasJunction = def.corner && getJunctions(segments).length > 0;
       toast({
         title: def.corner
-          ? t("لا يوجد ركن متاح", "No free corner")
+          ? hasJunction
+            ? t("الأركان مشغولة", "Corners are occupied")
+            : t("لا يوجد ركن في هذا التخطيط", "No corner in this layout")
           : t("لا توجد مساحة كافية", "Not enough space"),
         description: def.corner
-          ? t(
-              "الوحدات الركنية تُركّب فقط في زاوية بين جدارين متاحة.",
-              "Corner units only fit in a free corner between two walls."
-            )
+          ? hasJunction
+            ? t(
+                "الزاوية بين الجدارين مشغولة بخزائن — حرّك أو احذف الخزائن القريبة من الركن ثم أعد المحاولة.",
+                "The corner between the walls is occupied — move or remove the cabinets near the corner and try again."
+              )
+            : t(
+                "الوحدات الركنية تُركّب فقط في زاوية يلتقي فيها جداران.",
+                "Corner units only fit where two walls meet."
+              )
           : t(
               "الجدران ممتلئة — احذف خزانة أو حرّك الموجود لإفساح مكان.",
               "The walls are full — remove or move a cabinet to make room."
@@ -541,6 +551,15 @@ export default function KitchenToolStudioPage() {
     const id = `cab-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     addPlacedCabinet({ id, catalogId: def.id, wallId: slot.wallId, offset: slot.offset });
     setSelectedCabinetId(id);
+    if (doorClashAdvice(def, slot.wallId, slot.offset, placedCabinets, segments)) {
+      toast({
+        title: t("اقتراح: أضف سدادة (فلر)", "Tip: add a filler strip"),
+        description: t(
+          "هذه الخزانة ملاصقة لخزانة الركن — باب الخزانة قد يصطدم بها عند الفتح. نقترح ترك سدادة بعرض 5-10 سم بينهما.",
+          "This cabinet sits flush against the corner unit — its door may hit it when opening. We suggest a 5-10 cm filler strip between them."
+        ),
+      });
+    }
   };
 
   const handleDeleteSelected = () => {
@@ -787,6 +806,23 @@ export default function KitchenToolStudioPage() {
                         <Plus className="w-3.5 h-3.5" />
                       </Button>
                     </div>
+                  )}
+                  {selectedPlaced && !selectedDef.adeko && !selectedDef.parametricKind && !selectedDef.corner && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 px-2 font-bold"
+                      onClick={() =>
+                        updatePlacedCabinet(selectedPlaced.id, {
+                          rotYOffset:
+                            (((selectedPlaced.rotYOffset ?? 0) + Math.PI / 2) % (Math.PI * 2)),
+                        })
+                      }
+                      data-testid="button-rotate-cabinet"
+                    >
+                      <RotateCw className="w-3.5 h-3.5 me-1" />
+                      {t("تدوير 90°", "Rotate 90°")}
+                    </Button>
                   )}
                   <Button
                     size="sm"

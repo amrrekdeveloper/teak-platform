@@ -10,4 +10,5 @@
 - [Kitchen 3D verification limits](kitchen-3d-verification.md) — headless browser has no WebGL; verify 3D designer changes via tsc + logs + architect, ask user for visual check.
 - [Toast lifetime & error UX](toast-and-error-ux.md) — shadcn toast on-screen time = Radix `duration` prop, not TOAST_REMOVE_DELAY; all API errors normalized to Arabic via queryClient + errors.ts (backend Arabic msgs trusted).
 - [R3F texture switching](r3f-texture-switching.md) — swappable PBR materials: dispose cloned textures in effect cleanup, localize Suspense per mesh, isolate useTexture in a keyed PBR-only component.
+- [Kitchen 3D corner geometry](kitchen-corner-geometry.md) — L-corners: origin at junction, pick the wall frame whose +X points away from junction (no mirror scale); corners block asymmetric intervals on both walls.
 - [SVG drag hit target](svg-drag-hit-target.md) — pointerdown+testid go on the painted rect (not the label-holding `<g>`, whose bbox center may be unpainted); drag moves via window listeners, not svg handlers.
