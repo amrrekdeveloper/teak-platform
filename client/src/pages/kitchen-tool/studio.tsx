@@ -1,6 +1,6 @@
 import { Component, Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useLocation } from "wouter";
-import { ChevronRight, ChevronLeft, Home, Loader2, Trash2, Plus, Minus, Map as MapIcon, X, Lightbulb } from "lucide-react";
+import { ChevronRight, ChevronLeft, ChevronUp, ChevronDown, Home, Loader2, Trash2, Plus, Minus, Map as MapIcon, X, Lightbulb } from "lucide-react";
 import { useProgress } from "@react-three/drei";
 import { Button } from "@/components/ui/button";
 import {
@@ -1017,6 +1017,53 @@ export default function KitchenToolStudioPage() {
                       {t("تدوير 90°", "Rotate 90°")}
                     </Button>
                   )}
+                  {selectedDecorItem.placement === "wall" && (() => {
+                    const currentY =
+                      selectedDecorPlaced.mountY ??
+                      selectedDecorItem.defaultMountY ??
+                      0;
+                    const maxY = Math.max(
+                      ceilingM - COVE_DROP - 0.03 - selectedDecorItem.height,
+                      0
+                    );
+                    const nudge = (d: number) =>
+                      updatePlacedDecor(selectedDecorPlaced.id, {
+                        mountY: Math.min(Math.max(currentY + d, 0), maxY),
+                      });
+                    return (
+                      <div className="flex items-center gap-1">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 w-7 p-0 font-bold"
+                          onClick={() => nudge(0.05)}
+                          disabled={currentY >= maxY - 1e-4}
+                          data-testid="button-decor-raise"
+                        >
+                          <ChevronUp className="w-3.5 h-3.5" />
+                        </Button>
+                        <span
+                          className="text-[11px] font-bold text-muted-foreground min-w-[52px] text-center"
+                          data-testid="text-decor-height"
+                        >
+                          {t(
+                            `${Math.round(currentY * 100)} سم`,
+                            `${Math.round(currentY * 100)} cm`
+                          )}
+                        </span>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 w-7 p-0 font-bold"
+                          onClick={() => nudge(-0.05)}
+                          disabled={currentY <= 1e-4}
+                          data-testid="button-decor-lower"
+                        >
+                          <ChevronDown className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    );
+                  })()}
                   <Button
                     size="sm"
                     variant="destructive"

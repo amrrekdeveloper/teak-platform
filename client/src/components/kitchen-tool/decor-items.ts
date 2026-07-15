@@ -28,6 +28,10 @@ export interface DecorItem {
   defaultMountY?: number;
   /** Render only this named node from the glTF scene (multi-item packs). */
   nodeName?: string;
+  /** Extra Y rotation (radians) to make the model's front face the room. */
+  rotYOffset?: number;
+  /** Wall items: draw a gypsum soffit box above the item (like upper cabinets). */
+  soffit?: boolean;
 }
 
 const BASE = "/kitchen-tool-assets";
@@ -45,6 +49,7 @@ export const DECOR_ITEMS: DecorItem[] = [
     height: 0.6,
     placement: "wall",
     defaultMountY: 0.6,
+    rotYOffset: Math.PI,
   },
   {
     id: "decor-fridge-modern-a",
@@ -56,6 +61,7 @@ export const DECOR_ITEMS: DecorItem[] = [
     depth: 0.86,
     height: 1.9,
     placement: "wall",
+    rotYOffset: Math.PI,
   },
   {
     id: "decor-fridge-modern-b",
@@ -67,6 +73,7 @@ export const DECOR_ITEMS: DecorItem[] = [
     depth: 0.85,
     height: 1.94,
     placement: "wall",
+    rotYOffset: Math.PI,
   },
   {
     id: "decor-range-hood",
@@ -79,6 +86,7 @@ export const DECOR_ITEMS: DecorItem[] = [
     height: 0.76,
     placement: "wall",
     defaultMountY: 1.45,
+    soffit: true,
   },
   // ── Furniture ────────────────────────────────────────────
   {

@@ -693,6 +693,7 @@ function WallSoffit({
   opt: MaterialOption;
 }) {
   const placed = useKitchenToolStore((s) => s.placedCabinets ?? []);
+  const placedDecor = useKitchenToolStore((s) => s.placedDecor ?? []);
 
   const boxes = useMemo(() => {
     const uppers = placed
@@ -704,7 +705,16 @@ function WallSoffit({
           x.def.level === "upper" &&
           !x.def.corner
       );
-    if (uppers.length === 0) return [];
+    const soffitDecor = placedDecor
+      .map((p) => ({ p, item: findDecorItem(p.decorId) }))
+      .filter(
+        (x): x is { p: PlacedDecorState; item: DecorItem } =>
+          !!x.item &&
+          !!x.item.soffit &&
+          x.item.placement === "wall" &&
+          x.p.wallId === seg.id
+      );
+    if (uppers.length === 0 && soffitDecor.length === 0) return [];
 
     const { origin, dir, out, theta, lengthM } = segVectors(seg);
     const inward = out.clone().negate();
@@ -717,21 +727,36 @@ function WallSoffit({
       len: number;
       h: number;
     }[] = [];
-    for (const { p, def } of uppers) {
-      const bottomY = (p.mountY ?? def.mountY) + def.height + 0.03;
-      if (topY - bottomY <= 0.02) continue;
-      const uMin = Math.max(p.offset - SOFFIT_MARGIN, 0);
-      const uMax = Math.min(p.offset + def.width + SOFFIT_MARGIN, lengthM);
-      if (uMax - uMin <= 0.01) continue;
+    const pushBox = (
+      id: string,
+      offset: number,
+      width: number,
+      bottomY: number
+    ) => {
+      if (topY - bottomY <= 0.02) return;
+      const uMin = Math.max(offset - SOFFIT_MARGIN, 0);
+      const uMax = Math.min(offset + width + SOFFIT_MARGIN, lengthM);
+      if (uMax - uMin <= 0.01) return;
       const pos = origin
         .clone()
         .addScaledVector(dir, (uMin + uMax) / 2)
         .addScaledVector(inward, SOFFIT_DEPTH / 2);
       pos.y = (bottomY + topY) / 2;
-      result.push({ id: p.id, pos, theta, len: uMax - uMin, h: topY - bottomY });
+      result.push({ id, pos, theta, len: uMax - uMin, h: topY - bottomY });
+    };
+    for (const { p, def } of uppers) {
+      pushBox(p.id, p.offset, def.width, (p.mountY ?? def.mountY) + def.height + 0.03);
+    }
+    for (const { p, item } of soffitDecor) {
+      pushBox(
+        p.id,
+        p.offset ?? 0,
+        item.width,
+        (p.mountY ?? item.defaultMountY ?? 0) + item.height + 0.03
+      );
     }
     return result;
-  }, [placed, seg, ceilingM]);
+  }, [placed, placedDecor, seg, ceilingM]);
 
   if (boxes.length === 0) return null;
 
@@ -1177,6 +1202,7 @@ function DecorModel({ item }: { item: DecorItem }) {
     });
     const wrapper = new THREE.Group();
     wrapper.add(holder);
+    wrapper.rotation.y = item.rotYOffset ?? 0;
     return wrapper;
   }, [gltf.scene, item]);
 
@@ -1534,7 +1560,11 @@ function SceneContents({
   const controlsRef = useRef<any>(null);
   const [drag, setDrag] = useState<{ id: string; def: CabinetDef } | null>(null);
   const [dragInfo, setDragInfo] = useState<DragMeasureInfo | null>(null);
-  const [decorDrag, setDecorDrag] = useState<{ id: string; item: DecorItem } | null>(null);
+  const [decorDrag, setDecorDrag] = useState<{
+    id: string;
+    item: DecorItem;
+    mountY: number;
+  } | null>(null);
   const updatePlacedDecor = useKitchenToolStore((s) => s.updatePlacedDecor);
 
   /** Compute live measurement info for a cabinet at (wallId, offset). Read-only
@@ -1651,7 +1681,11 @@ function SceneContents({
     onSelectDecor?.(placed.id);
     onSelectCabinet?.(null);
     if (controlsRef.current) controlsRef.current.enabled = false;
-    setDecorDrag({ id: placed.id, item });
+    setDecorDrag({
+      id: placed.id,
+      item,
+      mountY: placed.mountY ?? item.defaultMountY ?? 0,
+    });
   };
 
   const handleDecorDragMove = (e: ThreeEvent<PointerEvent>) => {
@@ -1664,17 +1698,46 @@ function SceneContents({
       if (!seg) return;
       const wallLenM = seg.length * CM;
       const desired = pp.distanceAlongWall * CM - item.width / 2;
-      const offset = Math.min(Math.max(desired, 0), Math.max(wallLenM - item.width, 0));
-      updatePlacedDecor(decorDrag.id, { wallId: pp.nearestWallId, offset });
+      // Keep the item off doors/windows when its vertical band overlaps them.
+      const y0 = decorDrag.mountY;
+      const y1 = y0 + item.height;
+      const intervals = openings
+        .filter((o) => o.wallId === pp.nearestWallId)
+        .flatMap((o) => {
+          if (o.type === "door") {
+            if (y0 >= 2.1 - 0.02) return [];
+          } else {
+            const sill = (o.sillHeight ?? 90) * CM;
+            const top = sill + (o.height ?? 120) * CM;
+            if (y1 <= sill + 0.02 || y0 >= top - 0.02) return [];
+          }
+          return [
+            {
+              a: o.distanceFromWallStart * CM - 0.02,
+              b: (o.distanceFromWallStart + o.width) * CM + 0.02,
+            },
+          ];
+        });
+      const resolved = resolveDragOffset(wallLenM, intervals, desired, item.width);
+      if (resolved === null) return;
+      updatePlacedDecor(decorDrag.id, { wallId: pp.nearestWallId, offset: resolved });
     } else {
-      const margin = Math.max(item.width, item.depth) / 2;
+      // Rotation-aware footprint so long pieces can be pushed flush to walls.
+      const placed = (useKitchenToolStore.getState().placedDecor ?? []).find(
+        (d) => d.id === decorDrag.id
+      );
+      const rot = placed?.rotY ?? 0;
+      const c = Math.abs(Math.cos(rot));
+      const s = Math.abs(Math.sin(rot));
+      const halfX = (c * item.width + s * item.depth) / 2;
+      const halfZ = (s * item.width + c * item.depth) / 2;
       const x = Math.min(
-        Math.max(e.point.x, bounds.minX * CM + margin),
-        bounds.maxX * CM - margin
+        Math.max(e.point.x, bounds.minX * CM + halfX),
+        Math.max(bounds.maxX * CM - halfX, bounds.minX * CM + halfX)
       );
       const z = Math.min(
-        Math.max(e.point.z, bounds.minY * CM + margin),
-        bounds.maxY * CM - margin
+        Math.max(e.point.z, bounds.minY * CM + halfZ),
+        Math.max(bounds.maxY * CM - halfZ, bounds.minY * CM + halfZ)
       );
       updatePlacedDecor(decorDrag.id, { x, z });
     }
@@ -1734,7 +1797,7 @@ function SceneContents({
             drag
               ? drag.def.mountY
               : decorDrag!.item.placement === "wall"
-                ? (decorDrag!.item.defaultMountY ?? 0)
+                ? decorDrag!.mountY
                 : 0.001,
             center.z,
           ]}
