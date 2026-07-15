@@ -161,8 +161,6 @@ function wallPieces(
   openings: KitchenOpening[]
 ): WallPiece[] {
   const doorH = Math.min(DOOR_HEIGHT_CM * CM, ceilingM - 0.1);
-  const sill = WINDOW_SILL_CM * CM;
-  const winTop = Math.min((WINDOW_SILL_CM + WINDOW_HEIGHT_CM) * CM, ceilingM - 0.1);
 
   const sorted = [...openings]
     .map((o) => {
@@ -187,6 +185,8 @@ function wallPieces(
     if (o.type === "door") {
       if (ceilingM - doorH > 0.005) pieces.push({ u0: s, u1: e, h0: doorH, h1: ceilingM });
     } else {
+      const sill = Math.min((o.sillHeight ?? WINDOW_SILL_CM) * CM, ceilingM - 0.2);
+      const winTop = Math.min(sill + (o.height ?? WINDOW_HEIGHT_CM) * CM, ceilingM - 0.1);
       if (sill > 0.005) pieces.push({ u0: s, u1: e, h0: 0, h1: sill });
       if (ceilingM - winTop > 0.005) pieces.push({ u0: s, u1: e, h0: winTop, h1: ceilingM });
     }
@@ -244,8 +244,8 @@ function computeWindowSun(
   const w = Math.min(win.width * CM, wallLenM);
   const u0 = Math.min(Math.max(win.distanceFromWallStart * CM, 0), Math.max(wallLenM - w, 0));
   const u1 = u0 + w;
-  const sill = WINDOW_SILL_CM * CM;
-  const top = Math.min((WINDOW_SILL_CM + WINDOW_HEIGHT_CM) * CM, ceilingM - 0.1);
+  const sill = Math.min((win.sillHeight ?? WINDOW_SILL_CM) * CM, ceilingM - 0.2);
+  const top = Math.min(sill + (win.height ?? WINDOW_HEIGHT_CM) * CM, ceilingM - 0.1);
   const height = Math.max(top - sill, 0.2);
 
   const at = (u: number, y: number) => {

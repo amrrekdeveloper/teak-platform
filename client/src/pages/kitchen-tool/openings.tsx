@@ -81,6 +81,7 @@ export default function KitchenToolOpeningsPage() {
   const { toast } = useToast();
   const { answers, walls, openings, addOpening, updateOpening, removeOpening, ensureWalls } =
     useKitchenToolStore();
+  const ceilingHeight = useKitchenToolStore((s) => s.ceilingHeight);
 
   const layout: KitchenLayout = answers.layout ?? "L";
   const [selectedWallId, setSelectedWallId] = useState<string>(walls[0]?.id ?? "A");
@@ -316,6 +317,78 @@ export default function KitchenToolOpeningsPage() {
                     />
                   </div>
                 </div>
+                {selectedOpening.type === "window" && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label htmlFor="opening-sill" className="text-xs text-muted-foreground">
+                        {t("ارتفاع الجلسة من الأرضية (سم)", "Sill height from floor (cm)")}
+                      </Label>
+                      <Input
+                        key={`s-${selectedOpening.id}-${selectedOpening.sillHeight ?? 90}-${commitBump}`}
+                        id="opening-sill"
+                        type="number"
+                        inputMode="numeric"
+                        min={0}
+                        max={ceilingHeight - 40}
+                        defaultValue={selectedOpening.sillHeight ?? 90}
+                        onBlur={(e) => {
+                          const v = e.target.valueAsNumber;
+                          if (Number.isFinite(v)) {
+                            const sill = Math.min(Math.max(Math.round(v), 0), ceilingHeight - 40);
+                            const h = Math.min(
+                              selectedOpening.height ?? 120,
+                              ceilingHeight - sill - 10
+                            );
+                            updateOpening(selectedOpening.id, { sillHeight: sill, height: h });
+                          }
+                          setCommitBump((n) => n + 1);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                        }}
+                        className="h-9"
+                        data-testid="input-opening-sill"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="opening-height" className="text-xs text-muted-foreground">
+                        {t("ارتفاع النافذة (سم)", "Window height (cm)")}
+                      </Label>
+                      <Input
+                        key={`h-${selectedOpening.id}-${selectedOpening.height ?? 120}-${commitBump}`}
+                        id="opening-height"
+                        type="number"
+                        inputMode="numeric"
+                        min={30}
+                        max={ceilingHeight - 10}
+                        defaultValue={selectedOpening.height ?? 120}
+                        onBlur={(e) => {
+                          const v = e.target.valueAsNumber;
+                          if (Number.isFinite(v)) {
+                            const sill = selectedOpening.sillHeight ?? 90;
+                            const h = Math.min(
+                              Math.max(Math.round(v), 30),
+                              Math.max(ceilingHeight - sill - 10, 30)
+                            );
+                            updateOpening(selectedOpening.id, { height: h });
+                          }
+                          setCommitBump((n) => n + 1);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                        }}
+                        className="h-9"
+                        data-testid="input-opening-height"
+                      />
+                    </div>
+                    <p className="col-span-2 text-[11px] text-muted-foreground leading-relaxed">
+                      {t(
+                        `أعلى النافذة: ${(selectedOpening.sillHeight ?? 90) + (selectedOpening.height ?? 120)} سم من الأرضية — الخزائن العلوية تركب فوق النافذة إذا كان أعلاها منخفضاً بما يكفي، والسفلية تحت الجلسة.`,
+                        `Window top: ${(selectedOpening.sillHeight ?? 90) + (selectedOpening.height ?? 120)} cm from floor — upper cabinets fit above the window if its top is low enough, base cabinets fit under the sill.`
+                      )}
+                    </p>
+                  </div>
+                )}
                 {selectedOpening.type === "door" && (
                   <div className="space-y-2">
                     <Button

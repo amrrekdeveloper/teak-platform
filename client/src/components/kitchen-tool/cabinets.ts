@@ -384,10 +384,15 @@ export function blockedIntervals(
 
   for (const o of openings) {
     if (o.wallId !== wallId) continue;
-    // Doors block anything below ~2.1m; windows block only what reaches
-    // above the sill (~0.9m) — base units fit under a window sill.
+    // Doors block anything below ~2.1m. Windows block only the band between
+    // sill and top — base units fit under the sill, and upper cabinets can
+    // be mounted above the window when it ends low enough.
     if (o.type === "door" && span.y0 >= 2.1 - 0.02) continue;
-    if (o.type === "window" && span.y1 <= 0.9 + 0.02) continue;
+    if (o.type === "window") {
+      const sill = (o.sillHeight ?? 90) * CM;
+      const top = sill + (o.height ?? 120) * CM;
+      if (span.y1 <= sill + 0.02 || span.y0 >= top - 0.02) continue;
+    }
     out.push({
       a: o.distanceFromWallStart * CM - DOOR_MARGIN,
       b: (o.distanceFromWallStart + o.width) * CM + DOOR_MARGIN,

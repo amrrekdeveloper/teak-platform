@@ -33,6 +33,10 @@ export interface KitchenOpening {
   swing?: DoorSwing;
   /** Doors only. Hinge side along the wall. Defaults to "start" when absent. */
   hinge?: DoorHinge;
+  /** Windows only. Sill height above the floor (cm). Defaults to 90. */
+  sillHeight?: number;
+  /** Windows only. Window height (cm). Defaults to 120. */
+  height?: number;
 }
 
 export interface PlacedCabinetState {
