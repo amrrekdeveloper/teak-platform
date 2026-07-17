@@ -37,6 +37,9 @@ export interface CabinetDef {
     productId: number;
     code: string;
     priceAfterVat: number;
+    priceEconomy: number;
+    priceStandard: number;
+    pricePremium: number;
     thumbnail?: string | null;
     kind: AdekoKind;
   };
@@ -71,7 +74,29 @@ export interface AdekoProductRow {
   designH: number;
   designD: number;
   priceAfterVat: number;
+  priceEconomy?: number;
+  priceStandard?: number;
+  pricePremium?: number;
   thumbnail: string | null;
+}
+
+export type MaterialGrade = "economy" | "standard" | "premium";
+
+/** Price of an Adeko cabinet for a material grade (fallback: standard → after-VAT). */
+export function adekoPriceForGrade(
+  adeko: NonNullable<CabinetDef["adeko"]>,
+  grade?: MaterialGrade | string | null
+): number {
+  const pick =
+    grade === "economy"
+      ? adeko.priceEconomy
+      : grade === "premium"
+        ? adeko.pricePremium
+        : adeko.priceStandard;
+  if (Number.isFinite(pick) && pick > 0) return pick;
+  if (Number.isFinite(adeko.priceStandard) && adeko.priceStandard > 0)
+    return adeko.priceStandard;
+  return Number.isFinite(adeko.priceAfterVat) ? adeko.priceAfterVat : 0;
 }
 
 /**
@@ -187,6 +212,9 @@ export function adekoDefFromProduct(p: AdekoProductRow): CabinetDef | null {
       productId: p.id,
       code: p.code,
       priceAfterVat: p.priceAfterVat,
+      priceEconomy: p.priceEconomy ?? 0,
+      priceStandard: p.priceStandard ?? p.priceAfterVat,
+      pricePremium: p.pricePremium ?? 0,
       thumbnail: p.thumbnail,
       kind,
     },

@@ -366,6 +366,7 @@ export const woodTypes = pgTable("wood_types", {
   nameEn: text("name_en").notNull(),
   pricePerMeter: decimal("price_per_meter", { precision: 10, scale: 2 }).notNull(),
   category: text("category"),
+  grade: text("grade").notNull().default("standard"),
   active: boolean("active").notNull().default(true),
 });
 
@@ -1100,6 +1101,9 @@ export const adekoProducts = pgTable("adeko_products", {
   designD: decimal("design_d", { precision: 10, scale: 2 }),
   priceBeforeVat: decimal("price_before_vat", { precision: 12, scale: 2 }).default("0"),
   priceAfterVat: decimal("price_after_vat", { precision: 12, scale: 2 }).default("0"),
+  priceEconomy: decimal("price_economy", { precision: 12, scale: 2 }).default("0"),
+  priceStandard: decimal("price_standard", { precision: 12, scale: 2 }).default("0"),
+  pricePremium: decimal("price_premium", { precision: 12, scale: 2 }).default("0"),
   thumbnail: text("thumbnail"),
   usageType: text("usage_type").notNull().default("kitchen"),
   active: boolean("active").notNull().default(true),

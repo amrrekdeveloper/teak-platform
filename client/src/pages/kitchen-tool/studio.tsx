@@ -50,6 +50,7 @@ import {
   doorClashAdvice,
   registerAdekoDef,
   adekoDefFromProduct,
+  adekoPriceForGrade,
   type AdekoProductRow,
   type CabinetDef,
   type CabinetLevel,
@@ -62,6 +63,7 @@ interface KitchenToolMaterial {
   nameEn: string;
   pricePerMeter: string;
   category: string | null;
+  grade?: "economy" | "standard" | "premium";
 }
 
 
@@ -166,6 +168,59 @@ function MaterialSwatch({
   );
 }
 
+function TotalPriceBar() {
+  const { t } = useLanguage();
+  const placedCabinets = useKitchenToolStore((s) => s.placedCabinets ?? []);
+  const { data: woodMaterials } = useQuery<KitchenToolMaterial[]>({
+    queryKey: ["/api/kitchen-tool/materials"],
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const { total, count } = useMemo(() => {
+    let sum = 0;
+    let n = 0;
+    for (const p of placedCabinets) {
+      const def = findCabinetDef(p.catalogId);
+      if (!def?.adeko) continue;
+      const mat = (woodMaterials ?? []).find((w) => w.id === p.finishWoodTypeId);
+      sum += adekoPriceForGrade(def.adeko, mat?.grade);
+      n++;
+    }
+    return { total: sum, count: n };
+  }, [placedCabinets, woodMaterials]);
+
+  const [pulse, setPulse] = useState(false);
+  useEffect(() => {
+    setPulse(true);
+    const id = setTimeout(() => setPulse(false), 500);
+    return () => clearTimeout(id);
+  }, [total]);
+
+  return (
+    <div
+      className={`ms-auto flex items-center gap-3 rounded-lg border px-3 py-1.5 transition-all duration-300 ${
+        pulse ? "border-primary bg-primary/15 scale-[1.03]" : "border-border bg-card"
+      }`}
+      data-testid="bar-total-price"
+    >
+      <div className="flex flex-col items-end leading-tight">
+        <span className="text-sm font-extrabold text-primary whitespace-nowrap" dir="ltr" data-testid="text-total-price">
+          {total.toLocaleString(undefined, { maximumFractionDigits: 0 })} {t("ر.س", "SAR")}
+        </span>
+        <span className="text-[9px] text-muted-foreground whitespace-nowrap">
+          {t("شامل الضريبة 15% — سعر تقريبي", "Incl. 15% VAT — approximate price")}
+        </span>
+      </div>
+      <span
+        className="text-[10px] font-bold text-muted-foreground whitespace-nowrap border-s border-border ps-3"
+        data-testid="text-cabinet-count"
+      >
+        {count} {t("خزانة", count === 1 ? "cabinet" : "cabinets")}
+      </span>
+    </div>
+  );
+}
+
 function MaterialBar() {
   const { t } = useLanguage();
   const floorMaterialId = useKitchenToolStore((s) => s.floorMaterialId);
@@ -210,6 +265,7 @@ function MaterialBar() {
             {t(tb.ar, tb.en)}
           </button>
         ))}
+        <TotalPriceBar />
       </div>
       {tab === "materials" && (
       <div className="flex flex-wrap items-start gap-x-8 gap-y-3">
@@ -1313,8 +1369,12 @@ export default function KitchenToolStudioPage() {
                             <span className="text-[11px] font-bold leading-tight">
                               {t(w.nameAr, w.nameEn)}
                             </span>
-                            <span className="text-[10px] text-muted-foreground whitespace-nowrap" dir="ltr">
-                              {parseFloat(w.pricePerMeter).toLocaleString()} {t("ر.س/م", "SAR/m")}
+                            <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                              {w.grade === "economy"
+                                ? t("اقتصادي", "Economy")
+                                : w.grade === "premium"
+                                  ? t("فاخر", "Premium")
+                                  : t("قياسي", "Standard")}
                             </span>
                           </button>
                         );
@@ -1326,19 +1386,19 @@ export default function KitchenToolStudioPage() {
                       )}
                     </div>
                     {(() => {
+                      if (!selectedDef?.adeko) return null;
                       const mat = (woodMaterials ?? []).find(
                         (w) => w.id === selectedPlaced.finishWoodTypeId
                       );
-                      if (!mat || !selectedDef) return null;
-                      const total = selectedDef.width * parseFloat(mat.pricePerMeter);
-                      if (!Number.isFinite(total)) return null;
+                      const total = adekoPriceForGrade(selectedDef.adeko, mat?.grade);
+                      if (!Number.isFinite(total) || total <= 0) return null;
                       return (
                         <div
                           className="mt-2 flex items-center justify-between rounded-md bg-primary/10 px-2 py-1.5"
                           data-testid="text-cabinet-total"
                         >
                           <span className="text-[11px] font-bold">
-                            {t("الإجمالي التقريبي", "Estimated total")}
+                            {t("سعر الوحدة (شامل الضريبة)", "Unit price (incl. VAT)")}
                           </span>
                           <span className="text-[12px] font-bold text-primary" dir="ltr">
                             {total.toLocaleString(undefined, { maximumFractionDigits: 0 })}{" "}

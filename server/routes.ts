@@ -440,6 +440,26 @@ export async function registerRoutes(
     console.warn("User permissions migration warning (non-fatal):", permsMigrationError instanceof Error ? permsMigrationError.message : String(permsMigrationError));
   }
 
+  // Kitchen-tool pricing: per-grade prices on adeko products + material grade.
+  try {
+    await db.execute(`
+      ALTER TABLE adeko_products ADD COLUMN IF NOT EXISTS price_economy NUMERIC(12,2) DEFAULT 0;
+      ALTER TABLE adeko_products ADD COLUMN IF NOT EXISTS price_standard NUMERIC(12,2) DEFAULT 0;
+      ALTER TABLE adeko_products ADD COLUMN IF NOT EXISTS price_premium NUMERIC(12,2) DEFAULT 0;
+      ALTER TABLE wood_types ADD COLUMN IF NOT EXISTS grade TEXT NOT NULL DEFAULT 'standard';
+      -- One-time grade distribution by price (only while every row still has the
+      -- default 'standard', i.e. nobody assigned grades yet — keeps manual edits safe).
+      UPDATE wood_types SET grade = CASE
+        WHEN price_per_meter < 500 THEN 'economy'
+        WHEN price_per_meter < 1000 THEN 'standard'
+        ELSE 'premium'
+      END
+      WHERE NOT EXISTS (SELECT 1 FROM wood_types WHERE grade <> 'standard');
+    `);
+  } catch (pricingMigrationError) {
+    console.warn("Kitchen pricing migration warning (non-fatal):", pricingMigrationError instanceof Error ? pricingMigrationError.message : String(pricingMigrationError));
+  }
+
   await seedDatabase();
 
   // Ensure appointments table has all required columns (safe migration)
@@ -1310,7 +1330,8 @@ export async function registerRoutes(
     try {
       const result = await pool.query(
         `SELECT id, code, description_ar, description_en, group_code,
-                design_w, design_h, design_d, price_after_vat, thumbnail
+                design_w, design_h, design_d, price_after_vat,
+                price_economy, price_standard, price_premium, thumbnail
          FROM adeko_products
          WHERE active = TRUE
          ORDER BY group_code, design_w, design_h`
@@ -1326,6 +1347,9 @@ export async function registerRoutes(
           designH: parseFloat(r.design_h),
           designD: parseFloat(r.design_d),
           priceAfterVat: parseFloat(r.price_after_vat),
+          priceEconomy: parseFloat(r.price_economy),
+          priceStandard: parseFloat(r.price_standard),
+          pricePremium: parseFloat(r.price_premium),
           thumbnail: r.thumbnail,
         }))
       );
@@ -1347,6 +1371,7 @@ export async function registerRoutes(
             nameEn: w.nameEn,
             pricePerMeter: w.pricePerMeter,
             category: w.category,
+            grade: w.grade ?? "standard",
           }))
       );
     } catch (error) {
