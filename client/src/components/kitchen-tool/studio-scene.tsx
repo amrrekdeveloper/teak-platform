@@ -1,7 +1,15 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { OrbitControls, Environment, useTexture, useGLTF, Html } from "@react-three/drei";
+import {
+  OrbitControls,
+  Environment,
+  useTexture,
+  useGLTF,
+  Html,
+  GizmoHelper,
+  GizmoViewport,
+} from "@react-three/drei";
 import {
   type KitchenLayout,
   type KitchenWall,
@@ -1607,6 +1615,127 @@ function CameraTour({
   return null;
 }
 
+/* ── Camera view presets (natural / top / iso / reset) ───── */
+export interface CameraViewRequest {
+  mode: "person" | "top" | "iso" | "reset";
+  nonce: number;
+}
+
+function easeInOutCubic(x: number) {
+  return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+}
+
+/**
+ * Smoothly animates the camera to a requested preset view.
+ * Only reads/writes camera position and the OrbitControls target —
+ * no scene or collision logic is touched.
+ */
+function CameraViewAnimator({
+  request,
+  center,
+  roomSpan,
+  ceilingM,
+  bounds,
+  controlsRef,
+  onAnimatingChange,
+}: {
+  request?: CameraViewRequest | null;
+  center: THREE.Vector3;
+  roomSpan: number;
+  ceilingM: number;
+  bounds: { minX: number; maxX: number; minY: number; maxY: number };
+  controlsRef: React.MutableRefObject<any>;
+  onAnimatingChange: (v: boolean) => void;
+}) {
+  const { camera } = useThree();
+  const anim = useRef<{
+    fromPos: THREE.Vector3;
+    toPos: THREE.Vector3;
+    fromTgt: THREE.Vector3;
+    toTgt: THREE.Vector3;
+    t: number;
+    dur: number;
+  } | null>(null);
+  const lastNonce = useRef(0);
+
+  useEffect(() => {
+    if (!request || request.nonce === lastNonce.current) return;
+    lastNonce.current = request.nonce;
+
+    const defaultPos = new THREE.Vector3(
+      ((bounds.minX + bounds.maxX) / 2) * CM - 1.2,
+      1.65,
+      bounds.maxY * CM + 2.2
+    );
+    const defaultTgt = new THREE.Vector3(center.x, 1, center.z);
+
+    let toPos: THREE.Vector3;
+    let toTgt: THREE.Vector3;
+    switch (request.mode) {
+      case "person": {
+        // Eye-level view from inside the room looking at the kitchen.
+        toPos = new THREE.Vector3(
+          center.x,
+          1.6,
+          center.z + Math.max(roomSpan * 0.42, 1.3)
+        );
+        toTgt = new THREE.Vector3(center.x, 1.35, center.z - roomSpan * 0.5);
+        break;
+      }
+      case "top": {
+        toPos = new THREE.Vector3(
+          center.x,
+          ceilingM + Math.max(roomSpan * 1.15, 3.2),
+          center.z + 0.02
+        );
+        toTgt = new THREE.Vector3(center.x, 0, center.z);
+        break;
+      }
+      case "iso":
+      case "reset":
+      default: {
+        toPos = defaultPos;
+        toTgt = defaultTgt;
+        break;
+      }
+    }
+
+    const fromTgt = controlsRef.current
+      ? (controlsRef.current.target as THREE.Vector3).clone()
+      : defaultTgt.clone();
+    anim.current = {
+      fromPos: camera.position.clone(),
+      toPos,
+      fromTgt,
+      toTgt,
+      t: 0,
+      dur: 1.1,
+    };
+    onAnimatingChange(true);
+  }, [request, camera, center, roomSpan, ceilingM, bounds, controlsRef, onAnimatingChange]);
+
+  useFrame((_, delta) => {
+    const a = anim.current;
+    if (!a) return;
+    a.t += Math.min(delta, 0.05);
+    const k = easeInOutCubic(Math.min(a.t / a.dur, 1));
+    camera.position.lerpVectors(a.fromPos, a.toPos, k);
+    const tgt = new THREE.Vector3().lerpVectors(a.fromTgt, a.toTgt, k);
+    if (controlsRef.current) {
+      controlsRef.current.target.copy(tgt);
+      controlsRef.current.update();
+    } else {
+      camera.lookAt(tgt);
+    }
+    if (a.t >= a.dur) {
+      anim.current = null;
+      onAnimatingChange(false);
+    }
+  });
+
+  return null;
+}
+
 /* ── Scene contents (inside Suspense) ────────────────────── */
 function SceneContents({
   layout,
@@ -1622,7 +1751,9 @@ function SceneContents({
   presentation = false,
   tourActive = false,
   onTourEnd,
+  viewRequest,
 }: StudioSceneProps) {
+  const [camAnimating, setCamAnimating] = useState(false);
   const segments = useMemo(() => getWallSegments(layout, walls), [layout, walls]);
   const bounds = useMemo(() => getFloorBounds(segments), [segments]);
   const ceilingM = ceilingHeight * CM;
@@ -1935,14 +2066,34 @@ function SceneContents({
         />
       )}
 
+      <CameraViewAnimator
+        request={viewRequest}
+        center={center}
+        roomSpan={roomSpan}
+        ceilingM={ceilingM}
+        bounds={bounds}
+        controlsRef={controlsRef}
+        onAnimatingChange={setCamAnimating}
+      />
+
+      {!presentation && (
+        <GizmoHelper alignment="bottom-right" margin={[70, 70]}>
+          <GizmoViewport
+            axisColors={["#d92626", "#8a5a33", "#5d6d63"]}
+            labelColor="#f5f2ec"
+            hideNegativeAxes
+          />
+        </GizmoHelper>
+      )}
+
       <OrbitControls
         ref={controlsRef}
         target={[center.x, 1, center.z]}
         maxPolarAngle={Math.PI / 2 + 0.5}
-        minDistance={0.9}
+        minDistance={0.3}
         maxDistance={Math.max(roomSpan * 3, 10)}
         enableDamping
-        enabled={!drag && !decorDrag && !tourActive}
+        enabled={!drag && !decorDrag && !tourActive && !camAnimating}
       />
     </>
   );
@@ -1967,6 +2118,8 @@ export interface StudioSceneProps {
   tourActive?: boolean;
   /** Called when the user interrupts the auto tour. */
   onTourEnd?: () => void;
+  /** Camera preset request (person / top / iso / reset) — animated. */
+  viewRequest?: CameraViewRequest | null;
 }
 
 export default function StudioScene(props: StudioSceneProps) {

@@ -1,6 +1,6 @@
-import { Component, Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Component, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation } from "wouter";
-import { ChevronRight, ChevronLeft, ChevronUp, ChevronDown, Home, Loader2, Trash2, Plus, Minus, Map as MapIcon, X, Lightbulb, Play, Pause, Presentation } from "lucide-react";
+import { ChevronRight, ChevronLeft, ChevronUp, ChevronDown, Home, Loader2, Trash2, Plus, Minus, Map as MapIcon, X, Lightbulb, Play, Pause, Presentation, Maximize, Minimize, PersonStanding, Grid2x2, Box, RotateCcw } from "lucide-react";
 import { useProgress } from "@react-three/drei";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,7 +18,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/components/language-provider";
 import DesktopGate from "@/components/kitchen-tool/desktop-gate";
 import { ToolStages, ToolNav } from "@/components/kitchen-tool/tool-stages";
-import StudioScene, { COVE_DROP } from "@/components/kitchen-tool/studio-scene";
+import StudioScene, { COVE_DROP, type CameraViewRequest } from "@/components/kitchen-tool/studio-scene";
 import {
   useKitchenToolStore,
   type KitchenLayout,
@@ -168,7 +168,7 @@ function MaterialSwatch({
   );
 }
 
-function TotalPriceBar() {
+function TotalPriceBar({ overlay = false }: { overlay?: boolean }) {
   const { t } = useLanguage();
   const placedCabinets = useKitchenToolStore((s) => s.placedCabinets ?? []);
   const { data: woodMaterials } = useQuery<KitchenToolMaterial[]>({
@@ -200,8 +200,8 @@ function TotalPriceBar() {
     <div
       className={`ms-auto flex items-center gap-3 rounded-lg border px-3 py-1.5 transition-all duration-300 ${
         pulse ? "border-primary bg-primary/15 scale-[1.03]" : "border-border bg-card"
-      }`}
-      data-testid="bar-total-price"
+      } ${overlay ? (pulse ? "opacity-100" : "opacity-60 hover:opacity-100") : ""}`}
+      data-testid={overlay ? "bar-total-price-overlay" : "bar-total-price"}
     >
       <div className="flex flex-col items-end leading-tight">
         <span className="text-sm font-extrabold text-primary whitespace-nowrap" dir="ltr" data-testid="text-total-price">
@@ -426,10 +426,13 @@ function CabinetCatalog({
   onAdd,
   onAddDecor,
   adekoDefs,
+  overlay = false,
 }: {
   onAdd: (def: CabinetDef) => void;
   onAddDecor: (item: DecorItem) => void;
   adekoDefs: CabinetDef[];
+  /** Fullscreen overlay variant: transparent bg, fills its wrapper. */
+  overlay?: boolean;
 }) {
   const { t } = useLanguage();
   const [tab, setTab] = useState<CabinetLevel | "decor">("base");
@@ -485,8 +488,12 @@ function CabinetCatalog({
 
   return (
     <div
-      className="w-56 shrink-0 rounded-xl border border-border bg-card flex flex-col overflow-hidden"
-      data-testid="panel-cabinet-catalog"
+      className={`w-56 shrink-0 flex flex-col overflow-hidden ${
+        overlay
+          ? "h-full bg-transparent"
+          : "rounded-xl border border-border bg-card"
+      }`}
+      data-testid={overlay ? "panel-cabinet-catalog-overlay" : "panel-cabinet-catalog"}
     >
       <div className="flex border-b border-border">
         {(
@@ -636,6 +643,167 @@ function CabinetCatalog({
           "Click a product to pick a size, then drag it in the scene to move it along the walls."
         )}
       </p>
+    </div>
+  );
+}
+
+/* ── Idle-fade wrapper (video-player style, fullscreen only) ── */
+function IdleFadePanel({
+  children,
+  idleMs = 3000,
+  idleOpacityClass = "opacity-35",
+  className = "",
+  testId,
+}: {
+  children: ReactNode;
+  idleMs?: number;
+  idleOpacityClass?: string;
+  className?: string;
+  testId?: string;
+}) {
+  const [idle, setIdle] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const bump = useCallback(() => {
+    setIdle(false);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => setIdle(true), idleMs);
+  }, [idleMs]);
+
+  useEffect(() => {
+    bump();
+    return () => {
+      if (timer.current) clearTimeout(timer.current);
+    };
+  }, [bump]);
+
+  return (
+    <div
+      className={`transition-opacity duration-500 ${
+        hovered || !idle ? "opacity-100" : idleOpacityClass
+      } ${className}`}
+      onMouseEnter={() => {
+        setHovered(true);
+        bump();
+      }}
+      onMouseLeave={() => setHovered(false)}
+      onMouseMove={bump}
+      onFocusCapture={bump}
+      onPointerDown={bump}
+      data-testid={testId}
+    >
+      {children}
+    </div>
+  );
+}
+
+/* ── Fade-out on unmount (fullscreen toolbars) ───────────── */
+function FadeOutMount({
+  show,
+  enabled,
+  children,
+}: {
+  show: boolean;
+  /** When false, behaves like a plain conditional render (normal mode). */
+  enabled: boolean;
+  children: ReactNode;
+}) {
+  const [render, setRender] = useState(show);
+  const lastChildren = useRef<ReactNode>(children);
+  if (show) lastChildren.current = children;
+
+  useEffect(() => {
+    if (show) {
+      setRender(true);
+      return;
+    }
+    const id = setTimeout(() => setRender(false), 350);
+    return () => clearTimeout(id);
+  }, [show]);
+
+  if (!enabled) return show ? <>{children}</> : null;
+  if (!render && !show) return null;
+  return (
+    <div
+      className={`transition-opacity duration-300 ${
+        show ? "opacity-100" : "opacity-0 pointer-events-none"
+      }`}
+    >
+      {show ? children : lastChildren.current}
+    </div>
+  );
+}
+
+/* ── Camera preset toolbar (normal + fullscreen) ─────────── */
+function CameraToolbar({
+  onView,
+  isFullscreen,
+  onToggleFullscreen,
+}: {
+  onView: (mode: CameraViewRequest["mode"]) => void;
+  isFullscreen: boolean;
+  onToggleFullscreen: () => void;
+}) {
+  const { t } = useLanguage();
+  const btns: {
+    mode: CameraViewRequest["mode"];
+    icon: ReactNode;
+    ar: string;
+    en: string;
+  }[] = [
+    {
+      mode: "person",
+      icon: <PersonStanding className="w-4 h-4" />,
+      ar: "منظور طبيعي (مستوى النظر)",
+      en: "Natural view (eye level)",
+    },
+    {
+      mode: "top",
+      icon: <Grid2x2 className="w-4 h-4" />,
+      ar: "مخطط علوي",
+      en: "Top view",
+    },
+    {
+      mode: "iso",
+      icon: <Box className="w-4 h-4" />,
+      ar: "منظور إيزومتري",
+      en: "Isometric view",
+    },
+    {
+      mode: "reset",
+      icon: <RotateCcw className="w-4 h-4" />,
+      ar: "إعادة تعيين الكاميرا",
+      en: "Reset camera",
+    },
+  ];
+  return (
+    <div
+      className="absolute top-3 end-3 z-10 flex flex-col gap-1.5"
+      data-testid="toolbar-camera-views"
+    >
+      <button
+        type="button"
+        onClick={onToggleFullscreen}
+        title={isFullscreen ? t("خروج من الشاشة الكاملة", "Exit fullscreen") : t("شاشة كاملة", "Fullscreen")}
+        className="w-9 h-9 flex items-center justify-center rounded-lg border border-border bg-card/95 backdrop-blur shadow-md hover:border-primary hover:text-primary transition-colors"
+        data-testid="button-scene-fullscreen"
+      >
+        {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
+      </button>
+      <div className="h-px bg-border/70 mx-1" />
+      {btns.map((b) => (
+        <button
+          key={b.mode}
+          type="button"
+          onClick={() => onView(b.mode)}
+          title={t(b.ar, b.en)}
+          className="w-9 h-9 flex items-center justify-center rounded-lg border border-border bg-card/95 backdrop-blur shadow-md hover:border-primary hover:text-primary transition-colors"
+          data-testid={`button-camera-${b.mode}`}
+        >
+          {b.icon}
+        </button>
+      ))}
     </div>
   );
 }
@@ -790,6 +958,37 @@ export default function KitchenToolStudioPage() {
   const removePlacedDecor = useKitchenToolStore((s) => s.removePlacedDecor);
   const [selectedDecorId, setSelectedDecorId] = useState<string | null>(null);
   const [presentationMode, setPresentationMode] = useState(false);
+  const sceneBoxRef = useRef<HTMLDivElement>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [viewRequest, setViewRequest] = useState<CameraViewRequest | null>(null);
+
+  useEffect(() => {
+    const onFsChange = () =>
+      setIsFullscreen(document.fullscreenElement === sceneBoxRef.current);
+    document.addEventListener("fullscreenchange", onFsChange);
+    return () => document.removeEventListener("fullscreenchange", onFsChange);
+  }, []);
+
+  const toggleFullscreen = useCallback(() => {
+    if (document.fullscreenElement === sceneBoxRef.current) {
+      document.exitFullscreen().catch(() => undefined);
+    } else {
+      sceneBoxRef.current?.requestFullscreen().catch(() => {
+        toast({
+          title: t("الشاشة الكاملة غير مدعومة", "Fullscreen not supported"),
+          description: t(
+            "المتصفح منع تفعيل وضع الشاشة الكاملة على هذا الجهاز.",
+            "The browser blocked fullscreen mode on this device."
+          ),
+          variant: "destructive",
+        });
+      });
+    }
+  }, [toast, t]);
+
+  const requestView = useCallback((mode: CameraViewRequest["mode"]) => {
+    setViewRequest({ mode, nonce: Date.now() });
+  }, []);
 
   // Full Adeko catalog — every renderable product becomes a parametric cabinet.
   const { data: adekoProducts } = useQuery<AdekoProductRow[]>({
@@ -1084,7 +1283,10 @@ export default function KitchenToolStudioPage() {
 
           <div className="flex gap-4 h-[calc(100vh-340px)] min-h-[400px]">
             <div
-              className="relative flex-1 rounded-xl overflow-hidden border border-border bg-muted/30"
+              ref={sceneBoxRef}
+              className={`relative flex-1 rounded-xl overflow-hidden border border-border ${
+                isFullscreen ? "bg-background" : "bg-muted/30"
+              }`}
               data-testid="container-studio-3d"
             >
               {/* Unmounted while presentation overlay is open — never render
@@ -1104,11 +1306,52 @@ export default function KitchenToolStudioPage() {
                       selectedDecorId={selectedDecorId}
                       onSelectDecor={setSelectedDecorId}
                       adekoFinishById={adekoFinishById}
+                      viewRequest={viewRequest}
                     />
                   </Suspense>
                 </SceneErrorBoundary>
               )}
-              <div className="absolute bottom-3 start-3 z-10">
+              <CameraToolbar
+                onView={requestView}
+                isFullscreen={isFullscreen}
+                onToggleFullscreen={toggleFullscreen}
+              />
+              {isFullscreen && (
+                <>
+                  <IdleFadePanel
+                    className="absolute top-3 start-3 bottom-3 z-20 w-56"
+                    testId="overlay-fullscreen-catalog"
+                  >
+                    <div className="h-full rounded-xl overflow-hidden border border-border/60 shadow-lg backdrop-blur-md bg-card/80 flex flex-col">
+                      <CabinetCatalog
+                        onAdd={handleAddCabinet}
+                        onAddDecor={handleAddDecor}
+                        adekoDefs={adekoDefs}
+                        overlay
+                      />
+                    </div>
+                  </IdleFadePanel>
+                  <div
+                    className="absolute bottom-3 inset-x-0 z-20 flex justify-center pointer-events-none"
+                    data-testid="overlay-fullscreen-price"
+                  >
+                    <div className="pointer-events-auto rounded-lg shadow-lg backdrop-blur-md">
+                      <TotalPriceBar overlay />
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={toggleFullscreen}
+                    title={t("خروج من الشاشة الكاملة (Esc)", "Exit fullscreen (Esc)")}
+                    className="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 rounded-full bg-black/55 text-white text-xs font-bold px-4 py-1.5 backdrop-blur hover:bg-black/70 transition-colors"
+                    data-testid="button-exit-fullscreen"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                    {t("خروج من الشاشة الكاملة", "Exit fullscreen")}
+                  </button>
+                </>
+              )}
+              <div className={`absolute bottom-3 z-10 ${isFullscreen ? "start-[248px]" : "start-3"}`}>
                 {showPlan ? (
                   <div
                     className="rounded-lg border border-border bg-card/95 backdrop-blur shadow-md p-2 w-[280px]"
@@ -1150,9 +1393,10 @@ export default function KitchenToolStudioPage() {
                   </Button>
                 )}
               </div>
+              <FadeOutMount show={!!(selectedCabinetId && selectedDef)} enabled={isFullscreen}>
               {selectedCabinetId && selectedDef && (
                 <div
-                  className="absolute top-3 start-3 z-10 flex items-center gap-2 rounded-lg border border-border bg-card/95 backdrop-blur px-3 py-2 shadow-md"
+                  className={`absolute top-3 z-30 flex items-center gap-2 rounded-lg border border-border bg-card/95 backdrop-blur px-3 py-2 shadow-md ${isFullscreen ? "start-[248px]" : "start-3"}`}
                   data-testid="bar-selected-cabinet"
                 >
                   <span className="text-xs font-bold" data-testid="text-selected-cabinet">
@@ -1204,9 +1448,11 @@ export default function KitchenToolStudioPage() {
                   </Button>
                 </div>
               )}
+              </FadeOutMount>
+              <FadeOutMount show={!!(selectedDecorPlaced && selectedDecorItem)} enabled={isFullscreen}>
               {selectedDecorPlaced && selectedDecorItem && (
                 <div
-                  className="absolute top-3 start-3 z-10 flex items-center gap-2 rounded-lg border border-border bg-card/95 backdrop-blur px-3 py-2 shadow-md"
+                  className={`absolute top-3 z-30 flex items-center gap-2 rounded-lg border border-border bg-card/95 backdrop-blur px-3 py-2 shadow-md ${isFullscreen ? "start-[248px]" : "start-3"}`}
                   data-testid="bar-selected-decor"
                 >
                   <span className="text-xs font-bold" data-testid="text-selected-decor">
@@ -1340,9 +1586,11 @@ export default function KitchenToolStudioPage() {
                   </Button>
                 </div>
               )}
+              </FadeOutMount>
+              <FadeOutMount show={!!(selectedPlaced && selectedDef?.adeko)} enabled={isFullscreen}>
               {selectedPlaced && selectedDef?.adeko && (
                 <div
-                  className="absolute top-16 start-3 z-10 w-[250px] rounded-lg border border-border bg-card/95 backdrop-blur p-3 shadow-md flex flex-col gap-3"
+                  className={`absolute top-16 z-30 w-[250px] rounded-lg border border-border bg-card/95 backdrop-blur p-3 shadow-md flex flex-col gap-3 ${isFullscreen ? "start-[248px] max-h-[70vh] overflow-y-auto" : "start-3"}`}
                   data-testid="panel-adeko-options"
                 >
                   <div>
@@ -1629,6 +1877,7 @@ export default function KitchenToolStudioPage() {
                   </p>
                 </div>
               )}
+              </FadeOutMount>
             </div>
             <CabinetCatalog onAdd={handleAddCabinet} onAddDecor={handleAddDecor} adekoDefs={adekoDefs} />
           </div>
