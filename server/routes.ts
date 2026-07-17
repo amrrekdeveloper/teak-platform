@@ -1331,7 +1331,8 @@ export async function registerRoutes(
       const result = await pool.query(
         `SELECT id, code, description_ar, description_en, group_code,
                 design_w, design_h, design_d, price_after_vat,
-                price_economy, price_standard, price_premium, thumbnail
+                price_economy, price_standard, price_premium, thumbnail,
+                manufacturing_w, manufacturing_h, manufacturing_d
          FROM adeko_products
          WHERE active = TRUE
          ORDER BY group_code, design_w, design_h`
@@ -1351,6 +1352,9 @@ export async function registerRoutes(
           priceStandard: parseFloat(r.price_standard),
           pricePremium: parseFloat(r.price_premium),
           thumbnail: r.thumbnail,
+          manufacturingW: r.manufacturing_w != null ? parseFloat(r.manufacturing_w) : null,
+          manufacturingH: r.manufacturing_h != null ? parseFloat(r.manufacturing_h) : null,
+          manufacturingD: r.manufacturing_d != null ? parseFloat(r.manufacturing_d) : null,
         }))
       );
     } catch (error) {

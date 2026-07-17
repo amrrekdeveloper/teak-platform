@@ -42,6 +42,10 @@ export interface CabinetDef {
     pricePremium: number;
     thumbnail?: string | null;
     kind: AdekoKind;
+    /** Manufacturing dims (cm) from the catalog — null when not filled in. */
+    manufacturingW?: number | null;
+    manufacturingH?: number | null;
+    manufacturingD?: number | null;
   };
 }
 
@@ -78,6 +82,9 @@ export interface AdekoProductRow {
   priceStandard?: number;
   pricePremium?: number;
   thumbnail: string | null;
+  manufacturingW?: number | null;
+  manufacturingH?: number | null;
+  manufacturingD?: number | null;
 }
 
 export type MaterialGrade = "economy" | "standard" | "premium";
@@ -217,6 +224,9 @@ export function adekoDefFromProduct(p: AdekoProductRow): CabinetDef | null {
       pricePremium: p.pricePremium ?? 0,
       thumbnail: p.thumbnail,
       kind,
+      manufacturingW: p.manufacturingW ?? null,
+      manufacturingH: p.manufacturingH ?? null,
+      manufacturingD: p.manufacturingD ?? null,
     },
   };
 }

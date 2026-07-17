@@ -34,6 +34,7 @@ import {
   type AdekoFinish,
 } from "@/components/kitchen-tool/materials";
 import KitchenPlanSvg, { getWallSegments, getFloorBounds } from "@/components/kitchen-tool/plan-svg";
+import EngineeringSheetDialog from "@/components/kitchen-tool/engineering-sheet";
 import {
   DECOR_ITEMS,
   DECOR_CATEGORY_LABELS,
@@ -952,6 +953,7 @@ export default function KitchenToolStudioPage() {
   const updatePlacedCabinet = useKitchenToolStore((s) => s.updatePlacedCabinet);
   const [selectedCabinetId, setSelectedCabinetId] = useState<string | null>(null);
   const [showPlan, setShowPlan] = useState(true);
+  const [sheetOpen, setSheetOpen] = useState(false);
   const placedDecor = useKitchenToolStore((s) => s.placedDecor ?? []);
   const addPlacedDecor = useKitchenToolStore((s) => s.addPlacedDecor);
   const updatePlacedDecor = useKitchenToolStore((s) => s.updatePlacedDecor);
@@ -1370,15 +1372,26 @@ export default function KitchenToolStudioPage() {
                         <X className="w-3.5 h-3.5" />
                       </button>
                     </div>
-                    <KitchenPlanSvg
-                      layout={layout}
-                      walls={walls}
-                      openings={openings}
-                      utilities={utilities}
-                      placedCabinets={placedCabinets}
-                      t={t}
-                      className="w-full max-h-[200px] pointer-events-none"
-                    />
+                    <button
+                      type="button"
+                      onClick={() => setSheetOpen(true)}
+                      title={t("عرض المخطط الهندسي الرسمي", "Open formal engineering drawing")}
+                      className="block w-full cursor-zoom-in rounded hover:ring-2 hover:ring-primary/40 transition-shadow"
+                      data-testid="button-open-engineering-sheet"
+                    >
+                      <KitchenPlanSvg
+                        layout={layout}
+                        walls={walls}
+                        openings={openings}
+                        utilities={utilities}
+                        placedCabinets={placedCabinets}
+                        t={t}
+                        className="w-full max-h-[200px] pointer-events-none"
+                      />
+                      <span className="block text-center text-[10px] font-bold text-muted-foreground pt-1">
+                        {t("اضغط لعرض المخطط الهندسي الرسمي", "Click to open the engineering drawing")}
+                      </span>
+                    </button>
                   </div>
                 ) : (
                   <Button
@@ -1884,6 +1897,16 @@ export default function KitchenToolStudioPage() {
         </div>
         <div className="pb-6" />
       </div>
+      <EngineeringSheetDialog
+        open={sheetOpen}
+        onOpenChange={setSheetOpen}
+        layout={layout}
+        walls={walls}
+        openings={openings}
+        utilities={utilities}
+        placedCabinets={placedCabinets}
+        woodMaterials={woodMaterials ?? []}
+      />
     </DesktopGate>
   );
 }
