@@ -7978,6 +7978,82 @@ export async function registerRoutes(
     } catch { res.status(500).json({ message: "حدث خطأ" }); }
   });
 
+  // Update a MANUAL journal entry (auto-generated entries are immutable — reverse them instead).
+  app.patch("/api/accounting/journal-entries/:id", requireRole("owner", "assistant", "accountant"), async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const existing = await storage.getJournalEntry(id);
+      if (!existing) return res.status(404).json({ message: "القيد غير موجود" });
+      if (existing.referenceType) return res.status(400).json({ message: "لا يمكن تعديل قيد تلقائي — استخدم القيد العكسي" });
+      const { lines, ...entryData } = req.body;
+      if (!entryData.date) return res.status(400).json({ message: "تاريخ القيد مطلوب" });
+      if (!entryData.description || !String(entryData.description).trim()) {
+        return res.status(400).json({ message: "بيان القيد مطلوب" });
+      }
+      if (!lines || lines.length < 2) return res.status(400).json({ message: "يجب أن يحتوي القيد على سطرين على الأقل" });
+      for (let i = 0; i < lines.length; i++) {
+        const l = lines[i];
+        const debit = parseNum(l.debit);
+        const credit = parseNum(l.credit);
+        if (!l.accountCode) return res.status(400).json({ message: `السطر ${i + 1}: يجب اختيار الحساب` });
+        if (debit <= 0 && credit <= 0) return res.status(400).json({ message: `السطر ${i + 1}: يجب إدخال مبلغ مدين أو دائن` });
+        if (debit > 0 && credit > 0) return res.status(400).json({ message: `السطر ${i + 1}: لا يمكن إدخال مدين ودائن في نفس السطر` });
+      }
+      const totalDebit = lines.reduce((s: number, l: any) => s + parseNum(l.debit), 0);
+      const totalCredit = lines.reduce((s: number, l: any) => s + parseNum(l.credit), 0);
+      if (totalDebit <= 0) return res.status(400).json({ message: "إجمالي القيد يجب أن يكون أكبر من صفر" });
+      if (Math.abs(totalDebit - totalCredit) > 0.01) {
+        return res.status(400).json({ message: `القيد غير متوازن: مجموع المدين (${totalDebit.toFixed(2)}) لا يساوي مجموع الدائن (${totalCredit.toFixed(2)})` });
+      }
+      const updated = await storage.updateJournalEntryWithLines(
+        id,
+        { date: entryData.date, description: entryData.description, reference: entryData.reference ?? null, attachmentUrl: entryData.attachmentUrl ?? existing.attachmentUrl },
+        lines,
+      );
+      res.json(updated);
+    } catch (e: any) { res.status(400).json({ message: e.message || "حدث خطأ" }); }
+  });
+
+  // Delete a MANUAL journal entry only.
+  app.delete("/api/accounting/journal-entries/:id", requireRole("owner", "assistant", "accountant"), async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const existing = await storage.getJournalEntry(id);
+      if (!existing) return res.status(404).json({ message: "القيد غير موجود" });
+      if (existing.referenceType) return res.status(400).json({ message: "لا يمكن حذف قيد تلقائي — استخدم القيد العكسي" });
+      await storage.deleteJournalEntry(id);
+      res.json({ success: true });
+    } catch (e: any) { res.status(400).json({ message: e.message || "حدث خطأ" }); }
+  });
+
+  // Reversing entry for an existing (typically auto-generated) entry.
+  app.post("/api/accounting/journal-entries/:id/reverse", requireRole("owner", "assistant", "accountant"), async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const existing = await storage.getJournalEntry(id);
+      if (!existing) return res.status(404).json({ message: "القيد غير موجود" });
+      const srcLines = await storage.getJournalEntryLines(id);
+      if (srcLines.length === 0) return res.status(400).json({ message: "القيد لا يحتوي على سطور" });
+      const entry = await storage.createJournalEntry(
+        {
+          date: (req.body?.date as string) || new Date().toISOString().slice(0, 10),
+          description: `عكس قيد #${existing.entryNumber}`,
+          reference: existing.reference || null,
+          status: "posted",
+          createdBy: (req as any).userId,
+        } as any,
+        srcLines.map(l => ({
+          accountCode: l.accountCode,
+          accountNameAr: l.accountNameAr,
+          debit: l.credit,
+          credit: l.debit,
+          notes: "",
+        })) as any,
+      );
+      res.json(entry);
+    } catch (e: any) { res.status(400).json({ message: e.message || "حدث خطأ" }); }
+  });
+
   // ── Record an invoice (sales/purchase, credit/cash) → posts a balanced journal entry ──
   app.post("/api/accounting/record-invoice", requireRole("owner", "assistant", "accountant"), async (req, res) => {
     try {
@@ -8754,14 +8830,42 @@ export async function registerRoutes(
       const validLines = lines.filter(l => parseNum(l.debit) > 0 || parseNum(l.credit) > 0);
       if (validLines.length === 0) return res.status(400).json({ message: "يجب إدخال مبالغ للأرصدة الافتتاحية" });
 
-      const totalDebitCheck = validLines.reduce((s, l) => s + parseNum(l.debit), 0);
-      const totalCreditCheck = validLines.reduce((s, l) => s + parseNum(l.credit), 0);
-      if (Math.abs(totalDebitCheck - totalCreditCheck) > 0.01) {
-        return res.status(400).json({ message: `مجموع المدين (${totalDebitCheck.toFixed(2)}) لا يساوي مجموع الدائن (${totalCreditCheck.toFixed(2)}). يجب أن تكون الأرصدة الافتتاحية متوازنة.` });
+      // QuickBooks-style auto-balance: any difference is posted to the
+      // "Opening Balance Equity" account (3999) instead of rejecting the save.
+      const OB_EQUITY_CODE = "3999";
+      const OB_EQUITY_NAME_AR = "الأرصدة الافتتاحية — حقوق ملكية";
+      const linesToSave = validLines.map(l => ({ ...l }));
+      const preDebit = linesToSave.reduce((s, l) => s + parseNum(l.debit), 0);
+      const preCredit = linesToSave.reduce((s, l) => s + parseNum(l.credit), 0);
+      const diff = +(preDebit - preCredit).toFixed(2);
+      if (Math.abs(diff) > 0.009) {
+        let obAccount = await storage.getChartOfAccountByCode(OB_EQUITY_CODE);
+        if (!obAccount) {
+          try {
+            obAccount = await storage.createChartOfAccount({
+              code: OB_EQUITY_CODE,
+              nameAr: OB_EQUITY_NAME_AR,
+              nameEn: "Opening Balance Equity",
+              type: "equity",
+              parentCode: "3000",
+              isSystem: true,
+            } as any);
+          } catch (e) {
+            // Concurrent request may have created it (unique code) — re-read.
+            obAccount = await storage.getChartOfAccountByCode(OB_EQUITY_CODE);
+            if (!obAccount) throw e;
+          }
+        }
+        linesToSave.push({
+          accountCode: OB_EQUITY_CODE,
+          accountNameAr: obAccount?.nameAr || OB_EQUITY_NAME_AR,
+          debit: diff < 0 ? Math.abs(diff).toFixed(2) : "0",
+          credit: diff > 0 ? diff.toFixed(2) : "0",
+        });
       }
 
-      const totalDebit = validLines.reduce((s, l) => s + parseNum(l.debit), 0);
-      const totalCredit = validLines.reduce((s, l) => s + parseNum(l.credit), 0);
+      const totalDebit = linesToSave.reduce((s, l) => s + parseNum(l.debit), 0);
+      const totalCredit = linesToSave.reduce((s, l) => s + parseNum(l.credit), 0);
 
       // Atomic: void previous opening-balance entry + create the new one in one
       // transaction so balances are never wiped without a replacement.
@@ -8776,7 +8880,7 @@ export async function registerRoutes(
           status: "posted",
           createdBy: (req as any).userId,
         },
-        validLines.map(l => ({ ...l, notes: "" }))
+        linesToSave.map(l => ({ ...l, notes: "" }))
       );
       res.json(entry);
     } catch (e: any) { res.status(400).json({ message: e.message || "حدث خطأ" }); }

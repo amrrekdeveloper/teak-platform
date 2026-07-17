@@ -295,6 +295,8 @@ export interface IStorage {
   findJournalEntryByReference(referenceType: string, referenceId: number): Promise<JournalEntry | undefined>;
   createJournalEntry(entry: InsertJournalEntry, lines: InsertJournalEntryLine[]): Promise<JournalEntry>;
   updateJournalEntry(id: number, data: Partial<InsertJournalEntry>): Promise<JournalEntry | undefined>;
+  updateJournalEntryWithLines(id: number, data: Partial<InsertJournalEntry>, lines: InsertJournalEntryLine[]): Promise<JournalEntry | undefined>;
+  deleteJournalEntry(id: number): Promise<void>;
   getJournalEntryLines(entryId: number): Promise<JournalEntryLine[]>;
   getJournalEntryLinesForAccount(accountCode: string, from?: string, to?: string): Promise<(JournalEntryLine & { entryDate: string; entryDescription: string; entryNumber: number })[]>;
 
@@ -1457,6 +1459,37 @@ export class DatabaseStorage implements IStorage {
   async updateJournalEntry(id: number, data: Partial<InsertJournalEntry>): Promise<JournalEntry | undefined> {
     const [row] = await db.update(journalEntries).set(data).where(eq(journalEntries.id, id)).returning();
     return row;
+  }
+
+  // Atomic: update header + replace all lines in one transaction.
+  async updateJournalEntryWithLines(
+    id: number,
+    data: Partial<InsertJournalEntry>,
+    lines: InsertJournalEntryLine[],
+  ): Promise<JournalEntry | undefined> {
+    const safeLines = lines.map(l => ({ ...l, debit: toLatinDigits(l.debit ?? "0") || "0", credit: toLatinDigits(l.credit ?? "0") || "0" }));
+    const totalDebit = safeLines.reduce((s, l) => s + parseNum(l.debit), 0);
+    const totalCredit = safeLines.reduce((s, l) => s + parseNum(l.credit), 0);
+    return await db.transaction(async (tx) => {
+      const [row] = await tx.update(journalEntries).set({
+        ...data,
+        totalDebit: totalDebit.toFixed(2),
+        totalCredit: totalCredit.toFixed(2),
+      }).where(eq(journalEntries.id, id)).returning();
+      if (!row) return undefined;
+      await tx.delete(journalEntryLines).where(eq(journalEntryLines.entryId, id));
+      if (safeLines.length > 0) {
+        await tx.insert(journalEntryLines).values(safeLines.map(l => ({ ...l, entryId: id })));
+      }
+      return row;
+    });
+  }
+
+  async deleteJournalEntry(id: number): Promise<void> {
+    await db.transaction(async (tx) => {
+      await tx.delete(journalEntryLines).where(eq(journalEntryLines.entryId, id));
+      await tx.delete(journalEntries).where(eq(journalEntries.id, id));
+    });
   }
 
   async getJournalEntryLines(entryId: number): Promise<JournalEntryLine[]> {

@@ -33,6 +33,15 @@ type LineItem = { accountCode: string; accountNameAr: string; debit: string; cre
 
 const EMPTY_LINE = (): LineItem => ({ accountCode: "", accountNameAr: "", debit: "", credit: "", notes: "" });
 
+// Normalize Arabic-Indic digits then keep only digits and a single decimal point.
+// Using type="text" + this sanitizer avoids type="number" quirks (values silently
+// wiped to "" on invalid/localized input, which made fields appear to reset to 0).
+const sanitizeAmount = (raw: string): string => {
+  const latin = toLatinDigits(raw).replace(/[^0-9.]/g, "");
+  const firstDot = latin.indexOf(".");
+  return firstDot === -1 ? latin : latin.slice(0, firstDot + 1) + latin.slice(firstDot + 1).replace(/\./g, "");
+};
+
 function getSourceDocumentUrl(referenceType: string, referenceId: number | null | undefined): string | null {
   if (!referenceId) return null;
   if (referenceType === "invoice") return `/invoices/${referenceId}`;
@@ -113,6 +122,8 @@ export default function FinanceAccountsPage() {
   const [jForm, setJForm] = useState({ date: format(new Date(), "yyyy-MM-dd"), description: "", reference: "" });
   const [lines, setLines] = useState<LineItem[]>([EMPTY_LINE(), EMPTY_LINE()]);
   const [typeFilter, setTypeFilter] = useState("all");
+  const [viewEntryId, setViewEntryId] = useState<number | null>(null);
+  const [editingEntryId, setEditingEntryId] = useState<number | null>(null);
 
   // Opening balances state
   const [obDate, setObDate] = useState(format(new Date(), "yyyy-MM-dd"));
@@ -191,15 +202,51 @@ export default function FinanceAccountsPage() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/accounting/accounts"] }); toast({ title: "تم الحذف" }); },
   });
 
+  const resetJournalForm = () => {
+    setLines([EMPTY_LINE(), EMPTY_LINE()]);
+    setJForm({ date: format(new Date(), "yyyy-MM-dd"), description: "", reference: "" });
+    setJAttachment(null);
+    setEditingEntryId(null);
+  };
+
   const createEntryMut = useMutation({
     mutationFn: (data: any) => apiRequest("POST", "/api/accounting/journal-entries", data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/accounting/journal-entries"], exact: false });
       setJournalDialog(false);
-      setLines([EMPTY_LINE(), EMPTY_LINE()]);
-      setJForm({ date: format(new Date(), "yyyy-MM-dd"), description: "", reference: "" });
-      setJAttachment(null);
+      resetJournalForm();
       toast({ title: "تم ترحيل القيد بنجاح" });
+    },
+    onError: (e: any) => toast({ title: e.message || "حدث خطأ", variant: "destructive" }),
+  });
+
+  const updateEntryMut = useMutation({
+    mutationFn: ({ id, data }: any) => apiRequest("PATCH", `/api/accounting/journal-entries/${id}`, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/accounting/journal-entries"], exact: false });
+      setJournalDialog(false);
+      resetJournalForm();
+      toast({ title: t("تم تعديل القيد بنجاح", "Entry updated successfully") });
+    },
+    onError: (e: any) => toast({ title: e.message || "حدث خطأ", variant: "destructive" }),
+  });
+
+  const deleteEntryMut = useMutation({
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/accounting/journal-entries/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/accounting/journal-entries"], exact: false });
+      setViewEntryId(null);
+      toast({ title: t("تم حذف القيد", "Entry deleted") });
+    },
+    onError: (e: any) => toast({ title: e.message || "حدث خطأ", variant: "destructive" }),
+  });
+
+  const reverseEntryMut = useMutation({
+    mutationFn: (id: number) => apiRequest("POST", `/api/accounting/journal-entries/${id}/reverse`, {}),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/accounting/journal-entries"], exact: false });
+      setViewEntryId(null);
+      toast({ title: t("تم إنشاء القيد العكسي", "Reversing entry created") });
     },
     onError: (e: any) => toast({ title: e.message || "حدث خطأ", variant: "destructive" }),
   });
@@ -347,7 +394,34 @@ export default function FinanceAccountsPage() {
     }
     if (inUse.length < 2) return toast({ title: "يجب إدخال سطرين مكتملين على الأقل", variant: "destructive" });
     if (!isBalanced) return toast({ title: "القيد غير متوازن — مجموع المدين يجب أن يساوي الدائن", variant: "destructive" });
-    createEntryMut.mutate({ ...jForm, attachmentUrl: jAttachment?.url || null, lines: inUse });
+    const payload = { ...jForm, attachmentUrl: jAttachment?.url || null, lines: inUse };
+    if (editingEntryId) {
+      updateEntryMut.mutate({ id: editingEntryId, data: payload });
+    } else {
+      createEntryMut.mutate(payload);
+    }
+  };
+
+  // Re-derive the live entry from the query so the dialog never shows a stale snapshot.
+  const viewedEntry = viewEntryId != null ? (entries as any[]).find((e: any) => e.id === viewEntryId) ?? null : null;
+
+  const openEditEntry = (entry: any) => {
+    setEditingEntryId(entry.id);
+    setJForm({ date: entry.date, description: entry.description || "", reference: entry.reference || "" });
+    setLines(
+      (entry.lines || []).length > 0
+        ? (entry.lines as any[]).map((l: any) => ({
+            accountCode: l.accountCode,
+            accountNameAr: l.accountNameAr || "",
+            debit: parseFloat(l.debit) > 0 ? String(parseFloat(l.debit)) : "",
+            credit: parseFloat(l.credit) > 0 ? String(parseFloat(l.credit)) : "",
+            notes: l.notes || "",
+          }))
+        : [EMPTY_LINE(), EMPTY_LINE()],
+    );
+    setJAttachment(entry.attachmentUrl ? { url: entry.attachmentUrl, name: t("مرفق القيد", "Entry attachment") } : null);
+    setViewEntryId(null);
+    setJournalDialog(true);
   };
 
   const invSubtotal = parseFloat(invForm.subtotal || "0");
@@ -380,10 +454,15 @@ export default function FinanceAccountsPage() {
     });
   };
 
+  const obValidLines = obLines.filter(l => l.accountCode && (parseFloat(l.debit || "0") > 0 || parseFloat(l.credit || "0") > 0));
+  const obDiff = +(
+    obValidLines.reduce((s, l) => s + parseFloat(l.debit || "0"), 0) -
+    obValidLines.reduce((s, l) => s + parseFloat(l.credit || "0"), 0)
+  ).toFixed(2);
+
   const handleSaveOpeningBalances = () => {
-    const validLines = obLines.filter(l => l.accountCode && (parseFloat(l.debit || "0") > 0 || parseFloat(l.credit || "0") > 0));
-    if (validLines.length === 0) return toast({ title: "يجب إدخال أرصدة للحسابات", variant: "destructive" });
-    saveObMut.mutate({ date: obDate, lines: validLines });
+    if (obValidLines.length === 0) return toast({ title: "يجب إدخال أرصدة للحسابات", variant: "destructive" });
+    saveObMut.mutate({ date: obDate, lines: obValidLines });
   };
 
   const groupedAccounts = Object.entries(ACCOUNT_TYPES).map(([type, meta]) => ({
@@ -518,7 +597,12 @@ export default function FinanceAccountsPage() {
             ) : (
               <div className="space-y-2">
                 {(entries as any[]).map((entry: any) => (
-                  <Card key={entry.id} data-testid={`journal-entry-${entry.id}`}>
+                  <Card
+                    key={entry.id}
+                    data-testid={`journal-entry-${entry.id}`}
+                    className="cursor-pointer transition-colors hover:border-primary/50"
+                    onClick={() => setViewEntryId(entry.id)}
+                  >
                     <CardContent className="p-4">
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2">
@@ -685,20 +769,20 @@ export default function FinanceAccountsPage() {
                             <td className="px-1 py-1 text-xs text-muted-foreground">{line.accountNameAr}</td>
                             <td className="px-1 py-1">
                               <Input
-                                type="number" min="0" step="0.01"
+                                type="text" inputMode="decimal" dir="ltr"
                                 className="h-7 text-xs text-blue-700 dark:text-blue-400"
                                 value={line.debit}
-                                onChange={e => { const v = toLatinDigits(e.target.value); setObLines(ls => ls.map((l, j) => j === i ? { ...l, debit: v, credit: v ? "" : l.credit } : l)); }}
+                                onChange={e => { const v = sanitizeAmount(e.target.value); setObLines(ls => ls.map((l, j) => j === i ? { ...l, debit: v, credit: v ? "" : l.credit } : l)); }}
                                 placeholder="0.00"
                                 data-testid={`input-ob-debit-${i}`}
                               />
                             </td>
                             <td className="px-1 py-1">
                               <Input
-                                type="number" min="0" step="0.01"
+                                type="text" inputMode="decimal" dir="ltr"
                                 className="h-7 text-xs text-green-700 dark:text-green-400"
                                 value={line.credit}
-                                onChange={e => { const v = toLatinDigits(e.target.value); setObLines(ls => ls.map((l, j) => j === i ? { ...l, credit: v, debit: v ? "" : l.debit } : l)); }}
+                                onChange={e => { const v = sanitizeAmount(e.target.value); setObLines(ls => ls.map((l, j) => j === i ? { ...l, credit: v, debit: v ? "" : l.debit } : l)); }}
                                 placeholder="0.00"
                                 data-testid={`input-ob-credit-${i}`}
                               />
@@ -715,6 +799,17 @@ export default function FinanceAccountsPage() {
                       </tbody>
                     </table>
                   </div>
+                  {Math.abs(obDiff) > 0.009 && (
+                    <div className="mt-3 flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950 p-2.5 text-xs text-amber-800 dark:text-amber-200" data-testid="note-ob-autobalance">
+                      <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                      <span>
+                        {t(
+                          `سيتم موازنة القيد تلقائيًا على حساب الأرصدة الافتتاحية (3999) بمبلغ ${Math.abs(obDiff).toLocaleString("ar-SA", { minimumFractionDigits: 2 })} ${obDiff > 0 ? "دائن" : "مدين"}.`,
+                          `The entry will be auto-balanced to the Opening Balance Equity account (3999) with ${Math.abs(obDiff).toLocaleString("en-US", { minimumFractionDigits: 2 })} ${obDiff > 0 ? "credit" : "debit"}.`,
+                        )}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex justify-between items-center mt-3">
                     <p className="text-xs text-muted-foreground">
                       {t("ملاحظة: حفظ أرصدة جديدة سيلغي الأرصدة المحفوظة مسبقاً.", "Note: saving new balances will replace any previously saved opening balances.")}
@@ -784,13 +879,138 @@ export default function FinanceAccountsPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Journal Entry Details Dialog */}
+      <Dialog open={!!viewedEntry} onOpenChange={(open) => { if (!open) setViewEntryId(null); }}>
+        <DialogContent className="max-w-2xl" dir="rtl">
+          {viewedEntry && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <FileText className="h-4 w-4" />
+                  {t(`تفاصيل القيد #${viewedEntry.entryNumber}`, `Entry #${viewedEntry.entryNumber} Details`)}
+                </DialogTitle>
+              </DialogHeader>
+              <div className="space-y-3 py-2" data-testid="dialog-entry-details">
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <p className="text-xs text-muted-foreground">{t("رقم القيد", "Entry Number")}</p>
+                    <p className="font-mono" data-testid="text-entry-number">#{viewedEntry.entryNumber}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">{t("التاريخ", "Date")}</p>
+                    <p data-testid="text-entry-date">{viewedEntry.date}</p>
+                  </div>
+                  <div className="col-span-2">
+                    <p className="text-xs text-muted-foreground">{t("البيان", "Description")}</p>
+                    <p data-testid="text-entry-description">{viewedEntry.description}</p>
+                  </div>
+                  {viewedEntry.reference && (
+                    <div>
+                      <p className="text-xs text-muted-foreground">{t("المرجع", "Reference")}</p>
+                      <p data-testid="text-entry-reference">{viewedEntry.reference}</p>
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-xs text-muted-foreground">{t("المصدر", "Source")}</p>
+                    {viewedEntry.referenceType ? (
+                      <SourceDocumentBadge
+                        referenceType={viewedEntry.referenceType}
+                        referenceId={viewedEntry.referenceId}
+                        reference={viewedEntry.reference}
+                        entryId={viewedEntry.id}
+                      />
+                    ) : (
+                      <Badge variant="outline" className="text-[10px]" data-testid="badge-manual-entry">{t("يدوي", "Manual")}</Badge>
+                    )}
+                  </div>
+                  {viewedEntry.attachmentUrl && (
+                    <div className="col-span-2">
+                      <p className="text-xs text-muted-foreground">{t("المرفق", "Attachment")}</p>
+                      <a href={viewedEntry.attachmentUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sm text-primary hover:underline" data-testid="link-view-entry-attachment">
+                        <Paperclip className="h-3.5 w-3.5" />
+                        {t("فتح المرفق", "Open attachment")}
+                      </a>
+                    </div>
+                  )}
+                </div>
+                <div className="rounded border overflow-hidden">
+                  <table className="w-full text-xs">
+                    <thead className="bg-muted/50">
+                      <tr>
+                        <th className="text-right px-2 py-1">{t("الحساب", "Account")}</th>
+                        <th className="text-right px-2 py-1 w-24">{t("مدين", "Debit")}</th>
+                        <th className="text-right px-2 py-1 w-24">{t("دائن", "Credit")}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {(viewedEntry.lines || []).map((l: any, i: number) => (
+                        <tr key={i}>
+                          <td className="px-2 py-1">
+                            <span className="font-mono text-muted-foreground me-2">{l.accountCode}</span>
+                            {l.accountNameAr}
+                          </td>
+                          <td className="px-2 py-1 tabular-nums text-blue-700 dark:text-blue-400">
+                            {parseFloat(l.debit) > 0 ? parseFloat(l.debit).toLocaleString("ar-SA", { minimumFractionDigits: 2 }) : ""}
+                          </td>
+                          <td className="px-2 py-1 tabular-nums text-green-700 dark:text-green-400">
+                            {parseFloat(l.credit) > 0 ? parseFloat(l.credit).toLocaleString("ar-SA", { minimumFractionDigits: 2 }) : ""}
+                          </td>
+                        </tr>
+                      ))}
+                      <tr className="bg-muted/30 font-semibold">
+                        <td className="px-2 py-1">{t("المجموع", "Total")}</td>
+                        <td className="px-2 py-1 tabular-nums">{parseFloat(viewedEntry.totalDebit).toLocaleString("ar-SA", { minimumFractionDigits: 2 })}</td>
+                        <td className="px-2 py-1 tabular-nums">{parseFloat(viewedEntry.totalCredit).toLocaleString("ar-SA", { minimumFractionDigits: 2 })}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <DialogFooter className="gap-2">
+                {viewedEntry.referenceType ? (
+                  <Button
+                    variant="outline"
+                    onClick={() => reverseEntryMut.mutate(viewedEntry.id)}
+                    disabled={reverseEntryMut.isPending}
+                    data-testid="btn-reverse-entry"
+                  >
+                    {reverseEntryMut.isPending ? t("جاري الإنشاء...", "Creating...") : t("قيد عكسي", "Reversing Entry")}
+                  </Button>
+                ) : (
+                  <>
+                    <Button variant="outline" onClick={() => openEditEntry(viewedEntry)} data-testid="btn-edit-entry">
+                      <Edit2 className="h-3.5 w-3.5 me-1.5" />
+                      {t("تعديل", "Edit")}
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      onClick={() => {
+                        if (window.confirm(t(`هل أنت متأكد من حذف القيد #${viewedEntry.entryNumber}؟ لا يمكن التراجع عن هذا الإجراء.`, `Delete entry #${viewedEntry.entryNumber}? This cannot be undone.`))) {
+                          deleteEntryMut.mutate(viewedEntry.id);
+                        }
+                      }}
+                      disabled={deleteEntryMut.isPending}
+                      data-testid="btn-delete-entry"
+                    >
+                      <Trash2 className="h-3.5 w-3.5 me-1.5" />
+                      {deleteEntryMut.isPending ? t("جاري الحذف...", "Deleting...") : t("حذف", "Delete")}
+                    </Button>
+                  </>
+                )}
+                <Button variant="secondary" onClick={() => setViewEntryId(null)} data-testid="btn-close-entry-details">{t("إغلاق", "Close")}</Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* Journal Entry Dialog */}
-      <Dialog open={journalDialog} onOpenChange={setJournalDialog}>
+      <Dialog open={journalDialog} onOpenChange={(open) => { setJournalDialog(open); if (!open) resetJournalForm(); }}>
         <DialogContent className="max-w-2xl" dir="rtl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FileText className="h-4 w-4" />
-              {t("قيد محاسبي جديد", "New Journal Entry")}
+              {editingEntryId ? t("تعديل قيد محاسبي", "Edit Journal Entry") : t("قيد محاسبي جديد", "New Journal Entry")}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
@@ -919,8 +1139,10 @@ export default function FinanceAccountsPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setJournalDialog(false)}>{t("إلغاء", "Cancel")}</Button>
-            <Button onClick={handleSubmitEntry} disabled={!isBalanced || createEntryMut.isPending || uploadingAtt} data-testid="btn-post-entry">
-              {createEntryMut.isPending ? t("جاري الترحيل...", "Posting...") : t("ترحيل القيد", "Post Entry")}
+            <Button onClick={handleSubmitEntry} disabled={!isBalanced || createEntryMut.isPending || updateEntryMut.isPending || uploadingAtt} data-testid="btn-post-entry">
+              {(createEntryMut.isPending || updateEntryMut.isPending)
+                ? t("جاري الحفظ...", "Saving...")
+                : editingEntryId ? t("حفظ التعديلات", "Save Changes") : t("ترحيل القيد", "Post Entry")}
             </Button>
           </DialogFooter>
         </DialogContent>
