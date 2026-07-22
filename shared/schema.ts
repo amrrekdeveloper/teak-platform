@@ -657,7 +657,7 @@ export const priorityEnum = pgEnum("priority", ["normal", "urgent"]);
 export const workOrders = pgTable("work_orders", {
   id: serial("id").primaryKey(),
   orderNumber: serial("order_number"),
-  contractId: integer("contract_id").references(() => contracts.id).notNull(),
+  contractId: integer("contract_id").references(() => contracts.id),
   customerId: integer("customer_id").references(() => customers.id).notNull(),
   quotationId: integer("quotation_id").references(() => quotations.id),
   designFile: text("design_file"),

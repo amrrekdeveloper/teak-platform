@@ -7855,6 +7855,8 @@ export async function registerRoutes(
       `);
       await db.execute(`ALTER TABLE journal_entries ADD COLUMN IF NOT EXISTS attachment_url TEXT`);
       await db.execute(`ALTER TABLE journal_entries ADD COLUMN IF NOT EXISTS attachments JSONB`);
+      // Allow work orders to be unlinked from contracts (finance reset deletes contracts)
+      await db.execute(`ALTER TABLE work_orders ALTER COLUMN contract_id DROP NOT NULL`);
       console.log("Finance module migration completed");
     } catch (financeMigrationError) {
       console.warn("Finance migration (non-fatal):", financeMigrationError instanceof Error ? financeMigrationError.message : String(financeMigrationError));
@@ -9075,8 +9077,9 @@ export async function registerRoutes(
 
   // ── Financial data reset (owner only) ──────────────────────────────────────
   // Wipes all financial transaction data (journal entries, payments, invoices,
-  // payment schedules, payroll, advances) and resets contract balances, after
-  // backing everything up into finance_reset_backups. Chart of accounts kept.
+  // payment schedules, payroll, advances) and deletes contracts entirely
+  // (dependent records are unlinked via contract_id = NULL), after backing
+  // everything up into finance_reset_backups. Chart of accounts kept.
   app.post("/api/admin/finance-reset", requireRole("owner"), async (req, res) => {
     const BACKUP_TABLES = [
       "journal_entry_lines",
@@ -9139,8 +9142,12 @@ export async function registerRoutes(
         await client.query(`DELETE FROM payment_schedules`);
         await client.query(`DELETE FROM payroll_records`);
         await client.query(`DELETE FROM employee_advances`);
-        // Reset contract balances (keep contracts themselves)
-        await client.query(`UPDATE contracts SET paid_amount = 0, remaining_amount = total_amount`);
+        // Unlink dependent records from contracts, then delete contracts entirely
+        await client.query(`UPDATE work_orders SET contract_id = NULL WHERE contract_id IS NOT NULL`);
+        await client.query(`UPDATE inventory_transactions SET contract_id = NULL WHERE contract_id IS NOT NULL`);
+        await client.query(`UPDATE maintenance_requests SET contract_id = NULL WHERE contract_id IS NOT NULL`);
+        await client.query(`UPDATE warranties SET contract_id = NULL WHERE contract_id IS NOT NULL`);
+        await client.query(`DELETE FROM contracts`);
         // Restart numbering sequences so new documents start from 1
         await client.query(`
           DO $$ BEGIN
@@ -9163,7 +9170,7 @@ export async function registerRoutes(
             (SELECT COUNT(*)::int FROM payment_schedules) AS ps,
             (SELECT COUNT(*)::int FROM payroll_records) AS pr,
             (SELECT COUNT(*)::int FROM employee_advances) AS ea,
-            (SELECT COUNT(*)::int FROM contracts WHERE paid_amount != 0 OR remaining_amount != total_amount) AS badContracts,
+            (SELECT COUNT(*)::int FROM contracts) AS badContracts,
             (SELECT COUNT(*)::int FROM fiscal_years WHERE status = 'active') AS activeFy,
             (SELECT COUNT(*)::int FROM fiscal_years) AS totalFy
         `);

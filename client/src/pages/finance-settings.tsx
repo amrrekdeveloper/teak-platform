@@ -247,8 +247,8 @@ export default function FinanceSettingsPage() {
           <CardContent className="space-y-3">
             <p className="text-sm text-muted-foreground">
               {t(
-                "حذف جميع القيود المحاسبية والدفعات والفواتير وسجلات الرواتب والسلف، وتصفير أرصدة العقود. يتم الاحتفاظ بدليل الحسابات، ويتم حفظ نسخة احتياطية من كل البيانات قبل الحذف.",
-                "Deletes all journal entries, payments, invoices, payroll records and advances, and resets contract balances. The chart of accounts is kept, and a backup of all data is saved before deletion."
+                "حذف جميع القيود المحاسبية والدفعات والفواتير وسجلات الرواتب والسلف، وحذف العقود بالكامل (تبقى أوامر العمل والسجلات المرتبطة لكن دون ارتباط بالعقد). يتم الاحتفاظ بدليل الحسابات، ويتم حفظ نسخة احتياطية من كل البيانات قبل الحذف.",
+                "Deletes all journal entries, payments, invoices, payroll records and advances, and deletes all contracts entirely (work orders and related records remain but are unlinked). The chart of accounts is kept, and a backup of all data is saved before deletion."
               )}
             </p>
             <Button
@@ -273,8 +273,8 @@ export default function FinanceSettingsPage() {
             </DialogTitle>
             <DialogDescription>
               {t(
-                "هذا الإجراء سيحذف جميع البيانات المالية نهائيًا (مع نسخة احتياطية). للمتابعة اكتب كلمة «تصفير» في الحقل أدناه.",
-                "This will permanently delete all financial data (with a backup). To proceed, type the word «تصفير» below."
+                "هذا الإجراء سيحذف جميع البيانات المالية والعقود نهائيًا (مع نسخة احتياطية). للمتابعة اكتب كلمة «تصفير» في الحقل أدناه.",
+                "This will permanently delete all financial data and contracts (with a backup). To proceed, type the word «تصفير» below."
               )}
             </DialogDescription>
           </DialogHeader>
