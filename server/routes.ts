@@ -9100,6 +9100,13 @@ export async function registerRoutes(
         await client.query(`UPDATE fiscal_years SET closing_entry_id = NULL`);
         await client.query(`DELETE FROM journal_entries`);
         await client.query(`DELETE FROM fiscal_years`);
+        // Recreate exactly one clean active fiscal year for the current year
+        const yearNow = new Date().getFullYear();
+        await client.query(
+          `INSERT INTO fiscal_years (name, start_date, end_date, status)
+           VALUES ($1, $2, $3, 'active')`,
+          [`السنة المالية ${yearNow}`, `${yearNow}-01-01`, `${yearNow}-12-31`]
+        );
         await client.query(`DELETE FROM payments`);
         await client.query(`DELETE FROM invoices`);
         await client.query(`DELETE FROM payment_schedules`);
@@ -9118,6 +9125,30 @@ export async function registerRoutes(
             END IF;
           END $$;
         `);
+        // Post-reset verification: all wiped tables must be empty, contracts reset,
+        // and exactly one active fiscal year must exist
+        const verify = await client.query(`
+          SELECT
+            (SELECT COUNT(*)::int FROM journal_entry_lines) AS jel,
+            (SELECT COUNT(*)::int FROM journal_entries) AS je,
+            (SELECT COUNT(*)::int FROM payments) AS pay,
+            (SELECT COUNT(*)::int FROM invoices) AS inv,
+            (SELECT COUNT(*)::int FROM payment_schedules) AS ps,
+            (SELECT COUNT(*)::int FROM payroll_records) AS pr,
+            (SELECT COUNT(*)::int FROM employee_advances) AS ea,
+            (SELECT COUNT(*)::int FROM contracts WHERE paid_amount != 0 OR remaining_amount != total_amount) AS badContracts,
+            (SELECT COUNT(*)::int FROM fiscal_years WHERE status = 'active') AS activeFy,
+            (SELECT COUNT(*)::int FROM fiscal_years) AS totalFy
+        `);
+        const v = verify.rows[0];
+        if (
+          Number(v.jel) !== 0 || Number(v.je) !== 0 || Number(v.pay) !== 0 ||
+          Number(v.inv) !== 0 || Number(v.ps) !== 0 || Number(v.pr) !== 0 ||
+          Number(v.ea) !== 0 || Number(v.badcontracts) !== 0 ||
+          Number(v.activefy) !== 1 || Number(v.totalfy) !== 1
+        ) {
+          throw new Error(`فشل التحقق بعد التصفير: ${JSON.stringify(v)}`);
+        }
         await client.query("COMMIT");
         console.log(`Finance reset completed (${batchId}):`, counts);
         return res.json({
