@@ -217,13 +217,6 @@ function Navbar() {
               </a>
             ))}
             <a
-              href="/track-order"
-              className="px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-              data-testid="link-track-order"
-            >
-              {t("تتبع طلبك", "Track Order")}
-            </a>
-            <a
               href="/portal/login"
               className="px-3 py-2 text-sm font-bold text-primary hover:text-primary/80 transition-colors"
               data-testid="link-customer-portal"
@@ -285,14 +278,6 @@ function Navbar() {
                   {t(link.labelAr, link.labelEn)}
                 </a>
               ))}
-              <a
-                href="/track-order"
-                onClick={() => setMobileOpen(false)}
-                className="px-4 py-3 text-sm font-medium rounded-md hover:bg-muted"
-                data-testid="link-track-order-mobile"
-              >
-                {t("تتبع طلبك", "Track Order")}
-              </a>
               <a
                 href="/portal/login"
                 onClick={() => setMobileOpen(false)}
@@ -904,7 +889,6 @@ function Footer() {
 
   const serviceLinks = [
     { href: "/request-quote", labelAr: "طلب عرض سعر", labelEn: "Request Quote" },
-    { href: "/track-order", labelAr: "تتبع طلبك", labelEn: "Track Order" },
     { href: "/portal/login", labelAr: "بوابة العملاء", labelEn: "Customer Portal" },
   ];
 
