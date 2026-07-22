@@ -59,3 +59,6 @@ timeoutMs = 20000
 
 [agent]
 integrations = ["javascript_object_storage:2.0.0"]
+
+[objectStorage]
+defaultBucketID = "replit-objstore-86688ac4-0cf7-4697-851c-780ab6aa3e11"
