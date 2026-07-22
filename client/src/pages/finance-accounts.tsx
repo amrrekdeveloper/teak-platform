@@ -205,7 +205,7 @@ export default function FinanceAccountsPage() {
   const resetJournalForm = () => {
     setLines([EMPTY_LINE(), EMPTY_LINE()]);
     setJForm({ date: format(new Date(), "yyyy-MM-dd"), description: "", reference: "" });
-    setJAttachment(null);
+    setJAttachments([]);
     setEditingEntryId(null);
   };
 
@@ -264,12 +264,11 @@ export default function FinanceAccountsPage() {
     vatAmount: "",
   });
   const [invForm, setInvForm] = useState(INV_EMPTY());
-  const [invAttachment, setInvAttachment] = useState<{ url: string; name: string } | null>(null);
-  const [jAttachment, setJAttachment] = useState<{ url: string; name: string } | null>(null);
+  const [invAttachments, setInvAttachments] = useState<{ url: string; name: string }[]>([]);
+  const [jAttachments, setJAttachments] = useState<{ url: string; name: string }[]>([]);
   const [uploadingAtt, setUploadingAtt] = useState(false);
 
   const uploadAttachment = async (file: File): Promise<{ url: string; name: string } | null> => {
-    setUploadingAtt(true);
     try {
       const fd = new FormData();
       fd.append("file", file);
@@ -283,10 +282,60 @@ export default function FinanceAccountsPage() {
     } catch (e: any) {
       toast({ title: e.message || t("تعذّر رفع المرفق", "Failed to upload attachment"), variant: "destructive" });
       return null;
+    }
+  };
+
+  const uploadAttachments = async (
+    files: FileList | null,
+    setItems: React.Dispatch<React.SetStateAction<{ url: string; name: string }[]>>,
+  ) => {
+    if (!files || files.length === 0) return;
+    setUploadingAtt(true);
+    try {
+      for (const file of Array.from(files)) {
+        const res = await uploadAttachment(file);
+        if (res) setItems(prev => [...prev, res]);
+      }
     } finally {
       setUploadingAtt(false);
     }
   };
+
+  const AttachmentListField = ({ label, items, setItems, idPrefix }: {
+    label: string;
+    items: { url: string; name: string }[];
+    setItems: React.Dispatch<React.SetStateAction<{ url: string; name: string }[]>>;
+    idPrefix: string;
+  }) => (
+    <div className="space-y-1">
+      <Label className="text-xs">{label}</Label>
+      {items.map((att, i) => (
+        <div key={`${att.url}-${i}`} className="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm">
+          <a href={att.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-primary hover:underline truncate" data-testid={`link-${idPrefix}-attachment-${i}`}>
+            <Paperclip className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">{att.name}</span>
+          </a>
+          <button type="button" onClick={() => setItems(prev => prev.filter((_, j) => j !== i))} className="text-destructive hover:text-destructive/80 shrink-0" data-testid={`btn-remove-${idPrefix}-attachment-${i}`}>
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      ))}
+      <Input
+        type="file"
+        multiple
+        accept="application/pdf,image/*"
+        disabled={uploadingAtt}
+        onChange={async (e) => {
+          const files = e.target.files;
+          const input = e.target;
+          await uploadAttachments(files, setItems);
+          input.value = "";
+        }}
+        data-testid={`input-${idPrefix}-attachment`}
+      />
+      {uploadingAtt && <p className="text-xs text-muted-foreground">{t("جاري رفع المرفقات...", "Uploading attachments...")}</p>}
+    </div>
+  );
 
   const recordInvoiceMut = useMutation({
     mutationFn: (data: any) => apiRequest("POST", "/api/accounting/record-invoice", data),
@@ -294,7 +343,7 @@ export default function FinanceAccountsPage() {
       qc.invalidateQueries({ queryKey: ["/api/accounting/journal-entries"], exact: false });
       setInvDialog(false);
       setInvForm(INV_EMPTY());
-      setInvAttachment(null);
+      setInvAttachments([]);
       toast({ title: t("تم تسجيل الفاتورة وترحيل القيد", "Invoice recorded and posted") });
     },
     onError: (e: any) => toast({ title: e.message || "حدث خطأ", variant: "destructive" }),
@@ -311,7 +360,7 @@ export default function FinanceAccountsPage() {
     amount: "",
   });
   const [voucherForm, setVoucherForm] = useState(VOUCHER_EMPTY());
-  const [voucherAttachment, setVoucherAttachment] = useState<{ url: string; name: string } | null>(null);
+  const [voucherAttachments, setVoucherAttachments] = useState<{ url: string; name: string }[]>([]);
 
   const recordVoucherMut = useMutation({
     mutationFn: (data: any) => apiRequest("POST", "/api/accounting/record-voucher", data),
@@ -319,7 +368,7 @@ export default function FinanceAccountsPage() {
       qc.invalidateQueries({ queryKey: ["/api/accounting/journal-entries"], exact: false });
       setVoucherDialog(false);
       setVoucherForm(VOUCHER_EMPTY());
-      setVoucherAttachment(null);
+      setVoucherAttachments([]);
       toast({ title: t("تم تسجيل السند وترحيل القيد", "Voucher recorded and posted") });
     },
     onError: (e: any) => toast({ title: e.message || "حدث خطأ", variant: "destructive" }),
@@ -340,7 +389,7 @@ export default function FinanceAccountsPage() {
       paymentAccountCode: voucherForm.paymentAccountCode,
       counterAccountCode: voucherForm.counterAccountCode,
       amount: amt,
-      attachmentUrl: voucherAttachment?.url || null,
+      attachments: voucherAttachments,
     });
   };
 
@@ -394,7 +443,7 @@ export default function FinanceAccountsPage() {
     }
     if (inUse.length < 2) return toast({ title: "يجب إدخال سطرين مكتملين على الأقل", variant: "destructive" });
     if (!isBalanced) return toast({ title: "القيد غير متوازن — مجموع المدين يجب أن يساوي الدائن", variant: "destructive" });
-    const payload = { ...jForm, attachmentUrl: jAttachment?.url || null, lines: inUse };
+    const payload = { ...jForm, attachments: jAttachments, lines: inUse };
     if (editingEntryId) {
       updateEntryMut.mutate({ id: editingEntryId, data: payload });
     } else {
@@ -419,7 +468,13 @@ export default function FinanceAccountsPage() {
           }))
         : [EMPTY_LINE(), EMPTY_LINE()],
     );
-    setJAttachment(entry.attachmentUrl ? { url: entry.attachmentUrl, name: t("مرفق القيد", "Entry attachment") } : null);
+    setJAttachments(
+      Array.isArray(entry.attachments) && entry.attachments.length > 0
+        ? entry.attachments
+        : entry.attachmentUrl
+          ? [{ url: entry.attachmentUrl, name: t("مرفق القيد", "Entry attachment") }]
+          : [],
+    );
     setViewEntryId(null);
     setJournalDialog(true);
   };
@@ -450,7 +505,7 @@ export default function FinanceAccountsPage() {
       paymentAccountCode: invForm.terms === "cash" ? invForm.paymentAccountCode : undefined,
       subtotal: invSubtotal,
       vatAmount: invVat,
-      attachmentUrl: invAttachment?.url || null,
+      attachments: invAttachments,
     });
   };
 
@@ -576,11 +631,11 @@ export default function FinanceAccountsPage() {
                 )}
               </div>
               <div className="flex items-center gap-2">
-                <Button size="sm" variant="outline" onClick={() => { setVoucherForm(VOUCHER_EMPTY()); setVoucherAttachment(null); setVoucherDialog(true); }} data-testid="btn-record-voucher">
+                <Button size="sm" variant="outline" onClick={() => { setVoucherForm(VOUCHER_EMPTY()); setVoucherAttachments([]); setVoucherDialog(true); }} data-testid="btn-record-voucher">
                   <Plus className="h-4 w-4 me-1.5" />
                   {t("سند قبض / صرف", "Receipt / Payment Voucher")}
                 </Button>
-                <Button size="sm" variant="outline" onClick={() => { setInvForm(INV_EMPTY()); setInvAttachment(null); setInvDialog(true); }} data-testid="btn-record-invoice">
+                <Button size="sm" variant="outline" onClick={() => { setInvForm(INV_EMPTY()); setInvAttachments([]); setInvDialog(true); }} data-testid="btn-record-invoice">
                   <Plus className="h-4 w-4 me-1.5" />
                   {t("تسجيل فاتورة", "Record Invoice")}
                 </Button>
@@ -609,12 +664,21 @@ export default function FinanceAccountsPage() {
                           <span className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded">#{entry.entryNumber}</span>
                           <span className="text-sm font-medium">{entry.description}</span>
                           {entry.reference && <span className="text-xs text-muted-foreground">({entry.reference})</span>}
-                          {entry.attachmentUrl && (
-                            <a href={entry.attachmentUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-primary hover:underline" data-testid={`link-entry-attachment-${entry.id}`}>
-                              <Paperclip className="h-3 w-3" />
-                              {t("مرفق", "Attachment")}
-                            </a>
-                          )}
+                          {(() => {
+                            const atts: { url: string; name: string }[] =
+                              Array.isArray(entry.attachments) && entry.attachments.length > 0
+                                ? entry.attachments
+                                : entry.attachmentUrl
+                                  ? [{ url: entry.attachmentUrl, name: t("مرفق", "Attachment") }]
+                                  : [];
+                            if (atts.length === 0) return null;
+                            return (
+                              <span className="inline-flex items-center gap-1 text-xs text-primary" data-testid={`link-entry-attachment-${entry.id}`}>
+                                <Paperclip className="h-3 w-3" />
+                                {atts.length > 1 ? t(`${atts.length} مرفقات`, `${atts.length} attachments`) : t("مرفق", "Attachment")}
+                              </span>
+                            );
+                          })()}
                         </div>
                         <div className="flex items-center gap-2">
                           {entry.referenceType && (
@@ -923,15 +987,28 @@ export default function FinanceAccountsPage() {
                       <Badge variant="outline" className="text-[10px]" data-testid="badge-manual-entry">{t("يدوي", "Manual")}</Badge>
                     )}
                   </div>
-                  {viewedEntry.attachmentUrl && (
-                    <div className="col-span-2">
-                      <p className="text-xs text-muted-foreground">{t("المرفق", "Attachment")}</p>
-                      <a href={viewedEntry.attachmentUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sm text-primary hover:underline" data-testid="link-view-entry-attachment">
-                        <Paperclip className="h-3.5 w-3.5" />
-                        {t("فتح المرفق", "Open attachment")}
-                      </a>
-                    </div>
-                  )}
+                  {(() => {
+                    const atts: { url: string; name: string }[] =
+                      Array.isArray(viewedEntry.attachments) && viewedEntry.attachments.length > 0
+                        ? viewedEntry.attachments
+                        : viewedEntry.attachmentUrl
+                          ? [{ url: viewedEntry.attachmentUrl, name: t("فتح المرفق", "Open attachment") }]
+                          : [];
+                    if (atts.length === 0) return null;
+                    return (
+                      <div className="col-span-2">
+                        <p className="text-xs text-muted-foreground">{atts.length > 1 ? t("المرفقات", "Attachments") : t("المرفق", "Attachment")}</p>
+                        <div className="flex flex-col gap-1">
+                          {atts.map((att, i) => (
+                            <a key={`${att.url}-${i}`} href={att.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sm text-primary hover:underline" data-testid={`link-view-entry-attachment-${i}`}>
+                              <Paperclip className="h-3.5 w-3.5" />
+                              <span className="truncate">{att.name}</span>
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
                 <div className="rounded border overflow-hidden">
                   <table className="w-full text-xs">
@@ -1108,34 +1185,12 @@ export default function FinanceAccountsPage() {
               </div>
             </div>
 
-            <div className="space-y-1">
-              <Label className="text-xs">{t("مرفق (صورة / PDF)", "Attachment (Image / PDF)")}</Label>
-              {jAttachment ? (
-                <div className="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm">
-                  <a href={jAttachment.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-primary hover:underline truncate" data-testid="link-journal-attachment">
-                    <Paperclip className="h-3.5 w-3.5 shrink-0" />
-                    <span className="truncate">{jAttachment.name}</span>
-                  </a>
-                  <button type="button" onClick={() => setJAttachment(null)} className="text-destructive hover:text-destructive/80 shrink-0" data-testid="btn-remove-journal-attachment">
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-              ) : (
-                <Input
-                  type="file"
-                  accept="application/pdf,image/jpeg,image/png"
-                  disabled={uploadingAtt}
-                  onChange={async (e) => {
-                    const file = e.target.files?.[0];
-                    e.target.value = "";
-                    if (!file) return;
-                    const res = await uploadAttachment(file);
-                    if (res) setJAttachment(res);
-                  }}
-                  data-testid="input-journal-attachment"
-                />
-              )}
-            </div>
+            <AttachmentListField
+              label={t("مرفقات (صور / PDF — يمكن اختيار أكثر من ملف)", "Attachments (Images / PDF — multiple allowed)")}
+              items={jAttachments}
+              setItems={setJAttachments}
+              idPrefix="journal"
+            />
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setJournalDialog(false)}>{t("إلغاء", "Cancel")}</Button>
@@ -1259,34 +1314,12 @@ export default function FinanceAccountsPage() {
               <span className="tabular-nums" data-testid="text-invoice-total">{invTotal.toLocaleString("ar-SA", { minimumFractionDigits: 2 })} {t("ر.س", "SAR")}</span>
             </div>
 
-            <div className="space-y-1">
-              <Label className="text-xs">{t("مرفق الفاتورة (صورة / PDF)", "Invoice Attachment (Image / PDF)")}</Label>
-              {invAttachment ? (
-                <div className="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm">
-                  <a href={invAttachment.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-primary hover:underline truncate" data-testid="link-invoice-attachment">
-                    <Paperclip className="h-3.5 w-3.5 shrink-0" />
-                    <span className="truncate">{invAttachment.name}</span>
-                  </a>
-                  <button type="button" onClick={() => setInvAttachment(null)} className="text-destructive hover:text-destructive/80 shrink-0" data-testid="btn-remove-invoice-attachment">
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-              ) : (
-                <Input
-                  type="file"
-                  accept="application/pdf,image/jpeg,image/png"
-                  disabled={uploadingAtt}
-                  onChange={async (e) => {
-                    const file = e.target.files?.[0];
-                    e.target.value = "";
-                    if (!file) return;
-                    const res = await uploadAttachment(file);
-                    if (res) setInvAttachment(res);
-                  }}
-                  data-testid="input-invoice-attachment"
-                />
-              )}
-            </div>
+            <AttachmentListField
+              label={t("مرفقات الفاتورة (صور / PDF — يمكن اختيار أكثر من ملف)", "Invoice Attachments (Images / PDF — multiple allowed)")}
+              items={invAttachments}
+              setItems={setInvAttachments}
+              idPrefix="invoice"
+            />
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setInvDialog(false)}>{t("إلغاء", "Cancel")}</Button>
@@ -1368,34 +1401,12 @@ export default function FinanceAccountsPage() {
               />
             </div>
 
-            <div className="space-y-1">
-              <Label className="text-xs">{t("إيصال (صورة / PDF)", "Receipt (Image / PDF)")}</Label>
-              {voucherAttachment ? (
-                <div className="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm">
-                  <a href={voucherAttachment.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-primary hover:underline truncate" data-testid="link-voucher-attachment">
-                    <Paperclip className="h-3.5 w-3.5 shrink-0" />
-                    <span className="truncate">{voucherAttachment.name}</span>
-                  </a>
-                  <button type="button" onClick={() => setVoucherAttachment(null)} className="text-destructive hover:text-destructive/80 shrink-0" data-testid="btn-remove-voucher-attachment">
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-              ) : (
-                <Input
-                  type="file"
-                  accept="application/pdf,image/jpeg,image/png"
-                  disabled={uploadingAtt}
-                  onChange={async (e) => {
-                    const file = e.target.files?.[0];
-                    e.target.value = "";
-                    if (!file) return;
-                    const res = await uploadAttachment(file);
-                    if (res) setVoucherAttachment(res);
-                  }}
-                  data-testid="input-voucher-attachment"
-                />
-              )}
-            </div>
+            <AttachmentListField
+              label={t("إيصالات (صور / PDF — يمكن اختيار أكثر من ملف)", "Receipts (Images / PDF — multiple allowed)")}
+              items={voucherAttachments}
+              setItems={setVoucherAttachments}
+              idPrefix="voucher"
+            />
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setVoucherDialog(false)}>{t("إلغاء", "Cancel")}</Button>

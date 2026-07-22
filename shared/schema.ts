@@ -1473,6 +1473,7 @@ export const journalEntries = pgTable("journal_entries", {
   totalDebit: decimal("total_debit", { precision: 15, scale: 2 }).notNull().default("0"),
   totalCredit: decimal("total_credit", { precision: 15, scale: 2 }).notNull().default("0"),
   attachmentUrl: text("attachment_url"),
+  attachments: jsonb("attachments").$type<{ url: string; name: string }[]>(),
   createdBy: integer("created_by").references(() => users.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });

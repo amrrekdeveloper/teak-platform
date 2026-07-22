@@ -7854,6 +7854,7 @@ export async function registerRoutes(
         );
       `);
       await db.execute(`ALTER TABLE journal_entries ADD COLUMN IF NOT EXISTS attachment_url TEXT`);
+      await db.execute(`ALTER TABLE journal_entries ADD COLUMN IF NOT EXISTS attachments JSONB`);
       console.log("Finance module migration completed");
     } catch (financeMigrationError) {
       console.warn("Finance migration (non-fatal):", financeMigrationError instanceof Error ? financeMigrationError.message : String(financeMigrationError));
@@ -7927,6 +7928,19 @@ export async function registerRoutes(
     } catch { res.status(500).json({ message: "حدث خطأ" }); }
   });
 
+  // Sanitize a client-provided attachments list: only {url, name} objects whose
+  // url points at the finance-attachments upload path are kept.
+  const sanitizeFinanceAttachments = (raw: any): { url: string; name: string }[] | null => {
+    if (!Array.isArray(raw)) return null;
+    const clean = raw
+      .filter((a: any) => a && typeof a.url === "string" && a.url.startsWith("/uploads/finance-attachments/") && typeof a.name === "string")
+      .map((a: any) => ({ url: a.url, name: String(a.name).slice(0, 255) }))
+      .slice(0, 20);
+    return clean.length > 0 ? clean : null;
+  };
+  const sanitizeFinanceUrl = (raw: any): string | null =>
+    typeof raw === "string" && raw.startsWith("/uploads/finance-attachments/") ? raw : null;
+
   // ── Journal Entries ────────────────────────────────────────────────────────
   app.get("/api/accounting/journal-entries", requireRole("owner", "assistant", "accountant"), async (req, res) => {
     try {
@@ -7963,8 +7977,9 @@ export async function registerRoutes(
       if (Math.abs(totalDebit - totalCredit) > 0.01) {
         return res.status(400).json({ message: `القيد غير متوازن: مجموع المدين (${totalDebit.toFixed(2)}) لا يساوي مجموع الدائن (${totalCredit.toFixed(2)})` });
       }
+      const attachments = sanitizeFinanceAttachments(entryData.attachments);
       const entry = await storage.createJournalEntry(
-        { ...entryData, createdBy: (req as any).userId },
+        { ...entryData, attachments, attachmentUrl: attachments?.[0]?.url ?? sanitizeFinanceUrl(entryData.attachmentUrl), createdBy: (req as any).userId },
         lines
       );
       res.json(entry);
@@ -8011,7 +8026,15 @@ export async function registerRoutes(
       }
       const updated = await storage.updateJournalEntryWithLines(
         id,
-        { date: entryData.date, description: entryData.description, reference: entryData.reference ?? null, attachmentUrl: entryData.attachmentUrl ?? existing.attachmentUrl },
+        {
+          date: entryData.date,
+          description: entryData.description,
+          reference: entryData.reference ?? null,
+          attachments: entryData.attachments !== undefined ? sanitizeFinanceAttachments(entryData.attachments) : (existing as any).attachments,
+          attachmentUrl: entryData.attachments !== undefined
+            ? (sanitizeFinanceAttachments(entryData.attachments)?.[0]?.url ?? null)
+            : (sanitizeFinanceUrl(entryData.attachmentUrl) ?? existing.attachmentUrl),
+        },
         lines,
       );
       res.json(updated);
@@ -8125,7 +8148,8 @@ export async function registerRoutes(
           reference: reference || null,
           referenceType: invoiceKind === "sales" ? "sales_invoice" : "purchase_invoice",
           status: "posted",
-          attachmentUrl: req.body.attachmentUrl || null,
+          attachments: sanitizeFinanceAttachments(req.body.attachments),
+          attachmentUrl: sanitizeFinanceAttachments(req.body.attachments)?.[0]?.url ?? sanitizeFinanceUrl(req.body.attachmentUrl),
           createdBy: (req as any).userId,
         },
         lines
@@ -8141,9 +8165,9 @@ export async function registerRoutes(
     storage: multer.memoryStorage(),
     limits: { fileSize: 10 * 1024 * 1024 },
     fileFilter: (_req, file, cb) => {
-      const allowed = ["application/pdf", "image/jpeg", "image/jpg", "image/png"];
+      const allowed = ["application/pdf", "image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif", "image/bmp", "image/tiff", "image/heic", "image/heif", "image/avif"];
       if (allowed.includes(file.mimetype)) cb(null, true);
-      else cb(new Error("Only PDF, JPEG, and PNG files are allowed"));
+      else cb(new Error("يُسمح فقط بملفات PDF والصور (JPG, PNG, WebP, GIF...)"));
     },
   });
 
@@ -8161,6 +8185,8 @@ export async function registerRoutes(
   app.get("/uploads/finance-attachments/:filename", requireRole("owner", "assistant", "accountant"), async (req, res) => {
     try {
       const filename = req.params.filename.replace(/[^a-zA-Z0-9._-]/g, "");
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.setHeader("Content-Security-Policy", "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'");
       const served = await streamObjectFile(FINANCE_DOCS_FOLDER, filename, res);
       if (!served) return res.status(404).json({ message: "الملف غير موجود" });
     } catch (error) {
@@ -8250,7 +8276,8 @@ export async function registerRoutes(
           reference: reference || null,
           referenceType: voucherKind === "receipt" ? "receipt_voucher" : "payment_voucher",
           status: "posted",
-          attachmentUrl: req.body.attachmentUrl || null,
+          attachments: sanitizeFinanceAttachments(req.body.attachments),
+          attachmentUrl: sanitizeFinanceAttachments(req.body.attachments)?.[0]?.url ?? sanitizeFinanceUrl(req.body.attachmentUrl),
           createdBy: (req as any).userId,
         },
         lines
