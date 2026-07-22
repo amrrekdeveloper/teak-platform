@@ -1,12 +1,10 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { motion, AnimatePresence, useInView } from "framer-motion";
 import { useTheme } from "@/components/theme-provider";
 import { useLanguage } from "@/components/language-provider";
 import {
   Sun,
   Moon,
-  ChevronLeft,
-  ChevronRight,
   ArrowUp,
   Menu,
   X,
@@ -22,166 +20,79 @@ import {
   Factory,
   Store,
   Building2,
-  Sparkles,
-  Hammer,
-  Palette,
-  CheckCircle2,
-  Truck,
-  PenTool,
-  Globe2,
-  HeartHandshake,
   Lock,
   Fingerprint,
   Calculator,
+  ChefHat,
+  ArrowLeft,
+  Images,
 } from "lucide-react";
 import { SiWhatsapp } from "react-icons/si";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import teakLogo from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
-import realProjectImg1 from "@assets/WhatsApp_Image_2026-03-28_at_10.48.01_AM_1774691415123.jpeg";
-import realProjectImg2 from "@assets/WhatsApp_Image_2026-03-28_at_10.48.01_AM_(4)_1774691415123.jpeg";
-import realProjectImg3 from "@assets/WhatsApp_Image_2026-03-28_at_10.48.01_AM_(5)_1774691415123.jpeg";
-import realProjectImg4 from "@assets/WhatsApp_Image_2026-03-28_at_10.48.02_AM_(1)_1774691415124.jpeg";
-import realProjectImg5 from "@assets/WhatsApp_Image_2026-03-28_at_10.48.02_AM_(2)_1774691415124.jpeg";
-import realProjectImg6 from "@assets/WhatsApp_Image_2026-03-28_at_10.48.02_AM_(3)_1774691415124.jpeg";
-import realProjectImg7 from "@assets/WhatsApp_Image_2026-03-28_at_10.48.02_AM_(4)_1774691415124.jpeg";
-import realProjectImg8 from "@assets/WhatsApp_Image_2026-03-28_at_10.48.02_AM_1774691415125.jpeg";
-import realProjectImg9 from "@assets/WhatsApp_Image_2026-03-28_at_10.48.03_AM_1774691415125.jpeg";
-import realProjectImg10 from "@assets/WhatsApp_Image_2026-03-28_at_10.48.46_AM_(1)_1774691415125.jpeg";
 
 import imgKitchenGrayTeak from "@assets/WhatsApp_Image_2026-03-28_at_10.47.58_AM_(1)_1774689872332.jpeg";
 import imgKitchenWarmTeak from "@assets/WhatsApp_Image_2026-03-28_at_10.47.58_AM_(2)_1774689872333.jpeg";
 import imgKitchenLightWood from "@assets/WhatsApp_Image_2026-03-28_at_10.47.58_AM_(3)_1774689872333.jpeg";
 import imgKitchenWhiteGlossy from "@assets/WhatsApp_Image_2026-03-28_at_10.47.58_AM_(4)_1774691363250.jpeg";
-import imgWalkInClosetEmpty from "@assets/WhatsApp_Image_2026-03-28_at_10.47.57_AM_(3)_1774689872331.jpeg";
-import imgDoorChevron from "@assets/WhatsApp_Image_2026-03-28_at_10.47.55_AM_(2)_1774689832749.jpeg";
-import imgDoorDiamond from "@assets/WhatsApp_Image_2026-03-28_at_10.47.55_AM_(6)_1774689832750.jpeg";
-import imgWallGeometric from "@assets/WhatsApp_Image_2026-03-28_at_10.47.53_AM_1774689748826.jpeg";
-import imgStairRailing1 from "@assets/WhatsApp_Image_2026-03-28_at_10.47.53_AM_(2)_1774689748825.jpeg";
-import imgStairRailing2 from "@assets/WhatsApp_Image_2026-03-28_at_10.47.53_AM_(4)_1774689748826.jpeg";
-import imgDoorChevronDouble from "@assets/WhatsApp_Image_2026-03-28_at_10.47.55_AM_(3)_1774689832750.jpeg";
-import imgWallWhiteGeometric from "@assets/WhatsApp_Image_2026-03-28_at_10.47.54_AM_(4)_1774689748827.jpeg";
-import imgWardrobeFullRoom from "@assets/WhatsApp_Image_2026-03-28_at_10.48.02_AM_(1)_1774691415124.jpeg";
-import imgWalkInClosetClothes from "@assets/WhatsApp_Image_2026-03-28_at_10.47.57_AM_(4)_1774689872331.jpeg";
-import imgTeakOvenUnit from "@assets/WhatsApp_Image_2026-03-28_at_10.47.58_AM_1774691363250.jpeg";
 import imgKitchenVelvetChairs from "@assets/WhatsApp_Image_2026-03-28_at_10.47.58_AM_(5)_1774691363250.jpeg";
 import imgKitchenTeakBrochure from "@assets/WhatsApp_Image_2026-03-28_at_10.47.59_AM_(2)_1774691363251.jpeg";
 import imgKitchenGrayCloseup from "@assets/WhatsApp_Image_2026-03-28_at_10.47.59_AM_(3)_1774691363251.jpeg";
+import imgKitchenDarkVelvetIsland from "@assets/WhatsApp_Image_2026-03-28_at_10.47.59_AM_(1)_1774691363251.jpeg";
+import imgKitchenGrayIsland from "@assets/WhatsApp_Image_2026-03-28_at_10.47.59_AM_(4)_1774691363252.jpeg";
+import imgTeakOvenUnit from "@assets/WhatsApp_Image_2026-03-28_at_10.47.58_AM_1774691363250.jpeg";
+
+import imgWalkInClosetEmpty from "@assets/WhatsApp_Image_2026-03-28_at_10.47.57_AM_(3)_1774689872331.jpeg";
+import imgWalkInClosetClothes from "@assets/WhatsApp_Image_2026-03-28_at_10.47.57_AM_(4)_1774689872331.jpeg";
+import imgWalkInClosetRobes from "@assets/WhatsApp_Image_2026-03-28_at_10.47.57_AM_(5)_1774689872331.jpeg";
+import imgWardrobeFullRoom from "@assets/WhatsApp_Image_2026-03-28_at_10.48.02_AM_(1)_1774691415124.jpeg";
+
+import imgWallGeometric from "@assets/WhatsApp_Image_2026-03-28_at_10.47.53_AM_1774689748826.jpeg";
+import imgWallWhiteGeometric from "@assets/WhatsApp_Image_2026-03-28_at_10.47.54_AM_(4)_1774689748827.jpeg";
+import imgStairRailing1 from "@assets/WhatsApp_Image_2026-03-28_at_10.47.53_AM_(2)_1774689748825.jpeg";
+import imgStairRailing2 from "@assets/WhatsApp_Image_2026-03-28_at_10.47.53_AM_(4)_1774689748826.jpeg";
+import imgTvUnitFireplace1 from "@assets/WhatsApp_Image_2026-03-28_at_10.48.02_AM_(2)_1774691415124.jpeg";
+import imgTvUnitFireplace2 from "@assets/WhatsApp_Image_2026-03-28_at_10.48.02_AM_(3)_1774691415124.jpeg";
+import imgSayyarShelf from "@assets/WhatsApp_Image_2026-03-28_at_10.48.01_AM_1774691415123.jpeg";
+
 import imgHotelLobbySphereChandelier from "@assets/WhatsApp_Image_2026-03-28_at_10.47.54_AM_(5)_1774689748827.jpeg";
 import imgHotelLobbySofasGoldWall from "@assets/WhatsApp_Image_2026-03-28_at_10.47.57_AM_1774689872332.jpeg";
 import imgCafeGreenChairs1 from "@assets/WhatsApp_Image_2026-03-28_at_10.47.54_AM_(1)_1774689748826.jpeg";
 import imgCafeGreenChairs2 from "@assets/WhatsApp_Image_2026-03-28_at_10.47.54_AM_(2)_1774689748827.jpeg";
 import imgCommercialReception from "@assets/WhatsApp_Image_2026-03-28_at_10.47.54_AM_(3)_1774689748827.jpeg";
 import imgVipOffice from "@assets/WhatsApp_Image_2026-03-28_at_10.47.57_AM_(2)_1774689872331.jpeg";
-import imgSayyarShelf from "@assets/WhatsApp_Image_2026-03-28_at_10.48.01_AM_1774691415123.jpeg";
 import imgSayyarDisplay from "@assets/WhatsApp_Image_2026-03-28_at_10.48.01_AM_(5)_1774691415123.jpeg";
-import imgDoorWithGoldStripes from "@assets/WhatsApp_Image_2026-03-28_at_10.47.53_AM_(1)_1774689748825.jpeg";
-import imgDoorCarvedWood from "@assets/WhatsApp_Image_2026-03-28_at_10.47.53_AM_(3)_1774689748826.jpeg";
-import imgHotelColumn from "@assets/WhatsApp_Image_2026-03-28_at_10.47.54_AM_1774689832748.jpeg";
-import imgCafeWrappedChairs from "@assets/WhatsApp_Image_2026-03-28_at_10.47.55_AM_(1)_1774689832749.jpeg";
-import imgWallWhiteGeometricCloseup from "@assets/WhatsApp_Image_2026-03-28_at_10.47.55_AM_1774689832751.jpeg";
-import imgDoorClassicWhiteGold from "@assets/WhatsApp_Image_2026-03-28_at_10.47.55_AM_(4)_1774689832750.jpeg";
-import imgDoorClassicDarkCarved from "@assets/WhatsApp_Image_2026-03-28_at_10.47.55_AM_(5)_1774689832750.jpeg";
-import imgHotelLobbyWoodColumns from "@assets/WhatsApp_Image_2026-03-28_at_10.47.56_AM_(1)_1774689832751.jpeg";
-import imgDoorNaturalChevronOpen from "@assets/WhatsApp_Image_2026-03-28_at_10.47.56_AM_1774689872330.jpeg";
-import imgHotelLobbyDecorativeShelves from "@assets/WhatsApp_Image_2026-03-28_at_10.47.56_AM_(2)_1774689832751.jpeg";
-import imgCafeBookshelfFairyLights from "@assets/WhatsApp_Image_2026-03-28_at_10.47.57_AM_(1)_1774689872330.jpeg";
-import imgWalkInClosetRobes from "@assets/WhatsApp_Image_2026-03-28_at_10.47.57_AM_(5)_1774689872331.jpeg";
-import imgKitchenGrayTeakDuplicate from "@assets/WhatsApp_Image_2026-03-28_at_10.47.58_AM_(1)_1774691363249.jpeg";
-import imgKitchenWarmTeakDuplicate from "@assets/WhatsApp_Image_2026-03-28_at_10.47.58_AM_(2)_1774691363249.jpeg";
-import imgKitchenLightWoodDuplicate from "@assets/WhatsApp_Image_2026-03-28_at_10.47.58_AM_(3)_1774691363250.jpeg";
-import imgKitchenDarkVelvetIsland from "@assets/WhatsApp_Image_2026-03-28_at_10.47.59_AM_(1)_1774691363251.jpeg";
-import imgKitchenGrayIsland from "@assets/WhatsApp_Image_2026-03-28_at_10.47.59_AM_(4)_1774691363252.jpeg";
-import imgSayyarShowroomExterior from "@assets/WhatsApp_Image_2026-03-28_at_10.48.01_AM_(4)_1774691415123.jpeg";
-import imgSayyarBoxesCloseup from "@assets/WhatsApp_Image_2026-03-28_at_10.48.02_AM_1774691415125.jpeg";
-import imgTvUnitFireplace1 from "@assets/WhatsApp_Image_2026-03-28_at_10.48.02_AM_(2)_1774691415124.jpeg";
-import imgTvUnitFireplace2 from "@assets/WhatsApp_Image_2026-03-28_at_10.48.02_AM_(3)_1774691415124.jpeg";
-import imgTvUnitFireplace3 from "@assets/WhatsApp_Image_2026-03-28_at_10.48.02_AM_(4)_1774691415124.jpeg";
-import imgTvUnitFireplace4 from "@assets/WhatsApp_Image_2026-03-28_at_10.48.03_AM_1774691415125.jpeg";
-import imgAccordionDoorWhite from "@assets/WhatsApp_Image_2026-03-28_at_10.48.46_AM_(1)_1774691415125.jpeg";
 
-const heroSlides = [
-  {
-    image: imgKitchenGrayTeak,
-    titleAr: "مطابخ فاخرة بالسعودية",
-    titleEn: "Luxury Kitchens in Saudi Arabia",
-    subtitleAr: "تصميم وتركيب مطابخ عصرية في جازان وخميس مشيط وأبها",
-    subtitleEn: "Design & installation of modern kitchens in Jazan, Khamis Mushait & Abha",
-  },
-  {
-    image: imgKitchenWarmTeak,
-    titleAr: "مطابخ نيو كلاسيك",
-    titleEn: "Neo Classic Kitchens",
-    subtitleAr: "تفصيل مطابخ بأسعار مميزة ومواد أوروبية عالية الجودة",
-    subtitleEn: "Custom kitchens with premium European materials at great prices",
-  },
-  {
-    image: imgKitchenLightWood,
-    titleAr: "خزائن مدمجة فاخرة",
-    titleEn: "Luxury Built-in Wardrobes",
-    subtitleAr: "خزائن غرف نوم وملابس بتصاميم حديثة وجودة استثنائية",
-    subtitleEn: "Bedroom & wardrobe closets with modern designs and exceptional quality",
-  },
-  {
-    image: imgKitchenVelvetChairs,
-    titleAr: "أبواب خشب طبيعي وديكور",
-    titleEn: "Natural Wood Doors & Decor",
-    subtitleAr: "أبواب وديكورات خشبية تُضفي الفخامة على منزلك",
-    subtitleEn: "Wood doors & decorations that add luxury to your home",
-  },
-];
+type GalleryCategory = "kitchens" | "wardrobes" | "decor";
 
-const productCards = [
-  {
-    image: imgKitchenWhiteGlossy,
-    titleAr: "المطابخ",
-    titleEn: "Kitchens",
-    descAr: "مصنعة من خشب شيبورد الإيطالي واكسسوارات ألمانية",
-    descEn: "Made from Italian chipboard with German accessories",
-  },
-  {
-    image: imgWalkInClosetEmpty,
-    titleAr: "الخزائن",
-    titleEn: "Wardrobes",
-    descAr: "مصنعة من خشب شيبورد الإيطالي واكسسوارات ألمانية",
-    descEn: "Made from Italian chipboard with German accessories",
-  },
-  {
-    image: imgDoorChevron,
-    titleAr: "أبواب خشب طبيعي",
-    titleEn: "Natural Wood Doors",
-    descAr: "مصنعة من الخشب السويدي مكسي بقشر الجوز وخشب البلوط",
-    descEn: "Made from Swedish wood with walnut and oak veneer",
-  },
-  {
-    image: imgDoorDiamond,
-    titleAr: "أبواب شيبورد",
-    titleEn: "Chipboard Doors",
-    descAr: "مصنعة من خشب شيبورد الإيطالي",
-    descEn: "Made from Italian chipboard",
-  },
-  {
-    image: imgWallGeometric,
-    titleAr: "ديكورات خشبية",
-    titleEn: "Wood Decorations",
-    descAr: "مصنعة من خشب شيبورد الايطالي المقاوم للماء والرطوبة",
-    descEn: "Made from Italian water & moisture resistant chipboard",
-  },
-];
-
-const galleryImages = [
-  { src: imgStairRailing1, captionAr: "درابزين درج فاخر بقضبان ذهبية", captionEn: "Luxury Stair Railing with Gold Bars" },
-  { src: imgStairRailing2, captionAr: "درابزين درج بقضبان ذهبية - زاوية ثانية", captionEn: "Stair Railing with Gold Bars - Second Angle" },
-  { src: imgDoorChevronDouble, captionAr: "باب خشب طبيعي بنقش شيفرون", captionEn: "Natural Wood Door with Chevron Pattern" },
-  { src: imgWallWhiteGeometric, captionAr: "ديكور جداري هندسي أبيض", captionEn: "White Geometric Wall Decoration" },
-  { src: imgWardrobeFullRoom, captionAr: "خزانة مدمجة فاخرة بتصميم عصري مع إضاءة LED", captionEn: "Luxury built-in wardrobe with modern design and LED lighting" },
-  { src: imgWalkInClosetEmpty, captionAr: "غرفة خزائن مشي بإضاءة ذهبية", captionEn: "Walk-in Closet with Golden Lighting" },
-  { src: imgWalkInClosetClothes, captionAr: "غرفة خزائن مشي فاخرة", captionEn: "Luxury Walk-in Closet" },
-  { src: imgTeakOvenUnit, captionAr: "وحدة مطبخ متكاملة - برج الأفران", captionEn: "Integrated Kitchen Unit - Oven Tower" },
-  { src: imgSayyarShelf, captionAr: "ديكورات خشبية فاخرة لمعرض سيار – تصميم احترافي", captionEn: "Luxury wood decor for Sayyar showroom - Professional design" },
-  { src: imgTvUnitFireplace1, captionAr: "ديكور خشبي للصالة مع وحدة تلفزيون – تفصيل راقٍ", captionEn: "Living room wood decor with TV unit - Refined craftsmanship" },
-  { src: imgKitchenTeakBrochure, captionAr: "من معرضنا - خميس مشيط", captionEn: "From Our Showroom - Khamis Mushait" },
-  { src: imgKitchenGrayCloseup, captionAr: "تفاصيل التشطيب الراقي", captionEn: "Refined Finishing Details" },
+const galleryItems: {
+  src: string;
+  category: GalleryCategory;
+  captionAr: string;
+  captionEn: string;
+}[] = [
+  { src: imgKitchenGrayTeak, category: "kitchens", captionAr: "مطبخ رمادي وخشبي عصري", captionEn: "Modern Gray & Wood Kitchen" },
+  { src: imgKitchenWarmTeak, category: "kitchens", captionAr: "مطبخ بألوان دافئة", captionEn: "Warm-Toned Kitchen" },
+  { src: imgKitchenLightWood, category: "kitchens", captionAr: "مطبخ خشبي فاتح", captionEn: "Light Wood Kitchen" },
+  { src: imgKitchenWhiteGlossy, category: "kitchens", captionAr: "مطبخ أبيض لامع", captionEn: "White Glossy Kitchen" },
+  { src: imgKitchenVelvetChairs, category: "kitchens", captionAr: "مطبخ فاخر مع جلسة", captionEn: "Luxury Kitchen with Seating" },
+  { src: imgKitchenDarkVelvetIsland, category: "kitchens", captionAr: "مطبخ بجزيرة وسطية داكنة", captionEn: "Kitchen with Dark Island" },
+  { src: imgKitchenGrayIsland, category: "kitchens", captionAr: "مطبخ رمادي بجزيرة وسطية", captionEn: "Gray Kitchen with Island" },
+  { src: imgTeakOvenUnit, category: "kitchens", captionAr: "وحدة مطبخ متكاملة - برج الأفران", captionEn: "Integrated Kitchen Unit - Oven Tower" },
+  { src: imgKitchenTeakBrochure, category: "kitchens", captionAr: "من معرضنا - خميس مشيط", captionEn: "From Our Showroom - Khamis Mushait" },
+  { src: imgKitchenGrayCloseup, category: "kitchens", captionAr: "تفاصيل التشطيب الراقي", captionEn: "Refined Finishing Details" },
+  { src: imgWardrobeFullRoom, category: "wardrobes", captionAr: "خزانة مدمجة فاخرة مع إضاءة LED", captionEn: "Luxury Built-in Wardrobe with LED Lighting" },
+  { src: imgWalkInClosetEmpty, category: "wardrobes", captionAr: "غرفة ملابس بإضاءة ذهبية", captionEn: "Walk-in Closet with Golden Lighting" },
+  { src: imgWalkInClosetClothes, category: "wardrobes", captionAr: "غرفة ملابس فاخرة", captionEn: "Luxury Walk-in Closet" },
+  { src: imgWalkInClosetRobes, category: "wardrobes", captionAr: "خزائن ملابس بتفصيل خاص", captionEn: "Custom Wardrobe Closets" },
+  { src: imgWallGeometric, category: "decor", captionAr: "ديكور جداري هندسي", captionEn: "Geometric Wall Decoration" },
+  { src: imgWallWhiteGeometric, category: "decor", captionAr: "ديكور جداري هندسي أبيض", captionEn: "White Geometric Wall Decoration" },
+  { src: imgStairRailing1, category: "decor", captionAr: "درابزين درج فاخر بقضبان ذهبية", captionEn: "Luxury Stair Railing with Gold Bars" },
+  { src: imgStairRailing2, category: "decor", captionAr: "درابزين درج - زاوية ثانية", captionEn: "Stair Railing - Second Angle" },
+  { src: imgTvUnitFireplace1, category: "decor", captionAr: "ديكور صالة مع وحدة تلفزيون", captionEn: "Living Room Decor with TV Unit" },
+  { src: imgTvUnitFireplace2, category: "decor", captionAr: "وحدة تلفزيون مع مدفأة", captionEn: "TV Unit with Fireplace" },
+  { src: imgSayyarShelf, category: "decor", captionAr: "ديكورات معرض تجاري", captionEn: "Commercial Showroom Decor" },
 ];
 
 const projectCards = [
@@ -195,6 +106,63 @@ const projectCards = [
   { image: imgSayyarDisplay, titleAr: "تجهيزات معرض تجاري", titleEn: "Commercial Showroom Fittings" },
 ];
 
+function FactoryHeroArt() {
+  return (
+    <svg
+      viewBox="0 0 440 300"
+      className="w-full h-auto text-primary"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {/* Factory roofline */}
+      <path d="M 20 90 L 20 55 L 60 30 L 60 55 L 100 30 L 100 55 L 140 30 L 140 90" opacity="0.45" />
+      <rect x="30" y="62" width="16" height="14" rx="2" opacity="0.45" />
+      <rect x="70" y="62" width="16" height="14" rx="2" opacity="0.45" />
+      <rect x="110" y="62" width="16" height="14" rx="2" opacity="0.45" />
+      {/* Wall cabinets */}
+      <rect x="170" y="30" width="100" height="62" rx="4" opacity="0.7" />
+      <line x1="220" y1="30" x2="220" y2="92" opacity="0.7" />
+      <circle cx="212" cy="61" r="2.5" fill="currentColor" opacity="0.7" />
+      <circle cx="228" cy="61" r="2.5" fill="currentColor" opacity="0.7" />
+      <rect x="290" y="16" width="66" height="76" rx="4" opacity="0.5" />
+      <line x1="290" y1="54" x2="356" y2="54" opacity="0.5" />
+      {/* Hood */}
+      <path d="M 380 92 L 428 92 L 414 56 L 394 56 Z" opacity="0.8" />
+      <rect x="398" y="20" width="12" height="36" opacity="0.8" />
+      {/* Countertop */}
+      <line x1="10" y1="150" x2="430" y2="150" strokeWidth="6" />
+      {/* Base cabinets: drawers */}
+      <rect x="24" y="162" width="100" height="106" rx="4" opacity="0.7" />
+      <rect x="34" y="176" width="80" height="26" rx="2" opacity="0.7" />
+      <rect x="34" y="210" width="80" height="26" rx="2" opacity="0.7" />
+      <rect x="34" y="244" width="80" height="16" rx="2" opacity="0.7" />
+      {/* Oven unit */}
+      <rect x="146" y="162" width="130" height="106" rx="4" />
+      <line x1="153" y1="176" x2="269" y2="176" />
+      <circle cx="162" cy="169" r="2" fill="currentColor" />
+      <circle cx="174" cy="169" r="2" fill="currentColor" />
+      <circle cx="186" cy="169" r="2" fill="currentColor" />
+      <rect x="166" y="188" width="90" height="62" rx="3" />
+      <path d="M 176 220 Q 211 200 246 220" opacity="0.6" />
+      {/* Base cabinet unit */}
+      <rect x="298" y="162" width="126" height="106" rx="4" opacity="0.7" />
+      <line x1="361" y1="162" x2="361" y2="268" opacity="0.7" />
+      <line x1="350" y1="200" x2="350" y2="230" opacity="0.7" />
+      <line x1="372" y1="200" x2="372" y2="230" opacity="0.7" />
+      {/* Cooktop */}
+      <circle cx="200" cy="136" r="9" opacity="0.6" />
+      <circle cx="232" cy="136" r="9" opacity="0.6" />
+      {/* Faucet */}
+      <path d="M 340 150 L 340 128 Q 340 118 350 118 L 358 118" opacity="0.6" />
+      <line x1="358" y1="118" x2="358" y2="126" opacity="0.6" />
+    </svg>
+  );
+}
+
 function Navbar() {
   const { theme, toggleTheme } = useTheme();
   const { t, toggleLang, lang } = useLanguage();
@@ -207,27 +175,13 @@ function Navbar() {
     return () => window.removeEventListener("scroll", handler);
   }, []);
 
-  const isOnHero = !scrolled;
-  const isDark = theme === "dark";
-  const showWhiteLogo = isDark || isOnHero;
-  const logoClass = showWhiteLogo ? "" : "logo-red";
-
   const navLinks = [
     { href: "/kitchen-designer", labelAr: "صمّم مطبخك", labelEn: "Design Your Kitchen" },
-    { href: "#about", labelAr: "من نحن", labelEn: "About" },
-    { href: "#products", labelAr: "منتجاتنا", labelEn: "Products" },
-    { href: "#gallery", labelAr: "معرض أعمالنا", labelEn: "Gallery" },
+    { href: "#gallery", labelAr: "معرض أعمالنا", labelEn: "Our Gallery" },
     { href: "#projects", labelAr: "مشاريعنا", labelEn: "Projects" },
+    { href: "#location", labelAr: "فروعنا", labelEn: "Branches" },
     { href: "#contact", labelAr: "تواصل معنا", labelEn: "Contact" },
   ];
-
-  const navLinkClasses = isOnHero
-    ? "px-3 py-2 text-sm font-medium text-white/90 hover:text-white transition-colors drop-shadow-sm"
-    : "px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors";
-
-  const iconBtnClasses = isOnHero
-    ? "text-white/90 hover:text-white hover:bg-white/10"
-    : "";
 
   return (
     <motion.nav
@@ -246,7 +200,7 @@ function Navbar() {
             <img
               src={teakLogo}
               alt="Teak Logo"
-              className={`h-12 sm:h-14 w-auto object-contain transition-all duration-500 ${logoClass}`}
+              className="h-12 sm:h-14 w-auto object-contain logo-auto transition-all duration-500"
               data-testid="img-logo"
             />
           </a>
@@ -256,36 +210,22 @@ function Navbar() {
               <a
                 key={link.href}
                 href={link.href}
-                className={navLinkClasses}
-                data-testid={`link-nav-${link.labelEn.toLowerCase()}`}
+                className="px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                data-testid={`link-nav-${link.labelEn.toLowerCase().replace(/\s/g, "-")}`}
               >
                 {t(link.labelAr, link.labelEn)}
               </a>
             ))}
             <a
-              href="/request-quote"
-              className={isOnHero
-                ? "px-3 py-2 text-sm font-bold text-white hover:text-white/80 transition-colors drop-shadow-sm"
-                : "px-3 py-2 text-sm font-bold text-primary hover:text-primary/80 transition-colors"
-              }
-              data-testid="link-request-quote"
-            >
-              {t("طلب عرض سعر", "Request Quote")}
-            </a>
-            <a
               href="/track-order"
-              className={navLinkClasses}
+              className="px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
               data-testid="link-track-order"
             >
               {t("تتبع طلبك", "Track Order")}
             </a>
             <a
               href="/portal/login"
-              className={
-                isOnHero
-                  ? "px-3 py-2 text-sm font-bold text-white hover:text-white/80 transition-colors drop-shadow-sm"
-                  : "px-3 py-2 text-sm font-bold text-primary hover:text-primary/80 transition-colors"
-              }
+              className="px-3 py-2 text-sm font-bold text-primary hover:text-primary/80 transition-colors"
               data-testid="link-customer-portal"
             >
               {t("بوابة العملاء", "Customer Portal")}
@@ -297,7 +237,6 @@ function Navbar() {
               size="icon"
               variant="ghost"
               onClick={toggleLang}
-              className={iconBtnClasses}
               data-testid="button-language-toggle"
               aria-label={t("تبديل اللغة إلى الإنجليزية", "Switch language to Arabic")}
             >
@@ -307,16 +246,15 @@ function Navbar() {
               size="icon"
               variant="ghost"
               onClick={toggleTheme}
-              className={iconBtnClasses}
               data-testid="button-theme-toggle"
-              aria-label={t("تبديل إلى الوضع الفاتح", "Toggle to dark mode")}
+              aria-label={t("تبديل الوضع", "Toggle theme")}
             >
               {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </Button>
             <Button
               size="icon"
               variant="ghost"
-              className={`lg:hidden ${iconBtnClasses}`}
+              className="lg:hidden"
               onClick={() => setMobileOpen(!mobileOpen)}
               data-testid="button-mobile-menu"
               aria-label={t("القائمة", "Menu")}
@@ -342,27 +280,11 @@ function Navbar() {
                   href={link.href}
                   onClick={() => setMobileOpen(false)}
                   className="px-4 py-3 text-sm font-medium rounded-md hover:bg-muted"
-                  data-testid={`link-nav-${link.labelEn.toLowerCase()}-mobile`}
+                  data-testid={`link-nav-${link.labelEn.toLowerCase().replace(/\s/g, "-")}-mobile`}
                 >
                   {t(link.labelAr, link.labelEn)}
                 </a>
               ))}
-              <a
-                href="/products"
-                onClick={() => setMobileOpen(false)}
-                className="px-4 py-3 text-sm font-medium rounded-md hover:bg-muted"
-                data-testid="link-products-mobile"
-              >
-                {t("جميع المنتجات", "All Products")}
-              </a>
-              <a
-                href="/request-quote"
-                onClick={() => setMobileOpen(false)}
-                className="px-4 py-3 text-sm font-medium rounded-md hover:bg-muted text-primary"
-                data-testid="link-request-quote-mobile"
-              >
-                {t("طلب عرض سعر", "Request Quote")}
-              </a>
               <a
                 href="/track-order"
                 onClick={() => setMobileOpen(false)}
@@ -388,297 +310,75 @@ function Navbar() {
 }
 
 function HeroSection() {
-  const { t, isRTL } = useLanguage();
-  const [current, setCurrent] = useState(0);
-
-  const next = useCallback(() => {
-    setCurrent((prev) => (prev + 1) % heroSlides.length);
-  }, []);
-
-  const prev = useCallback(() => {
-    setCurrent((prev) => (prev - 1 + heroSlides.length) % heroSlides.length);
-  }, []);
-
-  useEffect(() => {
-    const timer = setInterval(next, 5000);
-    return () => clearInterval(timer);
-  }, [next]);
-
-  const slide = heroSlides[current];
+  const { t } = useLanguage();
 
   return (
-    <section className="relative h-screen min-h-[600px] max-h-[900px] overflow-hidden" data-testid="section-hero">
-      <AnimatePresence mode="wait">
+    <section className="pt-28 sm:pt-36 pb-16 sm:pb-24 px-4 sm:px-6 relative overflow-hidden" data-testid="section-hero">
+      <div className="absolute top-0 start-0 w-[500px] h-[500px] rounded-full bg-primary/5 blur-3xl -translate-y-1/2" />
+      <div className="absolute bottom-0 end-0 w-[400px] h-[400px] rounded-full bg-primary/5 blur-3xl translate-y-1/2" />
+      <div className="max-w-7xl mx-auto grid lg:grid-cols-2 gap-12 lg:gap-16 items-center relative">
         <motion.div
-          key={current}
-          initial={{ opacity: 0, scale: 1.1 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.8 }}
-          className="absolute inset-0"
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6 }}
         >
-          <img
-            src={slide.image}
-            alt={t(slide.titleAr, slide.titleEn)}
-            className="w-full h-full object-cover"
-            data-testid="img-hero-slide"
-          />
-          <div className="absolute inset-0 bg-black/50" />
-        </motion.div>
-      </AnimatePresence>
-
-      <div className="relative z-10 h-full flex flex-col items-center justify-center text-center text-white px-4">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={current}
-            initial={{ y: 20, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: -20, opacity: 0 }}
-            transition={{ duration: 0.5 }}
+          <div
+            className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/10 text-primary text-sm font-bold mb-6"
+            data-testid="badge-hero-factory"
           >
-            <h1
-              className="text-3xl sm:text-5xl md:text-6xl font-black mb-3 drop-shadow-lg"
-              data-testid="text-hero-title"
-            >
-              {t(slide.titleAr, slide.titleEn)}
-            </h1>
-            <p
-              className="text-lg sm:text-xl md:text-2xl text-white/90 mb-8 max-w-2xl mx-auto"
-              data-testid="text-hero-subtitle"
-            >
-              {t(slide.subtitleAr, slide.subtitleEn)}
-            </p>
-          </motion.div>
-        </AnimatePresence>
-
-        <motion.div
-          initial={{ y: 20, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ duration: 0.6, delay: 0.5 }}
-          className="flex flex-col sm:flex-row gap-3"
-        >
-          <a href="/request-quote" data-testid="link-hero-quote">
-            <Button size="lg" className="min-w-[180px] text-base font-bold">
-              {t("طلب عرض سعر", "Request Quote")}
-            </Button>
-          </a>
-          <a href="#products" data-testid="link-hero-products">
-            <Button size="lg" variant="outline" className="min-w-[180px] text-base font-bold border-white text-white hover:bg-white/20">
-              {t("منتجاتنا", "Our Products")}
-            </Button>
-          </a>
-        </motion.div>
-
-        <div className="absolute bottom-8 inset-x-0 flex items-center justify-center gap-3">
-          {heroSlides.map((_, i) => (
-            <button
-              key={i}
-              onClick={() => setCurrent(i)}
-              className={`w-3 h-3 rounded-full transition-all ${
-                i === current ? "bg-white scale-125" : "bg-white/40"
-              }`}
-              data-testid={`button-slide-dot-${i}`}
-              aria-label={`Slide ${i + 1}`}
-            />
-          ))}
-        </div>
-
-        <button
-          onClick={isRTL ? next : prev}
-          className="absolute start-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/30 hover:bg-black/50 focus-visible:ring-2 focus-visible:ring-white flex items-center justify-center text-white transition-colors"
-          data-testid="button-slide-prev"
-          aria-label="Previous"
-        >
-          {isRTL ? <ChevronRight className="w-5 h-5" /> : <ChevronLeft className="w-5 h-5" />}
-        </button>
-        <button
-          onClick={isRTL ? prev : next}
-          className="absolute end-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/30 hover:bg-black/50 focus-visible:ring-2 focus-visible:ring-white flex items-center justify-center text-white transition-colors"
-          data-testid="button-slide-next"
-          aria-label="Next"
-        >
-          {isRTL ? <ChevronLeft className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
-        </button>
-      </div>
-    </section>
-  );
-}
-
-function KitchenToolBanner() {
-  const { t } = useLanguage();
-
-  return (
-    <section className="py-16 sm:py-20 bg-primary/5 border-y border-primary/10 relative overflow-hidden" data-testid="section-kitchen-tool-banner">
-      <div className="absolute top-0 end-0 w-[350px] h-[350px] rounded-full bg-primary/5 blur-3xl" />
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 relative">
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.6 }}
-          className="flex flex-col md:flex-row items-center justify-between gap-8 text-center md:text-start"
-        >
-          <div className="max-w-2xl">
-            <span className="inline-block px-4 py-1.5 rounded-full bg-primary/10 text-primary text-sm font-bold mb-4" data-testid="badge-kitchen-tool-new">
-              {t("جديد من تيك", "New from Teak")}
-            </span>
-            <h2 className="text-2xl sm:text-3xl font-bold mb-3" data-testid="text-kitchen-tool-banner-title">
-              {t("أداة تيك لتصميم المطابخ", "Teak Kitchen Design Tool")}
-            </h2>
-            <p className="text-muted-foreground leading-relaxed" data-testid="text-kitchen-tool-banner-desc">
-              {t(
-                "صمّم مطبخ أحلامك بنفسك في دقائق — أجب عن أسئلة بسيطة وشاهد مطبخك يتحوّل إلى تصميم ثلاثي الأبعاد بخزائن تيك الأصلية.",
-                "Design your dream kitchen yourself in minutes — answer simple questions and watch your kitchen come to life in 3D with genuine Teak cabinets."
-              )}
-            </p>
-          </div>
-          <a href="/kitchen-designer" data-testid="link-kitchen-tool-banner">
-            <Button size="lg" className="min-w-[200px] text-base font-bold h-14 shadow-lg shadow-primary/20">
-              {t("صمّم وأبدع", "Design & Create")}
-            </Button>
-          </a>
-        </motion.div>
-      </div>
-    </section>
-  );
-}
-
-function AboutSection() {
-  const { t } = useLanguage();
-
-  return (
-    <section id="about" className="py-20 sm:py-28 bg-card/50" data-testid="section-about">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6">
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.6 }}
-          className="text-center mb-12"
-        >
-          <span className="inline-block px-4 py-1.5 text-xs font-medium text-primary bg-primary/10 rounded-full border border-primary/20 mb-4">
-            {t("من نحن", "About Us")}
-          </span>
-          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black mb-4" data-testid="text-about-heading">
+            <Factory className="w-4 h-4" />
             {t("مصنع تيك للصناعات الخشبية", "Teak Wood Products Factory")}
-          </h2>
-          <p className="text-primary text-lg font-semibold mb-6">
-            {t("مطابخ فاخرة – خزائن مدمجة – أبواب خشب طبيعي – ديكور داخلي", "Luxury Kitchens – Built-in Wardrobes – Natural Wood Doors – Interior Decor")}
+          </div>
+          <h1
+            className="text-4xl sm:text-5xl xl:text-6xl font-black leading-tight mb-6"
+            data-testid="text-hero-title"
+          >
+            {t("نصنع مطبخ أحلامك", "We Craft Your Dream Kitchen")}
+          </h1>
+          <p
+            className="text-lg sm:text-xl text-muted-foreground leading-relaxed mb-4"
+            data-testid="text-hero-subtitle"
+          >
+            {t(
+              "مطابخ فاخرة تُصنّع في مصنعنا بخميس مشيط من أجود أنواع الأخشاب والخامات — تصميم، تصنيع، وتركيب بأيدٍ سعودية ومعايير عالمية.",
+              "Luxury kitchens crafted in our Khamis Mushait factory from the finest woods and materials — designed, manufactured, and installed by Saudi hands to world-class standards."
+            )}
+          </p>
+          <p className="text-muted-foreground leading-relaxed mb-8">
+            {t(
+              "من المصنع إلى منزلك — جودة تدوم، وتفاصيل تليق بك.",
+              "From our factory to your home — lasting quality with details worthy of you."
+            )}
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <a href="/kitchen-designer" data-testid="link-hero-design-kitchen">
+              <Button size="lg" className="w-full sm:w-auto text-base sm:text-lg font-bold px-8 h-14 shadow-lg shadow-primary/25 gap-2">
+                <ChefHat className="w-5 h-5" />
+                {t("صمّم مطبخك", "Design Your Kitchen")}
+                <ArrowLeft className="w-5 h-5 rtl:rotate-0 ltr:rotate-180" />
+              </Button>
+            </a>
+            <a href="#gallery" data-testid="link-hero-gallery">
+              <Button size="lg" variant="outline" className="w-full sm:w-auto text-base sm:text-lg font-bold px-8 h-14 gap-2">
+                <Images className="w-5 h-5" />
+                {t("معرض أعمالنا", "Our Gallery")}
+              </Button>
+            </a>
+          </div>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.7, delay: 0.15 }}
+          className="rounded-2xl border border-border bg-card p-8 sm:p-10 shadow-xl"
+          data-testid="img-hero-art"
+        >
+          <FactoryHeroArt />
+          <p className="text-center text-sm text-muted-foreground mt-6">
+            {t("من مصنعنا... إلى مطبخك", "From our factory... to your kitchen")}
           </p>
         </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.6, delay: 0.2 }}
-          className="max-w-4xl mx-auto"
-        >
-          <Card>
-            <CardContent className="p-6 sm:p-10">
-              <p className="text-base sm:text-lg leading-relaxed text-muted-foreground" data-testid="text-about-content">
-                {t(
-                  "مصنع تيك للصناعات الخشبية — المتخصص في تصنيع وتركيب المطابخ الفاخرة والخزائن المدمجة وأبواب الخشب الطبيعي والديكورات الداخلية في المملكة العربية السعودية. نخدم مدن جازان وخميس مشيط وأبها وحائل والرياض وغيرها. تأسسنا على يد كفاءات فنية وإدارية تجمع بين الخبرة العملية والتميز الأكاديمي، ملتزمين بتقديم مطابخ عصرية ونيو كلاسيك، وخزائن تفصيل، وأبواب خشب سويدي — بأسعار تنافسية وجودة أوروبية لا مثيل لها.",
-                  "Teak Wood Products Factory specializes in manufacturing and installing luxury kitchens, built-in wardrobes, natural wood doors, and interior decorations across Saudi Arabia. We serve Jazan, Khamis Mushait, Abha, Hail, Riyadh, and beyond. Founded by expert professionals combining practical experience and academic excellence, we offer modern and neo-classic kitchens, custom wardrobes, and Swedish wood doors — at competitive prices with unmatched European quality."
-                )}
-              </p>
-            </CardContent>
-          </Card>
-        </motion.div>
-      </div>
-    </section>
-  );
-}
-
-function CEOSection() {
-  const { t } = useLanguage();
-  const ref = useRef(null);
-  const isInView = useInView(ref, { once: true, margin: "-100px" });
-
-  return (
-    <section className="py-20 sm:py-28 relative overflow-hidden" data-testid="section-ceo" ref={ref}>
-      <div className="absolute inset-0 opacity-[0.03]" style={{
-        backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%239C92AC' fill-opacity='0.4'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
-      }} />
-
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 relative">
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          animate={isInView ? { opacity: 1, y: 0 } : {}}
-          transition={{ duration: 0.6 }}
-          className="text-center mb-12"
-        >
-          <span className="inline-block px-4 py-1.5 text-xs font-medium text-primary bg-primary/10 rounded-full border border-primary/20 mb-4">
-            {t("كلمة الرئيس التنفيذي", "CEO's Message")}
-          </span>
-          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black" data-testid="text-ceo-heading">
-            {t("كلمة الرئيس التنفيذي", "CEO's Message")}
-          </h2>
-        </motion.div>
-
-        <div className="flex flex-col lg:flex-row items-center gap-10 lg:gap-16">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.8, rotate: -3 }}
-            animate={isInView ? { opacity: 1, scale: 1, rotate: 0 } : {}}
-            transition={{ duration: 0.8, delay: 0.2, type: "spring", stiffness: 100 }}
-            className="shrink-0 relative group"
-          >
-            <div className="relative">
-              <div className="absolute -inset-3 bg-gradient-to-br from-primary/30 via-amber-500/20 to-primary/30 rounded-2xl blur-lg opacity-60 group-hover:opacity-80 transition-opacity" />
-              <div className="relative w-52 h-52 sm:w-64 sm:h-64 rounded-2xl overflow-hidden border-4 border-primary/20 shadow-2xl" style={{ filter: "contrast(1.05) saturate(1.1)" }}>
-                <img
-                  src="/images/ceo_photo.jpg"
-                  alt={t("م. جبران الشهراني", "Eng. Jabran Al-Shahrani")}
-                  className="w-full h-full object-cover"
-                  data-testid="img-ceo-photo"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent" />
-              </div>
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={isInView ? { opacity: 1, y: 0 } : {}}
-                transition={{ delay: 0.6, duration: 0.5 }}
-                className="absolute -bottom-4 inset-x-0 mx-auto w-fit"
-              >
-                <div className="bg-primary text-primary-foreground px-4 py-1.5 rounded-full text-sm font-bold shadow-lg whitespace-nowrap">
-                  {t("م. جبران الشهراني", "Eng. Jabran Al-Shahrani")}
-                </div>
-              </motion.div>
-            </div>
-
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={isInView ? { opacity: 1 } : {}}
-              transition={{ delay: 0.8, duration: 0.5 }}
-              className="text-center mt-8 text-sm text-muted-foreground font-medium"
-            >
-              {t("الرئيس التنفيذي", "Chief Executive Officer")}
-            </motion.div>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, x: 30 }}
-            animate={isInView ? { opacity: 1, x: 0 } : {}}
-            transition={{ duration: 0.6, delay: 0.4 }}
-            className="flex-1"
-          >
-            <Card className="border-primary/10 shadow-xl">
-              <CardContent className="p-6 sm:p-10 relative overflow-hidden">
-                <Sparkles className="absolute top-4 end-4 w-5 h-5 text-primary/20" />
-                <div className="absolute top-0 start-0 w-1 h-full bg-gradient-to-b from-primary via-primary/50 to-transparent rounded-full" />
-
-                <div className="text-5xl text-primary/10 font-serif leading-none mb-2 select-none">"</div>
-                <p className="text-base sm:text-lg leading-loose text-muted-foreground whitespace-pre-line" data-testid="text-ceo-message">
-                  {t(
-                    "الفرق بين مكان تسكنه، ومكان ينتمي إليك — هو الإتقان.\nفي تيك، لا نبيع أثاثاً.\nنبني البيئة التي تشكّل حياتك اليومية —\nلأن المساحة التي تعيش فيها\nلا تعكس ذوقك فحسب،\nبل تعكس من أنت.\nخشب مختار. تصميم محسوب. تنفيذ لا تنازل فيه.",
-                    "The difference between a place you live in, and a place that belongs to you — is craftsmanship.\nAt Teak, we don't sell furniture.\nWe build the environment that shapes your daily life —\nbecause the space you live in\ndoesn't just reflect your taste,\nit reflects who you are.\nSelected wood. Calculated design. Uncompromising execution."
-                  )}
-                </p>
-                <div className="text-5xl text-primary/10 font-serif leading-none mt-2 text-end select-none">"</div>
-              </CardContent>
-            </Card>
-          </motion.div>
-        </div>
       </div>
     </section>
   );
@@ -708,255 +408,43 @@ function AnimatedCounter({ value, suffix = "" }: { value: number; suffix?: strin
   return <span ref={ref}>{count}{suffix}</span>;
 }
 
-function ProductsSection() {
-  const { t } = useLanguage();
-  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
-
-  const productIcons = [
-    <Hammer className="w-5 h-5" />,
-    <Package className="w-5 h-5" />,
-    <Shield className="w-5 h-5" />,
-    <Palette className="w-5 h-5" />,
-    <Sparkles className="w-5 h-5" />,
-  ];
-
-  return (
-    <section id="products" className="py-20 sm:py-28 bg-card/50" data-testid="section-products">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6">
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.6 }}
-          className="text-center mb-12"
-        >
-          <span className="inline-block px-4 py-1.5 text-xs font-medium text-primary bg-primary/10 rounded-full border border-primary/20 mb-4">
-            {t("منتجاتنا", "Our Products")}
-          </span>
-          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black mb-4" data-testid="text-products-heading">
-            {t("منتجاتنا", "Our Products")}
-          </h2>
-          <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-            {t(
-              "نقدم أجود المنتجات الخشبية المصنعة بأيدي سعودية وخبرات عالمية",
-              "We offer the finest wood products manufactured by Saudi hands with international expertise"
-            )}
-          </p>
-        </motion.div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {productCards.map((product, i) => (
-            <motion.div
-              key={i}
-              initial={{ opacity: 0, y: 30 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.5, delay: i * 0.1 }}
-              onHoverStart={() => setHoveredIdx(i)}
-              onHoverEnd={() => setHoveredIdx(null)}
-              data-testid={`card-product-${i}`}
-            >
-              <Card className="overflow-hidden h-full group cursor-pointer">
-                <div className="relative h-56 overflow-hidden">
-                  <motion.img
-                    src={product.image}
-                    alt={t(product.titleAr, product.titleEn)}
-                    className="w-full h-full object-cover"
-                    animate={{ scale: hoveredIdx === i ? 1.1 : 1 }}
-                    transition={{ duration: 0.6 }}
-                    data-testid={`img-product-${i}`}
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
-                  <motion.div
-                    className="absolute bottom-4 start-4 end-4 flex items-end justify-between"
-                    animate={{ y: hoveredIdx === i ? -4 : 0 }}
-                    transition={{ duration: 0.3 }}
-                  >
-                    <h3 className="text-white text-xl font-bold drop-shadow-lg" data-testid={`text-product-title-${i}`}>
-                      {t(product.titleAr, product.titleEn)}
-                    </h3>
-                    <motion.div
-                      className="w-10 h-10 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center text-white"
-                      initial={{ scale: 0, opacity: 0 }}
-                      animate={{ scale: hoveredIdx === i ? 1 : 0, opacity: hoveredIdx === i ? 1 : 0 }}
-                      transition={{ duration: 0.2 }}
-                    >
-                      {productIcons[i] || <Sparkles className="w-5 h-5" />}
-                    </motion.div>
-                  </motion.div>
-                </div>
-                <CardContent className="p-4">
-                  <p className="text-sm text-muted-foreground leading-relaxed">
-                    {t(product.descAr, product.descEn)}
-                  </p>
-                </CardContent>
-              </Card>
-            </motion.div>
-          ))}
-        </div>
-
-        <motion.div
-          initial={{ opacity: 0 }}
-          whileInView={{ opacity: 1 }}
-          viewport={{ once: true }}
-          className="text-center mt-10"
-        >
-          <a href="/products" data-testid="link-all-products">
-            <Button variant="outline" size="lg" className="group gap-2">
-              {t("عرض جميع المنتجات", "View All Products")}
-              <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform rtl:rotate-180 rtl:group-hover:-translate-x-1" />
-            </Button>
-          </a>
-        </motion.div>
-      </div>
-    </section>
-  );
-}
-
-function WhyTeakSection() {
-  const { t } = useLanguage();
-
-  const reasons = [
-    {
-      icon: <Shield className="w-7 h-7" />,
-      titleAr: "ضمان 5 سنوات",
-      titleEn: "5-Year Warranty",
-      descAr: "نضمن جودة منتجاتنا لمدة 5 سنوات كاملة — راحة بال حقيقية لك ولعائلتك",
-      descEn: "We guarantee our product quality for 5 full years — real peace of mind for you and your family",
-    },
-    {
-      icon: <Truck className="w-7 h-7" />,
-      titleAr: "تركيب مجاني",
-      titleEn: "Free Installation",
-      descAr: "توصيل وتركيب مجاني في جازان وخميس مشيط وأبها وجميع مدن المنطقة",
-      descEn: "Free delivery & installation in Jazan, Khamis Mushait, Abha, and all regional cities",
-    },
-    {
-      icon: <PenTool className="w-7 h-7" />,
-      titleAr: "تصميم مجاني",
-      titleEn: "Free Design",
-      descAr: "فريق تصميم محترف يرسم لك مطبخك أو خزانتك مجاناً قبل البدء بالتنفيذ",
-      descEn: "A professional design team draws your kitchen or wardrobe for free before execution begins",
-    },
-    {
-      icon: <Globe2 className="w-7 h-7" />,
-      titleAr: "مواد أوروبية",
-      titleEn: "European Materials",
-      descAr: "خشب شيبورد إيطالي واكسسوارات ألمانية وخشب سويدي — جودة لا تتنازل عنها",
-      descEn: "Italian chipboard, German accessories, and Swedish wood — uncompromising quality",
-    },
-    {
-      icon: <HeartHandshake className="w-7 h-7" />,
-      titleAr: "خدمة ما بعد البيع",
-      titleEn: "After-Sales Service",
-      descAr: "نحن معك حتى بعد التسليم — فريق دعم متاح لأي استفسار أو صيانة",
-      descEn: "We're with you even after delivery — a support team available for any inquiry or maintenance",
-    },
-    {
-      icon: <MapPin className="w-7 h-7" />,
-      titleAr: "فروع في 5 مدن",
-      titleEn: "Branches in 5 Cities",
-      descAr: "نتواجد في جازان وخميس مشيط وأبها وحائل والرياض لخدمتك أينما كنت",
-      descEn: "Present in Jazan, Khamis Mushait, Abha, Hail, and Riyadh to serve you wherever you are",
-    },
-  ];
-
-  return (
-    <section className="py-20 sm:py-28 bg-card/50" data-testid="section-why-teak">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6">
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.6 }}
-          className="text-center mb-12"
-        >
-          <span className="inline-block px-4 py-1.5 text-xs font-medium text-primary bg-primary/10 rounded-full border border-primary/20 mb-4">
-            {t("لماذا تيك؟", "Why Teak?")}
-          </span>
-          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black mb-4" data-testid="text-why-teak-heading">
-            {t("لماذا تختار مصنع تيك؟", "Why Choose Teak Factory?")}
-          </h2>
-          <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-            {t(
-              "6 أسباب تجعلنا الخيار الأول لتفصيل مطابخ وخزائن وأبواب فاخرة في السعودية",
-              "6 reasons that make us the first choice for custom kitchens, wardrobes, and luxury doors in Saudi Arabia"
-            )}
-          </p>
-        </motion.div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {reasons.map((reason, i) => (
-            <motion.div
-              key={i}
-              initial={{ opacity: 0, y: 30 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.5, delay: i * 0.08 }}
-              data-testid={`card-why-teak-${i}`}
-            >
-              <Card className="h-full hover:border-primary/40 hover:shadow-md transition-all duration-300">
-                <CardContent className="p-6 flex flex-col gap-4">
-                  <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center text-primary shrink-0">
-                    {reason.icon}
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-bold mb-2" data-testid={`text-why-teak-title-${i}`}>
-                      {t(reason.titleAr, reason.titleEn)}
-                    </h3>
-                    <p className="text-sm text-muted-foreground leading-relaxed">
-                      {t(reason.descAr, reason.descEn)}
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-          ))}
-        </div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.5, delay: 0.5 }}
-          className="text-center mt-10"
-        >
-          <a href="/request-quote" data-testid="link-why-teak-quote">
-            <Button size="lg" className="min-w-[220px] text-base font-bold gap-2">
-              <CheckCircle2 className="w-5 h-5" />
-              {t("احصل على عرض سعر مجاني", "Get a Free Quote")}
-            </Button>
-          </a>
-        </motion.div>
-      </div>
-    </section>
-  );
-}
-
 function GallerySection() {
   const { t } = useLanguage();
+  const [activeCategory, setActiveCategory] = useState<GalleryCategory | "all">("all");
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+
+  const categories: { id: GalleryCategory | "all"; labelAr: string; labelEn: string }[] = [
+    { id: "all", labelAr: "الكل", labelEn: "All" },
+    { id: "kitchens", labelAr: "المطابخ", labelEn: "Kitchens" },
+    { id: "wardrobes", labelAr: "الخزائن", labelEn: "Wardrobes" },
+    { id: "decor", labelAr: "الديكورات", labelEn: "Decorations" },
+  ];
+
+  const filtered = useMemo(
+    () => (activeCategory === "all" ? galleryItems : galleryItems.filter((g) => g.category === activeCategory)),
+    [activeCategory]
+  );
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (lightboxIndex === null) return;
       if (e.key === "Escape") setLightboxIndex(null);
-      if (e.key === "ArrowRight") setLightboxIndex((prev) => prev !== null ? (prev + 1) % galleryImages.length : null);
-      if (e.key === "ArrowLeft") setLightboxIndex((prev) => prev !== null ? (prev - 1 + galleryImages.length) % galleryImages.length : null);
+      if (e.key === "ArrowRight") setLightboxIndex((prev) => (prev !== null ? (prev + 1) % filtered.length : null));
+      if (e.key === "ArrowLeft") setLightboxIndex((prev) => (prev !== null ? (prev - 1 + filtered.length) % filtered.length : null));
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [lightboxIndex]);
+  }, [lightboxIndex, filtered.length]);
 
   return (
-    <section id="gallery" className="py-20 sm:py-28" data-testid="section-gallery">
+    <section id="gallery" className="py-20 sm:py-28 bg-card/50" data-testid="section-gallery">
       <div className="max-w-6xl mx-auto px-4 sm:px-6">
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.6 }}
-          className="text-center mb-12"
+          className="text-center mb-10"
         >
           <span className="inline-block px-4 py-1.5 text-xs font-medium text-primary bg-primary/10 rounded-full border border-primary/20 mb-4">
             {t("معرض أعمالنا", "Our Gallery")}
@@ -964,40 +452,69 @@ function GallerySection() {
           <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black mb-4" data-testid="text-gallery-heading">
             {t("معرض أعمالنا", "Our Gallery")}
           </h2>
+          <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
+            {t(
+              "مطابخ وخزائن وديكورات نُفّذت من أجود أنواع الأخشاب والخامات",
+              "Kitchens, wardrobes, and decorations crafted from the finest woods and materials"
+            )}
+          </p>
         </motion.div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
-          {galleryImages.map((img, i) => (
-            <motion.div
-              key={i}
-              initial={{ opacity: 0, scale: 0.9 }}
-              whileInView={{ opacity: 1, scale: 1 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.4, delay: i * 0.05 }}
-              className="cursor-pointer"
-              onClick={() => setLightboxIndex(i)}
-              data-testid={`card-gallery-${i}`}
+        <div className="flex flex-wrap justify-center gap-2 sm:gap-3 mb-10">
+          {categories.map((cat) => (
+            <button
+              key={cat.id}
+              onClick={() => {
+                setActiveCategory(cat.id);
+                setLightboxIndex(null);
+              }}
+              className={`px-5 py-2.5 rounded-full text-sm font-bold transition-all ${
+                activeCategory === cat.id
+                  ? "bg-primary text-primary-foreground shadow-lg shadow-primary/25"
+                  : "bg-muted/50 text-muted-foreground hover:bg-muted"
+              }`}
+              data-testid={`button-gallery-category-${cat.id}`}
             >
-              <div className="relative aspect-square rounded-lg overflow-hidden group">
-                <img
-                  src={img.src}
-                  alt={t(img.captionAr, img.captionEn)}
-                  className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-                  loading="lazy"
-                />
-                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-end">
-                  <p className="text-white text-xs sm:text-sm p-2 sm:p-3 opacity-0 group-hover:opacity-100 transition-opacity font-medium drop-shadow-lg">
-                    {t(img.captionAr, img.captionEn)}
-                  </p>
-                </div>
-              </div>
-            </motion.div>
+              {t(cat.labelAr, cat.labelEn)}
+            </button>
           ))}
         </div>
+
+        <motion.div layout className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
+          <AnimatePresence mode="popLayout">
+            {filtered.map((img, i) => (
+              <motion.div
+                layout
+                key={img.src + img.category}
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                transition={{ duration: 0.3 }}
+                className="cursor-pointer"
+                onClick={() => setLightboxIndex(i)}
+                data-testid={`card-gallery-${i}`}
+              >
+                <div className="relative aspect-square rounded-lg overflow-hidden group">
+                  <img
+                    src={img.src}
+                    alt={t(img.captionAr, img.captionEn)}
+                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                    loading="lazy"
+                  />
+                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-end">
+                    <p className="text-white text-xs sm:text-sm p-2 sm:p-3 opacity-0 group-hover:opacity-100 transition-opacity font-medium drop-shadow-lg">
+                      {t(img.captionAr, img.captionEn)}
+                    </p>
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        </motion.div>
       </div>
 
       <AnimatePresence>
-        {lightboxIndex !== null && (
+        {lightboxIndex !== null && filtered[lightboxIndex] && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -1014,14 +531,14 @@ function GallerySection() {
               <X className="w-6 h-6" />
             </button>
             <img
-              src={galleryImages[lightboxIndex].src}
-              alt={t(galleryImages[lightboxIndex].captionAr, galleryImages[lightboxIndex].captionEn)}
+              src={filtered[lightboxIndex].src}
+              alt={t(filtered[lightboxIndex].captionAr, filtered[lightboxIndex].captionEn)}
               className="max-w-full max-h-[80vh] object-contain rounded-lg"
               onClick={(e) => e.stopPropagation()}
               data-testid="img-lightbox"
             />
             <p className="absolute bottom-8 inset-x-0 text-center text-white text-lg font-medium drop-shadow-lg">
-              {t(galleryImages[lightboxIndex].captionAr, galleryImages[lightboxIndex].captionEn)}
+              {t(filtered[lightboxIndex].captionAr, filtered[lightboxIndex].captionEn)}
             </p>
           </motion.div>
         )}
@@ -1034,7 +551,7 @@ function ProjectsSection() {
   const { t } = useLanguage();
 
   return (
-    <section id="projects" className="py-20 sm:py-28 bg-card/50" data-testid="section-projects">
+    <section id="projects" className="py-20 sm:py-28" data-testid="section-projects">
       <div className="max-w-6xl mx-auto px-4 sm:px-6">
         <motion.div
           initial={{ opacity: 0, y: 30 }}
@@ -1057,7 +574,7 @@ function ProjectsSection() {
           </p>
         </motion.div>
 
-        <div className="flex gap-4 sm:gap-6 overflow-x-auto pb-4 snap-x snap-mandatory scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+        <div className="flex gap-4 sm:gap-6 overflow-x-auto pb-4 snap-x snap-mandatory scrollbar-hide" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
           {projectCards.map((project, i) => (
             <motion.div
               key={i}
@@ -1375,21 +892,26 @@ function ContactSection() {
 }
 
 function Footer() {
-  const { t, lang } = useLanguage();
+  const { t } = useLanguage();
 
   const quickLinks = [
     { href: "/", labelAr: "الرئيسية", labelEn: "Home" },
-    { href: "/products", labelAr: "منتجاتنا", labelEn: "Products" },
+    { href: "/kitchen-designer", labelAr: "صمّم مطبخك", labelEn: "Design Your Kitchen" },
+    { href: "#gallery", labelAr: "معرض أعمالنا", labelEn: "Our Gallery" },
+    { href: "#projects", labelAr: "مشاريعنا", labelEn: "Our Projects" },
+    { href: "#location", labelAr: "فروعنا", labelEn: "Our Branches" },
+  ];
+
+  const serviceLinks = [
     { href: "/request-quote", labelAr: "طلب عرض سعر", labelEn: "Request Quote" },
     { href: "/track-order", labelAr: "تتبع طلبك", labelEn: "Track Order" },
     { href: "/portal/login", labelAr: "بوابة العملاء", labelEn: "Customer Portal" },
-    { href: "/employee-login", labelAr: "دخول الموظفين", labelEn: "Employee Login" },
   ];
 
   return (
     <footer className="border-t border-border bg-card/50 py-12 sm:py-16" data-testid="section-footer">
       <div className="max-w-6xl mx-auto px-4 sm:px-6">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 mb-8">
           <div>
             <div className="flex items-center gap-3 mb-4">
               <img
@@ -1403,14 +925,14 @@ function Footer() {
                   {t("تيك للصناعات الخشبية", "Teak Wood Products")}
                 </span>
                 <p className="text-xs text-muted-foreground">
-                  {t("مطابخ • خزائن • أبواب • ديكورات", "Kitchens • Wardrobes • Doors • Decorations")}
+                  {t("مطابخ • خزائن • ديكورات", "Kitchens • Wardrobes • Decorations")}
                 </p>
               </div>
             </div>
             <p className="text-sm text-muted-foreground leading-relaxed">
               {t(
-                "مصنع تيك للصناعات الخشبية - خميس مشيط، المملكة العربية السعودية",
-                "Teak Wood Products Factory - Khamis Mushait, Saudi Arabia"
+                "مصنع تيك للصناعات الخشبية — نصنع من أجود أنواع الأخشاب والخامات. خميس مشيط، المملكة العربية السعودية.",
+                "Teak Wood Products Factory — crafted from the finest woods and materials. Khamis Mushait, Saudi Arabia."
               )}
             </p>
           </div>
@@ -1423,7 +945,23 @@ function Footer() {
                   key={link.href}
                   href={link.href}
                   className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-                  data-testid={`link-footer-${link.labelEn.toLowerCase().replace(/\s/g, '-')}`}
+                  data-testid={`link-footer-${link.labelEn.toLowerCase().replace(/\s/g, "-")}`}
+                >
+                  {t(link.labelAr, link.labelEn)}
+                </a>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <h4 className="font-bold mb-4">{t("خدمات العملاء", "Customer Services")}</h4>
+            <div className="flex flex-col gap-2">
+              {serviceLinks.map((link) => (
+                <a
+                  key={link.href}
+                  href={link.href}
+                  className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                  data-testid={`link-footer-${link.labelEn.toLowerCase().replace(/\s/g, "-")}`}
                 >
                   {t(link.labelAr, link.labelEn)}
                 </a>
@@ -1434,14 +972,17 @@ function Footer() {
           <div>
             <h4 className="font-bold mb-4">{t("تواصل معنا", "Contact Us")}</h4>
             <div className="flex flex-col gap-2 text-sm text-muted-foreground">
-              <a href="tel:0173250090" className="hover:text-foreground transition-colors flex items-center gap-2" dir="ltr">
-                <Phone className="w-4 h-4" /> 017 325 0090
+              <a href="tel:0173250090" className="hover:text-foreground transition-colors flex items-center gap-2" data-testid="link-footer-phone">
+                <Phone className="w-4 h-4 shrink-0" />
+                <span dir="ltr">017 325 0090</span>
               </a>
-              <a href="https://wa.me/966558090498" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors flex items-center gap-2" dir="ltr">
-                <SiWhatsapp className="w-4 h-4" /> 055 809 0498
+              <a href="https://wa.me/966558090498" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors flex items-center gap-2" data-testid="link-footer-whatsapp">
+                <SiWhatsapp className="w-4 h-4 shrink-0" />
+                <span dir="ltr">055 809 0498</span>
               </a>
-              <a href="mailto:info@teak2030.net" className="hover:text-foreground transition-colors flex items-center gap-2" dir="ltr">
-                <Mail className="w-4 h-4" /> info@teak2030.net
+              <a href="mailto:info@teak2030.net" className="hover:text-foreground transition-colors flex items-center gap-2" data-testid="link-footer-email">
+                <Mail className="w-4 h-4 shrink-0" />
+                <span dir="ltr">info@teak2030.net</span>
               </a>
             </div>
           </div>
@@ -1527,11 +1068,6 @@ export default function LandingPage() {
     <div className="min-h-screen bg-background overflow-x-hidden">
       <Navbar />
       <HeroSection />
-      <KitchenToolBanner />
-      <AboutSection />
-      <CEOSection />
-      <ProductsSection />
-      <WhyTeakSection />
       <GallerySection />
       <ProjectsSection />
       <StatsSection />
