@@ -143,8 +143,8 @@ function AttendanceStatusBadge({ status }: { status: string }) {
     present: { label: "حاضر", variant: "default" },
     late: { label: "متأخر", variant: "secondary" },
     absent: { label: "غائب", variant: "destructive" },
-    incomplete: { label: "ناقص", variant: "outline" },
-    checkout_only: { label: "خروج فقط", variant: "outline" },
+    missing_checkout: { label: "نقص خروج", variant: "outline" },
+    missing_checkin: { label: "نقص دخول", variant: "outline" },
     permission: { label: "إذن", variant: "secondary" },
   };
   const s = map[status] || { label: status, variant: "outline" as const };
@@ -174,8 +174,8 @@ function getDayStatus(records: AttendanceRecord[]) {
   if (!records.length) return "absent";
   const hasIn = records.some(r => r.type === "check_in");
   const hasOut = records.some(r => r.type === "check_out");
-  if (!hasIn) return hasOut ? "checkout_only" : "absent";
-  if (hasIn && !hasOut) return "incomplete";
+  if (!hasIn) return hasOut ? "missing_checkin" : "absent";
+  if (hasIn && !hasOut) return "missing_checkout";
   return "present";
 }
 

@@ -13,10 +13,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Users, Clock, LogIn, LogOut, AlertTriangle, CheckCircle2, XCircle, MapPin,
   Pencil, Monitor, Factory, Building2, RefreshCw, Download, Filter, Map,
-  ChevronDown, ChevronLeft, CalendarDays,
+  ChevronDown, ChevronLeft, ChevronRight, CalendarDays, Settings, Plus, Trash2, FileText,
 } from "lucide-react";
 import { useLanguage } from "@/components/language-provider";
 import AttendanceZonesMap from "@/components/attendance-zones-map";
+import { resolveWorkSchedule, isLateCheckIn } from "@shared/attendance";
 import { setOptions, importLibrary } from "@googlemaps/js-api-loader";
 
 interface AttendanceRecord {
@@ -35,13 +36,25 @@ interface AttendanceRecord {
   isManualEdit: boolean;
   editedBy: number | null;
   notes: string | null;
+  overrideExcuse: string | null;
+  overrideNote: string | null;
+  overrideBy: number | null;
+  overrideAt: string | null;
 }
+
+const OVERRIDE_EXCUSE_LABELS: Record<string, string> = {
+  forgot_fingerprint: "نسيان بصمة (يُحتسب حضوراً)",
+  technical_issue: "عطل تقني (يُحتسب حضوراً)",
+  emergency_leave: "إجازة طارئة (تُحوَّل لإجازة)",
+  medical_excuse: "عذر طبي (إجازة مرضية)",
+};
 
 interface EmployeeInfo {
   id: number;
   employeeNumber: string;
   nameAr: string;
   phone: string | null;
+  department?: string | null;
   locationName: string;
 }
 
@@ -50,6 +63,30 @@ interface MonitorData {
   permissions: unknown[];
   employees: EmployeeInfo[];
 }
+
+interface WorkScheduleSetting {
+  id: number;
+  scopeType: string;
+  department: string | null;
+  employeeId: number | null;
+  workStartTime: string;
+  graceMinutes: number;
+}
+
+const DEPARTMENTS: { value: string; label: string }[] = [
+  { value: "sales", label: "المبيعات" },
+  { value: "design", label: "التصميم" },
+  { value: "production", label: "الإنتاج" },
+  { value: "warehouse", label: "المستودع" },
+  { value: "finance", label: "المالية" },
+  { value: "hr", label: "الموارد البشرية" },
+  { value: "it", label: "تقنية المعلومات" },
+  { value: "delivery", label: "التوصيل" },
+  { value: "installation", label: "التركيب" },
+  { value: "quality", label: "الجودة" },
+  { value: "management", label: "الإدارة" },
+  { value: "customer_service", label: "خدمة العملاء" },
+];
 
 interface LocationZone {
   id: number;
@@ -102,14 +139,19 @@ function formatDayShort(day: Date) {
   return day.toLocaleDateString("ar-SA", { weekday: "short", month: "short", day: "numeric" });
 }
 
-function getDayStatus(records: AttendanceRecord[], employeeId: number) {
+function getDayStatus(
+  records: AttendanceRecord[],
+  employeeId: number,
+  lateCheck?: (checkTime: string, employeeId: number) => boolean,
+) {
   const empRecords = records.filter(r => r.employeeId === employeeId);
   if (!empRecords.length) return { status: "absent", in: null, out: null, duration: null, outOfZone: false };
   const checkIn = empRecords.filter(r => r.type === "check_in").sort((a, b) => new Date(a.checkTime).getTime() - new Date(b.checkTime).getTime())[0];
   const checkOut = empRecords.filter(r => r.type === "check_out").sort((a, b) => new Date(b.checkTime).getTime() - new Date(a.checkTime).getTime())[0];
   let status = "present";
-  if (checkIn && !checkOut) status = "incomplete";
-  if (!checkIn) status = checkOut ? "checkout_only" : "absent";
+  if (checkIn && !checkOut) status = "missing_checkout";
+  if (!checkIn) status = checkOut ? "missing_checkin" : "absent";
+  if (status === "present" && checkIn && lateCheck && lateCheck(checkIn.checkTime, employeeId)) status = "late";
   let duration: string | null = null;
   if (checkIn && checkOut) {
     const mins = (new Date(checkOut.checkTime).getTime() - new Date(checkIn.checkTime).getTime()) / 60000;
@@ -125,8 +167,8 @@ function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { label: string; icon: React.ReactNode; className: string }> = {
     present: { label: "حاضر", icon: <CheckCircle2 className="w-3 h-3" />, className: "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400" },
     absent: { label: "غائب", icon: <XCircle className="w-3 h-3" />, className: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400" },
-    incomplete: { label: "ناقص", icon: <AlertTriangle className="w-3 h-3" />, className: "bg-yellow-100 text-yellow-700 dark:bg-yellow-950 dark:text-yellow-400" },
-    checkout_only: { label: "خروج فقط", icon: <AlertTriangle className="w-3 h-3" />, className: "bg-yellow-100 text-yellow-700 dark:bg-yellow-950 dark:text-yellow-400" },
+    missing_checkout: { label: "نقص خروج", icon: <AlertTriangle className="w-3 h-3" />, className: "bg-yellow-100 text-yellow-700 dark:bg-yellow-950 dark:text-yellow-400" },
+    missing_checkin: { label: "نقص دخول", icon: <AlertTriangle className="w-3 h-3" />, className: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400" },
     late: { label: "متأخر", icon: <Clock className="w-3 h-3" />, className: "bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-400" },
   };
   const s = map[status] || { label: status, icon: null, className: "bg-muted text-muted-foreground" };
@@ -142,12 +184,17 @@ export default function AttendanceMonitorPage() {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [dateRange, setDateRange] = useState(getTodayRange());
+  const [statusFilter, setStatusFilter] = useState<string>("all");
   const [locationFilter, setLocationFilter] = useState("all");
   const [outOfZoneOnly, setOutOfZoneOnly] = useState(false);
   const [expandedEmployees, setExpandedEmployees] = useState<Set<number>>(new Set());
   const [editRecord, setEditRecord] = useState<AttendanceRecord | null>(null);
   const [editTime, setEditTime] = useState("");
   const [editNotes, setEditNotes] = useState("");
+  const [overrideRecord, setOverrideRecord] = useState<AttendanceRecord | null>(null);
+  const [overrideExcuse, setOverrideExcuse] = useState("forgot_fingerprint");
+  const [overrideNote, setOverrideNote] = useState("");
+  const [overrideTime, setOverrideTime] = useState("");
   const [locationPopup, setLocationPopup] = useState<{ lat: string; lng: string; name: string | null; isOutOfZone: boolean } | null>(null);
   const miniMapRef = useRef<HTMLDivElement>(null);
 
@@ -198,6 +245,15 @@ export default function AttendanceMonitorPage() {
     refetchInterval: 120000,
   });
 
+  const { data: violations = [] } = useQuery<{ id: number; employeeId: number | null; employeePhone: string | null; employeeNameAr: string | null; violationType: string; attemptedType: string | null; details: string | null; occurredAt: string }[]>({
+    queryKey: ["/api/attendance/violations", dateRange.from, dateRange.to],
+    queryFn: () => {
+      const params = new URLSearchParams({ from: dateRange.from, to: dateRange.to });
+      return fetch(`/api/attendance/violations?${params}`).then(r => r.json());
+    },
+    refetchInterval: 60000,
+  });
+
   const editMutation = useMutation({
     mutationFn: ({ id, ...body }: { id: number; checkTime: string; notes: string }) =>
       apiRequest("PATCH", `/api/attendance/record/${id}`, body),
@@ -206,6 +262,17 @@ export default function AttendanceMonitorPage() {
       setEditRecord(null);
       toast({ title: "تم التعديل بنجاح" });
     },
+  });
+
+  const overrideMutation = useMutation({
+    mutationFn: ({ id, ...body }: { id: number; excuseType: string; note: string; newCheckTime?: string }) =>
+      apiRequest("POST", `/api/attendance/record/${id}/override`, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/attendance/monitor"] });
+      setOverrideRecord(null);
+      toast({ title: "تم اعتماد التدخل الإداري" });
+    },
+    onError: (e: Error) => toast({ title: e.message || "تعذّر اعتماد التدخل", variant: "destructive" }),
   });
 
   const records = data?.records || [];
@@ -242,6 +309,20 @@ export default function AttendanceMonitorPage() {
     return result;
   }, [employees, locationFilter, outOfZoneOnly, records, locRecords]);
 
+  // إعدادات الدوام لحساب «متأخر» — موحّد مع الـ backend عبر @shared/attendance
+  const { data: workSettings = [] } = useQuery<WorkScheduleSetting[]>({
+    queryKey: ["/api/attendance/work-settings"],
+  });
+
+  const lateCheck = useMemo(() => {
+    return (checkTime: string, employeeId: number) => {
+      const emp = employees.find(e => e.id === employeeId);
+      if (!emp) return false;
+      const schedule = resolveWorkSchedule(workSettings, { id: emp.id, department: emp.department });
+      return isLateCheckIn(new Date(checkTime), schedule);
+    };
+  }, [workSettings, employees]);
+
   // Records for the detailed records tab (location + out-of-zone filters)
   const filteredRecords = useMemo(() => {
     let result = locRecords;
@@ -250,50 +331,87 @@ export default function AttendanceMonitorPage() {
   }, [locRecords, outOfZoneOnly]);
 
   const summary = useMemo(() => {
-    let present = 0, absent = 0, incomplete = 0;
+    let present = 0, absent = 0, incomplete = 0, late = 0;
     if (isMultiDay) {
       // Sum statuses across employee × day
       filteredEmployees.forEach(emp => {
         days.forEach(day => {
           const dayRecs = recordsForDay(locRecords, day);
-          const st = getDayStatus(dayRecs, emp.id).status;
+          const st = getDayStatus(dayRecs, emp.id, lateCheck).status;
           if (st === "present") present++;
-          else if (st === "incomplete" || st === "checkout_only") incomplete++;
+          else if (st === "late") late++;
+          else if (st === "missing_checkout" || st === "missing_checkin") incomplete++;
           else absent++;
         });
       });
     } else {
-      present = filteredEmployees.filter(e => getDayStatus(locRecords, e.id).status === "present").length;
-      absent = filteredEmployees.filter(e => getDayStatus(locRecords, e.id).status === "absent").length;
-      incomplete = filteredEmployees.filter(e => ["incomplete", "checkout_only"].includes(getDayStatus(locRecords, e.id).status)).length;
+      present = filteredEmployees.filter(e => getDayStatus(locRecords, e.id, lateCheck).status === "present").length;
+      late = filteredEmployees.filter(e => getDayStatus(locRecords, e.id, lateCheck).status === "late").length;
+      absent = filteredEmployees.filter(e => getDayStatus(locRecords, e.id, lateCheck).status === "absent").length;
+      incomplete = filteredEmployees.filter(e => ["missing_checkout", "missing_checkin"].includes(getDayStatus(locRecords, e.id, lateCheck).status)).length;
     }
     const outOfZone = locRecords.filter(r => r.isOutOfZone).length;
-    return { present, absent, incomplete, outOfZone, total: filteredEmployees.length };
-  }, [locRecords, filteredEmployees, isMultiDay, days]);
+    return { present, absent, incomplete, late, outOfZone, total: filteredEmployees.length };
+  }, [locRecords, filteredEmployees, isMultiDay, days, lateCheck]);
 
+  // موظفون معروضون بعد فلتر الحالة (نقر البطاقات)
+  const visibleEmployees = useMemo(() => {
+    if (statusFilter === "all") return filteredEmployees;
+    const matches = (st: string) =>
+      statusFilter === "incomplete" ? (st === "missing_checkin" || st === "missing_checkout") : st === statusFilter;
+    if (isMultiDay) {
+      return filteredEmployees.filter(emp =>
+        days.some(day => matches(getDayStatus(recordsForDay(locRecords, day), emp.id, lateCheck).status)));
+    }
+    return filteredEmployees.filter(emp => matches(getDayStatus(locRecords, emp.id, lateCheck).status));
+  }, [filteredEmployees, statusFilter, isMultiDay, days, locRecords, lateCheck]);
+
+  const toggleStatusFilter = (key: string) => setStatusFilter(prev => (prev === key ? "all" : key));
+
+  const makeRange = (startDaysAgo: number, endDaysAgo = 0) => {
+    const start = new Date();
+    start.setDate(start.getDate() - startDaysAgo);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date();
+    end.setDate(end.getDate() - endDaysAgo);
+    end.setHours(23, 59, 59, 999);
+    return { from: start.toISOString(), to: end.toISOString() };
+  };
   const handleSetToday = () => setDateRange(getTodayRange());
-  const handleSetWeek = () => {
+  const handleSetYesterday = () => setDateRange(makeRange(1, 1));
+  const handleSetWeek = () => setDateRange(makeRange(6));
+  const handleSetMonth = () => setDateRange(makeRange(29));
+  const handleSetThisMonth = () => {
     const now = new Date();
-    const start = new Date(now);
-    start.setDate(now.getDate() - 6);
-    start.setHours(0, 0, 0, 0);
+    const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
     const end = new Date(now);
     end.setHours(23, 59, 59, 999);
     setDateRange({ from: start.toISOString(), to: end.toISOString() });
   };
-  const handleSetMonth = () => {
-    const now = new Date();
-    const start = new Date(now);
-    start.setDate(now.getDate() - 29);
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(now);
-    end.setHours(23, 59, 59, 999);
-    setDateRange({ from: start.toISOString(), to: end.toISOString() });
+  const shiftDay = (delta: number) => {
+    setDateRange(prev => {
+      const from = new Date(prev.from);
+      from.setDate(from.getDate() + delta);
+      from.setHours(0, 0, 0, 0);
+      const to = new Date(from);
+      to.setHours(23, 59, 59, 999);
+      return { from: from.toISOString(), to: to.toISOString() };
+    });
   };
 
-  const todayRange = getTodayRange();
-  const isTodayActive = dateRange.from.split("T")[0] === todayRange.from.split("T")[0]
-    && dateRange.to.split("T")[0] === todayRange.to.split("T")[0];
+  const sameRange = (a: { from: string; to: string }, b: { from: string; to: string }) =>
+    a.from.split("T")[0] === b.from.split("T")[0] && a.to.split("T")[0] === b.to.split("T")[0];
+  const isTodayActive = sameRange(dateRange, getTodayRange());
+  const isYesterdayActive = sameRange(dateRange, makeRange(1, 1));
+  const isWeekActive = sameRange(dateRange, makeRange(6));
+  const isMonthActive = sameRange(dateRange, makeRange(29));
+  const isThisMonthActive = (() => {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+    const end = new Date(now);
+    end.setHours(23, 59, 59, 999);
+    return sameRange(dateRange, { from: start.toISOString(), to: end.toISOString() });
+  })();
 
   const toggleExpand = (id: number) => {
     setExpandedEmployees(prev => {
@@ -310,6 +428,28 @@ export default function AttendanceMonitorPage() {
     setEditNotes(rec.notes || "");
   };
 
+  const openOverrideDialog = (rec: AttendanceRecord) => {
+    setOverrideRecord(rec);
+    setOverrideExcuse("forgot_fingerprint");
+    setOverrideNote("");
+    const dt = new Date(rec.checkTime);
+    setOverrideTime(`${String(dt.getHours()).padStart(2, "0")}:${String(dt.getMinutes()).padStart(2, "0")}`);
+  };
+
+  const handleOverride = () => {
+    if (!overrideRecord) return;
+    let newCheckTime: string | undefined;
+    if (overrideTime) {
+      const original = new Date(overrideRecord.checkTime);
+      const [h, m] = overrideTime.split(":").map(Number);
+      original.setHours(h, m, 0, 0);
+      if (original.toISOString() !== new Date(overrideRecord.checkTime).toISOString()) {
+        newCheckTime = original.toISOString();
+      }
+    }
+    overrideMutation.mutate({ id: overrideRecord.id, excuseType: overrideExcuse, note: overrideNote, newCheckTime });
+  };
+
   const handleEdit = () => {
     if (!editRecord) return;
     const original = new Date(editRecord.checkTime);
@@ -320,10 +460,10 @@ export default function AttendanceMonitorPage() {
 
   const exportCSV = () => {
     const rows = [["اسم الموظف", "التاريخ", "وقت الدخول", "وقت الخروج", "المدة", "الموقع", "الحالة"]];
-    filteredEmployees.forEach(emp => {
+    visibleEmployees.forEach(emp => {
       days.forEach(day => {
         const dayRecs = recordsForDay(locRecords, day);
-        const s = getDayStatus(dayRecs, emp.id);
+        const s = getDayStatus(dayRecs, emp.id, lateCheck);
         rows.push([
           emp.nameAr,
           day.toISOString().split("T")[0],
@@ -331,7 +471,7 @@ export default function AttendanceMonitorPage() {
           s.out ? formatTime(s.out.checkTime) : "—",
           s.duration || "—",
           (s.in?.locationName) || emp.locationName,
-          s.status === "present" ? "حاضر" : s.status === "absent" ? "غائب" : s.status === "checkout_only" ? "خروج فقط" : "ناقص",
+          s.status === "present" ? "حاضر" : s.status === "late" ? "متأخر" : s.status === "absent" ? "غائب" : s.status === "missing_checkin" ? "نقص دخول" : "نقص خروج",
         ]);
       });
     });
@@ -342,6 +482,54 @@ export default function AttendanceMonitorPage() {
     a.href = url;
     a.download = `تقرير_الدوام_${new Date().toISOString().split("T")[0]}.csv`;
     a.click();
+  };
+
+  const statusLabel = (st: string) =>
+    st === "present" ? "حاضر" : st === "late" ? "متأخر" : st === "absent" ? "غائب" : st === "missing_checkin" ? "نقص دخول" : "نقص خروج";
+
+  const exportPDF = () => {
+    const rowsHtml: string[] = [];
+    visibleEmployees.forEach(emp => {
+      days.forEach(day => {
+        const dayRecs = recordsForDay(locRecords, day);
+        const s = getDayStatus(dayRecs, emp.id, lateCheck);
+        rowsHtml.push(`<tr>
+          <td>${emp.nameAr}</td>
+          <td>${day.toISOString().split("T")[0]}</td>
+          <td>${s.in ? formatTime(s.in.checkTime) : "—"}</td>
+          <td>${s.out ? formatTime(s.out.checkTime) : "—"}</td>
+          <td>${s.duration || "—"}</td>
+          <td>${(s.in?.locationName) || emp.locationName || "—"}</td>
+          <td>${statusLabel(s.status)}</td>
+        </tr>`);
+      });
+    });
+    const win = window.open("", "_blank");
+    if (!win) {
+      toast({ title: "يرجى السماح بالنوافذ المنبثقة للتصدير PDF", variant: "destructive" });
+      return;
+    }
+    win.document.write(`<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="utf-8">
+      <title>تقرير الدوام</title>
+      <style>
+        body { font-family: "Zain", "Segoe UI", Tahoma, sans-serif; padding: 24px; color: #111; }
+        h1 { font-size: 18px; margin: 0 0 4px; }
+        p.meta { font-size: 12px; color: #555; margin: 0 0 16px; }
+        table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        th, td { border: 1px solid #999; padding: 6px 8px; text-align: right; }
+        th { background: #f3f3f3; }
+        @media print { @page { size: A4 landscape; margin: 12mm; } }
+      </style></head><body>
+      <h1>تقرير الدوام — تيك للتصنيع</h1>
+      <p class="meta">الفترة: ${dateRange.from.split("T")[0]} إلى ${dateRange.to.split("T")[0]}
+        ${statusFilter !== "all" ? ` — الحالة: ${statusFilter === "incomplete" ? "نقص حركة" : statusLabel(statusFilter)}` : ""}
+        ${locationFilter !== "all" ? ` — الموقع: ${locationFilter}` : ""}</p>
+      <table><thead><tr>
+        <th>اسم الموظف</th><th>التاريخ</th><th>الدخول</th><th>الخروج</th><th>المدة</th><th>الموقع</th><th>الحالة</th>
+      </tr></thead><tbody>${rowsHtml.join("")}</tbody></table>
+      <script>window.onload = () => { window.print(); };</script>
+      </body></html>`);
+    win.document.close();
   };
 
   return (
@@ -359,7 +547,11 @@ export default function AttendanceMonitorPage() {
           </Button>
           <Button variant="outline" size="sm" onClick={exportCSV} data-testid="button-export-attendance">
             <Download className="w-4 h-4 me-1" />
-            {t("تصدير", "Export")}
+            {t("تصدير Excel", "Export Excel")}
+          </Button>
+          <Button variant="outline" size="sm" onClick={exportPDF} data-testid="button-export-attendance-pdf">
+            <FileText className="w-4 h-4 me-1" />
+            {t("تصدير PDF", "Export PDF")}
           </Button>
         </div>
       </div>
@@ -367,6 +559,9 @@ export default function AttendanceMonitorPage() {
       {/* Filters */}
       <div className="flex gap-2 flex-wrap items-center bg-muted/30 rounded-xl p-3">
         <Filter className="w-4 h-4 text-muted-foreground" />
+        <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => shiftDay(-1)} title="اليوم السابق" data-testid="button-day-prev">
+          <ChevronRight className="w-4 h-4" />
+        </Button>
         <Button
           size="sm"
           variant={isTodayActive ? "default" : "outline"}
@@ -375,11 +570,20 @@ export default function AttendanceMonitorPage() {
         >
           اليوم
         </Button>
-        <Button size="sm" variant="outline" onClick={handleSetWeek} data-testid="button-filter-week">
+        <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => shiftDay(1)} title="اليوم التالي" data-testid="button-day-next">
+          <ChevronLeft className="w-4 h-4" />
+        </Button>
+        <Button size="sm" variant={isYesterdayActive ? "default" : "outline"} onClick={handleSetYesterday} data-testid="button-filter-yesterday">
+          أمس
+        </Button>
+        <Button size="sm" variant={isWeekActive ? "default" : "outline"} onClick={handleSetWeek} data-testid="button-filter-week">
           آخر 7 أيام
         </Button>
-        <Button size="sm" variant="outline" onClick={handleSetMonth} data-testid="button-filter-month">
+        <Button size="sm" variant={isMonthActive ? "default" : "outline"} onClick={handleSetMonth} data-testid="button-filter-month">
           آخر 30 يوم
+        </Button>
+        <Button size="sm" variant={isThisMonthActive ? "default" : "outline"} onClick={handleSetThisMonth} data-testid="button-filter-this-month">
+          هذا الشهر
         </Button>
         <div className="flex gap-1 items-center">
           <Input
@@ -434,8 +638,12 @@ export default function AttendanceMonitorPage() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Card data-testid="card-present-count">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <Card
+          data-testid="card-present-count"
+          onClick={() => toggleStatusFilter("present")}
+          className={`cursor-pointer transition-shadow hover:shadow-md ${statusFilter === "present" ? "ring-2 ring-green-500" : ""}`}
+        >
           <CardContent className="p-4 flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-green-100 dark:bg-green-950 flex items-center justify-center">
               <CheckCircle2 className="w-5 h-5 text-green-600" />
@@ -446,7 +654,26 @@ export default function AttendanceMonitorPage() {
             </div>
           </CardContent>
         </Card>
-        <Card data-testid="card-absent-count">
+        <Card
+          data-testid="card-late-count"
+          onClick={() => toggleStatusFilter("late")}
+          className={`cursor-pointer transition-shadow hover:shadow-md ${statusFilter === "late" ? "ring-2 ring-orange-500" : ""}`}
+        >
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-orange-100 dark:bg-orange-950 flex items-center justify-center">
+              <Clock className="w-5 h-5 text-orange-600" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-orange-600">{summary.late}</p>
+              <p className="text-xs text-muted-foreground">متأخر</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card
+          data-testid="card-absent-count"
+          onClick={() => toggleStatusFilter("absent")}
+          className={`cursor-pointer transition-shadow hover:shadow-md ${statusFilter === "absent" ? "ring-2 ring-red-500" : ""}`}
+        >
           <CardContent className="p-4 flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-red-100 dark:bg-red-950 flex items-center justify-center">
               <XCircle className="w-5 h-5 text-red-600" />
@@ -457,18 +684,26 @@ export default function AttendanceMonitorPage() {
             </div>
           </CardContent>
         </Card>
-        <Card data-testid="card-incomplete-count">
+        <Card
+          data-testid="card-incomplete-count"
+          onClick={() => toggleStatusFilter("incomplete")}
+          className={`cursor-pointer transition-shadow hover:shadow-md ${statusFilter === "incomplete" ? "ring-2 ring-yellow-500" : ""}`}
+        >
           <CardContent className="p-4 flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-yellow-100 dark:bg-yellow-950 flex items-center justify-center">
               <AlertTriangle className="w-5 h-5 text-yellow-600" />
             </div>
             <div>
               <p className="text-2xl font-bold text-yellow-600">{summary.incomplete}</p>
-              <p className="text-xs text-muted-foreground">ناقص</p>
+              <p className="text-xs text-muted-foreground">نقص حركة</p>
             </div>
           </CardContent>
         </Card>
-        <Card data-testid="card-outofzone-count">
+        <Card
+          data-testid="card-outofzone-count"
+          onClick={() => setOutOfZoneOnly(v => !v)}
+          className={`cursor-pointer transition-shadow hover:shadow-md ${outOfZoneOnly ? "ring-2 ring-orange-500" : ""}`}
+        >
           <CardContent className="p-4 flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-orange-100 dark:bg-orange-950 flex items-center justify-center">
               <MapPin className="w-5 h-5 text-orange-600" />
@@ -496,6 +731,23 @@ export default function AttendanceMonitorPage() {
             <Map className="w-4 h-4 me-1" />
             مناطق الدوام
           </TabsTrigger>
+          <TabsTrigger value="work-settings" data-testid="tab-work-settings">
+            <Settings className="w-4 h-4 me-1" />
+            إعدادات الدوام
+          </TabsTrigger>
+          <TabsTrigger value="risk" data-testid="tab-risk">
+            <AlertTriangle className="w-4 h-4 me-1" />
+            مؤشر الخطر
+          </TabsTrigger>
+          <TabsTrigger value="violations" data-testid="tab-violations">
+            <AlertTriangle className="w-4 h-4 me-1" />
+            المخالفات
+            {violations.length > 0 && (
+              <span className="ms-1 w-4 h-4 rounded-full bg-amber-500 text-white text-[9px] flex items-center justify-center">
+                {violations.length}
+              </span>
+            )}
+          </TabsTrigger>
           {deviceReport.length > 0 && (
             <TabsTrigger value="devices" data-testid="tab-devices">
               <Monitor className="w-4 h-4 me-1" />
@@ -521,14 +773,14 @@ export default function AttendanceMonitorPage() {
             <CardContent className="p-0">
               {isLoading ? (
                 <div className="p-8 text-center text-muted-foreground animate-pulse">جاري التحميل...</div>
-              ) : filteredEmployees.length === 0 ? (
+              ) : visibleEmployees.length === 0 ? (
                 <div className="p-8 text-center text-muted-foreground">لا يوجد موظفون مطابقون للتصفية</div>
               ) : isMultiDay ? (
                 <div className="divide-y" data-testid="list-multiday-employees">
-                  {filteredEmployees.map(emp => {
-                    const empDays = days.map(day => ({ day, s: getDayStatus(recordsForDay(locRecords, day), emp.id) }));
+                  {visibleEmployees.map(emp => {
+                    const empDays = days.map(day => ({ day, s: getDayStatus(recordsForDay(locRecords, day), emp.id, lateCheck) }));
                     const presentDays = empDays.filter(d => d.s.status === "present").length;
-                    const incompleteDays = empDays.filter(d => ["incomplete", "checkout_only"].includes(d.s.status)).length;
+                    const incompleteDays = empDays.filter(d => ["missing_checkout", "missing_checkin"].includes(d.s.status)).length;
                     const absentDays = empDays.filter(d => d.s.status === "absent").length;
                     const expanded = expandedEmployees.has(emp.id);
                     return (
@@ -615,8 +867,8 @@ export default function AttendanceMonitorPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y">
-                      {filteredEmployees.map(emp => {
-                        const s = getDayStatus(locRecords, emp.id);
+                      {visibleEmployees.map(emp => {
+                        const s = getDayStatus(locRecords, emp.id, lateCheck);
                         return (
                           <tr key={emp.id} className="hover:bg-muted/20 transition-colors" data-testid={`row-employee-${emp.id}`}>
                             <td className="px-4 py-3">
@@ -749,7 +1001,11 @@ export default function AttendanceMonitorPage() {
                         <td className="px-4 py-3">
                           <p>{formatDate(rec.checkTime)}</p>
                           <p className="text-muted-foreground text-xs font-mono">{formatTime(rec.checkTime)}</p>
-                          {rec.isManualEdit && <Badge variant="outline" className="text-[9px] h-4 mt-0.5">تعديل يدوي</Badge>}
+                          {rec.overrideExcuse ? (
+                            <Badge className="text-[9px] h-4 mt-0.5 bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300 border-violet-300" data-testid={`badge-override-${rec.id}`}>
+                              معالَج إدارياً · {OVERRIDE_EXCUSE_LABELS[rec.overrideExcuse]?.split(" (")[0] || rec.overrideExcuse}
+                            </Badge>
+                          ) : rec.isManualEdit && <Badge variant="outline" className="text-[9px] h-4 mt-0.5">تعديل يدوي</Badge>}
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-1 flex-wrap">
@@ -788,9 +1044,14 @@ export default function AttendanceMonitorPage() {
                           {rec.notes && <p className="text-orange-600 mt-0.5">{rec.notes}</p>}
                         </td>
                         <td className="px-4 py-3">
-                          <Button size="sm" variant="ghost" onClick={() => openEditDialog(rec)} data-testid={`button-edit-record-${rec.id}`}>
-                            <Pencil className="w-3.5 h-3.5" />
-                          </Button>
+                          <div className="flex items-center gap-1">
+                            <Button size="sm" variant="ghost" onClick={() => openEditDialog(rec)} data-testid={`button-edit-record-${rec.id}`}>
+                              <Pencil className="w-3.5 h-3.5" />
+                            </Button>
+                            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => openOverrideDialog(rec)} data-testid={`button-override-record-${rec.id}`}>
+                              تدخل إداري
+                            </Button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -811,6 +1072,64 @@ export default function AttendanceMonitorPage() {
           <Card>
             <CardContent className="p-4 md:p-6">
               <AttendanceZonesMap />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Work Schedule Settings Tab */}
+        <TabsContent value="work-settings">
+          <WorkScheduleSettingsTab employees={employees} />
+        </TabsContent>
+
+        {/* Risk Score Tab */}
+        <TabsContent value="risk">
+          <RiskScoresTab />
+        </TabsContent>
+
+        {/* Violations Tab */}
+        <TabsContent value="violations">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-600" />
+                مخالفات الحضور — محاولات مرفوضة
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {violations.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-8" data-testid="text-no-violations">
+                  لا توجد مخالفات في الفترة المحددة
+                </p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-muted-foreground">
+                        <th className="text-start py-2 px-2">الموظف</th>
+                        <th className="text-start py-2 px-2">نوع المخالفة</th>
+                        <th className="text-start py-2 px-2">المحاولة</th>
+                        <th className="text-start py-2 px-2">التفاصيل</th>
+                        <th className="text-start py-2 px-2">الوقت</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {violations.map(v => (
+                        <tr key={v.id} className="border-b" data-testid={`row-violation-${v.id}`}>
+                          <td className="py-2 px-2 font-medium">{v.employeeNameAr || v.employeePhone || "—"}</td>
+                          <td className="py-2 px-2">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400">
+                              {v.violationType === "missing_checkin" ? "نقص دخول" : v.violationType === "missing_checkout" ? "نقص خروج" : v.violationType}
+                            </span>
+                          </td>
+                          <td className="py-2 px-2">{v.attemptedType === "check_out" ? "خروج" : v.attemptedType === "check_in" ? "دخول" : "—"}</td>
+                          <td className="py-2 px-2 text-muted-foreground max-w-xs">{v.details || "—"}</td>
+                          <td className="py-2 px-2 whitespace-nowrap">{new Date(v.occurredAt).toLocaleString("ar-SA")}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -925,6 +1244,389 @@ export default function AttendanceMonitorPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Admin Override Dialog */}
+      <Dialog open={!!overrideRecord} onOpenChange={open => !open && setOverrideRecord(null)}>
+        <DialogContent dir="rtl">
+          <DialogHeader>
+            <DialogTitle>تدخل إداري — تصحيح بعذر معتمد</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="text-sm space-y-1 bg-muted/40 rounded-md p-3">
+              <p><span className="font-medium">الموظف:</span> {overrideRecord?.employeeNameAr}</p>
+              <p><span className="font-medium">النوع:</span> {overrideRecord?.type === "check_in" ? "دخول" : "خروج"}</p>
+              <p><span className="font-medium">التاريخ:</span> {overrideRecord && formatDate(overrideRecord.checkTime)}</p>
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium">نوع العذر</label>
+              <Select value={overrideExcuse} onValueChange={setOverrideExcuse}>
+                <SelectTrigger data-testid="select-override-excuse">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(OVERRIDE_EXCUSE_LABELS).map(([v, l]) => (
+                    <SelectItem key={v} value={v}>{l}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium">تعديل الوقت (اختياري)</label>
+              <Input
+                type="time"
+                value={overrideTime}
+                onChange={e => setOverrideTime(e.target.value)}
+                data-testid="input-override-time"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium">ملاحظة / سبب التصحيح</label>
+              <Textarea
+                value={overrideNote}
+                onChange={e => setOverrideNote(e.target.value)}
+                placeholder="اكتب تفاصيل العذر..."
+                data-testid="input-override-note"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              يُسجَّل التدخل في سجل التدقيق (من عدّل، متى، القيمة القديمة والجديدة). لا يوجد أي خصم مالي.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOverrideRecord(null)}>إلغاء</Button>
+            <Button onClick={handleOverride} disabled={overrideMutation.isPending} data-testid="button-save-override">
+              {overrideMutation.isPending ? "جاري الحفظ..." : "اعتماد التدخل"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function WorkScheduleSettingsTab({ employees }: { employees: EmployeeInfo[] }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [newScope, setNewScope] = useState<"department" | "employee">("department");
+  const [newDept, setNewDept] = useState("");
+  const [newEmpId, setNewEmpId] = useState("");
+  const [newStart, setNewStart] = useState("08:00");
+  const [newGrace, setNewGrace] = useState("15");
+  const [edits, setEdits] = useState<Record<number, { workStartTime: string; graceMinutes: string }>>({});
+
+  const { data: settings = [], isLoading } = useQuery<WorkScheduleSetting[]>({
+    queryKey: ["/api/attendance/work-settings"],
+  });
+
+  const invalidate = () => qc.invalidateQueries({ queryKey: ["/api/attendance/work-settings"] });
+
+  const createMutation = useMutation({
+    mutationFn: (body: Record<string, unknown>) => apiRequest("POST", "/api/attendance/work-settings", body),
+    onSuccess: () => {
+      invalidate();
+      setNewDept(""); setNewEmpId(""); setNewStart("08:00"); setNewGrace("15");
+      toast({ title: "تمت إضافة الإعداد" });
+    },
+    onError: (e: Error) => toast({ title: e.message || "تعذّرت الإضافة", variant: "destructive" }),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, ...body }: { id: number; workStartTime: string; graceMinutes: number }) =>
+      apiRequest("PATCH", `/api/attendance/work-settings/${id}`, body),
+    onSuccess: (_d, vars) => {
+      invalidate();
+      setEdits(prev => { const n = { ...prev }; delete n[vars.id]; return n; });
+      toast({ title: "تم حفظ الإعداد" });
+    },
+    onError: (e: Error) => toast({ title: e.message || "تعذّر الحفظ", variant: "destructive" }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/attendance/work-settings/${id}`),
+    onSuccess: () => { invalidate(); toast({ title: "تم حذف الإعداد" }); },
+    onError: (e: Error) => toast({ title: e.message || "تعذّر الحذف", variant: "destructive" }),
+  });
+
+  const scopeLabel = (s: WorkScheduleSetting) => {
+    if (s.scopeType === "default") return "الافتراضي (كل الموظفين)";
+    if (s.scopeType === "department") return `قسم: ${DEPARTMENTS.find(d => d.value === s.department)?.label || s.department}`;
+    const emp = employees.find(e => e.id === s.employeeId);
+    return `موظف: ${emp?.nameAr || `#${s.employeeId}`}`;
+  };
+
+  const handleAdd = () => {
+    const body: Record<string, unknown> = { scopeType: newScope, workStartTime: newStart, graceMinutes: parseInt(newGrace) || 15 };
+    if (newScope === "department") {
+      if (!newDept) { toast({ title: "حدد القسم", variant: "destructive" }); return; }
+      body.department = newDept;
+    } else {
+      if (!newEmpId) { toast({ title: "حدد الموظف", variant: "destructive" }); return; }
+      body.employeeId = parseInt(newEmpId);
+    }
+    createMutation.mutate(body);
+  };
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Settings className="w-4 h-4 text-muted-foreground" />
+            إعدادات أوقات الدوام وسماح التأخير (توقيت السعودية UTC+3)
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <p className="text-sm text-muted-foreground py-4 text-center">جارٍ التحميل...</p>
+          ) : (
+            <div className="space-y-3">
+              {settings.map(s => {
+                const edit = edits[s.id];
+                return (
+                  <div key={s.id} className="flex flex-wrap items-center gap-3 border rounded-lg p-3" data-testid={`row-work-setting-${s.id}`}>
+                    <div className="min-w-40 font-medium text-sm">{scopeLabel(s)}</div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground">بدء الدوام</span>
+                      <Input
+                        type="time"
+                        className="w-28 h-8"
+                        value={edit?.workStartTime ?? s.workStartTime}
+                        onChange={e => setEdits(prev => ({ ...prev, [s.id]: { workStartTime: e.target.value, graceMinutes: prev[s.id]?.graceMinutes ?? String(s.graceMinutes) } }))}
+                        data-testid={`input-start-time-${s.id}`}
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground">السماح (دقيقة)</span>
+                      <Input
+                        type="number"
+                        min={0}
+                        max={240}
+                        className="w-20 h-8"
+                        value={edit?.graceMinutes ?? String(s.graceMinutes)}
+                        onChange={e => setEdits(prev => ({ ...prev, [s.id]: { workStartTime: prev[s.id]?.workStartTime ?? s.workStartTime, graceMinutes: e.target.value } }))}
+                        data-testid={`input-grace-${s.id}`}
+                      />
+                    </div>
+                    {edit && (
+                      <Button
+                        size="sm"
+                        className="h-8"
+                        disabled={updateMutation.isPending}
+                        onClick={() => updateMutation.mutate({ id: s.id, workStartTime: edit.workStartTime, graceMinutes: parseInt(edit.graceMinutes) || 0 })}
+                        data-testid={`button-save-setting-${s.id}`}
+                      >
+                        حفظ
+                      </Button>
+                    )}
+                    {s.scopeType !== "default" && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 text-red-600"
+                        disabled={deleteMutation.isPending}
+                        onClick={() => deleteMutation.mutate(s.id)}
+                        data-testid={`button-delete-setting-${s.id}`}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Plus className="w-4 h-4 text-muted-foreground" />
+            إضافة تخصيص لقسم أو موظف
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="space-y-1">
+              <span className="text-xs text-muted-foreground">النطاق</span>
+              <Select value={newScope} onValueChange={v => setNewScope(v as "department" | "employee")}>
+                <SelectTrigger className="w-32 h-9" data-testid="select-new-scope"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="department">قسم</SelectItem>
+                  <SelectItem value="employee">موظف</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {newScope === "department" ? (
+              <div className="space-y-1">
+                <span className="text-xs text-muted-foreground">القسم</span>
+                <Select value={newDept} onValueChange={setNewDept}>
+                  <SelectTrigger className="w-40 h-9" data-testid="select-new-department"><SelectValue placeholder="اختر القسم" /></SelectTrigger>
+                  <SelectContent>
+                    {DEPARTMENTS.map(d => <SelectItem key={d.value} value={d.value}>{d.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : (
+              <div className="space-y-1">
+                <span className="text-xs text-muted-foreground">الموظف</span>
+                <Select value={newEmpId} onValueChange={setNewEmpId}>
+                  <SelectTrigger className="w-44 h-9" data-testid="select-new-employee"><SelectValue placeholder="اختر الموظف" /></SelectTrigger>
+                  <SelectContent>
+                    {employees.map(e => <SelectItem key={e.id} value={String(e.id)}>{e.nameAr}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div className="space-y-1">
+              <span className="text-xs text-muted-foreground">بدء الدوام</span>
+              <Input type="time" className="w-28 h-9" value={newStart} onChange={e => setNewStart(e.target.value)} data-testid="input-new-start-time" />
+            </div>
+            <div className="space-y-1">
+              <span className="text-xs text-muted-foreground">السماح (دقيقة)</span>
+              <Input type="number" min={0} max={240} className="w-20 h-9" value={newGrace} onChange={e => setNewGrace(e.target.value)} data-testid="input-new-grace" />
+            </div>
+            <Button className="h-9" onClick={handleAdd} disabled={createMutation.isPending} data-testid="button-add-work-setting">
+              <Plus className="w-4 h-4 me-1" />
+              إضافة
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+interface RiskScoreRow {
+  employeeId: number;
+  employeeNumber: string;
+  nameAr: string;
+  department: string | null;
+  late: number;
+  absent: number;
+  incomplete: number;
+  score: number;
+  level: "green" | "orange" | "red";
+}
+
+function RiskScoresTab() {
+  const currentMonth = new Date().toISOString().slice(0, 7);
+  const [month, setMonth] = useState(currentMonth);
+  const [sortDesc, setSortDesc] = useState(true);
+
+  const { data, isLoading } = useQuery<{ period: string; results: RiskScoreRow[] }>({
+    queryKey: ["/api/attendance/risk-scores", month],
+    queryFn: () => fetch(`/api/attendance/risk-scores?month=${month}`).then(r => {
+      if (!r.ok) throw new Error("تعذّر جلب مؤشر الخطر");
+      return r.json();
+    }),
+  });
+
+  const rows = useMemo(() => {
+    const list = [...(data?.results || [])];
+    list.sort((a, b) => (sortDesc ? b.score - a.score : a.score - b.score));
+    return list;
+  }, [data, sortDesc]);
+
+  const levelBadge = (level: string, score: number) => {
+    const cls = level === "red"
+      ? "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400"
+      : level === "orange"
+        ? "bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-400"
+        : "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400";
+    const label = level === "red" ? "أحمر" : level === "orange" ? "برتقالي" : "أخضر";
+    return (
+      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold ${cls}`}>
+        {score} — {label}
+      </span>
+    );
+  };
+
+  const deptLabel = (d: string | null) => DEPARTMENTS.find(x => x.value === d)?.label || d || "—";
+
+  const { data: auditData } = useQuery<{ logs: unknown[]; excuseCounts: Record<string, number> }>({
+    queryKey: ["/api/attendance/audit-log", month],
+    queryFn: () => fetch(`/api/attendance/audit-log?month=${month}`).then(r => {
+      if (!r.ok) throw new Error("تعذّر جلب سجل التدقيق");
+      return r.json();
+    }),
+  });
+  const excuseCounts = auditData?.excuseCounts || {};
+  const totalExcuses = Object.values(excuseCounts).reduce((a, b) => a + b, 0);
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">تقرير الأعذار الشهري (التدخل الإداري)</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {totalExcuses === 0 ? (
+            <p className="text-sm text-muted-foreground">لا توجد تدخلات إدارية في هذا الشهر</p>
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {Object.entries(OVERRIDE_EXCUSE_LABELS).map(([key, label]) => (
+                <div key={key} className="rounded-md border p-3 text-center" data-testid={`stat-excuse-${key}`}>
+                  <p className="text-2xl font-bold">{excuseCounts[key] || 0}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{label.split(" (")[0]}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2 pb-2">
+        <CardTitle className="text-base">مؤشر الخطر الشهري (تأخيرة=1 • غياب=2 • نقص حركة=1)</CardTitle>
+        <div className="flex items-center gap-2">
+          <Input
+            type="month"
+            value={month}
+            max={currentMonth}
+            onChange={e => e.target.value && setMonth(e.target.value)}
+            className="h-8 w-40 text-xs"
+            data-testid="input-risk-month"
+          />
+          <Button size="sm" variant="outline" onClick={() => setSortDesc(v => !v)} data-testid="button-risk-sort">
+            الترتيب: {sortDesc ? "الأعلى أولاً" : "الأدنى أولاً"}
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="p-0">
+        {isLoading ? (
+          <div className="p-8 text-center text-muted-foreground">جارٍ التحميل...</div>
+        ) : rows.length === 0 ? (
+          <div className="p-8 text-center text-muted-foreground">لا توجد بيانات لهذا الشهر</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-muted-foreground text-xs border-b">
+                  <th className="px-4 py-2 text-right">الموظف</th>
+                  <th className="px-4 py-2 text-right">القسم</th>
+                  <th className="px-4 py-2 text-center">تأخير</th>
+                  <th className="px-4 py-2 text-center">غياب</th>
+                  <th className="px-4 py-2 text-center">نقص حركة</th>
+                  <th className="px-4 py-2 text-center">Risk Score</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {rows.map(r => (
+                  <tr key={r.employeeId} className="hover:bg-muted/20" data-testid={`row-risk-${r.employeeId}`}>
+                    <td className="px-4 py-2 font-medium">{r.nameAr}</td>
+                    <td className="px-4 py-2 text-xs text-muted-foreground">{deptLabel(r.department)}</td>
+                    <td className="px-4 py-2 text-center">{r.late}</td>
+                    <td className="px-4 py-2 text-center">{r.absent}</td>
+                    <td className="px-4 py-2 text-center">{r.incomplete}</td>
+                    <td className="px-4 py-2 text-center" data-testid={`text-risk-score-${r.employeeId}`}>{levelBadge(r.level, r.score)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
     </div>
   );
 }

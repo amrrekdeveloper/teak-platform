@@ -1,4 +1,4 @@
-import { eq, desc, like, and, sql, gte, lte, or, asc, isNull, isNotNull } from "drizzle-orm";
+import { eq, desc, like, and, sql, gte, lte, or, asc, isNull, isNotNull, inArray } from "drizzle-orm";
 import { db } from "./db";
 import {
   users, type User, type InsertUser,
@@ -34,6 +34,7 @@ import {
   employeeAdvances, type EmployeeAdvance, type InsertEmployeeAdvance,
   leaveRequests, type LeaveRequest, type InsertLeaveRequest,
   performanceEvaluations, type PerformanceEvaluation, type InsertPerformanceEvaluation,
+  hrActions, type HrAction, type InsertHrAction,
   designAssignments, type DesignAssignment, type InsertDesignAssignment,
   warranties, type Warranty, type InsertWarranty,
   adekoProducts, type AdekoProduct, type InsertAdekoProduct,
@@ -44,6 +45,9 @@ import {
   dailySalesLogs, type DailySalesLog, type InsertDailySalesLog,
   attendanceRecords, type AttendanceRecord, type InsertAttendanceRecord,
   attendancePermissions, type AttendancePermission, type InsertAttendancePermission,
+  attendanceViolations, type AttendanceViolation, type InsertAttendanceViolation,
+  attendanceAuditLog, type AttendanceAuditLog, type InsertAttendanceAuditLog,
+  workScheduleSettings, type WorkScheduleSetting, type InsertWorkScheduleSetting,
   locationZones, type LocationZone, type InsertLocationZone,
   chartOfAccounts, type ChartOfAccount, type InsertChartOfAccount,
   journalEntries, type JournalEntry, type InsertJournalEntry,
@@ -205,7 +209,13 @@ export interface IStorage {
   createLeaveRequest(data: InsertLeaveRequest): Promise<LeaveRequest>;
   updateLeaveRequest(id: number, data: Partial<InsertLeaveRequest>): Promise<LeaveRequest | undefined>;
 
-  // Performance Evaluations (تقييم الأداء)
+  // HR Actions (مسارات ملف الموظف WF-01..WF-10)
+  getHrActions(filters?: { employeeId?: number; workflow?: string; tab?: string; prehire?: boolean }): Promise<HrAction[]>;
+  getHrAction(id: number): Promise<HrAction | undefined>;
+  createHrAction(data: InsertHrAction): Promise<HrAction>;
+  updateHrAction(id: number, data: Partial<InsertHrAction> & { updatedAt?: Date }): Promise<HrAction | undefined>;
+  advanceHrAction(id: number, expectedStep: number, data: Partial<InsertHrAction>): Promise<HrAction | undefined>;
+  getHrActionByLink(linkedActionId: number, workflow: string): Promise<HrAction | undefined>;
   getPerformanceEvaluations(employeeId?: number): Promise<PerformanceEvaluation[]>;
   getPerformanceEvaluation(id: number): Promise<PerformanceEvaluation | undefined>;
   createPerformanceEvaluation(data: InsertPerformanceEvaluation): Promise<PerformanceEvaluation>;
@@ -277,6 +287,16 @@ export interface IStorage {
   createAttendancePermission(data: InsertAttendancePermission): Promise<AttendancePermission>;
   getAttendancePermissions(filters?: { employeeId?: number; employeePhone?: string; date?: string }): Promise<AttendancePermission[]>;
   updateAttendancePermission(id: number, data: Partial<InsertAttendancePermission>): Promise<AttendancePermission | undefined>;
+  createAttendanceViolation(data: InsertAttendanceViolation): Promise<AttendanceViolation>;
+  getAttendanceViolations(filters?: { employeeId?: number; from?: string; to?: string }): Promise<AttendanceViolation[]>;
+  getWorkScheduleSettings(): Promise<WorkScheduleSetting[]>;
+  createRiskAlertIfNew(employeeId: number, period: string, level: string): Promise<boolean>;
+  getAttendanceRecord(id: number): Promise<AttendanceRecord | undefined>;
+  createAttendanceAuditLog(data: InsertAttendanceAuditLog): Promise<AttendanceAuditLog>;
+  getAttendanceAuditLogs(filters?: { recordId?: number; from?: string; to?: string }): Promise<AttendanceAuditLog[]>;
+  createWorkScheduleSetting(data: InsertWorkScheduleSetting): Promise<WorkScheduleSetting>;
+  updateWorkScheduleSetting(id: number, data: Partial<InsertWorkScheduleSetting>): Promise<WorkScheduleSetting | undefined>;
+  deleteWorkScheduleSetting(id: number): Promise<void>;
   getLocationZones(): Promise<LocationZone[]>;
   createLocationZone(data: InsertLocationZone): Promise<LocationZone>;
   updateLocationZone(id: number, data: Partial<InsertLocationZone>): Promise<LocationZone | undefined>;
@@ -953,6 +973,51 @@ export class DatabaseStorage implements IStorage {
   }
 
   // ===== Performance Evaluations (تقييم الأداء) =====
+  async getHrActions(filters?: { employeeId?: number; workflow?: string; tab?: string; prehire?: boolean }): Promise<HrAction[]> {
+    const conds = [];
+    if (filters?.employeeId != null) conds.push(eq(hrActions.employeeId, filters.employeeId));
+    if (filters?.workflow) conds.push(eq(hrActions.workflow, filters.workflow));
+    if (filters?.tab) conds.push(eq(hrActions.tab, filters.tab));
+    if (filters?.prehire) conds.push(isNull(hrActions.employeeId));
+    if (conds.length > 0) {
+      return db.select().from(hrActions).where(and(...conds)).orderBy(desc(hrActions.createdAt));
+    }
+    return db.select().from(hrActions).orderBy(desc(hrActions.createdAt));
+  }
+
+  async getHrAction(id: number): Promise<HrAction | undefined> {
+    const [row] = await db.select().from(hrActions).where(eq(hrActions.id, id));
+    return row;
+  }
+
+  async createHrAction(data: InsertHrAction): Promise<HrAction> {
+    const [row] = await db.insert(hrActions).values(data).returning();
+    return row;
+  }
+
+  async updateHrAction(id: number, data: Partial<InsertHrAction> & { updatedAt?: Date }): Promise<HrAction | undefined> {
+    const [row] = await db.update(hrActions).set({ ...data, updatedAt: new Date() }).where(eq(hrActions.id, id)).returning();
+    return row;
+  }
+
+  async advanceHrAction(id: number, expectedStep: number, data: Partial<InsertHrAction>): Promise<HrAction | undefined> {
+    const [row] = await db.update(hrActions)
+      .set({ ...data, updatedAt: new Date() })
+      .where(and(
+        eq(hrActions.id, id),
+        eq(hrActions.currentStep, expectedStep),
+        inArray(hrActions.status, ["pending", "in_progress"]),
+      ))
+      .returning();
+    return row;
+  }
+
+  async getHrActionByLink(linkedActionId: number, workflow: string): Promise<HrAction | undefined> {
+    const [row] = await db.select().from(hrActions)
+      .where(and(eq(hrActions.linkedActionId, linkedActionId), eq(hrActions.workflow, workflow)));
+    return row;
+  }
+
   async getPerformanceEvaluations(employeeId?: number): Promise<PerformanceEvaluation[]> {
     if (employeeId) {
       return db.select().from(performanceEvaluations).where(eq(performanceEvaluations.employeeId, employeeId)).orderBy(desc(performanceEvaluations.createdAt));
@@ -1276,6 +1341,70 @@ export class DatabaseStorage implements IStorage {
   async updateAttendancePermission(id: number, data: Partial<InsertAttendancePermission>): Promise<AttendancePermission | undefined> {
     const [updated] = await db.update(attendancePermissions).set(data).where(eq(attendancePermissions.id, id)).returning();
     return updated;
+  }
+
+  async createAttendanceViolation(data: InsertAttendanceViolation): Promise<AttendanceViolation> {
+    const [v] = await db.insert(attendanceViolations).values(data).returning();
+    return v;
+  }
+
+  async getAttendanceViolations(filters?: { employeeId?: number; from?: string; to?: string }): Promise<AttendanceViolation[]> {
+    const conditions = [];
+    if (filters?.employeeId) conditions.push(eq(attendanceViolations.employeeId, filters.employeeId));
+    if (filters?.from) conditions.push(gte(attendanceViolations.occurredAt, new Date(filters.from)));
+    if (filters?.to) conditions.push(lte(attendanceViolations.occurredAt, new Date(filters.to)));
+    return conditions.length
+      ? db.select().from(attendanceViolations).where(and(...conditions)).orderBy(desc(attendanceViolations.occurredAt))
+      : db.select().from(attendanceViolations).orderBy(desc(attendanceViolations.occurredAt));
+  }
+
+  async getWorkScheduleSettings(): Promise<WorkScheduleSetting[]> {
+    return db.select().from(workScheduleSettings).orderBy(workScheduleSettings.id);
+  }
+
+  async createWorkScheduleSetting(data: InsertWorkScheduleSetting): Promise<WorkScheduleSetting> {
+    const [s] = await db.insert(workScheduleSettings).values(data).returning();
+    return s;
+  }
+
+  async updateWorkScheduleSetting(id: number, data: Partial<InsertWorkScheduleSetting>): Promise<WorkScheduleSetting | undefined> {
+    const [s] = await db.update(workScheduleSettings).set(data).where(eq(workScheduleSettings.id, id)).returning();
+    return s;
+  }
+
+  async deleteWorkScheduleSetting(id: number): Promise<void> {
+    await db.delete(workScheduleSettings).where(eq(workScheduleSettings.id, id));
+  }
+
+  // إدراج تنبيه خطر إذا لم يوجد لنفس (الموظف، الشهر، المستوى) — يرجع true إذا أُدرج فعلاً
+  async createRiskAlertIfNew(employeeId: number, period: string, level: string): Promise<boolean> {
+    const result = await db.execute(sql`
+      INSERT INTO risk_alerts (employee_id, period, level)
+      VALUES (${employeeId}, ${period}, ${level})
+      ON CONFLICT (employee_id, period, level) DO NOTHING
+      RETURNING id
+    `);
+    return (result.rows?.length ?? 0) > 0;
+  }
+
+  async getAttendanceRecord(id: number): Promise<AttendanceRecord | undefined> {
+    const [record] = await db.select().from(attendanceRecords).where(eq(attendanceRecords.id, id));
+    return record;
+  }
+
+  async createAttendanceAuditLog(data: InsertAttendanceAuditLog): Promise<AttendanceAuditLog> {
+    const [created] = await db.insert(attendanceAuditLog).values(data).returning();
+    return created;
+  }
+
+  async getAttendanceAuditLogs(filters?: { recordId?: number; from?: string; to?: string }): Promise<AttendanceAuditLog[]> {
+    const conditions = [];
+    if (filters?.recordId) conditions.push(eq(attendanceAuditLog.recordId, filters.recordId));
+    if (filters?.from) conditions.push(gte(attendanceAuditLog.editedAt, new Date(filters.from)));
+    if (filters?.to) conditions.push(lte(attendanceAuditLog.editedAt, new Date(filters.to)));
+    return db.select().from(attendanceAuditLog)
+      .where(conditions.length ? and(...conditions) : undefined)
+      .orderBy(desc(attendanceAuditLog.editedAt));
   }
 
   async getLocationZones(): Promise<LocationZone[]> {

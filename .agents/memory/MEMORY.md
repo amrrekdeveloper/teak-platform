@@ -13,3 +13,4 @@
 - [Kitchen 3D corner geometry](kitchen-corner-geometry.md) — L-corners: origin at junction, pick the wall frame whose +X points away from junction (no mirror scale); corners block asymmetric intervals on both walls.
 - [Decor glTF front axis](decor-gltf-front-axis.md) — find a model's facing by computing front-feature mesh world centers from the gltf JSON; set rotYOffset to bring that axis to +Z, don't guess 180°.
 - [SVG drag hit target](svg-drag-hit-target.md) — pointerdown+testid go on the painted rect (not the label-holding `<g>`, whose bbox center may be unpainted); drag moves via window listeners, not svg handlers.
+- [HR workflow engine invariants](hr-workflow-engine.md) — hr_actions steps advance via conditional UPDATE (409 on race); chained actions deduped by unique (linked_action_id, workflow); final step revalidates required formData.

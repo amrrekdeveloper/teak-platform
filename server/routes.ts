@@ -79,10 +79,12 @@ import {
   insertPaymentSchema, insertInvoiceSchema, insertUserSchema,
   insertCompanySettingsSchema, insertWorkOrderSchema, insertProductionStageSchema,
   insertDesignAssignmentSchema, insertWarrantySchema,
+  insertWorkScheduleSettingSchema,
   productionStages,
   type OrderStageValue,
   type PaymentSchedule,
 } from "@shared/schema";
+import { resolveWorkSchedule, isLateCheckIn, riskLevel, RISK_POINTS, riyadhDateKey, isRiyadhWeekend } from "@shared/attendance";
 import { parseNum } from "@shared/digits";
 
 async function setOrderStage(quotationId: number, stage: OrderStageValue) {
@@ -3989,25 +3991,433 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/leaves/:id/decision", requireRole("owner", "assistant", "hr"), async (req, res) => {
+  // اعتماد بخطوتين (المرحلة 7): المدير المباشر ← HR. بدون مدير → HR/المالك مباشرة.
+  // القرارات: approve / reject / clarify (طلب توضيح)
+  const notifyEmployeeUser = async (employeeId: number, titleAr: string, messageAr: string, relatedId: number) => {
+    try {
+      const emp = await storage.getEmployee(employeeId);
+      if (emp?.userId) {
+        await storage.createNotification({
+          userId: emp.userId,
+          titleAr,
+          titleEn: titleAr,
+          messageAr,
+          messageEn: messageAr,
+          type: "info",
+          relatedEntity: "leave_request",
+          relatedId,
+        } as any);
+      }
+    } catch { /* non-blocking */ }
+  };
+
+  // هل المستخدم الحالي هو المدير المباشر لهذا الموظف؟
+  const isManagerOf = async (userId: number, employeeId: number): Promise<boolean> => {
+    try {
+      const emp = await storage.getEmployee(employeeId);
+      if (!emp?.managerId) return false;
+      const mgr = await storage.getEmployee(emp.managerId);
+      return !!mgr?.userId && mgr.userId === userId;
+    } catch {
+      return false;
+    }
+  };
+
+  app.post("/api/leaves/:id/decision", requireAuth, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       const decision = req.body.decision;
-      if (decision !== "approved" && decision !== "rejected") {
+      const note = typeof req.body.notes === "string" ? req.body.notes : null;
+      if (!["approve", "reject", "clarify", "approved", "rejected"].includes(decision)) {
         return res.status(400).json({ message: "قرار غير صالح", messageEn: "Invalid decision" });
       }
+      const normalized = decision === "approved" ? "approve" : decision === "rejected" ? "reject" : decision;
       const leave = await storage.getLeaveRequest(id);
       if (!leave) return res.status(404).json({ message: "الطلب غير موجود", messageEn: "Request not found" });
-      if (leave.status !== "pending") return res.status(400).json({ message: "تمت معالجة هذا الطلب مسبقاً", messageEn: "Already processed" });
+      if (leave.status === "approved" || leave.status === "rejected") {
+        return res.status(400).json({ message: "تمت معالجة هذا الطلب مسبقاً", messageEn: "Already processed" });
+      }
+
+      const userId = req.session.userId!;
+      const user = await storage.getUser(userId);
+      const isHrRole = !!user && ["owner", "assistant", "hr"].includes(user.role);
+      const isMgr = await isManagerOf(userId, leave.employeeId);
+      if (!isHrRole && !isMgr) {
+        return res.status(403).json({ message: "غير مصرح لك بهذا القرار", messageEn: "Not authorized" });
+      }
+
+      const emp = await storage.getEmployee(leave.employeeId);
+      const hasManager = !!emp?.managerId;
+      const today = new Date().toISOString().slice(0, 10);
+
+      if (normalized === "clarify") {
+        if (!note) return res.status(400).json({ message: "سبب طلب التوضيح مطلوب", messageEn: "Reason required" });
+        const updated = await storage.updateLeaveRequest(id, { status: "clarification_requested", notes: note } as any);
+        await notifyEmployeeUser(leave.employeeId, "طلب توضيح على إجازتك", `يرجى توضيح: ${note}`, id);
+        return res.json(updated);
+      }
+
+      if (normalized === "reject") {
+        const updated = await storage.updateLeaveRequest(id, {
+          status: "rejected",
+          approvedBy: userId,
+          approvedDate: today,
+          notes: note ?? leave.notes,
+        } as any);
+        await notifyEmployeeUser(leave.employeeId, "تم رفض طلب الإجازة", note ? `السبب: ${note}` : "تم رفض طلبك", id);
+        return res.json(updated);
+      }
+
+      // approve
+      const atManagerStage = leave.status === "pending" || leave.status === "clarification_requested";
+      if (atManagerStage && hasManager) {
+        if (!isMgr && !isHrRole) return res.status(403).json({ message: "غير مصرح", messageEn: "Not authorized" });
+        // موافقة المدير (أو HR نيابةً) → مرحلة HR النهائية
+        if (isMgr) {
+          const updated = await storage.updateLeaveRequest(id, {
+            status: "manager_approved",
+            managerApprovedBy: userId,
+            managerApprovedDate: today,
+            notes: note ?? leave.notes,
+          } as any);
+          await notifyEmployeeUser(leave.employeeId, "وافق مديرك على الإجازة", "بانتظار الاعتماد النهائي من الموارد البشرية", id);
+          return res.json(updated);
+        }
+      }
+      // الاعتماد النهائي: HR/المالك (أو مباشرة إن لم يوجد مدير)
+      if (!isHrRole) {
+        return res.status(403).json({ message: "الاعتماد النهائي من الموارد البشرية", messageEn: "Final approval is HR" });
+      }
       const updated = await storage.updateLeaveRequest(id, {
-        status: decision,
-        approvedBy: req.session.userId,
-        approvedDate: new Date().toISOString().slice(0, 10),
-        notes: typeof req.body.notes === "string" ? req.body.notes : leave.notes,
+        status: "approved",
+        managerApprovedBy: leave.managerApprovedBy ?? userId,
+        managerApprovedDate: leave.managerApprovedDate ?? today,
+        approvedBy: userId,
+        approvedDate: today,
+        notes: note ?? leave.notes,
       } as any);
+      await notifyEmployeeUser(leave.employeeId, "تم اعتماد الإجازة", `إجازتك من ${leave.startDate} إلى ${leave.endDate} معتمدة`, id);
       res.json(updated);
     } catch (error) {
       res.status(500).json({ message: "حدث خطأ في القرار", messageEn: "Error processing decision" });
+    }
+  });
+
+  // الطلبات المعلّقة (لوحة المدير): إجازات + استئذانات بانتظار قرار المستخدم الحالي
+  app.get("/api/pending-requests", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const user = await storage.getUser(userId);
+      const isHrRole = !!user && ["owner", "assistant", "hr"].includes(user.role);
+      const allEmployees = await storage.getEmployees();
+      const myEmp = allEmployees.find(e => e.userId === userId);
+      const managedIds = myEmp ? allEmployees.filter(e => e.managerId === myEmp.id).map(e => e.id) : [];
+
+      const allLeaves = await storage.getLeaveRequests();
+      const allPerms = await storage.getAttendancePermissions();
+
+      const relevantLeave = (l: typeof allLeaves[number]) => {
+        if (l.status === "pending" || l.status === "clarification_requested") {
+          const emp = allEmployees.find(e => e.id === l.employeeId);
+          if (emp?.managerId) return managedIds.includes(l.employeeId) || isHrRole;
+          return isHrRole;
+        }
+        if (l.status === "manager_approved") return isHrRole;
+        return false;
+      };
+      const relevantPerm = (p: typeof allPerms[number]) => {
+        if (p.status !== "pending" && p.status !== "clarification_requested") return false;
+        if (!p.employeeId) return isHrRole;
+        const emp = allEmployees.find(e => e.id === p.employeeId);
+        if (emp?.managerId) return managedIds.includes(p.employeeId) || isHrRole;
+        return isHrRole;
+      };
+
+      const empInfo = (id: number | null) => {
+        const e = id ? allEmployees.find(x => x.id === id) : undefined;
+        return e ? { nameAr: e.fullNameAr, department: e.department } : null;
+      };
+      const historyFor = (employeeId: number | null) => {
+        if (!employeeId) return { totalLeaves: 0, totalPermissions: 0, approved: 0, rejected: 0 };
+        const empLeaves = allLeaves.filter(l => l.employeeId === employeeId);
+        const empPerms = allPerms.filter(p => p.employeeId === employeeId);
+        const approved = empLeaves.filter(l => l.status === "approved").length + empPerms.filter(p => p.status === "approved" || p.status === "auto_approved").length;
+        const rejected = empLeaves.filter(l => l.status === "rejected").length + empPerms.filter(p => p.status === "rejected").length;
+        return { totalLeaves: empLeaves.length, totalPermissions: empPerms.length, approved, rejected };
+      };
+
+      res.json({
+        leaves: allLeaves.filter(relevantLeave).map(l => ({ ...l, employee: empInfo(l.employeeId), history: historyFor(l.employeeId) })),
+        permissions: allPerms.filter(relevantPerm).map(p => ({ ...p, employee: empInfo(p.employeeId), history: historyFor(p.employeeId) })),
+      });
+    } catch {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  // تقرير شهري بعدد الطلبات لكل موظف ونسبة القبول/الرفض (إجازات + استئذانات)
+  app.get("/api/requests-report", requireRole("owner", "assistant", "hr"), async (req, res) => {
+    try {
+      const monthParam = typeof req.query.month === "string" && /^\d{4}-\d{2}$/.test(req.query.month)
+        ? req.query.month
+        : new Date().toISOString().slice(0, 7);
+      const allEmployees = await storage.getEmployees();
+      const allLeaves = (await storage.getLeaveRequests()).filter(l => String(l.startDate).startsWith(monthParam));
+      const allPerms = (await storage.getAttendancePermissions()).filter(p => String(p.date).startsWith(monthParam));
+      const results = allEmployees
+        .filter(e => e.status === "active")
+        .map(e => {
+          const ls = allLeaves.filter(l => l.employeeId === e.id);
+          const ps = allPerms.filter(p => p.employeeId === e.id);
+          const total = ls.length + ps.length;
+          const approved = ls.filter(l => l.status === "approved").length + ps.filter(p => p.status === "approved" || p.status === "auto_approved").length;
+          const rejected = ls.filter(l => l.status === "rejected").length + ps.filter(p => p.status === "rejected").length;
+          return {
+            employeeId: e.id,
+            nameAr: e.fullNameAr,
+            department: e.department,
+            leaves: ls.length,
+            permissions: ps.length,
+            total,
+            approved,
+            rejected,
+            approvalRate: total > 0 ? Math.round((approved / total) * 100) : null,
+          };
+        })
+        .filter(r => r.total > 0)
+        .sort((a, b) => b.total - a.total);
+      res.json({ period: monthParam, results });
+    } catch {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  // ==================== HR ACTIONS (ملف الموظف — WF-01..WF-10) ====================
+
+  const { HR_WORKFLOWS } = await import("@shared/hr-workflows");
+
+  // من يستطيع تنفيذ خطوة؟ HR/المالك/المساعد دائماً؛ المدير المباشر لخطوات manager
+  const canActHrStep = async (userId: number, stepRole: string, employeeId: number | null): Promise<boolean> => {
+    const user = await storage.getUser(userId);
+    if (!user) return false;
+    const isHrRole = ["owner", "assistant", "hr"].includes(user.role);
+    if (stepRole === "owner") return ["owner", "assistant"].includes(user.role);
+    if (isHrRole) return true; // HR ينفذ خطوات hr/employee (تسجيل الإقرار) وmanager عند غياب المدير
+    if (stepRole === "manager" && employeeId != null) return isManagerOf(userId, employeeId);
+    return false;
+  };
+
+  app.get("/api/hr-actions", requireRole("owner", "assistant", "hr"), async (req, res) => {
+    try {
+      const employeeId = req.query.employeeId ? parseInt(req.query.employeeId as string) : undefined;
+      const workflow = typeof req.query.workflow === "string" ? req.query.workflow : undefined;
+      const prehire = req.query.prehire === "true";
+      const rows = await storage.getHrActions({ employeeId, workflow, prehire });
+      res.json(rows);
+    } catch {
+      res.status(500).json({ message: "حدث خطأ", messageEn: "Error fetching HR actions" });
+    }
+  });
+
+  app.post("/api/hr-actions", requireRole("owner", "assistant", "hr"), async (req, res) => {
+    try {
+      const workflow = String(req.body.workflow || "");
+      const def = HR_WORKFLOWS[workflow];
+      if (!def) return res.status(400).json({ message: "مسار غير معروف", messageEn: "Unknown workflow" });
+      const employeeId = req.body.employeeId != null ? parseInt(req.body.employeeId) : null;
+      if (def.tab !== "prehire") {
+        if (!Number.isInteger(employeeId)) return res.status(400).json({ message: "الموظف مطلوب", messageEn: "Employee required" });
+        const emp = await storage.getEmployee(employeeId!);
+        if (!emp) return res.status(404).json({ message: "الموظف غير موجود", messageEn: "Employee not found" });
+      }
+      const formData = typeof req.body.formData === "object" && req.body.formData ? req.body.formData : {};
+      for (const f of def.fields) {
+        if (f.required && (formData[f.key] == null || String(formData[f.key]).trim() === "")) {
+          return res.status(400).json({ message: `الحقل مطلوب: ${f.labelAr}`, messageEn: `Required field: ${f.labelEn}` });
+        }
+      }
+      const user = await storage.getUser(req.session.userId!);
+      const created = await storage.createHrAction({
+        employeeId: def.tab === "prehire" ? null : employeeId,
+        workflow,
+        tab: def.tab,
+        status: "pending",
+        currentStep: 0,
+        formData,
+        timeline: [{
+          step: "created",
+          action: "إنشاء الإجراء",
+          byUserId: req.session.userId!,
+          byName: user?.fullNameAr || user?.username || "",
+          at: new Date().toISOString(),
+          note: typeof req.body.note === "string" ? req.body.note : undefined,
+        }],
+        createdBy: req.session.userId!,
+      } as any);
+      res.status(201).json(created);
+    } catch {
+      res.status(500).json({ message: "حدث خطأ في إنشاء الإجراء", messageEn: "Error creating HR action" });
+    }
+  });
+
+  // تنفيذ خطوة: complete / reject / cancel
+  app.post("/api/hr-actions/:id/step", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(String(req.params.id));
+      const decision = String(req.body.decision || "");
+      const note = typeof req.body.note === "string" && req.body.note.trim() ? req.body.note.trim() : undefined;
+      if (!["complete", "reject", "cancel"].includes(decision)) {
+        return res.status(400).json({ message: "قرار غير صالح", messageEn: "Invalid decision" });
+      }
+      const action = await storage.getHrAction(id);
+      if (!action) return res.status(404).json({ message: "الإجراء غير موجود", messageEn: "Not found" });
+      if (["completed", "rejected", "cancelled"].includes(action.status)) {
+        return res.status(400).json({ message: "الإجراء منتهٍ ولا يمكن تعديله", messageEn: "Action already finalized" });
+      }
+      const def = HR_WORKFLOWS[action.workflow];
+      if (!def) return res.status(400).json({ message: "مسار غير معروف", messageEn: "Unknown workflow" });
+      const step = def.steps[action.currentStep];
+      if (!step) return res.status(400).json({ message: "لا توجد خطوة حالية", messageEn: "No current step" });
+
+      const userId = req.session.userId!;
+      const allowed = await canActHrStep(userId, step.role, action.employeeId);
+      if (!allowed) return res.status(403).json({ message: "غير مصرح لك بهذه الخطوة", messageEn: "Not authorized for this step" });
+      if (decision === "reject" && !note) {
+        return res.status(400).json({ message: "سبب الرفض مطلوب", messageEn: "Rejection reason required" });
+      }
+
+      const user = await storage.getUser(userId);
+      const entry = {
+        step: step.key,
+        action: decision === "complete"
+          ? (step.kind === "acknowledge" ? "إقرار/توقيع" : step.kind === "approve" ? "اعتماد" : "تنفيذ")
+          : decision === "reject" ? "رفض" : "إلغاء",
+        byUserId: userId,
+        byName: user?.fullNameAr || user?.username || "",
+        at: new Date().toISOString(),
+        note,
+      };
+      const timeline = [...(((action.timeline as any) || []) as any[]), entry];
+
+      // دمج تحديثات النموذج المُرسلة مع الخطوة (إن وجدت)
+      const bodyFd = (req.body.formData && typeof req.body.formData === "object") ? req.body.formData : null;
+      const mergedFd: any = bodyFd ? { ...((action.formData as any) || {}), ...bodyFd } : (action.formData as any) || {};
+
+      if (decision === "reject" || decision === "cancel") {
+        const updated = await storage.advanceHrAction(id, action.currentStep, {
+          status: decision === "reject" ? "rejected" : "cancelled",
+          timeline,
+        } as any);
+        if (!updated) return res.status(409).json({ message: "تم تعديل الإجراء من مستخدم آخر، حدّث الصفحة", messageEn: "Action was modified concurrently, refresh" });
+        if (action.employeeId && decision === "reject") {
+          await notifyEmployeeUser(action.employeeId, `تم رفض: ${def.nameAr}`, note ? `السبب: ${note}` : "تم الرفض", id);
+        }
+        return res.json(updated);
+      }
+
+      // complete step
+      const nextStep = action.currentStep + 1;
+      const isLast = nextStep >= def.steps.length;
+      // عند الإكمال النهائي: التحقق من الحقول الإلزامية
+      if (isLast) {
+        const missing = def.fields.filter(f => f.required && !String(mergedFd[f.key] ?? "").trim());
+        if (missing.length > 0) {
+          return res.status(400).json({
+            message: `حقول إلزامية ناقصة: ${missing.map(f => f.labelAr).join("، ")}`,
+            messageEn: `Missing required fields: ${missing.map(f => f.labelEn).join(", ")}`,
+            missingFields: missing.map(f => f.key),
+          });
+        }
+      }
+      const newStatus = isLast ? "completed" : "in_progress";
+      const updated = await storage.advanceHrAction(id, action.currentStep, {
+        currentStep: isLast ? action.currentStep : nextStep,
+        status: newStatus,
+        timeline,
+        formData: mergedFd,
+      } as any);
+      if (!updated) return res.status(409).json({ message: "تم تعديل الإجراء من مستخدم آخر، حدّث الصفحة", messageEn: "Action was modified concurrently, refresh" });
+
+      let chained: any = null;
+      if (isLast) {
+        if (action.employeeId) {
+          await notifyEmployeeUser(action.employeeId, `اكتمل: ${def.nameAr}`, "اكتمل الإجراء بنجاح", id);
+        }
+        // السلاسل التلقائية
+        if (action.workflow === "wf02") {
+          // WF-02 ← WF-03: مباشرة عمل تلقائياً بنفس بيانات المرشح
+          const existing = await storage.getHrActionByLink(action.id, "wf03");
+          chained = existing || await storage.createHrAction({
+            employeeId: null,
+            workflow: "wf03",
+            tab: "prehire",
+            status: "pending",
+            currentStep: 0,
+            formData: { ...mergedFd, startDate: mergedFd?.startDate || "" },
+            linkedActionId: action.id,
+            timeline: [{ step: "created", action: "إنشاء تلقائي بعد قبول العرض الوظيفي", byUserId: userId, byName: entry.byName, at: entry.at }],
+            createdBy: userId,
+          } as any);
+        } else if (action.workflow === "wf03" && !action.employeeId) {
+          // WF-03 مكتمل ← إنشاء ملف الموظف من بيانات العرض الوظيفي
+          const src = (action.linkedActionId ? await storage.getHrAction(action.linkedActionId) : null);
+          const fd: any = { ...((src?.formData as any) || {}), ...mergedFd };
+          const validDepts = ["sales", "design", "production", "warehouse", "finance", "hr", "it", "delivery", "installation", "quality", "management", "customer_service", "purchasing", "other"];
+          const empNumber = `EMP-${Date.now().toString().slice(-6)}`;
+          try {
+            const newEmp = await storage.createEmployee({
+              employeeNumber: empNumber,
+              fullNameAr: fd.candidateName || "موظف جديد",
+              nationality: fd.nationality === "saudi" ? "saudi" : "resident",
+              position: fd.position || "-",
+              department: validDepts.includes(fd.department) ? fd.department : "production",
+              monthlySalary: String(parseFloat(fd.monthlySalary) || 0),
+              contractStart: fd.startDate || new Date().toISOString().slice(0, 10),
+              phone: fd.candidatePhone || null,
+              status: "active",
+            } as any);
+            await storage.updateHrAction(id, { employeeId: newEmp.id } as any);
+            if (src) await storage.updateHrAction(src.id, { employeeId: newEmp.id } as any);
+            chained = { createdEmployee: newEmp };
+          } catch (e) {
+            console.error("wf03 employee creation failed:", e);
+          }
+        } else if (def.autoNext === "wf05" && (action.workflow === "wf06" || action.workflow === "wf06b")) {
+          // WF-06/06B ← جدولة WF-05 عند انتهاء العقد
+          const fd: any = mergedFd;
+          const existing = await storage.getHrActionByLink(action.id, "wf05");
+          chained = existing || await storage.createHrAction({
+            employeeId: action.employeeId,
+            workflow: "wf05",
+            tab: "requests",
+            status: "pending",
+            currentStep: 0,
+            formData: { reason: "other", lastWorkingDay: fd.contractEnd || "", notes: "مجدول تلقائياً بعد اعتماد عدم التجديد" },
+            linkedActionId: action.id,
+            timeline: [{ step: "created", action: "إنشاء تلقائي (جدولة إنهاء عند انتهاء العقد)", byUserId: userId, byName: entry.byName, at: entry.at }],
+            createdBy: userId,
+          } as any);
+        } else if (action.workflow === "wf05") {
+          // WF-05 ← WF-07 إقرار مستحقات
+          const existing = await storage.getHrActionByLink(action.id, "wf07");
+          chained = existing || await storage.createHrAction({
+            employeeId: action.employeeId,
+            workflow: "wf07",
+            tab: "requests",
+            status: "pending",
+            currentStep: 0,
+            formData: { amount: "", details: "" },
+            linkedActionId: action.id,
+            timeline: [{ step: "created", action: "إنشاء تلقائي بعد إنهاء الخدمات", byUserId: userId, byName: entry.byName, at: entry.at }],
+            createdBy: userId,
+          } as any);
+        }
+      }
+
+      res.json({ ...updated, chained });
+    } catch (e) {
+      console.error("hr-action step error:", e);
+      res.status(500).json({ message: "حدث خطأ في تنفيذ الخطوة", messageEn: "Error processing step" });
     }
   });
 
@@ -6708,6 +7118,104 @@ export async function registerRoutes(
         created_at TIMESTAMP NOT NULL DEFAULT NOW()
       );
     `);
+    // Attendance violations (مخالفات الحضور — محاولات مرفوضة)
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS attendance_violations (
+        id SERIAL PRIMARY KEY,
+        employee_id INTEGER REFERENCES employees(id),
+        employee_phone TEXT,
+        employee_name_ar TEXT,
+        violation_type TEXT NOT NULL,
+        attempted_type TEXT,
+        details TEXT,
+        occurred_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+    `);
+    // Work schedule settings (إعدادات أوقات الدوام)
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS work_schedule_settings (
+        id SERIAL PRIMARY KEY,
+        scope_type TEXT NOT NULL,
+        department TEXT,
+        employee_id INTEGER REFERENCES employees(id),
+        work_start_time TEXT NOT NULL DEFAULT '08:00',
+        grace_minutes INTEGER NOT NULL DEFAULT 15
+      );
+    `);
+    await db.execute(`
+      INSERT INTO work_schedule_settings (scope_type, work_start_time, grace_minutes)
+      SELECT 'default', '08:00', 15
+      WHERE NOT EXISTS (SELECT 1 FROM work_schedule_settings WHERE scope_type = 'default');
+    `);
+    // HR Actions (مسارات ملف الموظف WF-01..WF-10)
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS hr_actions (
+        id SERIAL PRIMARY KEY,
+        employee_id INTEGER REFERENCES employees(id),
+        workflow TEXT NOT NULL,
+        tab TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        current_step INTEGER NOT NULL DEFAULT 0,
+        form_data JSONB DEFAULT '{}',
+        timeline JSONB DEFAULT '[]',
+        linked_action_id INTEGER,
+        created_by INTEGER NOT NULL REFERENCES users(id),
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+    `);
+    // تفرد الإجراءات المتسلسلة: منع تكرار إنشاء إجراء تابع لنفس الإجراء الأصلي
+    await db.execute(`
+      CREATE UNIQUE INDEX IF NOT EXISTS hr_actions_link_wf_uidx
+      ON hr_actions (linked_action_id, workflow)
+      WHERE linked_action_id IS NOT NULL;
+    `);
+    // Risk alerts (تنبيهات مؤشر الخطر) — تفرد لكل موظف/شهر/مستوى
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS risk_alerts (
+        id SERIAL PRIMARY KEY,
+        employee_id INTEGER NOT NULL REFERENCES employees(id),
+        period TEXT NOT NULL,
+        level TEXT NOT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+    `);
+    await db.execute(`
+      CREATE UNIQUE INDEX IF NOT EXISTS risk_alerts_emp_period_level_uq
+      ON risk_alerts (employee_id, period, level);
+    `);
+    // Phase 7: managerId + اعتماد بخطوتين + استئذان Pending
+    await db.execute(`ALTER TYPE leave_status ADD VALUE IF NOT EXISTS 'manager_approved'`);
+    await db.execute(`ALTER TYPE leave_status ADD VALUE IF NOT EXISTS 'clarification_requested'`);
+    await db.execute(`ALTER TYPE attendance_permission_status ADD VALUE IF NOT EXISTS 'clarification_requested'`);
+    await db.execute(`ALTER TABLE employees ADD COLUMN IF NOT EXISTS manager_id INTEGER REFERENCES employees(id)`);
+    await db.execute(`
+      ALTER TABLE leave_requests
+        ADD COLUMN IF NOT EXISTS manager_approved_by INTEGER REFERENCES users(id),
+        ADD COLUMN IF NOT EXISTS manager_approved_date DATE;
+    `);
+    // Phase 6: التدخل الإداري + Audit Trail
+    await db.execute(`
+      ALTER TABLE attendance_records
+        ADD COLUMN IF NOT EXISTS override_excuse TEXT,
+        ADD COLUMN IF NOT EXISTS override_note TEXT,
+        ADD COLUMN IF NOT EXISTS override_by INTEGER REFERENCES users(id),
+        ADD COLUMN IF NOT EXISTS override_at TIMESTAMP;
+    `);
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS attendance_audit_log (
+        id SERIAL PRIMARY KEY,
+        record_id INTEGER REFERENCES attendance_records(id),
+        employee_id INTEGER REFERENCES employees(id),
+        action TEXT NOT NULL,
+        excuse_type TEXT,
+        old_value JSONB DEFAULT '{}',
+        new_value JSONB DEFAULT '{}',
+        reason TEXT,
+        edited_by INTEGER REFERENCES users(id),
+        edited_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+    `);
     console.log("HR module migration completed");
 
     // Insurance expiry notifications: notify hr/owner users about employees expiring in <= 30 days
@@ -7619,7 +8127,41 @@ export async function registerRoutes(
         });
         const hasCheckInToday = todayRecords.some(r => r.type === "check_in");
         if (!hasCheckInToday) {
-          return res.status(400).json({ message: "لا يمكن تسجيل الخروج قبل تسجيل الدخول لهذا اليوم — سجّل دخولك أولاً" });
+          // سجّل المخالفة (نقص دخول) وأرسل التنبيهات — دون إنشاء سجل حضور
+          try {
+            const allEmps = await storage.getEmployees();
+            const emp = employeeId
+              ? allEmps.find(e => e.id === Number(employeeId))
+              : allEmps.find(e => e.phone === employeePhone);
+            await storage.createAttendanceViolation({
+              employeeId: emp?.id ?? (employeeId ? Number(employeeId) : null),
+              employeePhone: employeePhone || emp?.phone || null,
+              employeeNameAr: employeeNameAr || emp?.fullNameAr || null,
+              violationType: "missing_checkin",
+              attemptedType: "check_out",
+              details: "محاولة تسجيل خروج بدون سجل دخول مطابق لنفس اليوم — تم الرفض",
+            });
+            const empName = employeeNameAr || emp?.fullNameAr || employeePhone || "موظف";
+            const allUsersN = await storage.getUsers();
+            const notifyIds = new Set<number>();
+            if (emp?.userId) notifyIds.add(emp.userId);
+            allUsersN.filter(u => ["owner", "hr", "it"].includes(u.role) && u.active !== false).forEach(u => notifyIds.add(u.id));
+            for (const uid of Array.from(notifyIds)) {
+              await storage.createNotification({
+                userId: uid,
+                titleAr: "مخالفة حضور: نقص دخول",
+                titleEn: "Attendance violation: Missing check-in",
+                messageAr: `${empName}: محاولة تسجيل خروج بدون تسجيل دخول لنفس اليوم — تم رفضها وتسجيلها في المخالفات`,
+                messageEn: `${empName}: check-out attempt without a matching check-in today — rejected and logged`,
+                type: "warning",
+                relatedEntity: "attendance_violation",
+                relatedId: emp?.id ?? null,
+              });
+            }
+          } catch (ve) {
+            console.error("Violation logging error:", ve);
+          }
+          return res.status(400).json({ message: "تعذّر تسجيل الخروج: لم يتم رصد حركة دخول مطابقة لهذا اليوم — سجّل دخولك أولاً" });
         }
       } catch (e) {
         console.error("Check-out validation error:", e);
@@ -7714,10 +8256,280 @@ export async function registerRoutes(
         endTime: endTime || null,
         hoursRequested: hoursRequested ? String(hoursRequested) : null,
         reason: reason || null,
-        status: "auto_approved",
+        status: "pending", // المرحلة 7: لا اعتماد تلقائي — كل طلب يبدأ معلّقاً
         reviewedBy: null,
       });
+      // إشعار المدير المباشر (أو HR/المالك إن لم يوجد مدير)
+      try {
+        if (perm.employeeId) {
+          const emp = await storage.getEmployee(perm.employeeId);
+          const mgr = emp?.managerId ? await storage.getEmployee(emp.managerId) : undefined;
+          let targetUserIds: number[] = [];
+          if (mgr?.userId) {
+            targetUserIds = [mgr.userId];
+          } else {
+            const allUsers = await storage.getUsers();
+            targetUserIds = allUsers.filter(u => u.active && ["owner", "hr"].includes(u.role)).map(u => u.id);
+          }
+          for (const uid of targetUserIds) {
+            await storage.createNotification({
+              userId: uid,
+              titleAr: "طلب استئذان جديد",
+              titleEn: "New permission request",
+              messageAr: `${emp?.fullNameAr || "موظف"} قدّم طلب استئذان بتاريخ ${perm.date}`,
+              messageEn: `Permission request for ${perm.date}`,
+              type: "info",
+              relatedEntity: "attendance_permission",
+              relatedId: perm.id,
+            } as any);
+          }
+        }
+      } catch { /* non-blocking */ }
       res.json(perm);
+    } catch {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  // قرار الاستئذان (المرحلة 7): موافقة المدير فقط (أو HR/المالك إن لم يوجد مدير)
+  app.post("/api/attendance/permission/:id/decision", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const decision = req.body.decision;
+      const note = typeof req.body.notes === "string" ? req.body.notes : null;
+      if (!["approve", "reject", "clarify"].includes(decision)) {
+        return res.status(400).json({ message: "قرار غير صالح" });
+      }
+      const perms = await storage.getAttendancePermissions();
+      const perm = perms.find(p => p.id === id);
+      if (!perm) return res.status(404).json({ message: "الطلب غير موجود" });
+      if (perm.status === "approved" || perm.status === "rejected" || perm.status === "auto_approved") {
+        return res.status(400).json({ message: "تمت معالجة هذا الطلب مسبقاً" });
+      }
+
+      const userId = req.session.userId!;
+      const user = await storage.getUser(userId);
+      const isHrRole = !!user && ["owner", "it", "hr"].includes(user.role);
+      const isMgr = perm.employeeId ? await isManagerOf(userId, perm.employeeId) : false;
+      if (!isHrRole && !isMgr) return res.status(403).json({ message: "غير مصرح لك بهذا القرار" });
+
+      const newStatus = decision === "approve" ? "approved" : decision === "reject" ? "rejected" : "clarification_requested";
+      if (decision === "clarify" && !note) return res.status(400).json({ message: "سبب طلب التوضيح مطلوب" });
+      const updated = await storage.updateAttendancePermission(id, {
+        status: newStatus,
+        reviewedBy: userId,
+        reason: note ? `${perm.reason || ""}${perm.reason ? " | " : ""}قرار: ${note}` : perm.reason,
+      } as any);
+      if (perm.employeeId) {
+        const titleAr = decision === "approve" ? "تم اعتماد الاستئذان" : decision === "reject" ? "تم رفض الاستئذان" : "طلب توضيح على الاستئذان";
+        await notifyEmployeeUser(perm.employeeId, titleAr, note ? `ملاحظة: ${note}` : `استئذانك بتاريخ ${perm.date}`, id);
+      }
+      res.json(updated);
+    } catch {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  app.get("/api/attendance/violations", requireRole("owner", "it", "hr"), async (req, res) => {
+    const { from, to, employeeId } = req.query as Record<string, string>;
+    try {
+      const violations = await storage.getAttendanceViolations({
+        employeeId: employeeId ? parseInt(employeeId) : undefined,
+        from: from || undefined,
+        to: to || undefined,
+      });
+      res.json(violations);
+    } catch {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  // مؤشر الخطر — Risk Score لكل موظف عن شهر معيّن (افتراضياً الشهر الحالي)
+  app.get("/api/attendance/risk-scores", requireRole("owner", "it", "hr"), async (req, res) => {
+    try {
+      const monthParam = typeof req.query.month === "string" ? req.query.month : "";
+      const now = new Date();
+      const currentPeriod = riyadhDateKey(now).slice(0, 7);
+      const period = /^\d{4}-(0[1-9]|1[0-2])$/.test(monthParam) ? monthParam : currentPeriod;
+      const [py, pm] = period.split("-").map(Number);
+      // نطاق الشهر بتوقيت الرياض (UTC+3): بداية اليوم الأول حتى نهاية آخر يوم
+      const startUtc = new Date(Date.UTC(py, pm - 1, 1, -3, 0, 0));
+      const endOfMonthUtc = new Date(Date.UTC(py, pm, 1, -3, 0, 0) - 1);
+      const endUtc = endOfMonthUtc.getTime() > now.getTime() ? now : endOfMonthUtc;
+
+      const [records, settings, allEmployees, allUsers] = await Promise.all([
+        storage.getAttendanceRecords({ from: startUtc.toISOString(), to: endUtc.toISOString() }),
+        storage.getWorkScheduleSettings(),
+        storage.getEmployees(),
+        storage.getUsers(),
+      ]);
+      const activeEmps = allEmployees.filter(e => e.status === "active" && e.attendanceEnabled);
+
+      // أيام العمل (أحد-خميس) من بداية الشهر حتى اليوم/نهاية الشهر
+      const workDays: string[] = [];
+      for (let t = startUtc.getTime(); t <= endUtc.getTime(); t += 24 * 60 * 60 * 1000) {
+        const d = new Date(t);
+        if (!isRiyadhWeekend(d)) workDays.push(riyadhDateKey(d));
+      }
+      // اليوم الحالي لا يُحتسب غياباً/نقصاً قبل انتهائه
+      const todayKey = riyadhDateKey(now);
+      const countableDays = period === currentPeriod ? workDays.filter(k => k < todayKey) : workDays;
+
+      // فهرسة السجلات: employeeId → يوم رياض → سجلات
+      const byEmpDay = new Map<number, Map<string, { type: string; checkTime: Date }[]>>();
+      for (const r of records) {
+        if (!r.employeeId) continue;
+        const key = riyadhDateKey(new Date(r.checkTime));
+        if (!byEmpDay.has(r.employeeId)) byEmpDay.set(r.employeeId, new Map());
+        const dayMap = byEmpDay.get(r.employeeId)!;
+        if (!dayMap.has(key)) dayMap.set(key, []);
+        dayMap.get(key)!.push({ type: r.type, checkTime: new Date(r.checkTime) });
+      }
+
+      const results = [];
+      for (const emp of activeEmps) {
+        const user = allUsers.find(u => u.id === emp.userId);
+        const schedule = resolveWorkSchedule(settings, { id: emp.id, department: emp.department });
+        const dayMap = byEmpDay.get(emp.id) || new Map();
+        let late = 0, absent = 0, incomplete = 0;
+        for (const dayKey of countableDays) {
+          const recs = dayMap.get(dayKey) || [];
+          const ins = recs.filter((r: { type: string }) => r.type === "check_in");
+          const outs = recs.filter((r: { type: string }) => r.type === "check_out");
+          if (!ins.length && !outs.length) { absent++; continue; }
+          if (!ins.length || !outs.length) { incomplete++; continue; }
+          const firstIn = ins.sort((a: { checkTime: Date }, b: { checkTime: Date }) => a.checkTime.getTime() - b.checkTime.getTime())[0];
+          if (isLateCheckIn(firstIn.checkTime, schedule)) late++;
+        }
+        // إذا كان اليوم الحالي وفيه دخول متأخر، احسب التأخيرة فوراً
+        if (period === currentPeriod && !isRiyadhWeekend(now)) {
+          const todayRecs = dayMap.get(todayKey) || [];
+          const todayIns = todayRecs.filter((r: { type: string }) => r.type === "check_in")
+            .sort((a: { checkTime: Date }, b: { checkTime: Date }) => a.checkTime.getTime() - b.checkTime.getTime());
+          if (todayIns.length && isLateCheckIn(todayIns[0].checkTime, schedule)) late++;
+        }
+        const score = late * RISK_POINTS.late + absent * RISK_POINTS.absent + incomplete * RISK_POINTS.incomplete;
+        const level = riskLevel(score);
+        results.push({
+          employeeId: emp.id,
+          employeeNumber: emp.employeeNumber,
+          nameAr: user?.fullNameAr || emp.phone || emp.employeeNumber,
+          department: emp.department,
+          late, absent, incomplete, score, level,
+        });
+      }
+
+      // تنبيه HR/المالك عند وصول موظف للبرتقالي أو الأحمر (مرة واحدة لكل موظف/شهر/مستوى)
+      if (period === currentPeriod) {
+        const hrUsers = allUsers.filter(u => ["owner", "hr"].includes(u.role) && u.active !== false);
+        for (const r of results) {
+          if (r.level === "green") continue;
+          try {
+            const isNew = await storage.createRiskAlertIfNew(r.employeeId, period, r.level);
+            if (isNew) {
+              const levelAr = r.level === "red" ? "أحمر" : "برتقالي";
+              for (const u of hrUsers) {
+                await storage.createNotification({
+                  userId: u.id,
+                  titleAr: `مؤشر خطر ${levelAr}: ${r.nameAr}`,
+                  titleEn: `Risk alert (${r.level}): ${r.nameAr}`,
+                  messageAr: `وصل الموظف ${r.nameAr} إلى مستوى ${levelAr} (${r.score} نقطة) هذا الشهر — تأخير: ${r.late}، غياب: ${r.absent}، نقص حركة: ${r.incomplete}`,
+                  messageEn: `Employee ${r.nameAr} reached ${r.level} risk level (${r.score} points) this month`,
+                  type: "attendance",
+                  relatedEntity: "employee",
+                  relatedId: r.employeeId,
+                });
+              }
+            }
+          } catch (e) {
+            console.error("Risk alert notify error:", e);
+          }
+        }
+      }
+
+      results.sort((a, b) => b.score - a.score);
+      res.json({ period, results });
+    } catch (e) {
+      console.error("Risk scores error:", e);
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  // إعدادات أوقات الدوام — Work schedule settings
+  app.get("/api/attendance/work-settings", requireRole("owner", "it", "hr"), async (_req, res) => {
+    try {
+      res.json(await storage.getWorkScheduleSettings());
+    } catch {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  app.post("/api/attendance/work-settings", requireRole("owner", "it", "hr"), async (req, res) => {
+    try {
+      const parsed = insertWorkScheduleSettingSchema.parse(req.body);
+      if (!["default", "department", "employee"].includes(parsed.scopeType)) {
+        return res.status(400).json({ message: "نوع النطاق غير صالح" });
+      }
+      if (parsed.scopeType === "department" && !parsed.department) {
+        return res.status(400).json({ message: "حدد القسم" });
+      }
+      if (parsed.scopeType === "employee" && !parsed.employeeId) {
+        return res.status(400).json({ message: "حدد الموظف" });
+      }
+      if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(parsed.workStartTime || "08:00")) {
+        return res.status(400).json({ message: "صيغة الوقت غير صحيحة (HH:mm)" });
+      }
+      // منع تكرار نفس النطاق
+      const existing = await storage.getWorkScheduleSettings();
+      const dup = existing.find(s =>
+        s.scopeType === parsed.scopeType &&
+        (parsed.scopeType === "default" ||
+          (parsed.scopeType === "department" && s.department === parsed.department) ||
+          (parsed.scopeType === "employee" && s.employeeId === parsed.employeeId))
+      );
+      if (dup) return res.status(409).json({ message: "يوجد إعداد لهذا النطاق مسبقاً — عدّله بدلاً من الإضافة" });
+      const setting = await storage.createWorkScheduleSetting(parsed);
+      res.status(201).json(setting);
+    } catch (e: any) {
+      res.status(400).json({ message: e?.message || "بيانات غير صالحة" });
+    }
+  });
+
+  app.patch("/api/attendance/work-settings/:id", requireRole("owner", "it", "hr"), async (req, res) => {
+    try {
+      const { workStartTime, graceMinutes } = req.body || {};
+      const data: Record<string, unknown> = {};
+      if (workStartTime !== undefined) {
+        if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(workStartTime)) {
+          return res.status(400).json({ message: "صيغة الوقت غير صحيحة (HH:mm)" });
+        }
+        data.workStartTime = workStartTime;
+      }
+      if (graceMinutes !== undefined) {
+        const g = Number(graceMinutes);
+        if (!Number.isInteger(g) || g < 0 || g > 240) {
+          return res.status(400).json({ message: "مدة السماح يجب أن تكون بين 0 و 240 دقيقة" });
+        }
+        data.graceMinutes = g;
+      }
+      const updated = await storage.updateWorkScheduleSetting(parseInt(req.params.id), data);
+      if (!updated) return res.status(404).json({ message: "الإعداد غير موجود" });
+      res.json(updated);
+    } catch {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  app.delete("/api/attendance/work-settings/:id", requireRole("owner", "it", "hr"), async (req, res) => {
+    try {
+      const all = await storage.getWorkScheduleSettings();
+      const target = all.find(s => s.id === parseInt(req.params.id));
+      if (!target) return res.status(404).json({ message: "الإعداد غير موجود" });
+      if (target.scopeType === "default") {
+        return res.status(400).json({ message: "لا يمكن حذف الإعداد الافتراضي — يمكن تعديله فقط" });
+      }
+      await storage.deleteWorkScheduleSetting(target.id);
+      res.json({ success: true });
     } catch {
       res.status(500).json({ message: "حدث خطأ" });
     }
@@ -7744,6 +8556,7 @@ export async function registerRoutes(
             employeeNumber: e.employeeNumber,
             nameAr: user?.fullNameAr || e.phone || e.employeeNumber,
             phone: user?.phone || e.phone,
+            department: e.department,
             locationName: e.fingerprintLocation || e.fingerScanLocation || "غير محدد",
           };
         });
@@ -7757,9 +8570,108 @@ export async function registerRoutes(
     const id = parseInt(req.params.id);
     const userId = (req as any).user?.id;
     try {
+      const before = await storage.getAttendanceRecord(id);
+      if (!before) return res.status(404).json({ message: "السجل غير موجود" });
       const updated = await storage.updateAttendanceRecord(id, { ...req.body, isManualEdit: true, editedBy: userId });
       if (!updated) return res.status(404).json({ message: "السجل غير موجود" });
+      await storage.createAttendanceAuditLog({
+        recordId: id,
+        employeeId: before.employeeId,
+        action: "manual_edit",
+        oldValue: { type: before.type, checkTime: before.checkTime, notes: before.notes },
+        newValue: { type: updated.type, checkTime: updated.checkTime, notes: updated.notes },
+        reason: req.body.editReason || null,
+        editedBy: userId,
+      });
       res.json(updated);
+    } catch {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  // التدخل الإداري (المرحلة 6): عذر معتمد + Audit — بلا أثر مالي
+  const OVERRIDE_EXCUSES = ["forgot_fingerprint", "technical_issue", "emergency_leave", "medical_excuse"] as const;
+  app.post("/api/attendance/record/:id/override", requireRole("owner", "it", "hr"), async (req, res) => {
+    const id = parseInt(req.params.id);
+    const userId = (req as any).user?.id;
+    try {
+      const { excuseType, note, newCheckTime } = req.body || {};
+      if (!OVERRIDE_EXCUSES.includes(excuseType)) {
+        return res.status(400).json({ message: "نوع العذر غير صحيح" });
+      }
+      const before = await storage.getAttendanceRecord(id);
+      if (!before) return res.status(404).json({ message: "السجل غير موجود" });
+
+      const updateData: any = {
+        overrideExcuse: excuseType,
+        overrideNote: note || null,
+        overrideBy: userId,
+        overrideAt: new Date(),
+        isManualEdit: true,
+        editedBy: userId,
+      };
+      if (newCheckTime) {
+        const t = new Date(newCheckTime);
+        if (isNaN(t.getTime())) return res.status(400).json({ message: "وقت غير صحيح" });
+        updateData.checkTime = t;
+      }
+      const updated = await storage.updateAttendanceRecord(id, updateData);
+
+      await storage.createAttendanceAuditLog({
+        recordId: id,
+        employeeId: before.employeeId,
+        action: "admin_override",
+        excuseType,
+        oldValue: { checkTime: before.checkTime, overrideExcuse: before.overrideExcuse },
+        newValue: { checkTime: updated?.checkTime, overrideExcuse: excuseType },
+        reason: note || null,
+        editedBy: userId,
+      });
+
+      // إجازة طارئة / عذر طبي ← إنشاء طلب إجازة معتمد لليوم نفسه (بلا أثر مالي)
+      if ((excuseType === "emergency_leave" || excuseType === "medical_excuse") && before.employeeId) {
+        const dayStr = new Date(before.checkTime).toISOString().slice(0, 10);
+        await storage.createLeaveRequest({
+          employeeId: before.employeeId,
+          leaveType: excuseType === "medical_excuse" ? "sick" : "emergency",
+          startDate: dayStr,
+          endDate: dayStr,
+          days: 1,
+          reason: note || "تدخل إداري — تصحيح سجل حضور",
+          status: "approved",
+          approvedBy: userId,
+          approvedDate: new Date().toISOString().slice(0, 10),
+        } as any);
+      }
+
+      res.json(updated);
+    } catch {
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  // سجل التدقيق + تقرير الأعذار الشهري
+  app.get("/api/attendance/audit-log", requireRole("owner", "it", "hr"), async (req, res) => {
+    try {
+      const { recordId, month } = req.query as { recordId?: string; month?: string };
+      let from: string | undefined, to: string | undefined;
+      if (month && /^\d{4}-\d{2}$/.test(month)) {
+        from = `${month}-01T00:00:00`;
+        const [y, m] = month.split("-").map(Number);
+        to = new Date(Date.UTC(y, m, 1)).toISOString();
+      }
+      const logs = await storage.getAttendanceAuditLogs({
+        recordId: recordId ? parseInt(recordId) : undefined,
+        from,
+        to,
+      });
+      const excuseCounts: Record<string, number> = {};
+      for (const l of logs) {
+        if (l.action === "admin_override" && l.excuseType) {
+          excuseCounts[l.excuseType] = (excuseCounts[l.excuseType] || 0) + 1;
+        }
+      }
+      res.json({ logs, excuseCounts });
     } catch {
       res.status(500).json({ message: "حدث خطأ" });
     }

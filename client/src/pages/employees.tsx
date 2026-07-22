@@ -5,7 +5,8 @@ import { useLanguage } from "@/components/language-provider";
 import { useAuth } from "@/hooks/use-auth";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { Employee, EmployeeAsset } from "@shared/schema";
+import type { Employee, EmployeeAsset, HrAction } from "@shared/schema";
+import { HrActionCard, NewHrActionDialog } from "@/components/hr-action-panel";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -116,6 +117,7 @@ interface EmployeeForm {
   phone: string;
   email: string;
   attendanceEnabled: boolean;
+  managerId: string;
 }
 
 const emptyForm: EmployeeForm = {
@@ -138,6 +140,7 @@ const emptyForm: EmployeeForm = {
   phone: "",
   email: "",
   attendanceEnabled: true,
+  managerId: "",
 };
 
 type SortKey = "employeeNumber" | "position" | "department" | "nationality" | "monthlySalary" | "contractStart" | "status";
@@ -176,6 +179,7 @@ function FormFields({ data, onChange, users, jobTitlesList }: {
   jobTitlesList: any[];
 }) {
   const { t } = useLanguage();
+  const { data: allEmployees = [] } = useQuery<Employee[]>({ queryKey: ["/api/employees"] });
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
       <div className="space-y-1">
@@ -274,6 +278,18 @@ function FormFields({ data, onChange, users, jobTitlesList }: {
               <SelectItem key={u.id} value={u.id.toString()}>
                 {t(u.fullNameAr, u.fullNameEn)} <span className="text-muted-foreground">(@{u.username})</span>
               </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="space-y-1">
+        <Label>{t("المدير المباشر (اختياري)", "Direct Manager (optional)")}</Label>
+        <Select value={data.managerId || "none"} onValueChange={v => onChange({ ...data, managerId: v === "none" ? "" : v })}>
+          <SelectTrigger data-testid="select-manager"><SelectValue placeholder={t("بدون مدير — الاعتماد من الموارد البشرية", "No manager — HR approves")} /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">{t("بدون مدير (HR/المالك)", "No manager (HR/Owner)")}</SelectItem>
+            {allEmployees.filter(e => e.status === "active").map(e => (
+              <SelectItem key={e.id} value={e.id.toString()}>{e.fullNameAr || e.fullNameEn || `#${e.id}`}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -1055,6 +1071,7 @@ function EmployeeDetailDialog({ emp, users, onClose }: { emp: Employee; users: a
     phone: (emp as any).phone || "",
     email: (emp as any).email || "",
     attendanceEnabled: emp.attendanceEnabled !== false,
+    managerId: (emp as any).managerId?.toString() || "",
   });
 
   const { data: jobTitlesList = [] } = useQuery<any[]>({ queryKey: ["/api/job-titles"] });
@@ -1099,6 +1116,7 @@ function EmployeeDetailDialog({ emp, users, onClose }: { emp: Employee; users: a
     };
     if (editForm.userId && editForm.userId !== "none") data.userId = parseInt(editForm.userId);
     else data.userId = null;
+    data.managerId = editForm.managerId && parseInt(editForm.managerId) !== emp.id ? parseInt(editForm.managerId) : null;
     if (editForm.iqamaNumber) data.iqamaNumber = editForm.iqamaNumber;
     if (editForm.iqamaExpiry) data.iqamaExpiry = editForm.iqamaExpiry;
     if (editForm.contractEnd) data.contractEnd = editForm.contractEnd;
@@ -1363,6 +1381,7 @@ export default function EmployeesPage() {
       attendanceEnabled: form.attendanceEnabled,
     };
     if (form.userId && form.userId !== "none") data.userId = parseInt(form.userId);
+    if (form.managerId) data.managerId = parseInt(form.managerId);
     if (form.iqamaNumber) data.iqamaNumber = form.iqamaNumber;
     if (form.iqamaExpiry) data.iqamaExpiry = form.iqamaExpiry;
     if (form.contractEnd) data.contractEnd = form.contractEnd;
@@ -1415,6 +1434,8 @@ export default function EmployeesPage() {
           </Dialog>
         </div>
       </div>
+
+      <PrehireSection />
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
@@ -1616,5 +1637,50 @@ export default function EmployeesPage() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+function PrehireSection() {
+  const { t } = useLanguage();
+  const [open, setOpen] = useState(false);
+  const queryKey = ["/api/hr-actions", "prehire"];
+  const { data: actions = [], isLoading } = useQuery<HrAction[]>({
+    queryKey,
+    queryFn: async () => {
+      const r = await fetch("/api/hr-actions?prehire=true", { credentials: "include" });
+      if (!r.ok) return [];
+      return r.json();
+    },
+  });
+  const pending = actions.filter(a => !["completed", "rejected", "cancelled"].includes(a.status));
+
+  return (
+    <Card data-testid="card-prehire-section">
+      <CardHeader className="pb-2 cursor-pointer" onClick={() => setOpen(v => !v)}>
+        <CardTitle className="text-base flex items-center gap-2">
+          <UserCog className="w-4 h-4" />
+          {t("التوظيف الجديد — طلب وترشيح (WF-02 / WF-03)", "New Hiring — Request & Nomination (WF-02 / WF-03)")}
+          {pending.length > 0 && <Badge variant="secondary" className="text-[10px]">{pending.length}</Badge>}
+          <span className="ms-auto">{open ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}</span>
+        </CardTitle>
+      </CardHeader>
+      {open && (
+        <CardContent className="pt-0 space-y-3">
+          <div className="flex flex-wrap gap-2" onClick={e => e.stopPropagation()}>
+            <NewHrActionDialog workflow="wf02" employeeId={null} queryKey={queryKey} />
+            <NewHrActionDialog workflow="wf03" employeeId={null} queryKey={queryKey} />
+          </div>
+          {isLoading ? (
+            <div className="flex justify-center py-4"><Loader2 className="w-5 h-5 animate-spin text-primary" /></div>
+          ) : actions.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-4">{t("لا توجد طلبات توظيف", "No hiring requests")}</p>
+          ) : (
+            <div className="space-y-2">
+              {actions.map(a => <HrActionCard key={a.id} action={a} queryKey={queryKey} />)}
+            </div>
+          )}
+        </CardContent>
+      )}
+    </Card>
   );
 }

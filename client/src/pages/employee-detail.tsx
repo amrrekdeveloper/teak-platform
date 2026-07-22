@@ -2,15 +2,17 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLanguage } from "@/components/language-provider";
 import { useRoute, Link } from "wouter";
-import type { Employee } from "@shared/schema";
+import type { Employee, LeaveRequest } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { HrWorkflowSection } from "@/components/hr-action-panel";
 import {
   Loader2, ArrowLeft, ArrowRight, FileText, Download, Phone, Mail,
-  CreditCard, CalendarDays, Briefcase, Building2, BadgeCheck, User, Clock, Pencil,
-  Eye, Image as ImageIcon, ExternalLink,
+  CreditCard, CalendarDays, Briefcase, Building2, BadgeCheck, User, Clock,
+  Eye, Image as ImageIcon, ExternalLink, Package, ShieldAlert, FileSignature, ClipboardList,
 } from "lucide-react";
 
 const isImageDoc = (mime?: string) => !!mime && mime.startsWith("image/");
@@ -47,6 +49,20 @@ const contractTypeLabels: Record<string, { ar: string; en: string }> = {
   open:      { ar: "غير محدد",    en: "Open-Ended" },
   temporary: { ar: "مؤقت",        en: "Temporary" },
   training:  { ar: "تدريب",       en: "Training" },
+};
+
+const leaveStatusLabels: Record<string, { ar: string; en: string; cls: string }> = {
+  pending:                 { ar: "معلّق", en: "Pending", cls: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300" },
+  manager_approved:        { ar: "موافقة المدير", en: "Manager approved", cls: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300" },
+  clarification_requested: { ar: "بانتظار توضيح", en: "Clarification", cls: "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300" },
+  approved:                { ar: "معتمد", en: "Approved", cls: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300" },
+  rejected:                { ar: "مرفوض", en: "Rejected", cls: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300" },
+};
+
+const leaveTypeLabels: Record<string, { ar: string; en: string }> = {
+  annual: { ar: "سنوية", en: "Annual" }, sick: { ar: "مرضية", en: "Sick" },
+  unpaid: { ar: "بدون راتب", en: "Unpaid" }, emergency: { ar: "طارئة", en: "Emergency" },
+  maternity: { ar: "أمومة", en: "Maternity" }, other: { ar: "أخرى", en: "Other" },
 };
 
 function computeServiceDuration(contractStart: string | null, t: (ar: string, en: string) => string): string {
@@ -86,11 +102,18 @@ function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string;
   );
 }
 
+const assetStatusLabels: Record<string, { ar: string; en: string; cls: string }> = {
+  assigned: { ar: "بعهدته", en: "Assigned", cls: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300" },
+  returned: { ar: "مُعاد", en: "Returned", cls: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300" },
+  damaged:  { ar: "تالف", en: "Damaged", cls: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300" },
+};
+
 export default function EmployeeDetailPage() {
   const { t, isRTL } = useLanguage();
   const locale = isRTL ? "ar-SA" : "en-US";
   const [, params] = useRoute("/employees/:id");
   const id = params?.id;
+  const empId = id ? parseInt(id) : NaN;
   const [previewDoc, setPreviewDoc] = useState<any | null>(null);
 
   const { data: employee, isLoading } = useQuery<Employee>({
@@ -100,6 +123,20 @@ export default function EmployeeDetailPage() {
 
   const { data: users = [] } = useQuery<any[]>({
     queryKey: ["/api/users"],
+  });
+
+  const { data: assets = [] } = useQuery<any[]>({
+    queryKey: ["/api/employees", id, "assets"],
+    queryFn: async () => {
+      const r = await fetch(`/api/employees/${id}/assets`, { credentials: "include" });
+      if (!r.ok) return [];
+      return r.json();
+    },
+    enabled: !!id,
+  });
+
+  const { data: allLeaves = [] } = useQuery<LeaveRequest[]>({
+    queryKey: ["/api/leaves"],
   });
 
   if (isLoading) {
@@ -134,9 +171,11 @@ export default function EmployeeDetailPage() {
   const serviceDuration = computeServiceDuration(emp.contractStart, t);
   const docs: any[] = (emp.documents as any[]) || [];
   const initials = name && name !== "—" ? name.trim().slice(0, 2) : "؟";
+  const manager = emp.managerId ? undefined : undefined;
+  const empLeaves = allLeaves.filter(l => l.employeeId === emp.id);
 
   return (
-    <div className="space-y-5 max-w-4xl mx-auto">
+    <div className="space-y-5 max-w-5xl mx-auto">
       {/* Top bar */}
       <div className="flex items-center gap-3">
         <Link href="/employees">
@@ -169,9 +208,23 @@ export default function EmployeeDetailPage() {
               )}
             </div>
           </div>
+        </CardContent>
+      </Card>
 
-          {/* Quick stats */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-5">
+      {/* 6 tabs (المرحلة 8) */}
+      <Tabs defaultValue="basic" dir={isRTL ? "rtl" : "ltr"}>
+        <TabsList className="w-full h-auto flex-wrap justify-start gap-1">
+          <TabsTrigger value="basic" data-testid="tab-basic"><User className="w-3.5 h-3.5 me-1" />{t("البيانات الأساسية والعقد", "Basic & Contract")}</TabsTrigger>
+          <TabsTrigger value="documents" data-testid="tab-documents"><FileSignature className="w-3.5 h-3.5 me-1" />{t("المستندات وسرية المعلومات", "Documents & NDA")}</TabsTrigger>
+          <TabsTrigger value="assets" data-testid="tab-assets"><Package className="w-3.5 h-3.5 me-1" />{t("العهد", "Custody")}</TabsTrigger>
+          <TabsTrigger value="leaves" data-testid="tab-leaves"><CalendarDays className="w-3.5 h-3.5 me-1" />{t("الإجازات والدوام", "Leaves & Attendance")}</TabsTrigger>
+          <TabsTrigger value="requests" data-testid="tab-requests"><ClipboardList className="w-3.5 h-3.5 me-1" />{t("الطلبات والإنهاء", "Requests & Termination")}</TabsTrigger>
+          <TabsTrigger value="penalties" data-testid="tab-penalties"><ShieldAlert className="w-3.5 h-3.5 me-1" />{t("الجزاءات والمخالفات", "Penalties")}</TabsTrigger>
+        </TabsList>
+
+        {/* 1: البيانات الأساسية والعقد */}
+        <TabsContent value="basic" className="space-y-4 mt-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div className="rounded-lg border bg-muted/30 p-3 text-center">
               <p className="text-xs text-muted-foreground">{t("مدة الخدمة", "Service")}</p>
               <p className="text-sm font-semibold mt-1" data-testid="stat-service">{serviceDuration}</p>
@@ -189,95 +242,213 @@ export default function EmployeeDetailPage() {
               <p className="text-sm font-semibold mt-1" data-testid="stat-contract-type">{cType ? t(cType.ar, cType.en) : "—"}</p>
             </div>
           </div>
-        </CardContent>
-      </Card>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <User className="w-4 h-4" />{t("بيانات التواصل والهوية", "Contact & Identity")}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-0 divide-y divide-border">
+                <InfoRow icon={<Phone className="w-4 h-4" />} label={t("الجوال", "Phone")} value={emp.phone} />
+                <InfoRow icon={<Mail className="w-4 h-4" />} label={t("البريد الإلكتروني", "Email")} value={emp.email} />
+                <InfoRow icon={<CreditCard className="w-4 h-4" />} label={t("رقم الهوية / الإقامة", "ID / Iqama No.")} value={emp.iqamaNumber} />
+                <InfoRow icon={<CalendarDays className="w-4 h-4" />} label={t("انتهاء الإقامة", "Iqama Expiry")} value={fmtDate(emp.iqamaExpiry, locale)} />
+                <InfoRow icon={<BadgeCheck className="w-4 h-4" />} label={t("انتهاء التأمين", "Insurance Expiry")} value={fmtDate(emp.insuranceExpiry, locale)} />
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Briefcase className="w-4 h-4" />{t("بيانات الوظيفة والعقد", "Job & Contract")}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-0 divide-y divide-border">
+                <InfoRow icon={<Briefcase className="w-4 h-4" />} label={t("المسمى الوظيفي", "Job Title")} value={emp.position} />
+                <InfoRow icon={<Building2 className="w-4 h-4" />} label={t("القسم", "Department")} value={t(dept.ar, dept.en)} />
+                <InfoRow icon={<User className="w-4 h-4" />} label={t("المدير المباشر", "Direct Manager")} value={(() => {
+                  if (!emp.managerId) return t("— (يذهب الاعتماد لـ HR/المالك)", "— (approvals go to HR/owner)");
+                  return `#${emp.managerId}`;
+                })()} />
+                <InfoRow icon={<CalendarDays className="w-4 h-4" />} label={t("بداية العقد", "Contract Start")} value={fmtDate(emp.contractStart, locale)} />
+                <InfoRow icon={<CalendarDays className="w-4 h-4" />} label={t("نهاية العقد", "Contract End")} value={fmtDate(emp.contractEnd, locale)} />
+                <InfoRow icon={<Clock className="w-4 h-4" />} label={t("الحضور", "Attendance")} value={emp.attendanceEnabled ? t("مفعّل", "Enabled") : t("معطّل", "Disabled")} />
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
 
-      {/* Details grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base flex items-center gap-2">
-              <User className="w-4 h-4" />{t("بيانات التواصل والهوية", "Contact & Identity")}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0 divide-y divide-border">
-            <InfoRow icon={<Phone className="w-4 h-4" />} label={t("الجوال", "Phone")} value={emp.phone} />
-            <InfoRow icon={<Mail className="w-4 h-4" />} label={t("البريد الإلكتروني", "Email")} value={emp.email} />
-            <InfoRow icon={<CreditCard className="w-4 h-4" />} label={t("رقم الهوية / الإقامة", "ID / Iqama No.")} value={emp.iqamaNumber} />
-            <InfoRow icon={<CalendarDays className="w-4 h-4" />} label={t("انتهاء الإقامة", "Iqama Expiry")} value={fmtDate(emp.iqamaExpiry, locale)} />
-            <InfoRow icon={<BadgeCheck className="w-4 h-4" />} label={t("انتهاء التأمين", "Insurance Expiry")} value={fmtDate(emp.insuranceExpiry, locale)} />
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Briefcase className="w-4 h-4" />{t("بيانات الوظيفة والعقد", "Job & Contract")}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0 divide-y divide-border">
-            <InfoRow icon={<Briefcase className="w-4 h-4" />} label={t("المسمى الوظيفي", "Job Title")} value={emp.position} />
-            <InfoRow icon={<Building2 className="w-4 h-4" />} label={t("القسم", "Department")} value={t(dept.ar, dept.en)} />
-            <InfoRow icon={<CalendarDays className="w-4 h-4" />} label={t("بداية العقد", "Contract Start")} value={fmtDate(emp.contractStart, locale)} />
-            <InfoRow icon={<CalendarDays className="w-4 h-4" />} label={t("نهاية العقد", "Contract End")} value={fmtDate(emp.contractEnd, locale)} />
-            <InfoRow icon={<Clock className="w-4 h-4" />} label={t("الحضور", "Attendance")} value={emp.attendanceEnabled ? t("مفعّل", "Enabled") : t("معطّل", "Disabled")} />
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Documents */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base flex items-center gap-2">
-            <FileText className="w-4 h-4" />{t("المستندات والعقود", "Documents & Contracts")}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="pt-0">
-          {docs.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-8" data-testid="text-no-docs">
-              {t("لا توجد مستندات مرفوعة", "No documents uploaded")}
-            </p>
-          ) : (
-            <div className="divide-y divide-border rounded-lg border overflow-hidden">
-              {docs.map((doc: any) => {
-                const img = isImageDoc(doc.mime);
-                return (
-                  <div key={doc.id} className="flex items-center justify-between gap-3 px-4 py-3" data-testid={`row-doc-${doc.id}`}>
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className={`p-1.5 rounded shrink-0 ${img ? "bg-blue-100 dark:bg-blue-900/30" : "bg-red-100 dark:bg-red-900/30"}`}>
-                        {img
-                          ? <ImageIcon className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                          : <FileText className={`w-4 h-4 ${isContractDoc(doc.name) ? "text-primary" : "text-red-600 dark:text-red-400"}`} />}
-                      </div>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <p className="text-sm font-medium truncate">{doc.name}</p>
-                          {isContractDoc(doc.name) && (
-                            <Badge variant="secondary" className="text-[9px]">{t("عقد", "Contract")}</Badge>
-                          )}
+        {/* 2: المستندات وسرية المعلومات (WF-08) */}
+        <TabsContent value="documents" className="space-y-4 mt-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <FileText className="w-4 h-4" />{t("المستندات والعقود", "Documents & Contracts")}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0">
+              {docs.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-8" data-testid="text-no-docs">
+                  {t("لا توجد مستندات مرفوعة", "No documents uploaded")}
+                </p>
+              ) : (
+                <div className="divide-y divide-border rounded-lg border overflow-hidden">
+                  {docs.map((doc: any) => {
+                    const img = isImageDoc(doc.mime);
+                    return (
+                      <div key={doc.id} className="flex items-center justify-between gap-3 px-4 py-3" data-testid={`row-doc-${doc.id}`}>
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className={`p-1.5 rounded shrink-0 ${img ? "bg-blue-100 dark:bg-blue-900/30" : "bg-red-100 dark:bg-red-900/30"}`}>
+                            {img
+                              ? <ImageIcon className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                              : <FileText className={`w-4 h-4 ${isContractDoc(doc.name) ? "text-primary" : "text-red-600 dark:text-red-400"}`} />}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="text-sm font-medium truncate">{doc.name}</p>
+                              {isContractDoc(doc.name) && (
+                                <Badge variant="secondary" className="text-[9px]">{t("عقد", "Contract")}</Badge>
+                              )}
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              {img ? t("صورة", "Image") : "PDF"} · {fmtDate(doc.uploadedAt, locale)}
+                            </p>
+                          </div>
                         </div>
-                        <p className="text-xs text-muted-foreground">
-                          {img ? t("صورة", "Image") : "PDF"} · {fmtDate(doc.uploadedAt, locale)}
-                        </p>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <Button size="sm" variant="outline" onClick={() => setPreviewDoc(doc)} data-testid={`button-view-doc-${doc.id}`}>
+                            <Eye className="w-3.5 h-3.5 me-1" />{t("معاينة", "Preview")}
+                          </Button>
+                          <Button size="icon" variant="ghost" className="h-8 w-8" asChild title={t("تحميل", "Download")} data-testid={`button-download-doc-${doc.id}`}>
+                            <a href={doc.url} download={doc.name}>
+                              <Download className="w-3.5 h-3.5" />
+                            </a>
+                          </Button>
+                        </div>
                       </div>
-                    </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <Button size="sm" variant="outline" onClick={() => setPreviewDoc(doc)} data-testid={`button-view-doc-${doc.id}`}>
-                        <Eye className="w-3.5 h-3.5 me-1" />{t("معاينة", "Preview")}
-                      </Button>
-                      <Button size="icon" variant="ghost" className="h-8 w-8" asChild title={t("تحميل", "Download")} data-testid={`button-download-doc-${doc.id}`}>
-                        <a href={doc.url} download={doc.name}>
-                          <Download className="w-3.5 h-3.5" />
-                        </a>
-                      </Button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">{t("سرية المعلومات (WF-08)", "Confidentiality (WF-08)")}</CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <HrWorkflowSection workflows={["wf08"]} employeeId={emp.id} employeeName={name} />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* 3: العهد */}
+        <TabsContent value="assets" className="mt-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Package className="w-4 h-4" />{t("عهد الموظف", "Employee Custody")}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0">
+              {assets.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-8" data-testid="text-no-assets">
+                  {t("لا توجد عهد مسجلة لهذا الموظف", "No custody items for this employee")}
+                </p>
+              ) : (
+                <div className="divide-y divide-border rounded-lg border overflow-hidden">
+                  {assets.map((a: any) => {
+                    const st = assetStatusLabels[a.status] || { ar: a.status, en: a.status, cls: "" };
+                    return (
+                      <div key={a.id} className="flex items-center justify-between gap-3 px-4 py-3" data-testid={`row-asset-${a.id}`}>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate">{a.assetName || a.nameAr || a.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {a.serialNumber ? `${t("الرقم التسلسلي", "Serial")}: ${a.serialNumber} · ` : ""}
+                            {fmtDate(a.assignedDate || a.createdAt, locale)}
+                          </p>
+                        </div>
+                        <Badge className={`${st.cls} text-[10px]`}>{t(st.ar, st.en)}</Badge>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* 4: الإجازات والدوام (WF-01 عبر نظام الإجازات + WF-04/09) */}
+        <TabsContent value="leaves" className="space-y-4 mt-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <CalendarDays className="w-4 h-4" />{t("طلبات الإجازة (WF-01)", "Leave Requests (WF-01)")}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0">
+              {empLeaves.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-6">{t("لا توجد طلبات إجازة — تُدار من صفحة الإجازات", "No leave requests — managed from the Leaves page")}</p>
+              ) : (
+                <div className="divide-y divide-border rounded-lg border overflow-hidden">
+                  {empLeaves.map(l => {
+                    const st = leaveStatusLabels[l.status] || { ar: l.status, en: l.status, cls: "" };
+                    const lt = leaveTypeLabels[(l as any).leaveType] || { ar: (l as any).leaveType, en: (l as any).leaveType };
+                    return (
+                      <div key={l.id} className="flex items-center justify-between gap-3 px-4 py-3" data-testid={`row-leave-${l.id}`}>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium">{t(lt.ar, lt.en)} · {l.startDate} ← {l.endDate}</p>
+                          {l.reason ? <p className="text-xs text-muted-foreground truncate">{l.reason}</p> : null}
+                        </div>
+                        <Badge className={`${st.cls} text-[10px]`}>{t(st.ar, st.en)}</Badge>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              <div className="pt-3">
+                <Link href="/leaves">
+                  <Button size="sm" variant="ghost" data-testid="link-leaves-page">
+                    <ExternalLink className="w-3.5 h-3.5 me-1" />{t("إدارة الإجازات", "Manage leaves")}
+                  </Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">{t("عودة من إجازة ومخالصة (WF-04 / WF-09)", "Return & Settlement (WF-04 / WF-09)")}</CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <HrWorkflowSection workflows={["wf04", "wf09"]} employeeId={emp.id} employeeName={name} />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* 5: الطلبات والإنهاء */}
+        <TabsContent value="requests" className="mt-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">{t("الإنهاء وعدم التجديد والمستحقات (WF-05 / WF-06 / WF-06B / WF-07)", "Termination & Non-renewal & Dues")}</CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <HrWorkflowSection workflows={["wf05", "wf06", "wf06b", "wf07"]} employeeId={emp.id} employeeName={name} />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* 6: الجزاءات والمخالفات */}
+        <TabsContent value="penalties" className="mt-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">{t("الإنذارات والمخالفات (WF-10)", "Warnings & Violations (WF-10)")}</CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <HrWorkflowSection workflows={["wf10"]} employeeId={emp.id} employeeName={name} />
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
 
       <Dialog open={!!previewDoc} onOpenChange={open => !open && setPreviewDoc(null)}>
         <DialogContent className="max-w-4xl w-[95vw] h-[88vh] flex flex-col p-0 gap-0">

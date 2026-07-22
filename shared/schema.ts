@@ -133,6 +133,7 @@ export const employees = pgTable("employees", {
   email: text("email"),
   documents: jsonb("documents").$default(() => []),
   attendanceEnabled: boolean("attendance_enabled").notNull().default(true),
+  managerId: integer("manager_id"), // المدير المباشر (اختياري) — بدونه يذهب الاعتماد لـ HR/المالك
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -251,7 +252,7 @@ export type EmployeeAdvance = typeof employeeAdvances.$inferSelect;
 
 // ===== Leave Management (الإجازات) =====
 export const leaveTypeEnum = pgEnum("leave_type", ["annual", "sick", "unpaid", "emergency", "maternity", "other"]);
-export const leaveStatusEnum = pgEnum("leave_status", ["pending", "approved", "rejected"]);
+export const leaveStatusEnum = pgEnum("leave_status", ["pending", "manager_approved", "approved", "rejected", "clarification_requested"]);
 
 export const leaveRequests = pgTable("leave_requests", {
   id: serial("id").primaryKey(),
@@ -262,6 +263,8 @@ export const leaveRequests = pgTable("leave_requests", {
   days: integer("days").notNull().default(1),
   reason: text("reason"),
   status: leaveStatusEnum("status").notNull().default("pending"),
+  managerApprovedBy: integer("manager_approved_by").references(() => users.id),
+  managerApprovedDate: date("manager_approved_date"),
   approvedBy: integer("approved_by").references(() => users.id),
   approvedDate: date("approved_date"),
   notes: text("notes"),
@@ -1330,7 +1333,7 @@ export type OsmBuildingsCache = typeof osmBuildingsCache.$inferSelect;
 
 export const attendanceRecordTypeEnum = pgEnum("attendance_record_type", ["check_in", "check_out"]);
 export const attendancePermissionTypeEnum = pgEnum("attendance_permission_type", ["leave", "permission", "sick", "official", "remote"]);
-export const attendancePermissionStatusEnum = pgEnum("attendance_permission_status", ["pending", "auto_approved", "approved", "rejected"]);
+export const attendancePermissionStatusEnum = pgEnum("attendance_permission_status", ["pending", "auto_approved", "approved", "rejected", "clarification_requested"]);
 export const locationZoneTypeEnum = pgEnum("location_zone_type", ["factory", "showroom", "other"]);
 
 export const attendanceRecords = pgTable("attendance_records", {
@@ -1349,6 +1352,11 @@ export const attendanceRecords = pgTable("attendance_records", {
   notes: text("notes"),
   isManualEdit: boolean("is_manual_edit").notNull().default(false),
   editedBy: integer("edited_by").references(() => users.id),
+  // التدخل الإداري (المرحلة 6): عذر معتمد بلا أثر مالي
+  overrideExcuse: text("override_excuse"), // forgot_fingerprint | technical_issue | emergency_leave | medical_excuse
+  overrideNote: text("override_note"),
+  overrideBy: integer("override_by").references(() => users.id),
+  overrideAt: timestamp("override_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -1378,6 +1386,78 @@ export const insertAttendancePermissionSchema = createInsertSchema(attendancePer
   id: true,
   createdAt: true,
 });
+
+// مخالفات الحضور — محاولات مرفوضة (مثل خروج بلا دخول)
+export const attendanceViolations = pgTable("attendance_violations", {
+  id: serial("id").primaryKey(),
+  employeeId: integer("employee_id").references(() => employees.id),
+  employeePhone: text("employee_phone"),
+  employeeNameAr: text("employee_name_ar"),
+  violationType: text("violation_type").notNull(), // missing_checkin | missing_checkout
+  attemptedType: text("attempted_type"), // check_in | check_out
+  details: text("details"),
+  occurredAt: timestamp("occurred_at").notNull().defaultNow(),
+});
+
+export const insertAttendanceViolationSchema = createInsertSchema(attendanceViolations).omit({
+  id: true,
+  occurredAt: true,
+});
+export type InsertAttendanceViolation = z.infer<typeof insertAttendanceViolationSchema>;
+export type AttendanceViolation = typeof attendanceViolations.$inferSelect;
+
+// إعدادات أوقات الدوام — افتراضي عام + تخصيص لكل قسم أو موظف
+export const workScheduleSettings = pgTable("work_schedule_settings", {
+  id: serial("id").primaryKey(),
+  scopeType: text("scope_type").notNull(), // default | department | employee
+  department: text("department"), // when scopeType = department
+  employeeId: integer("employee_id").references(() => employees.id), // when scopeType = employee
+  workStartTime: text("work_start_time").notNull().default("08:00"), // HH:mm (Asia/Riyadh)
+  graceMinutes: integer("grace_minutes").notNull().default(15),
+});
+
+export const insertWorkScheduleSettingSchema = createInsertSchema(workScheduleSettings).omit({
+  id: true,
+});
+export type InsertWorkScheduleSetting = z.infer<typeof insertWorkScheduleSettingSchema>;
+export type WorkScheduleSetting = typeof workScheduleSettings.$inferSelect;
+
+// تنبيهات مؤشر الخطر — منع تكرار التنبيه لنفس الموظف/الشهر/المستوى
+export const riskAlerts = pgTable("risk_alerts", {
+  id: serial("id").primaryKey(),
+  employeeId: integer("employee_id").notNull().references(() => employees.id),
+  period: text("period").notNull(), // YYYY-MM
+  level: text("level").notNull(), // orange | red
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertRiskAlertSchema = createInsertSchema(riskAlerts).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertRiskAlert = z.infer<typeof insertRiskAlertSchema>;
+export type RiskAlert = typeof riskAlerts.$inferSelect;
+
+// سجل تدقيق الحضور — Audit Trail لأي تعديل/تدخل إداري
+export const attendanceAuditLog = pgTable("attendance_audit_log", {
+  id: serial("id").primaryKey(),
+  recordId: integer("record_id").references(() => attendanceRecords.id),
+  employeeId: integer("employee_id").references(() => employees.id),
+  action: text("action").notNull(), // manual_edit | admin_override
+  excuseType: text("excuse_type"), // forgot_fingerprint | technical_issue | emergency_leave | medical_excuse
+  oldValue: jsonb("old_value").$default(() => ({})),
+  newValue: jsonb("new_value").$default(() => ({})),
+  reason: text("reason"),
+  editedBy: integer("edited_by").references(() => users.id),
+  editedAt: timestamp("edited_at").notNull().defaultNow(),
+});
+
+export const insertAttendanceAuditLogSchema = createInsertSchema(attendanceAuditLog).omit({
+  id: true,
+  editedAt: true,
+});
+export type InsertAttendanceAuditLog = z.infer<typeof insertAttendanceAuditLogSchema>;
+export type AttendanceAuditLog = typeof attendanceAuditLog.$inferSelect;
 export type InsertAttendancePermission = z.infer<typeof insertAttendancePermissionSchema>;
 export type AttendancePermission = typeof attendancePermissions.$inferSelect;
 
@@ -1501,3 +1581,27 @@ export const insertJournalEntryLineSchema = createInsertSchema(journalEntryLines
 });
 export type InsertJournalEntryLine = z.infer<typeof insertJournalEntryLineSchema>;
 export type JournalEntryLine = typeof journalEntryLines.$inferSelect;
+
+// ===== HR Actions (ملف الموظف — مسارات WF-01..WF-10) =====
+export const hrActions = pgTable("hr_actions", {
+  id: serial("id").primaryKey(),
+  employeeId: integer("employee_id").references(() => employees.id),
+  workflow: text("workflow").notNull(),
+  tab: text("tab").notNull(),
+  status: text("status").notNull().default("pending"),
+  currentStep: integer("current_step").notNull().default(0),
+  formData: jsonb("form_data").$default(() => ({})),
+  timeline: jsonb("timeline").$default(() => []),
+  linkedActionId: integer("linked_action_id"),
+  createdBy: integer("created_by").references(() => users.id).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertHrActionSchema = createInsertSchema(hrActions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertHrAction = z.infer<typeof insertHrActionSchema>;
+export type HrAction = typeof hrActions.$inferSelect;
