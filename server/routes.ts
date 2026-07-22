@@ -7607,6 +7607,26 @@ export async function registerRoutes(
       return res.status(500).json({ message: "حدث خطأ أثناء التحقق من الهوية" });
     }
 
+    // Reject check-out without a prior check-in on the same day.
+    if (type === "check_out" && (employeeId || employeePhone)) {
+      try {
+        const dayStart = new Date();
+        dayStart.setHours(0, 0, 0, 0);
+        const todayRecords = await storage.getAttendanceRecords({
+          employeeId: employeeId ? Number(employeeId) : undefined,
+          employeePhone: !employeeId && employeePhone ? employeePhone : undefined,
+          from: dayStart.toISOString(),
+        });
+        const hasCheckInToday = todayRecords.some(r => r.type === "check_in");
+        if (!hasCheckInToday) {
+          return res.status(400).json({ message: "لا يمكن تسجيل الخروج قبل تسجيل الدخول لهذا اليوم — سجّل دخولك أولاً" });
+        }
+      } catch (e) {
+        console.error("Check-out validation error:", e);
+        return res.status(500).json({ message: "حدث خطأ أثناء التحقق من سجل الدخول" });
+      }
+    }
+
     const lat2Num = latitude !== undefined && latitude !== null ? parseFloat(latitude) : NaN;
     const lng2Num = longitude !== undefined && longitude !== null ? parseFloat(longitude) : NaN;
     const hasValidCoords = !isNaN(lat2Num) && !isNaN(lng2Num) && lat2Num >= -90 && lat2Num <= 90 && lng2Num >= -180 && lng2Num <= 180;

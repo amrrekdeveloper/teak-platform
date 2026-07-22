@@ -109,6 +109,7 @@ function getDayStatus(records: AttendanceRecord[], employeeId: number) {
   const checkOut = empRecords.filter(r => r.type === "check_out").sort((a, b) => new Date(b.checkTime).getTime() - new Date(a.checkTime).getTime())[0];
   let status = "present";
   if (checkIn && !checkOut) status = "incomplete";
+  if (!checkIn) status = checkOut ? "checkout_only" : "absent";
   let duration: string | null = null;
   if (checkIn && checkOut) {
     const mins = (new Date(checkOut.checkTime).getTime() - new Date(checkIn.checkTime).getTime()) / 60000;
@@ -125,6 +126,7 @@ function StatusBadge({ status }: { status: string }) {
     present: { label: "حاضر", icon: <CheckCircle2 className="w-3 h-3" />, className: "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400" },
     absent: { label: "غائب", icon: <XCircle className="w-3 h-3" />, className: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400" },
     incomplete: { label: "ناقص", icon: <AlertTriangle className="w-3 h-3" />, className: "bg-yellow-100 text-yellow-700 dark:bg-yellow-950 dark:text-yellow-400" },
+    checkout_only: { label: "خروج فقط", icon: <AlertTriangle className="w-3 h-3" />, className: "bg-yellow-100 text-yellow-700 dark:bg-yellow-950 dark:text-yellow-400" },
     late: { label: "متأخر", icon: <Clock className="w-3 h-3" />, className: "bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-400" },
   };
   const s = map[status] || { label: status, icon: null, className: "bg-muted text-muted-foreground" };
@@ -256,14 +258,14 @@ export default function AttendanceMonitorPage() {
           const dayRecs = recordsForDay(locRecords, day);
           const st = getDayStatus(dayRecs, emp.id).status;
           if (st === "present") present++;
-          else if (st === "incomplete") incomplete++;
+          else if (st === "incomplete" || st === "checkout_only") incomplete++;
           else absent++;
         });
       });
     } else {
       present = filteredEmployees.filter(e => getDayStatus(locRecords, e.id).status === "present").length;
       absent = filteredEmployees.filter(e => getDayStatus(locRecords, e.id).status === "absent").length;
-      incomplete = filteredEmployees.filter(e => getDayStatus(locRecords, e.id).status === "incomplete").length;
+      incomplete = filteredEmployees.filter(e => ["incomplete", "checkout_only"].includes(getDayStatus(locRecords, e.id).status)).length;
     }
     const outOfZone = locRecords.filter(r => r.isOutOfZone).length;
     return { present, absent, incomplete, outOfZone, total: filteredEmployees.length };
@@ -329,7 +331,7 @@ export default function AttendanceMonitorPage() {
           s.out ? formatTime(s.out.checkTime) : "—",
           s.duration || "—",
           (s.in?.locationName) || emp.locationName,
-          s.status === "present" ? "حاضر" : s.status === "absent" ? "غائب" : "ناقص",
+          s.status === "present" ? "حاضر" : s.status === "absent" ? "غائب" : s.status === "checkout_only" ? "خروج فقط" : "ناقص",
         ]);
       });
     });
@@ -526,7 +528,7 @@ export default function AttendanceMonitorPage() {
                   {filteredEmployees.map(emp => {
                     const empDays = days.map(day => ({ day, s: getDayStatus(recordsForDay(locRecords, day), emp.id) }));
                     const presentDays = empDays.filter(d => d.s.status === "present").length;
-                    const incompleteDays = empDays.filter(d => d.s.status === "incomplete").length;
+                    const incompleteDays = empDays.filter(d => ["incomplete", "checkout_only"].includes(d.s.status)).length;
                     const absentDays = empDays.filter(d => d.s.status === "absent").length;
                     const expanded = expandedEmployees.has(emp.id);
                     return (
