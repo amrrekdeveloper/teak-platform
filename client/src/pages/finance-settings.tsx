@@ -1,18 +1,55 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useLanguage } from "@/components/language-provider";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { KeyRound, Eye, EyeOff, ChevronRight, ShieldCheck } from "lucide-react";
+import { KeyRound, Eye, EyeOff, ChevronRight, ShieldCheck, AlertTriangle, Trash2 } from "lucide-react";
 import { Link } from "wouter";
+import { useAuth } from "@/hooks/use-auth";
 
 export default function FinanceSettingsPage() {
   const { t } = useLanguage();
   const { toast } = useToast();
+  const { user } = useAuth();
+
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetConfirmText, setResetConfirmText] = useState("");
+
+  const resetMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/admin/finance-reset", { confirm: resetConfirmText.trim() });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      toast({
+        title: t("تم تصفير البيانات المالية بنجاح", "Financial data reset successfully"),
+        description: t("تم الاحتفاظ بنسخة احتياطية من جميع البيانات المحذوفة", "A backup of all deleted data was kept"),
+      });
+      setResetOpen(false);
+      setResetConfirmText("");
+      queryClient.invalidateQueries();
+    },
+    onError: (e: Error) => {
+      let message = t("حدث خطأ أثناء التصفير", "An error occurred during reset");
+      try {
+        const parsed = JSON.parse(e.message.replace(/^\d+:\s*/, ""));
+        if (parsed.message) message = parsed.message;
+      } catch {}
+      toast({ title: message, variant: "destructive" });
+    },
+  });
 
   const [currentPin, setCurrentPin] = useState("");
   const [newPin, setNewPin] = useState("");
@@ -198,6 +235,72 @@ export default function FinanceSettingsPage() {
           </form>
         </CardContent>
       </Card>
+
+      {user?.role === "owner" && (
+        <Card className="border-destructive/50">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-4 w-4" />
+              {t("منطقة الخطر — تصفير البيانات المالية", "Danger Zone — Financial Data Reset")}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              {t(
+                "حذف جميع القيود المحاسبية والدفعات والفواتير وسجلات الرواتب والسلف، وتصفير أرصدة العقود. يتم الاحتفاظ بدليل الحسابات، ويتم حفظ نسخة احتياطية من كل البيانات قبل الحذف.",
+                "Deletes all journal entries, payments, invoices, payroll records and advances, and resets contract balances. The chart of accounts is kept, and a backup of all data is saved before deletion."
+              )}
+            </p>
+            <Button
+              variant="destructive"
+              onClick={() => setResetOpen(true)}
+              className="flex items-center gap-2"
+              data-testid="btn-open-finance-reset"
+            >
+              <Trash2 className="h-4 w-4" />
+              {t("تصفير البيانات المالية", "Reset Financial Data")}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      <Dialog open={resetOpen} onOpenChange={(o) => { setResetOpen(o); if (!o) setResetConfirmText(""); }}>
+        <DialogContent data-testid="dialog-finance-reset">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-5 w-5" />
+              {t("تأكيد تصفير البيانات المالية", "Confirm Financial Data Reset")}
+            </DialogTitle>
+            <DialogDescription>
+              {t(
+                "هذا الإجراء سيحذف جميع البيانات المالية نهائيًا (مع نسخة احتياطية). للمتابعة اكتب كلمة «تصفير» في الحقل أدناه.",
+                "This will permanently delete all financial data (with a backup). To proceed, type the word «تصفير» below."
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <Input
+            value={resetConfirmText}
+            onChange={(e) => setResetConfirmText(e.target.value)}
+            placeholder={t("اكتب: تصفير", "Type: تصفير")}
+            data-testid="input-finance-reset-confirm"
+          />
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setResetOpen(false)} data-testid="btn-cancel-finance-reset">
+              {t("إلغاء", "Cancel")}
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={resetConfirmText.trim() !== "تصفير" || resetMutation.isPending}
+              onClick={() => resetMutation.mutate()}
+              data-testid="btn-confirm-finance-reset"
+            >
+              {resetMutation.isPending
+                ? t("جاري التصفير...", "Resetting...")
+                : t("تصفير نهائي", "Reset Permanently")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

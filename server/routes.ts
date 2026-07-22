@@ -9046,6 +9046,98 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ message: e.message || "حدث خطأ" }); }
   });
 
+  // ── Financial data reset (owner only) ──────────────────────────────────────
+  // Wipes all financial transaction data (journal entries, payments, invoices,
+  // payment schedules, payroll, advances) and resets contract balances, after
+  // backing everything up into finance_reset_backups. Chart of accounts kept.
+  app.post("/api/admin/finance-reset", requireRole("owner"), async (req, res) => {
+    const BACKUP_TABLES = [
+      "journal_entry_lines",
+      "journal_entries",
+      "payments",
+      "invoices",
+      "payment_schedules",
+      "payroll_records",
+      "employee_advances",
+      "contracts",
+      "fiscal_years",
+    ];
+    try {
+      if (String(req.body?.confirm || "").trim() !== "تصفير") {
+        return res.status(400).json({ message: "يجب كتابة كلمة التأكيد «تصفير» للمتابعة", messageEn: "Confirmation word required" });
+      }
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        // Block concurrent financial writes so backup and delete see the same rows
+        await client.query(`SELECT pg_advisory_xact_lock(hashtext('finance_reset'))`);
+        await client.query(
+          `LOCK TABLE journal_entry_lines, journal_entries, payments, invoices,
+             payment_schedules, payroll_records, employee_advances, contracts, fiscal_years
+           IN ACCESS EXCLUSIVE MODE`
+        );
+        await client.query(`
+          CREATE TABLE IF NOT EXISTS finance_reset_backups (
+            id SERIAL PRIMARY KEY,
+            batch_id TEXT NOT NULL,
+            table_name TEXT NOT NULL,
+            row_data JSONB NOT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW()
+          );
+        `);
+        const batchId = `reset-${new Date().toISOString()}`;
+        const counts: Record<string, number> = {};
+        for (const t of BACKUP_TABLES) {
+          const r = await client.query(
+            `INSERT INTO finance_reset_backups (batch_id, table_name, row_data)
+             SELECT $1, '${t}', to_jsonb(t.*) FROM ${t} t`,
+            [batchId]
+          );
+          counts[t] = r.rowCount || 0;
+        }
+        // Delete in FK-safe order
+        await client.query(`DELETE FROM journal_entry_lines`);
+        await client.query(`UPDATE fiscal_years SET closing_entry_id = NULL`);
+        await client.query(`DELETE FROM journal_entries`);
+        await client.query(`DELETE FROM fiscal_years`);
+        await client.query(`DELETE FROM payments`);
+        await client.query(`DELETE FROM invoices`);
+        await client.query(`DELETE FROM payment_schedules`);
+        await client.query(`DELETE FROM payroll_records`);
+        await client.query(`DELETE FROM employee_advances`);
+        // Reset contract balances (keep contracts themselves)
+        await client.query(`UPDATE contracts SET paid_amount = 0, remaining_amount = total_amount`);
+        // Restart numbering sequences so new documents start from 1
+        await client.query(`
+          DO $$ BEGIN
+            IF EXISTS (SELECT 1 FROM pg_class WHERE relname = 'journal_entries_entry_number_seq') THEN
+              PERFORM setval('journal_entries_entry_number_seq', 1, false);
+            END IF;
+            IF EXISTS (SELECT 1 FROM pg_class WHERE relname = 'invoices_invoice_number_seq') THEN
+              PERFORM setval('invoices_invoice_number_seq', 1, false);
+            END IF;
+          END $$;
+        `);
+        await client.query("COMMIT");
+        console.log(`Finance reset completed (${batchId}):`, counts);
+        return res.json({
+          success: true,
+          batchId,
+          backedUp: counts,
+          message: "تم تصفير البيانات المالية بنجاح مع الاحتفاظ بنسخة احتياطية",
+        });
+      } catch (txErr) {
+        await client.query("ROLLBACK");
+        throw txErr;
+      } finally {
+        client.release();
+      }
+    } catch (e: any) {
+      console.error("Finance reset failed:", e);
+      return res.status(500).json({ message: e.message || "حدث خطأ أثناء التصفير" });
+    }
+  });
+
   // ── /api/finance/* aliases (backward-compatible redirects) ─────────────────
   const ACCOUNTING_ENDPOINTS = [
     "accounts", "journal-entries", "ledger", "trial-balance",
