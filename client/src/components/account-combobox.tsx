@@ -44,6 +44,11 @@ export function AccountCombobox({
   const [open, setOpen] = useState(false);
   const selected = accounts.find((a) => a.code === value);
 
+  const handleSelect = (account: AccountOption) => {
+    onChange(account.code, account);
+    setOpen(false);
+  };
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -65,25 +70,37 @@ export function AccountCombobox({
           <ChevronsUpDown className="ms-1 h-3.5 w-3.5 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className={cn("p-0 w-[var(--radix-popover-trigger-width)] min-w-64", className)} align="start" dir="rtl">
+      <PopoverContent
+        className={cn("p-0 w-[var(--radix-popover-trigger-width)] min-w-64", className)}
+        align="start"
+        dir="rtl"
+        side="bottom"
+        avoidCollisions={true}
+        onOpenAutoFocus={(e) => e.preventDefault()}
+      >
         <Command
           filter={(itemValue, search) => {
             return itemValue.toLowerCase().includes(search.toLowerCase()) ? 1 : 0;
           }}
         >
-          <CommandInput placeholder={searchPlaceholder} className="text-xs" data-testid={testId ? `${testId}-search` : undefined} />
-          <CommandList>
+          <CommandInput
+            placeholder={searchPlaceholder}
+            className="text-xs"
+            data-testid={testId ? `${testId}-search` : undefined}
+          />
+          <CommandList className="max-h-52">
             <CommandEmpty className="py-4 text-center text-xs text-muted-foreground">{emptyText}</CommandEmpty>
             <CommandGroup>
               {accounts.map((a) => (
                 <CommandItem
                   key={a.code}
                   value={`${a.code} ${a.nameAr} ${a.nameEn || ""}`}
-                  onSelect={() => {
-                    onChange(a.code, a);
-                    setOpen(false);
+                  onSelect={() => handleSelect(a)}
+                  onPointerDown={(e) => {
+                    e.preventDefault();
+                    handleSelect(a);
                   }}
-                  className="text-xs"
+                  className="text-xs cursor-pointer"
                   data-testid={testId ? `${testId}-option-${a.code}` : undefined}
                 >
                   <Check className={cn("me-2 h-3.5 w-3.5", value === a.code ? "opacity-100" : "opacity-0")} />

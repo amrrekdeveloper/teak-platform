@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { AccountCombobox } from "@/components/account-combobox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Trash2, Edit2, BookOpen, FileText, ChevronLeft, AlertCircle, CheckCircle2, DollarSign, ExternalLink, Printer, Paperclip, X } from "lucide-react";
+import { Plus, Trash2, Edit2, BookOpen, FileText, ChevronLeft, ChevronRight, AlertCircle, CheckCircle2, DollarSign, ExternalLink, Printer, Paperclip, X, ArrowUpDown } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { format } from "date-fns";
 import { exportReportPDF } from "@/lib/finance-export";
@@ -129,6 +129,9 @@ export default function FinanceAccountsPage() {
   const [obDate, setObDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [obLines, setObLines] = useState<LineItem[]>([EMPTY_LINE()]);
   const [printingOB, setPrintingOB] = useState(false);
+  const [obPage, setObPage] = useState(1);
+  const [obSort, setObSort] = useState<"code-asc" | "code-desc">("code-asc");
+  const OB_PAGE_SIZE = 10;
 
   const handleExportOpeningBalances = async () => {
     if ((obData as any[]).length === 0) return;
@@ -611,7 +614,7 @@ export default function FinanceAccountsPage() {
                   <SelectTrigger className="h-8 text-xs w-48" data-testid="select-entry-type-filter">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent position="popper">
                     <SelectItem value="all">{t("الكل", "All Entries")}</SelectItem>
                     <SelectItem value="manual">{t("يدوي فقط", "Manual Only")}</SelectItem>
                     <SelectItem value="auto">{t("تلقائي فقط", "Auto-generated Only")}</SelectItem>
@@ -753,50 +756,135 @@ export default function FinanceAccountsPage() {
                 {/* Existing opening balances (read-only) */}
                 {obLoading ? (
                   <p className="text-xs text-muted-foreground">{t("جاري التحميل...", "Loading...")}</p>
-                ) : (obData as any[]).length > 0 && (
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <p className="text-xs font-semibold text-muted-foreground">{t("الأرصدة المحفوظة حالياً", "Currently saved balances")}</p>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-7 text-xs text-blue-700 border-blue-300 hover:bg-blue-50 dark:text-blue-300 dark:border-blue-800 dark:hover:bg-blue-950"
-                        onClick={handleExportOpeningBalances}
-                        disabled={printingOB}
-                        data-testid="btn-export-opening-balances"
-                      >
-                        <Printer className="h-3.5 w-3.5 me-1.5" />
-                        {printingOB ? t("جاري التصدير...", "Exporting...") : t("تصدير PDF", "Export PDF")}
-                      </Button>
-                    </div>
-                    <div className="rounded border overflow-hidden">
-                      <table className="w-full text-xs">
-                        <thead className="bg-muted/50">
-                          <tr>
-                            <th className="text-right px-3 py-1.5 w-20">{t("الرمز", "Code")}</th>
-                            <th className="text-right px-3 py-1.5">{t("الحساب", "Account")}</th>
-                            <th className="text-right px-3 py-1.5 w-28">{t("مدين", "Debit")}</th>
-                            <th className="text-right px-3 py-1.5 w-28">{t("دائن", "Credit")}</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y">
-                          {(obData as any[]).map((row: any, i: number) => (
-                            <tr key={i} className="hover:bg-accent/30">
-                              <td className="px-3 py-1.5 font-mono text-muted-foreground">{row.account_code}</td>
-                              <td className="px-3 py-1.5">{row.account_name_ar}</td>
-                              <td className="px-3 py-1.5 tabular-nums text-blue-700 dark:text-blue-400">
-                                {parseFloat(row.debit) > 0 ? parseFloat(row.debit).toLocaleString("ar-SA", { minimumFractionDigits: 2 }) : ""}
+                ) : (obData as any[]).length > 0 && (() => {
+                  const allRows = (obData as any[]);
+                  const sorted = [...allRows].sort((a, b) =>
+                    obSort === "code-asc"
+                      ? a.account_code.localeCompare(b.account_code)
+                      : b.account_code.localeCompare(a.account_code)
+                  );
+                  const totalPages = Math.ceil(sorted.length / OB_PAGE_SIZE);
+                  const pageRows = sorted.slice((obPage - 1) * OB_PAGE_SIZE, obPage * OB_PAGE_SIZE);
+                  const totalDebitAll = allRows.reduce((s, r) => s + parseFloat(r.debit || "0"), 0);
+                  const totalCreditAll = allRows.reduce((s, r) => s + parseFloat(r.credit || "0"), 0);
+                  return (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <p className="text-xs font-semibold">{t("الأرصدة المحفوظة حالياً", "Currently saved balances")}</p>
+                          <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium">
+                            {allRows.length} {t("حساب", "accounts")}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 text-xs gap-1 text-muted-foreground"
+                            onClick={() => { setObSort(s => s === "code-asc" ? "code-desc" : "code-asc"); setObPage(1); }}
+                            data-testid="btn-ob-sort"
+                          >
+                            <ArrowUpDown className="h-3 w-3" />
+                            {obSort === "code-asc" ? t("أ → ي", "A→Z") : t("ي → أ", "Z→A")}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs text-blue-700 border-blue-300 hover:bg-blue-50 dark:text-blue-300 dark:border-blue-800 dark:hover:bg-blue-950"
+                            onClick={handleExportOpeningBalances}
+                            disabled={printingOB}
+                            data-testid="btn-export-opening-balances"
+                          >
+                            <Printer className="h-3.5 w-3.5 me-1.5" />
+                            {printingOB ? t("جاري...", "Exporting...") : t("PDF", "PDF")}
+                          </Button>
+                        </div>
+                      </div>
+
+                      <div className="rounded-lg border overflow-hidden shadow-sm">
+                        <table className="w-full text-xs">
+                          <thead className="bg-muted/60 border-b">
+                            <tr>
+                              <th className="text-right px-3 py-2 w-24 font-semibold text-muted-foreground">{t("الرمز", "Code")}</th>
+                              <th className="text-right px-3 py-2 font-semibold text-muted-foreground">{t("اسم الحساب", "Account Name")}</th>
+                              <th className="text-right px-3 py-2 w-32 font-semibold text-blue-700 dark:text-blue-400">{t("مدين", "Debit")}</th>
+                              <th className="text-right px-3 py-2 w-32 font-semibold text-green-700 dark:text-green-400">{t("دائن", "Credit")}</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y">
+                            {pageRows.map((row: any, i: number) => (
+                              <tr key={row.account_code} className={`transition-colors hover:bg-accent/40 ${i % 2 === 0 ? "" : "bg-muted/20"}`}>
+                                <td className="px-3 py-2 font-mono text-muted-foreground">{row.account_code}</td>
+                                <td className="px-3 py-2 font-medium">{row.account_name_ar}</td>
+                                <td className="px-3 py-2 tabular-nums text-blue-700 dark:text-blue-400 font-medium">
+                                  {parseFloat(row.debit) > 0 ? parseFloat(row.debit).toLocaleString("ar-SA", { minimumFractionDigits: 2 }) : <span className="text-muted-foreground/40">—</span>}
+                                </td>
+                                <td className="px-3 py-2 tabular-nums text-green-700 dark:text-green-400 font-medium">
+                                  {parseFloat(row.credit) > 0 ? parseFloat(row.credit).toLocaleString("ar-SA", { minimumFractionDigits: 2 }) : <span className="text-muted-foreground/40">—</span>}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                          <tfoot className="border-t-2 bg-muted/40">
+                            <tr>
+                              <td colSpan={2} className="px-3 py-2 font-bold text-xs">{t("الإجمالي", "Total")}</td>
+                              <td className="px-3 py-2 tabular-nums font-bold text-blue-700 dark:text-blue-400">
+                                {totalDebitAll.toLocaleString("ar-SA", { minimumFractionDigits: 2 })}
                               </td>
-                              <td className="px-3 py-1.5 tabular-nums text-green-700 dark:text-green-400">
-                                {parseFloat(row.credit) > 0 ? parseFloat(row.credit).toLocaleString("ar-SA", { minimumFractionDigits: 2 }) : ""}
+                              <td className="px-3 py-2 tabular-nums font-bold text-green-700 dark:text-green-400">
+                                {totalCreditAll.toLocaleString("ar-SA", { minimumFractionDigits: 2 })}
                               </td>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                          </tfoot>
+                        </table>
+                      </div>
+
+                      {totalPages > 1 && (
+                        <div className="flex items-center justify-between pt-1">
+                          <p className="text-[11px] text-muted-foreground">
+                            {t(`صفحة ${obPage} من ${totalPages}`, `Page ${obPage} of ${totalPages}`)}
+                            {" · "}
+                            {t(`${allRows.length} سجل`, `${allRows.length} records`)}
+                          </p>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 w-7 p-0"
+                              disabled={obPage === 1}
+                              onClick={() => setObPage(p => p - 1)}
+                              data-testid="btn-ob-prev"
+                            >
+                              <ChevronRight className="h-3.5 w-3.5" />
+                            </Button>
+                            {Array.from({ length: totalPages }, (_, i) => i + 1).map(pg => (
+                              <Button
+                                key={pg}
+                                size="sm"
+                                variant={pg === obPage ? "default" : "outline"}
+                                className="h-7 w-7 p-0 text-xs"
+                                onClick={() => setObPage(pg)}
+                                data-testid={`btn-ob-page-${pg}`}
+                              >
+                                {pg}
+                              </Button>
+                            ))}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 w-7 p-0"
+                              disabled={obPage === totalPages}
+                              onClick={() => setObPage(p => p + 1)}
+                              data-testid="btn-ob-next"
+                            >
+                              <ChevronLeft className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
 
                 {/* Entry form */}
                 <div>
@@ -905,7 +993,7 @@ export default function FinanceAccountsPage() {
                 <Label className="text-xs">{t("النوع", "Type")} *</Label>
                 <Select value={form.type} onValueChange={v => setForm(f => ({ ...f, type: v }))}>
                   <SelectTrigger data-testid="select-account-type"><SelectValue /></SelectTrigger>
-                  <SelectContent>
+                  <SelectContent position="popper">
                     {Object.entries(ACCOUNT_TYPES).map(([v, m]) => (
                       <SelectItem key={v} value={v}>{m.labelAr}</SelectItem>
                     ))}
@@ -925,7 +1013,7 @@ export default function FinanceAccountsPage() {
               <Label className="text-xs">{t("الحساب الأب", "Parent Account")}</Label>
               <Select value={form.parentCode || "none"} onValueChange={v => setForm(f => ({ ...f, parentCode: v === "none" ? "" : v }))}>
                 <SelectTrigger data-testid="select-parent-code"><SelectValue placeholder={t("بدون", "None")} /></SelectTrigger>
-                <SelectContent>
+                <SelectContent position="popper">
                   <SelectItem value="none">{t("بدون أب", "No parent")}</SelectItem>
                   {(accounts as any[]).filter((a: any) => a.code !== form.code).map((a: any) => (
                     <SelectItem key={a.code} value={a.code}>{a.code} - {a.nameAr}</SelectItem>
@@ -1218,7 +1306,7 @@ export default function FinanceAccountsPage() {
                 <Label className="text-xs">{t("نوع الفاتورة", "Invoice Type")} *</Label>
                 <Select value={invForm.invoiceKind} onValueChange={v => setInvForm(f => ({ ...f, invoiceKind: v, revenueExpenseAccountCode: "" }))}>
                   <SelectTrigger data-testid="select-invoice-kind"><SelectValue /></SelectTrigger>
-                  <SelectContent>
+                  <SelectContent position="popper">
                     <SelectItem value="sales">{t("مبيعات", "Sales")}</SelectItem>
                     <SelectItem value="purchase">{t("مشتريات", "Purchase")}</SelectItem>
                   </SelectContent>
@@ -1228,7 +1316,7 @@ export default function FinanceAccountsPage() {
                 <Label className="text-xs">{t("طريقة الدفع", "Terms")} *</Label>
                 <Select value={invForm.terms} onValueChange={v => setInvForm(f => ({ ...f, terms: v, paymentAccountCode: "" }))}>
                   <SelectTrigger data-testid="select-invoice-terms"><SelectValue /></SelectTrigger>
-                  <SelectContent>
+                  <SelectContent position="popper">
                     <SelectItem value="credit">{t("آجل", "Credit")}</SelectItem>
                     <SelectItem value="cash">{t("نقدي", "Cash")}</SelectItem>
                   </SelectContent>
@@ -1345,7 +1433,7 @@ export default function FinanceAccountsPage() {
                 <Label className="text-xs">{t("نوع السند", "Voucher Type")} *</Label>
                 <Select value={voucherForm.voucherKind} onValueChange={v => setVoucherForm(f => ({ ...f, voucherKind: v, counterAccountCode: "" }))}>
                   <SelectTrigger data-testid="select-voucher-kind"><SelectValue /></SelectTrigger>
-                  <SelectContent>
+                  <SelectContent position="popper">
                     <SelectItem value="receipt">{t("سند قبض (مقبوضات)", "Receipt (money in)")}</SelectItem>
                     <SelectItem value="payment">{t("سند صرف (مدفوعات)", "Payment (money out)")}</SelectItem>
                   </SelectContent>
