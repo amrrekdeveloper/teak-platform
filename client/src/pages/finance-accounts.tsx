@@ -876,7 +876,7 @@ export default function FinanceAccountsPage() {
                   )}
                   <div className="flex justify-between items-center mt-3">
                     <p className="text-xs text-muted-foreground">
-                      {t("ملاحظة: حفظ أرصدة جديدة سيلغي الأرصدة المحفوظة مسبقاً.", "Note: saving new balances will replace any previously saved opening balances.")}
+                      {t("ملاحظة: الأرصدة الجديدة تُضاف إلى الأرصدة المحفوظة مسبقاً. إذا كرّرت حساباً موجوداً سيُحدَّث رصيده.", "Note: new balances are merged with previously saved ones. Re-entering an existing account updates its balance.")}
                     </p>
                     <Button onClick={handleSaveOpeningBalances} disabled={saveObMut.isPending} data-testid="btn-save-opening-balances">
                       {saveObMut.isPending ? t("جاري الحفظ...", "Saving...") : t("حفظ الأرصدة الافتتاحية", "Save Opening Balances")}
