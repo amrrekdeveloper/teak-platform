@@ -318,7 +318,7 @@ function HeroSection() {
             className="text-4xl sm:text-5xl xl:text-6xl font-black leading-tight mb-6"
             data-testid="text-hero-title"
           >
-            {t("الفخامة تبدأ من تيك", "Luxury Starts with Teak")}
+            {t("مطابخ تيك", "Teak Kitchens")}
           </h1>
           <p
             className="text-lg sm:text-xl text-muted-foreground leading-relaxed mb-4"
