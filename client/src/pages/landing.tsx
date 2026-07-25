@@ -783,8 +783,8 @@ function ContactSection() {
       icon: <SiWhatsapp className="w-5 h-5" />,
       labelAr: "واتساب",
       labelEn: "WhatsApp",
-      value: "0558090498",
-      href: "https://wa.me/966558090498",
+      value: "0500748478",
+      href: "https://wa.me/966500748478",
     },
     {
       icon: <Mail className="w-5 h-5" />,
@@ -864,7 +864,7 @@ function ContactSection() {
               {t("طلب عرض سعر", "Request a Quote")}
             </Button>
           </a>
-          <a href="https://wa.me/966558090498" target="_blank" rel="noopener noreferrer" data-testid="link-contact-whatsapp">
+          <a href="https://wa.me/966500748478" target="_blank" rel="noopener noreferrer" data-testid="link-contact-whatsapp">
             <Button size="lg" variant="outline" className="min-w-[200px] gap-2">
               <MessageCircle className="w-4 h-4" />
               {t("تواصل عبر الواتساب", "Chat on WhatsApp")}
@@ -960,9 +960,9 @@ function Footer() {
                 <Phone className="w-4 h-4 shrink-0" />
                 <span dir="ltr">017 325 0090</span>
               </a>
-              <a href="https://wa.me/966558090498" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors flex items-center gap-2" data-testid="link-footer-whatsapp">
+              <a href="https://wa.me/966500748478" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors flex items-center gap-2" data-testid="link-footer-whatsapp">
                 <SiWhatsapp className="w-4 h-4 shrink-0" />
-                <span dir="ltr">055 809 0498</span>
+                <span dir="ltr">050 074 8478</span>
               </a>
               <a href="mailto:info@teak2030.net" className="hover:text-foreground transition-colors flex items-center gap-2" data-testid="link-footer-email">
                 <Mail className="w-4 h-4 shrink-0" />
