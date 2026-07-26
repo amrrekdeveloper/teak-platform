@@ -25,7 +25,6 @@ import {
 import {
   findCabinetDef,
   junctionOfPlaced,
-  getJunctions,
   blockedIntervals,
   verticalSpan,
   resolveDragOffset,
@@ -615,11 +614,10 @@ function Floor({
   );
 }
 
-/** Two-tier gypsum cove ceiling (Gulf style): lowered perimeter border +
- *  recessed pocket + inset main ceiling, always in plaster. */
-const COVE_W = 0.25;
-export const COVE_DROP = 0.12;
-const COVE_T = 0.03;
+/** Flat gypsum ceiling (customer-approved reference look) — the old two-tier
+ *  cove/cornice was removed; COVE_DROP stays exported (now 0) because cabinet
+ *  mount-height limits in studio.tsx reference it. */
+export const COVE_DROP = 0;
 
 /* Artificial lighting colors */
 const WARM_LIGHT = "#ffcc80";
@@ -645,33 +643,35 @@ function Ceiling({
     () => findCeilingOption(ceilingMaterialId),
     [ceilingMaterialId]
   );
+  const lights = useMemo(() => downlightLayout(segments), [segments]);
 
-  // Main flat ceiling, inset by the cove width on every side.
-  const w = Math.max((bounds.maxX - bounds.minX) * CM - 2 * COVE_W, 0.1);
-  const d = Math.max((bounds.maxY - bounds.minY) * CM - 2 * COVE_W, 0.1);
-  const cx = ((bounds.minX + bounds.maxX) / 2) * CM;
-  const cz = ((bounds.minY + bounds.maxY) / 2) * CM;
+  // Flat gypsum ceiling with REAL circular cutouts at each downlight
+  // (shapeGeometry holes) so fixtures are genuinely recessed.
+  const shape = useMemo(() => {
+    const s = new THREE.Shape();
+    s.moveTo(bounds.minX * CM, bounds.minY * CM);
+    s.lineTo(bounds.maxX * CM, bounds.minY * CM);
+    s.lineTo(bounds.maxX * CM, bounds.maxY * CM);
+    s.lineTo(bounds.minX * CM, bounds.maxY * CM);
+    s.closePath();
+    for (const l of lights) {
+      const hole = new THREE.Path();
+      hole.absarc(l.x, l.z, DOWNLIGHT_RADIUS, 0, Math.PI * 2, true);
+      s.holes.push(hole);
+    }
+    return s;
+  }, [bounds, lights]);
 
   return (
     <>
-      <mesh
-        position={[cx, ceilingM, cz]}
-        rotation={[Math.PI / 2, 0, 0]}
-        castShadow
-        receiveShadow
-      >
-        <planeGeometry args={[w, d]} />
-        <SurfaceMaterial key={plaster.id} opt={plaster} repeatX={w} repeatY={d} />
-      </mesh>
-      {segments.map((seg) => (
-        <CeilingBorder
-          key={`cb-${seg.id}`}
-          seg={seg}
-          segments={segments}
-          ceilingM={ceilingM}
-          opt={plaster}
+      <mesh position={[0, ceilingM, 0]} rotation={[Math.PI / 2, 0, 0]} receiveShadow>
+        <shapeGeometry args={[shape, 24]} />
+        <meshStandardMaterial
+          color={plaster.color ?? "#f9f8f5"}
+          roughness={plaster.roughness ?? 0.92}
+          side={THREE.DoubleSide}
         />
-      ))}
+      </mesh>
       {showSoffit &&
         segments.map((seg) => (
           <WallSoffit
@@ -729,7 +729,7 @@ function WallSoffit({
 
     const { origin, dir, out, theta, lengthM } = segVectors(seg);
     const inward = out.clone().negate();
-    const topY = ceilingM - COVE_DROP;
+    const topY = ceilingM; // flat ceiling — soffits drop from the gypsum plane
 
     const result: {
       id: string;
@@ -789,161 +789,248 @@ function WallSoffit({
   );
 }
 
-function CeilingBorder({
-  seg,
-  segments,
+/* ── Architectural recessed downlights (reference-image look) ──
+ * Perimeter rows of TRULY recessed fixtures: the ceiling has real circular
+ * cutouts (see Ceiling), the cavity sits above the gypsum plane with a flush
+ * trim ring and a glowing diffuser lens deep inside. Light scallops on the
+ * walls below each fixture are BAKED overlays (like professional renders) —
+ * real per-fixture lights would tank mobile performance and look harsher. */
+const DOWNLIGHT_RADIUS = 0.045; // 90 mm diameter
+const DOWNLIGHT_DEPTH = 0.055; // real 55 mm gypsum recess depth
+const DOWNLIGHT_WALL_OFFSET = 0.6; // fixture row distance from the wall (m)
+const DOWNLIGHT_SPACING = 1.5; // target spacing along a wall (m)
+
+interface DownlightPoint {
+  x: number;
+  z: number;
+  segId: string;
+  /** Distance along the wall from its start (m). */
+  along: number;
+}
+
+/** Perimeter downlight rows parallel to each wall — auto-fit to room size.
+ *  Positions drive the ceiling cutouts, fixtures AND wall scallops. */
+function downlightLayout(segments: WallSegment[]): DownlightPoint[] {
+  const pts: DownlightPoint[] = [];
+  for (const seg of segments) {
+    const { origin, dir, lengthM } = segVectors(seg);
+    const inward = inwardOf(seg);
+    const usable = lengthM - 2 * DOWNLIGHT_WALL_OFFSET;
+    if (usable < 0.4) continue;
+    const n = Math.min(4, Math.max(2, Math.round(usable / DOWNLIGHT_SPACING)));
+    for (let i = 0; i < n; i++) {
+      const along = DOWNLIGHT_WALL_OFFSET + (usable * (i + 0.5)) / n;
+      const p = origin
+        .clone()
+        .addScaledVector(dir, along)
+        .addScaledVector(inward, DOWNLIGHT_WALL_OFFSET);
+      pts.push({ x: p.x, z: p.z, segId: seg.id, along });
+    }
+  }
+  // Deduplicate fixtures that ended up close together at corners.
+  const dedup: DownlightPoint[] = [];
+  for (const p of pts) {
+    if (!dedup.some((q) => Math.hypot(q.x - p.x, q.z - p.z) < 0.7)) dedup.push(p);
+  }
+  return dedup.slice(0, 16);
+}
+
+/** One real recessed fixture: flush trim ring + cavity + diffuser lens. */
+function RecessedDownlight({
+  x,
+  z,
   ceilingM,
-  opt,
+  lit,
+  lightColor,
 }: {
-  seg: WallSegment;
-  segments: WallSegment[];
+  x: number;
+  z: number;
   ceilingM: number;
-  opt: MaterialOption;
+  lit: boolean;
+  lightColor: string;
 }) {
-  const { lightsOn, lightColor } = useLighting();
-  const { origin, dir, theta, lengthM } = useMemo(() => segVectors(seg), [seg]);
-  const inward = useMemo(() => inwardOf(seg), [seg]);
-  // Only extend past an end if another wall actually meets it there
-  // (fills the corner miter); open ends stay flush with the wall.
-  const { extStart, extEnd } = useMemo(() => {
-    const jns = getJunctions(segments);
-    const { dir: myDir } = segVectors(seg);
-    // Extend only when the extension actually fills a corner miter:
-    // the adjacent wall must exist at this end AND the extension
-    // direction must point into that wall's inward (cove band) side.
-    // Convex/outward corners and open ends stay flush.
-    const fillsMiter = (end: "start" | "end") => {
-      const extDir = end === "end" ? myDir.clone() : myDir.clone().negate();
-      return jns.some((jn) => {
-        const mine =
-          (jn.aId === seg.id && jn.aEnd === end) ||
-          (jn.bId === seg.id && jn.bEnd === end);
-        if (!mine) return false;
-        const otherId = jn.aId === seg.id ? jn.bId : jn.aId;
-        const other = segments.find((s) => s.id === otherId);
-        if (!other) return false;
-        return extDir.dot(inwardOf(other)) > 0.1;
-      });
-    };
-    return {
-      extStart: fillsMiter("start") ? COVE_W : 0,
-      extEnd: fillsMiter("end") ? COVE_W : 0,
-    };
-  }, [segments, seg]);
-  const len = lengthM + extStart + extEnd;
-  const RISER_T = 0.02;
-  const { position, riserPos } = useMemo(() => {
-    const mid = lengthM / 2 + (extEnd - extStart) / 2;
-    const p = origin.clone();
-    p.addScaledVector(dir, mid);
-    p.addScaledVector(inward, COVE_W / 2);
-    // Underside sits at ceilingM - COVE_DROP.
-    p.y = ceilingM - COVE_DROP + COVE_T / 2;
-    // Dark riser closing the recess pocket at the border's inner edge.
-    const r = origin.clone();
-    r.addScaledVector(dir, mid);
-    r.addScaledVector(inward, COVE_W - RISER_T / 2);
-    r.y = ceilingM - COVE_DROP / 2;
-    return { position: p, riserPos: r };
-  }, [origin, dir, inward, lengthM, ceilingM, extStart, extEnd]);
+  return (
+    <group position={[x, ceilingM, z]}>
+      {/* thin trim ring flush with the gypsum surface */}
+      <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, -0.001, 0]}>
+        <ringGeometry args={[DOWNLIGHT_RADIUS * 0.86, DOWNLIGHT_RADIUS + 0.011, 40]} />
+        <meshStandardMaterial color="#f2f0ec" roughness={0.4} metalness={0.05} side={THREE.DoubleSide} />
+      </mesh>
+      {/* cavity wall inside the ceiling thickness (visible through the cutout) */}
+      <mesh position={[0, DOWNLIGHT_DEPTH / 2, 0]}>
+        <cylinderGeometry args={[DOWNLIGHT_RADIUS, DOWNLIGHT_RADIUS, DOWNLIGHT_DEPTH, 40, 1, true]} />
+        <meshStandardMaterial color="#c9c5be" roughness={0.75} metalness={0} side={THREE.BackSide} />
+      </mesh>
+      {/* diffuser lens recessed at the top of the cavity */}
+      <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, DOWNLIGHT_DEPTH * 0.8, 0]}>
+        <circleGeometry args={[DOWNLIGHT_RADIUS * 0.92, 36]} />
+        <meshStandardMaterial
+          color={lit ? "#fdf9f0" : "#dedbd4"}
+          emissive={lit ? lightColor : "#000000"}
+          emissiveIntensity={lit ? 2.2 : 0}
+          roughness={0.5}
+          side={THREE.DoubleSide}
+        />
+      </mesh>
+      {/* opaque cap sealing the cavity from above */}
+      <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, DOWNLIGHT_DEPTH + 0.001, 0]}>
+        <circleGeometry args={[DOWNLIGHT_RADIUS + 0.012, 36]} />
+        <meshStandardMaterial color="#c9c5be" roughness={0.8} metalness={0} side={THREE.DoubleSide} />
+      </mesh>
+    </group>
+  );
+}
+
+/** Soft radial glow decal (warm halo on the gypsum around each fixture). */
+let glowTexCache: THREE.Texture | null = null;
+function getGlowTexture(): THREE.Texture {
+  if (glowTexCache) return glowTexCache;
+  const S = 128;
+  const canvas = document.createElement("canvas");
+  canvas.width = S;
+  canvas.height = S;
+  const ctx = canvas.getContext("2d")!;
+  const g = ctx.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
+  g.addColorStop(0, "rgba(255,241,214,0.55)");
+  g.addColorStop(0.4, "rgba(255,244,222,0.22)");
+  g.addColorStop(1, "rgba(255,244,222,0)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, S, S);
+  glowTexCache = new THREE.CanvasTexture(canvas);
+  glowTexCache.colorSpace = THREE.SRGBColorSpace;
+  return glowTexCache;
+}
+
+/** Ceiling-hugging light scallop texture (ellipse fading downward),
+ *  drawn once and reused by every wall overlay. */
+let scallopTexCache: THREE.Texture | null = null;
+function getScallopTexture(): THREE.Texture {
+  if (scallopTexCache) return scallopTexCache;
+  const W = 256;
+  const H = 384;
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d")!;
+  ctx.save();
+  ctx.translate(W / 2, 0);
+  ctx.scale(1, H / (W / 2));
+  const g = ctx.createRadialGradient(0, 0, 0, 0, 0, W / 2);
+  g.addColorStop(0, "rgba(255,250,240,0.75)");
+  g.addColorStop(0.45, "rgba(255,248,236,0.34)");
+  g.addColorStop(1, "rgba(255,248,236,0)");
+  ctx.fillStyle = g;
+  ctx.fillRect(-W / 2, 0, W, W / 2);
+  ctx.restore();
+  scallopTexCache = new THREE.CanvasTexture(canvas);
+  scallopTexCache.colorSpace = THREE.SRGBColorSpace;
+  return scallopTexCache;
+}
+
+/** Baked light scallops on the wall directly below each downlight —
+ *  the soft arcs of light seen in the reference render. */
+function WallScallops({
+  segments,
+  lights,
+  ceilingM,
+}: {
+  segments: WallSegment[];
+  lights: DownlightPoint[];
+  ceilingM: number;
+}) {
+  const tex = getScallopTexture();
+  const planes = useMemo(() => {
+    const out: { key: string; pos: THREE.Vector3; theta: number }[] = [];
+    for (const l of lights) {
+      const seg = segments.find((s) => s.id === l.segId);
+      if (!seg) continue;
+      const { origin, dir, theta } = segVectors(seg);
+      const inward = inwardOf(seg);
+      const p = origin
+        .clone()
+        .addScaledVector(dir, l.along)
+        .addScaledVector(inward, 0.004); // just off the wall face
+      p.y = ceilingM - 0.55; // scallop center: ellipse hugs the ceiling line
+      out.push({ key: `${l.segId}-${l.along.toFixed(2)}`, pos: p, theta });
+    }
+    return out;
+  }, [segments, lights, ceilingM]);
 
   return (
     <>
-      <mesh position={position} rotation={[0, theta, 0]} castShadow receiveShadow>
-        <boxGeometry args={[len, COVE_T, COVE_W]} />
-        <SurfaceMaterial key={opt.id} opt={opt} repeatX={len} repeatY={COVE_W} />
-      </mesh>
-      <mesh position={riserPos} rotation={[0, theta, 0]} castShadow receiveShadow>
-        <boxGeometry args={[len, COVE_DROP, RISER_T]} />
-        <meshStandardMaterial color="#2a2a2c" roughness={0.7} />
-      </mesh>
-      {lightsOn && (
-        <>
-          {/* Hidden LED strip inside the cove pocket */}
-          <mesh
-            position={[
-              riserPos.x,
-              ceilingM - COVE_DROP + COVE_T + 0.01,
-              riserPos.z,
-            ]}
-            rotation={[0, theta, 0]}
-          >
-            <boxGeometry args={[len, 0.012, 0.03]} />
-            <meshStandardMaterial
-              color={lightColor}
-              emissive={lightColor}
-              emissiveIntensity={2.4}
-              toneMapped={false}
-            />
-          </mesh>
-          {/* One soft wash light per wall segment (max 3 walls) */}
-          <pointLight
-            position={[position.x, ceilingM - COVE_DROP / 2, position.z]}
-            color={lightColor}
-            intensity={5}
-            distance={5}
-            decay={1.6}
+      {planes.map((pl) => (
+        <mesh key={pl.key} position={pl.pos} rotation={[0, pl.theta, 0]}>
+          <planeGeometry args={[1.3, 1.1]} />
+          <meshBasicMaterial
+            map={tex}
+            transparent
+            depthWrite={false}
+            side={THREE.DoubleSide}
+            polygonOffset
+            polygonOffsetFactor={-1}
           />
-        </>
-      )}
+        </mesh>
+      ))}
     </>
   );
 }
 
-/* ── Recessed ceiling downlights ─────────────────────────── */
+/** All ceiling fixtures + halos + wall scallops + a few REAL spotlights
+ *  (kept to 4 so floor gloss picks up genuine reflections without
+ *  killing mobile performance). */
 function Downlights({
   bounds,
   ceilingM,
+  segments,
 }: {
   bounds: { minX: number; minY: number; maxX: number; maxY: number };
   ceilingM: number;
+  segments: WallSegment[];
 }) {
   const { lightsOn, lightColor } = useLighting();
-  const spots = useMemo(() => {
-    const minX = bounds.minX * CM + COVE_W + 0.3;
-    const maxX = bounds.maxX * CM - COVE_W - 0.3;
-    const minZ = bounds.minY * CM + COVE_W + 0.3;
-    const maxZ = bounds.maxY * CM - COVE_W - 0.3;
-    const w = Math.max(maxX - minX, 0.1);
-    const d = Math.max(maxZ - minZ, 0.1);
-    let nx = Math.min(3, Math.max(1, Math.round(w / 1.6)));
-    let nz = Math.min(2, Math.max(1, Math.round(d / 1.6)));
-    while (nx * nz > 6) (nx > nz ? nx-- : nz--);
-    const pts: [number, number][] = [];
-    for (let i = 0; i < nx; i++)
-      for (let j = 0; j < nz; j++)
-        pts.push([
-          nx === 1 ? (minX + maxX) / 2 : minX + (w * i) / (nx - 1),
-          nz === 1 ? (minZ + maxZ) / 2 : minZ + (d * j) / (nz - 1),
-        ]);
-    return pts;
-  }, [bounds]);
+  const lights = useMemo(() => downlightLayout(segments), [segments]);
+  const glow = getGlowTexture();
+
+  // Spread the limited real spotlights evenly across the fixtures.
+  const realSpotIdx = useMemo(() => {
+    const n = Math.min(4, lights.length);
+    const idx = new Set<number>();
+    for (let i = 0; i < n; i++)
+      idx.add(Math.round((lights.length - 1) * (n === 1 ? 0.5 : i / (n - 1))));
+    return idx;
+  }, [lights]);
 
   return (
     <>
-      {spots.map(([x, z], i) => (
+      {lights.map((l, i) => (
         <group key={`dl-${i}`}>
-          {/* Recessed fixture housing (always visible) */}
-          <mesh position={[x, ceilingM - 0.006, z]} rotation={[Math.PI / 2, 0, 0]}>
-            <circleGeometry args={[0.07, 24]} />
-            <meshStandardMaterial color="#26262a" roughness={0.5} />
-          </mesh>
+          <RecessedDownlight
+            x={l.x}
+            z={l.z}
+            ceilingM={ceilingM}
+            lit={lightsOn}
+            lightColor={lightColor}
+          />
           {lightsOn && (
             <>
-              <mesh position={[x, ceilingM - 0.01, z]} rotation={[Math.PI / 2, 0, 0]}>
-                <circleGeometry args={[0.05, 24]} />
-                <meshStandardMaterial
-                  color={lightColor}
-                  emissive={lightColor}
-                  emissiveIntensity={3}
-                  toneMapped={false}
-                />
+              {/* warm halo on the gypsum around the fixture */}
+              <mesh
+                rotation={[Math.PI / 2, 0, 0]}
+                position={[l.x, ceilingM - 0.002, l.z]}
+              >
+                <planeGeometry args={[0.55, 0.55]} />
+                <meshBasicMaterial map={glow} transparent depthWrite={false} side={THREE.DoubleSide} />
               </mesh>
-              <SpotDown x={x} z={z} ceilingM={ceilingM} color={lightColor} />
+              {realSpotIdx.has(i) && (
+                <SpotDown x={l.x} z={l.z} ceilingM={ceilingM} color={lightColor} />
+              )}
             </>
           )}
         </group>
       ))}
+      {lightsOn && (
+        <WallScallops segments={segments} lights={lights} ceilingM={ceilingM} />
+      )}
     </>
   );
 }
@@ -970,9 +1057,9 @@ function SpotDown({
         position={[x, ceilingM - 0.02, z]}
         target={target}
         angle={0.6}
-        penumbra={0.5}
+        penumbra={0.6}
         color={color}
-        intensity={14}
+        intensity={10}
         distance={ceilingM + 2}
         decay={1.4}
       />
@@ -2033,7 +2120,7 @@ function SceneContents({
       <Suspense fallback={null}>
         <Ceiling bounds={bounds} ceilingM={ceilingM} segments={segments} />
       </Suspense>
-      <Downlights bounds={bounds} ceilingM={ceilingM} />
+      <Downlights bounds={bounds} ceilingM={ceilingM} segments={segments} />
       <Suspense fallback={null}>
         <Walls
           segments={segments}
