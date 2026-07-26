@@ -1,0 +1,6 @@
+Real Tile ("بلاط حقيقي") floor material
+Asset: Patio Tiles (2K JPG: diff / nor_gl / arm)
+Source: Poly Haven — https://polyhaven.com/a/patio_tiles
+License: CC0 1.0 (public domain equivalent, commercial use allowed)
+Note: same material set the customer attached as glTF (patio_tiles_2k.gltf);
+texture images were fetched from the original Poly Haven source.

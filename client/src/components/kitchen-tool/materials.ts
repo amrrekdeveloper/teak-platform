@@ -28,6 +28,22 @@ export interface MaterialOption {
 
 export const FLOOR_OPTIONS: MaterialOption[] = [
   {
+    // Customer-approved "Real Tile" — Poly Haven patio_tiles (CC0), the exact
+    // material set the user attached as glTF. The 2K repeat spans a 5×5 tile
+    // grid, so tileSizeM=5 renders each tile as a large ~100 cm square that
+    // tiles across the whole floor from the room corner (no mid-tile start).
+    id: "real-tile",
+    nameAr: "بلاط حقيقي",
+    nameEn: "Real Tile",
+    thumb: `${ASSETS}/thumbs/floor-real-tile.jpg`,
+    tileSizeM: 5,
+    maps: {
+      map: `${ASSETS}/floor-real-tile/textures/patio_tiles_diff_2k.jpg`,
+      normalMap: `${ASSETS}/floor-real-tile/textures/patio_tiles_nor_gl_2k.jpg`,
+      armMap: `${ASSETS}/floor-real-tile/textures/patio_tiles_arm_2k.jpg`,
+    },
+  },
+  {
     id: "laminate",
     nameAr: "لاميناي فاتح",
     nameEn: "Light Laminate",
@@ -36,54 +52,6 @@ export const FLOOR_OPTIONS: MaterialOption[] = [
       map: `${ASSETS}/floor/textures/laminate_floor_02_diff_2k.jpg`,
       normalMap: `${ASSETS}/floor/textures/laminate_floor_02_nor_gl_2k.jpg`,
       roughnessMap: `${ASSETS}/floor/textures/laminate_floor_02_rough_2k.jpg`,
-    },
-  },
-  {
-    id: "tile-beige",
-    nameAr: "بلاط بيج فاخر",
-    nameEn: "Luxury Beige Tile",
-    thumb: `${ASSETS}/thumbs/floor-tile-beige.jpg`,
-    tileSizeM: 1.9,
-    maps: {
-      map: `${ASSETS}/floor-tile-beige/textures/interior_tiles_diff_2k.jpg`,
-      normalMap: `${ASSETS}/floor-tile-beige/textures/interior_tiles_nor_gl_2k.jpg`,
-      armMap: `${ASSETS}/floor-tile-beige/textures/interior_tiles_arm_2k.jpg`,
-    },
-  },
-  {
-    id: "marble-white",
-    nameAr: "رخام أبيض فاخر",
-    nameEn: "Luxury White Marble",
-    thumb: `${ASSETS}/thumbs/floor-marble-white.jpg`,
-    tileSizeM: 1.6,
-    maps: {
-      map: `${ASSETS}/floor-marble-white/textures/marble_01_diff_2k.jpg`,
-      normalMap: `${ASSETS}/floor-marble-white/textures/marble_01_nor_gl_2k.jpg`,
-      armMap: `${ASSETS}/floor-marble-white/textures/marble_01_arm_2k.jpg`,
-    },
-  },
-  {
-    id: "cartago-grey",
-    nameAr: "بلاط رمادي فاتح",
-    nameEn: "Light Grey Tile",
-    thumb: `${ASSETS}/thumbs/floor-cartago-grey.jpg`,
-    tileSizeM: 1.6,
-    maps: {
-      map: `${ASSETS}/floor-cartago-grey/textures/grey_cartago_01_diff_2k.jpg`,
-      normalMap: `${ASSETS}/floor-cartago-grey/textures/grey_cartago_01_nor_gl_2k.jpg`,
-      armMap: `${ASSETS}/floor-cartago-grey/textures/grey_cartago_01_arm_2k.jpg`,
-    },
-  },
-  {
-    id: "granite-dark",
-    nameAr: "غرانيت رمادي غامق",
-    nameEn: "Dark Grey Granite",
-    thumb: `${ASSETS}/thumbs/floor-granite-dark.jpg`,
-    tileSizeM: 1.3,
-    maps: {
-      map: `${ASSETS}/floor-granite-dark/textures/granite_tile_diff_2k.jpg`,
-      normalMap: `${ASSETS}/floor-granite-dark/textures/granite_tile_nor_gl_2k.jpg`,
-      armMap: `${ASSETS}/floor-granite-dark/textures/granite_tile_arm_2k.jpg`,
     },
   },
 ];
@@ -208,7 +176,7 @@ export const CEILING_OPTIONS: MaterialOption[] = [
   { id: "navy-matte", nameAr: "رمادي غامق مطفي", nameEn: "Matte Dark Grey", color: "#4e4e4f", roughness: 0.95 },
 ];
 
-export const DEFAULT_FLOOR_ID = "laminate";
+export const DEFAULT_FLOOR_ID = "real-tile";
 export const DEFAULT_WALL_ID = "plaster";
 export const DEFAULT_CEILING_ID = "white";
 
