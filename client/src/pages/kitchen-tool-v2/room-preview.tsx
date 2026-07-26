@@ -18,7 +18,7 @@
 import { useMemo, useEffect, Suspense } from "react";
 import { Link } from "wouter";
 import * as THREE from "three";
-import { Canvas, useThree } from "@react-three/fiber";
+import { Canvas, useThree, useFrame } from "@react-three/fiber";
 import { OrbitControls, OrthographicCamera, PerspectiveCamera, Environment, useTexture } from "@react-three/drei";
 import { useLanguage } from "@/components/language-provider";
 import { Button } from "@/components/ui/button";
@@ -71,16 +71,19 @@ const PHOTO_FLOORS: FloorDefV2E[] = [
     // porcelain, 1000×1000 mm, near-uniform tone, hairline grout close to
     // the tile color. Id kept for persisted-draft compatibility.
     id: "floor_beige_porcelain_600",
-    nameAr: "بورسلان رملي فاتح 100×100",
-    nameEn: "Light sand porcelain 100×100",
+    nameAr: "بورسلان رملي 80×80",
+    nameEn: "Sand porcelain 80×80",
     urls: {
-      map: "/textures/v2/sand1000_color.webp",
-      normalMap: "/textures/v2/sand1000_normal.webp",
-      roughnessMap: "/textures/v2/sand1000_rough.webp",
+      // Real Poly Haven "Interior Tiles" (CC0), straightened to an
+      // orthogonal 2×2 grid — clear grout joints like the reference.
+      map: "/textures/v2/tiles800_color.webp",
+      normalMap: "/textures/v2/tiles800_normal.webp",
+      roughnessMap: "/textures/v2/tiles800_rough.webp",
     },
-    physMmX: 1000,
-    physMmY: 1000,
-    skirtingColor: "#cfc0a4",
+    // The texture spans 2×2 tiles of 800 mm each.
+    physMmX: 1600,
+    physMmY: 1600,
+    skirtingColor: "#c9bda7",
     skirtingRoughness: 0.6,
   },
   {
@@ -189,6 +192,24 @@ function CameraRig({ room, mode }: { room: RoomV2; mode: "perspective" | "top" }
   );
 }
 
+/**
+ * Hard camera clamp for perspective mode: the eye can never rise above the
+ * ceiling (no more looking down into the fixture cavities) nor sink below
+ * the floor. Runs every frame after OrbitControls updates.
+ */
+function CameraClamp({ room, mode }: { room: RoomV2; mode: "perspective" | "top" }) {
+  const h = room.ceilingHeightMm * MM;
+  useFrame(({ camera }) => {
+    if (mode !== "perspective") return;
+    const maxY = h - 0.12;
+    const minY = 0.35;
+    if (camera.position.y > maxY) camera.position.y = maxY;
+    if (camera.position.y < minY) camera.position.y = minY;
+  });
+  return null;
+}
+
+
 /* --------------------------- meshes -------------------------------- */
 
 function samePoint(a: { xMm: number; zMm: number }, b: { xMm: number; zMm: number }) {
@@ -279,7 +300,10 @@ function FloorMesh({ room, floor }: { room: RoomV2; floor: FloorDefV2E }) {
         roughnessMap={maps.roughnessMap}
         roughness={1}
         metalness={0}
-        envMapIntensity={0.3}
+        // Slight warm tint pulls the neutral tile scan toward the sandy
+        // reference tone without hiding the grout lines.
+        color="#f6ecd9"
+        envMapIntensity={0.4}
       />
     </mesh>
   );
@@ -373,6 +397,9 @@ function drawScallop(ctx: CanvasRenderingContext2D, xPx: number, hPx: number) {
 
 function useWallBakeTexture(lengthMm: number, heightMm: number, lightsAlongMm: number[]) {
   const key = lightsAlongMm.join(",");
+  // Real plaster micro-texture (Poly Haven "Beige Wall 001", CC0) blended
+  // into the bake so walls read as painted plaster, not flat vector fill.
+  const plaster = useTexture("/textures/v2/plaster_detail.webp");
   const tex = useMemo(() => {
     const lenM = lengthMm * MM;
     const hM = heightMm * MM;
@@ -384,17 +411,32 @@ function useWallBakeTexture(lengthMm: number, heightMm: number, lightsAlongMm: n
     canvas.height = H;
     const ctx = canvas.getContext("2d")!;
 
-    // 1) Base: warm greige, slightly dimmer toward the floor (like the render).
+    // 1) Base: warm greige, deliberately BELOW white so ACES tonemapping
+    // cannot clip it — the scallops must stay clearly brighter than the base.
     const base = ctx.createLinearGradient(0, 0, 0, H);
-    base.addColorStop(0, "#efe9dd");
-    base.addColorStop(0.55, "#eae3d5");
-    base.addColorStop(1, "#e6dfd0");
+    base.addColorStop(0, "#e1d6c2");
+    base.addColorStop(0.55, "#d9cdb7");
+    base.addColorStop(1, "#d2c5ad");
     ctx.fillStyle = base;
     ctx.fillRect(0, 0, W, H);
 
+    // 1b) Tile the real plaster grain over the base (subtle overlay).
+    const img = plaster.image as CanvasImageSource | undefined;
+    if (img) {
+      const pat = ctx.createPattern(img, "repeat");
+      if (pat) {
+        ctx.save();
+        ctx.globalAlpha = 0.16;
+        ctx.globalCompositeOperation = "overlay";
+        ctx.fillStyle = pat;
+        ctx.fillRect(0, 0, W, H);
+        ctx.restore();
+      }
+    }
+
     // 2) Broad soft spill across the upper wall (light from the downlight row).
     const spill = ctx.createLinearGradient(0, 0, 0, H * 0.55);
-    spill.addColorStop(0, "rgba(255,250,240,0.30)");
+    spill.addColorStop(0, "rgba(255,250,240,0.26)");
     spill.addColorStop(1, "rgba(255,250,240,0)");
     ctx.fillStyle = spill;
     ctx.fillRect(0, 0, W, H * 0.55);
@@ -438,7 +480,7 @@ function useWallBakeTexture(lengthMm: number, heightMm: number, lightsAlongMm: n
     t.anisotropy = 8;
     return t;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lengthMm, heightMm, key]);
+  }, [lengthMm, heightMm, key, plaster]);
   useEffect(() => () => tex.dispose(), [tex]);
   return tex;
 }
@@ -542,6 +584,12 @@ function RecessedDownlight({ x, z, ceilingY }: { x: number; z: number; ceilingY:
       <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, DOWNLIGHT_DEPTH * 0.8, 0]}>
         <circleGeometry args={[DOWNLIGHT_RADIUS * 0.92, 36]} />
         <meshStandardMaterial color="#fdf9f0" emissive="#ffedcf" emissiveIntensity={2.2} roughness={0.5} side={THREE.DoubleSide} toneMapped />
+      </mesh>
+      {/* opaque cap sealing the cavity from above — the fixture housing is
+          never visible even if the camera somehow ends up above the ceiling */}
+      <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, DOWNLIGHT_DEPTH + 0.001, 0]}>
+        <circleGeometry args={[DOWNLIGHT_RADIUS + 0.012, 36]} />
+        <meshStandardMaterial color="#c9c5be" roughness={0.8} metalness={0} side={THREE.DoubleSide} />
       </mesh>
     </group>
   );
@@ -697,9 +745,11 @@ function RoomScene({ room, floor, mode }: { room: RoomV2; floor: FloorDefV2E; mo
       {room.walls.map((w) => (
         <WallMesh key={w.id} wall={w} allWalls={room.walls} />
       ))}
-      {room.walls.map((w) => (
-        <BakedWallFace key={`bw-${w.id}`} wall={w} lightsAlongMm={lights.filter((l) => l.wallId === w.id).map((l) => l.alongMm)} />
-      ))}
+      <Suspense fallback={null}>
+        {room.walls.map((w) => (
+          <BakedWallFace key={`bw-${w.id}`} wall={w} lightsAlongMm={lights.filter((l) => l.wallId === w.id).map((l) => l.alongMm)} />
+        ))}
+      </Suspense>
       {room.walls.map((w) => (
         <Skirting key={`sk-${w.id}`} wall={w} floor={floor} />
       ))}
@@ -788,15 +838,17 @@ function KitchenToolV2RoomPreviewInner() {
         <Canvas
           shadows="soft"
           dpr={[1, 1.75]}
-          gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.1 }}
+          gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 0.95 }}
         >
           <CameraRig room={room} mode={s.cameraMode} />
+          <CameraClamp room={room} mode={s.cameraMode} />
           <OrbitControls
             makeDefault
             enableRotate={s.cameraMode !== "top"}
+            minPolarAngle={s.cameraMode === "top" ? 0 : Math.PI * 0.3}
             maxPolarAngle={Math.PI * 0.52}
             minDistance={0.6}
-            maxDistance={30}
+            maxDistance={s.cameraMode === "top" ? 30 : 12}
           />
           <color attach="background" args={["#e9e6e0"]} />
           <fog attach="fog" args={["#e9e6e0", 18, 55]} />
@@ -817,7 +869,7 @@ function KitchenToolV2RoomPreviewInner() {
 
       {/* Minimal footer — finishes are locked (walls: Teak Warm White, floor: approved porcelain). */}
       <div className="border-t px-4 py-2 flex items-center justify-between gap-3 shrink-0 text-xs text-muted-foreground">
-        <span>{t("الأرضية: بورسلان رملي فاتح 100×100 (معتمد)", "Floor: light sand porcelain 100×100 (approved)")}</span>
+        <span>{t("الأرضية: بورسلان رملي 80×80 (معتمد)", "Floor: sand porcelain 80×80 (approved)")}</span>
         <span>{t("الجدران: أبيض تيك الدافئ (معتمد)", "Walls: Teak Warm White (approved)")}</span>
       </div>
     </div>
