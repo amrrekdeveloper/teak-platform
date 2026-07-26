@@ -42,7 +42,7 @@ const FLOOR_NORMAL_SCALE = new THREE.Vector2(0.45, 0.45);
  * Clean warm white, matte, visually smooth; no color texture (the previous
  * PaintedPlaster017 treatment produced visible stains and was removed).
  */
-const WALL_PAINT = { color: "#f6f4ef", roughness: 0.9 };
+const WALL_PAINT = { color: "#f1ece2", roughness: 0.9 };
 /** Ceiling: flat gypsum board — slightly cleaner/brighter than the walls. */
 const CEILING_PAINT = { color: "#fbfaf8", roughness: 0.93 };
 
@@ -67,20 +67,21 @@ interface FloorDefV2E {
 
 const PHOTO_FLOORS: FloorDefV2E[] = [
   {
-    // Approved default: clean modern greige porcelain, 600×600 mm tiles,
-    // narrow grout close to the tile color (2×2 grid ⇒ 1200 mm repeat).
+    // Approved default (reference-image match): large-format sandy beige
+    // porcelain, 1000×1000 mm, near-uniform tone, hairline grout close to
+    // the tile color. Id kept for persisted-draft compatibility.
     id: "floor_beige_porcelain_600",
-    nameAr: "بورسلان بيج فاتح 60×60",
-    nameEn: "Light beige porcelain 60×60",
+    nameAr: "بورسلان رملي فاتح 100×100",
+    nameEn: "Light sand porcelain 100×100",
     urls: {
-      map: "/textures/v2/porcelain600_color.webp",
-      normalMap: "/textures/v2/porcelain600_normal.webp",
-      roughnessMap: "/textures/v2/porcelain600_rough.webp",
+      map: "/textures/v2/sand1000_color.webp",
+      normalMap: "/textures/v2/sand1000_normal.webp",
+      roughnessMap: "/textures/v2/sand1000_rough.webp",
     },
-    physMmX: 1200,
-    physMmY: 1200,
-    skirtingColor: "#d9d1c3",
-    skirtingRoughness: 0.55,
+    physMmX: 1000,
+    physMmY: 1000,
+    skirtingColor: "#cfc0a4",
+    skirtingRoughness: 0.6,
   },
   {
     // Optional light-oak test floor.
@@ -284,6 +285,86 @@ function FloorMesh({ room, floor }: { room: RoomV2; floor: FloorDefV2E }) {
   );
 }
 
+/* ---------------------- approximate corner AO ----------------------- */
+
+/**
+ * Shared edge-vignette texture: transparent center, subtly dark edges.
+ * Overlaid on walls / floor / ceiling it approximates the soft corner
+ * ambient occlusion that makes the reference render feel like a real
+ * interior rather than a flat 3D box. Purely visual — no geometry impact.
+ */
+function useEdgeVignetteTexture(edgeAlpha: number) {
+  const tex = useMemo(() => {
+    const size = 256;
+    const edge = Math.round(size * 0.16);
+    const canvas = document.createElement("canvas");
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext("2d")!;
+    ctx.clearRect(0, 0, size, size);
+    const dirs: [number, number, number, number][] = [
+      [0, 0, 0, edge], // top
+      [0, size, 0, size - edge], // bottom
+      [0, 0, edge, 0], // left
+      [size, 0, size - edge, 0], // right
+    ];
+    for (const [x0, y0, x1, y1] of dirs) {
+      const g = ctx.createLinearGradient(x0, y0, x1, y1);
+      g.addColorStop(0, `rgba(30,26,20,${edgeAlpha})`);
+      g.addColorStop(1, "rgba(30,26,20,0)");
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, size, size);
+    }
+    const t = new THREE.CanvasTexture(canvas);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  }, [edgeAlpha]);
+  useEffect(() => () => tex.dispose(), [tex]);
+  return tex;
+}
+
+/** Transparent AO overlays hugging the interior faces of the room shell. */
+function CornerAO({ room }: { room: RoomV2 }) {
+  const tex = useEdgeVignetteTexture(0.34);
+  const b = roomBounds(room);
+  const w = (b.maxX - b.minX) * MM;
+  const d = (b.maxZ - b.minZ) * MM;
+  const cx = ((b.minX + b.maxX) / 2) * MM;
+  const cz = ((b.minZ + b.maxZ) / 2) * MM;
+  const h = room.ceilingHeightMm * MM;
+  const GAP = 0.003; // 3 mm inside the surface to avoid z-fighting
+  const mat = (
+    <meshBasicMaterial map={tex} transparent depthWrite={false} polygonOffset polygonOffsetFactor={-1} />
+  );
+  return (
+    <group>
+      {/* walls */}
+      {room.walls.map((wl) => {
+        const mx = ((wl.start.xMm + wl.end.xMm) / 2 + wl.inwardNormal.xMm * GAP * 1000) * MM;
+        const mz = ((wl.start.zMm + wl.end.zMm) / 2 + wl.inwardNormal.zMm * GAP * 1000) * MM;
+        // Rotate plane's +Z normal to the wall's inward normal.
+        const yaw = Math.atan2(wl.inwardNormal.xMm, wl.inwardNormal.zMm);
+        return (
+          <mesh key={`ao-${wl.id}`} position={[mx, (wl.heightMm / 2) * MM, mz]} rotation={[0, yaw, 0]}>
+            <planeGeometry args={[wl.lengthMm * MM, wl.heightMm * MM]} />
+            {mat}
+          </mesh>
+        );
+      })}
+      {/* floor */}
+      <mesh position={[cx, GAP, cz]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[w, d]} />
+        {mat}
+      </mesh>
+      {/* ceiling */}
+      <mesh position={[cx, h - GAP, cz]} rotation={[Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[w, d]} />
+        {mat}
+      </mesh>
+    </group>
+  );
+}
+
 /* ---------------------- recessed downlights ------------------------ */
 
 const DOWNLIGHT_RADIUS = 0.045; // 90 mm diameter — physically plausible
@@ -294,14 +375,28 @@ const DOWNLIGHT_DEPTH = 0.03; // shallow 30 mm recess
  * inner cavity, recessed diffuser lens, and (optionally) a soft neutral-warm
  * downward spotlight (~3500–4000K look).
  */
-function RecessedDownlight({ x, z, ceilingY, withLight }: { x: number; z: number; ceilingY: number; withLight: boolean }) {
-  // Target is LOCAL to the fixture group (which already sits at [x, ceilingY, z]),
-  // so a straight-down aim is simply the floor point directly below: [0, -ceilingY, 0].
+function RecessedDownlight({
+  x,
+  z,
+  ceilingY,
+  withLight,
+  aimX = 0,
+  aimZ = 0,
+}: {
+  x: number;
+  z: number;
+  ceilingY: number;
+  withLight: boolean;
+  /** Local lateral aim offset (m) — tilts the beam toward the nearby wall so it leaves a soft wall-washing scallop. */
+  aimX?: number;
+  aimZ?: number;
+}) {
+  // Target is LOCAL to the fixture group (which already sits at [x, ceilingY, z]).
   const target = useMemo(() => {
     const o = new THREE.Object3D();
-    o.position.set(0, -ceilingY, 0);
+    o.position.set(aimX, -ceilingY, aimZ);
     return o;
-  }, [ceilingY]);
+  }, [ceilingY, aimX, aimZ]);
   return (
     <group position={[x, ceilingY, z]}>
       {/* wide WHITE trim rim flush with the ceiling (reads as a real fixture) */}
@@ -324,12 +419,12 @@ function RecessedDownlight({ x, z, ceilingY, withLight }: { x: number; z: number
           <spotLight
             position={[0, -DOWNLIGHT_DEPTH, 0]}
             target={target}
-            angle={0.7}
-            penumbra={0.9}
-            intensity={5.5}
-            distance={ceilingY * 2.6}
-            decay={1.7}
-            color="#fff4e4"
+            angle={0.55}
+            penumbra={0.55}
+            intensity={7}
+            distance={ceilingY * 3}
+            decay={1.6}
+            color="#fff3e2"
           />
           <primitive object={target} />
         </>
@@ -338,21 +433,51 @@ function RecessedDownlight({ x, z, ceilingY, withLight }: { x: number; z: number
   );
 }
 
-/** Evenly spaced downlights from room size (4 for the reference room). */
-function downlightLayout(room: RoomV2): [number, number][] {
-  const b = roomBounds(room);
-  const minX = b.minX * MM, maxX = b.maxX * MM, minZ = b.minZ * MM, maxZ = b.maxZ * MM;
-  const w = maxX - minX;
-  const d = maxZ - minZ;
-  const nx = Math.min(3, Math.max(1, Math.round(w / 2.1)));
-  const nz = Math.min(2, Math.max(1, Math.round(d / 2.1)));
-  const pts: [number, number][] = [];
-  for (let i = 0; i < nx; i++) {
-    for (let j = 0; j < nz; j++) {
-      pts.push([minX + (w * (i + 0.5)) / nx, minZ + (d * (j + 0.5)) / nz]);
+interface DownlightPoint {
+  x: number;
+  z: number;
+  /** Local aim offset toward the washed wall (m). */
+  aimX: number;
+  aimZ: number;
+}
+
+/** Distance from wall interior face to the perimeter downlight row (mm). */
+const DOWNLIGHT_WALL_OFFSET_MM = 600;
+/** Target spacing between downlights along a wall (mm). */
+const DOWNLIGHT_SPACING_MM = 1500;
+
+/**
+ * Reference-image layout: perimeter rows of downlights parallel to each
+ * wall (~600 mm out), tilted slightly toward the wall so each fixture
+ * leaves a soft wall-washing scallop — the key realism cue in the
+ * approved reference render.
+ */
+function downlightLayout(room: RoomV2): DownlightPoint[] {
+  const pts: DownlightPoint[] = [];
+  for (const wallDef of room.walls) {
+    const dx = wallDef.end.xMm - wallDef.start.xMm;
+    const dz = wallDef.end.zMm - wallDef.start.zMm;
+    const len = Math.hypot(dx, dz) || 1;
+    const ux = dx / len;
+    const uz = dz / len;
+    const inx = wallDef.inwardNormal.xMm;
+    const inz = wallDef.inwardNormal.zMm;
+    const usable = len - 2 * DOWNLIGHT_WALL_OFFSET_MM;
+    const n = Math.min(4, Math.max(2, Math.round(usable / DOWNLIGHT_SPACING_MM)));
+    for (let i = 0; i < n; i++) {
+      const along = DOWNLIGHT_WALL_OFFSET_MM + (usable * (i + 0.5)) / n;
+      const x = (wallDef.start.xMm + ux * along + inx * DOWNLIGHT_WALL_OFFSET_MM) * MM;
+      const z = (wallDef.start.zMm + uz * along + inz * DOWNLIGHT_WALL_OFFSET_MM) * MM;
+      // Aim ~350 mm back toward the wall so the cone grazes it (scallop).
+      pts.push({ x, z, aimX: -inx * 0.35, aimZ: -inz * 0.35 });
     }
   }
-  return pts.slice(0, 6);
+  // Deduplicate fixtures that ended up close together at corners.
+  const dedup: DownlightPoint[] = [];
+  for (const p of pts) {
+    if (!dedup.some((q) => Math.hypot(q.x - p.x, q.z - p.z) < 0.7)) dedup.push(p);
+  }
+  return dedup.slice(0, 12);
 }
 
 /** Always-on flat gypsum-board ceiling: clean white, matte, continuous. */
@@ -370,9 +495,10 @@ function Ceiling({ room }: { room: RoomV2 }) {
         <planeGeometry args={[w, d]} />
         <meshStandardMaterial color={CEILING_PAINT.color} roughness={CEILING_PAINT.roughness} metalness={0} side={THREE.DoubleSide} envMapIntensity={0.1} />
       </mesh>
-      {lights.map(([x, z], i) => (
-        // Real spotlights capped at 4 for performance; extra fixtures are trim-only.
-        <RecessedDownlight key={i} x={x} z={z} ceilingY={h} withLight={i < 4} />
+      {lights.map((p, i) => (
+        // Real spotlights capped at 8 (no shadow-casting) for performance;
+        // any extra fixtures beyond that are trim-only.
+        <RecessedDownlight key={i} x={p.x} z={p.z} aimX={p.aimX} aimZ={p.aimZ} ceilingY={h} withLight={i < 8} />
       ))}
     </group>
   );
@@ -396,13 +522,14 @@ function RoomScene({ room, floor, mode }: { room: RoomV2; floor: FloorDefV2E; mo
        * directional shadow.
        */}
       <Suspense fallback={null}>
-        <Environment files="/textures/v2/lebombo_1k.hdr" background={false} environmentIntensity={0.55} />
+        <Environment files="/textures/v2/lebombo_1k.hdr" background={false} environmentIntensity={0.45} />
       </Suspense>
       {/* Neutral hemisphere (no warm ground bounce → no beige cast on walls). */}
-      <hemisphereLight args={["#ffffff", "#e8e5e0", 0.45]} />
+      <hemisphereLight args={["#ffffff", "#e8e4dd", 0.38]} />
+      {/* Kept soft/low: the perimeter downlight scallops carry the scene. */}
       <directionalLight
         position={[cx + span * 0.9, h * 2.2, cz + span * 1.4]}
-        intensity={0.55}
+        intensity={0.3}
         color="#ffffff"
         castShadow
         shadow-mapSize-width={1024}
@@ -426,6 +553,8 @@ function RoomScene({ room, floor, mode }: { room: RoomV2; floor: FloorDefV2E; mo
       ))}
       {/* Ceiling is part of the room; hidden only when technically necessary (top view). */}
       {mode !== "top" && <Ceiling room={room} />}
+      {/* Approximate corner ambient occlusion (visual only). */}
+      {mode !== "top" && <CornerAO room={room} />}
     </group>
   );
 }
@@ -538,7 +667,7 @@ function KitchenToolV2RoomPreviewInner() {
 
       {/* Minimal footer — finishes are locked (walls: Teak Warm White, floor: approved porcelain). */}
       <div className="border-t px-4 py-2 flex items-center justify-between gap-3 shrink-0 text-xs text-muted-foreground">
-        <span>{t("الأرضية: بورسلان بيج فاتح 60×60 (معتمد)", "Floor: light beige porcelain 60×60 (approved)")}</span>
+        <span>{t("الأرضية: بورسلان رملي فاتح 100×100 (معتمد)", "Floor: light sand porcelain 100×100 (approved)")}</span>
         <span>{t("الجدران: أبيض تيك الدافئ (معتمد)", "Walls: Teak Warm White (approved)")}</span>
       </div>
     </div>
