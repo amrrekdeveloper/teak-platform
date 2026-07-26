@@ -42,6 +42,8 @@ export interface KitchenToolV2State {
   showCeiling: boolean;
   ceilingPreset: "flat" | "gypsum";
   cameraMode: "perspective" | "top";
+  /** Temporary A/B comparison: procedural proof vs photoreal calibration preset. */
+  renderPreset: "procedural" | "photoreal";
 
   setInputs: (patch: Partial<DraftInputsV2>) => void;
   setRoom: (room: RoomV2 | null) => void;
@@ -50,6 +52,7 @@ export interface KitchenToolV2State {
   setShowCeiling: (v: boolean) => void;
   setCeilingPreset: (p: "flat" | "gypsum") => void;
   setCameraMode: (m: "perspective" | "top") => void;
+  setRenderPreset: (p: "procedural" | "photoreal") => void;
   resetV2: () => void;
 }
 
@@ -82,6 +85,7 @@ function freshDraft() {
     showCeiling: true,
     ceilingPreset: "flat" as const,
     cameraMode: "perspective" as const,
+    renderPreset: "photoreal" as const,
   };
 }
 
@@ -102,6 +106,7 @@ export const useKitchenToolV2Store = create<KitchenToolV2State>()(
       setShowCeiling: (v) => set({ showCeiling: v }),
       setCeilingPreset: (p) => set({ ceilingPreset: p }),
       setCameraMode: (m) => set({ cameraMode: m }),
+      setRenderPreset: (p) => set({ renderPreset: p }),
       resetV2: () => set({ ...freshDraft() }),
     }),
     {
