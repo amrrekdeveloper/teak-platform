@@ -1,0 +1,39 @@
+Fix the rendering quality of the empty-room scene in kitchen-designer-v2. The current render looks flat and CAD-like: the ceiling fixtures emit no light (zero light scallops on the walls), there is no tone mapping, and the floor is dark and fully matte with thick dark grout. Target: a photoreal archviz look — warm off-white walls, light beige porcelain floor, recessed warm spotlights in a gypsum ceiling.
+
+Scope limit: change ONLY rendering (lights, materials, renderer settings, post-processing). Do NOT change features, UI, layout, routes, or room dimensions.
+
+STEP 0 — Verify assets actually load. Open the network panel logic / add console logging to confirm the Poly Haven HDRI and the floor texture set are fetched successfully at full resolution and are not silently failing, missing, or downscaled. Report what you find before proceeding.
+
+STEP 1 — Real spotlights (highest priority):
+- Every ceiling fixture must have an actual THREE.SpotLight aimed straight down, positioned ~50-70 cm from the nearest wall.
+- Settings: angle ≈ 0.6-0.7 rad, penumbra 0.4-0.6, decay ≈ 1.5-2, warm color ~3000-3500K, distance tuned to reach the floor.
+- Add a small emissive disc + trim ring inside each modeled ceiling recess.
+- Reduce ambient/hemisphere fill to ≈ 0.3-0.5 so the spots dominate the lighting.
+- Confirm all room surfaces use MeshStandardMaterial or MeshPhysicalMaterial (NOT MeshBasicMaterial/MeshLambertMaterial), otherwise they will not react correctly to the lights.
+
+STEP 2 — Color pipeline:
+- renderer.outputColorSpace = THREE.SRGBColorSpace (or outputEncoding = sRGBEncoding on older three versions)
+- renderer.toneMapping = THREE.ACESFilmicToneMapping
+- renderer.toneMappingExposure ≈ 1.0-1.15
+- Albedo/color textures tagged sRGB; normal and roughness maps stay linear.
+
+STEP 3 — Materials:
+- Walls: matte warm off-white (#EFE9DE), roughness ≈ 0.95, metalness 0.
+- Floor: replace the current dark sandy texture with a LIGHT BEIGE porcelain PBR set (albedo + normal + roughness). True 80x80 cm grid, hairline light-colored grout (not thick dark lines), roughness ≈ 0.3-0.4, metalness ≈ 0.
+- Set texture.anisotropy = renderer.capabilities.getMaxAnisotropy() on the floor maps, or tiles will blur at distance.
+- Ceiling: matte white, roughness ≈ 0.97. Baseboards ~10 cm in a neutral tone.
+
+STEP 4 — Environment & depth:
+- Load the neutral interior HDRI from project assets into scene.environment with envMapIntensity ≈ 0.3-0.5 (reflections only — keep the visible background as the room itself, not the HDRI).
+- Add subtle SSAO or N8AO so corners read slightly darker than wall centers.
+- Add mild Bloom with a HIGH threshold so only the light fixtures bloom, never the walls.
+- Enable PCFSoftShadowMap on 2-3 key lights only (not all of them) for performance.
+
+ACCEPTANCE TEST — do not mark this task complete until a screenshot shows ALL FIVE:
+1. Clear soft light scallops on the upper walls under every spotlight
+2. Warm tonal gradient that darkens gradually toward the floor
+3. Subtle satin sheen on the porcelain floor reflecting the fixtures
+4. Corners visibly darker than the middle of the walls
+5. Hairline light grout lines on a true 80 cm grid
+
+Report the FPS before and after. If FPS drops below 30 on desktop, reduce shadow-casting lights and AO samples — do not remove the spotlights.

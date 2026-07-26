@@ -1,0 +1,27 @@
+Before you touch any code, read this briefing and reply only with a short confirmation that you understand. Do NOT start editing yet.
+
+CONTEXT
+We are working on the empty-room stage of "صمم مطبخك 2 — تجريبي" (kitchen-designer-v2). The goal is a photorealistic archviz look: warm off-white walls, light beige porcelain floor, recessed warm spotlights in a gypsum ceiling, with realistic reflections. I have a reference image of the exact quality level I want.
+
+DIAGNOSIS — this is the important part
+The current output is far from the target, but the problem is NOT the geometry, NOT the room dimensions, and NOT the wall thickness. We have already spent many iterations on those and they are fine. The problem is the rendering pipeline itself:
+- The ceiling fixtures are decorative meshes that emit no actual light — there is not a single light scallop on any wall.
+- There is no tone mapping, so the image looks flat and CAD-like instead of photographic.
+- The floor material is wrong: too dark, fully matte, with thick dark grout lines.
+- There is no ambient occlusion, so corners are as bright as wall centers, which makes the room look like a cardboard box.
+- The HDRI environment may not be loading at all, which would explain the complete absence of reflections.
+
+Stop optimizing geometry. All remaining work is on lights, materials, renderer settings, and post-processing.
+
+PLAN — two stages, two separate prompts
+Stage 1: Fix the rendering pipeline (real spotlights, color pipeline, correct porcelain floor, HDRI environment, ambient occlusion). This stage has a strict five-point visual acceptance test that must pass before the task is marked complete.
+
+Stage 2 (only after Stage 1 passes): Add a progressive path-tracing layer that refines the image to near-photoreal quality whenever the user stops moving, while keeping full interactive walkthrough. Stage 2 builds on top of Stage 1 — none of the Stage 1 work is wasted.
+
+RULES FOR BOTH STAGES
+- Change only what the prompt asks for. Do not modify features, UI, layout, routes, or room dimensions.
+- Do not mark a task complete until its acceptance test visually passes on a screenshot.
+- If something in the prompt conflicts with the existing code or library versions, stop and tell me instead of improvising a workaround.
+- Report performance (FPS) before and after each stage.
+
+Reply with a short confirmation, then wait for the Stage 1 prompt.
