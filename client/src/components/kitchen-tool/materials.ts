@@ -24,6 +24,15 @@ export interface MaterialOption {
   roughness?: number;
   /** Real-world meters one texture repeat spans (defaults to 1). */
   tileSizeM?: number;
+  /** PBR-only realism tweaks — for semi-polished surfaces (porcelain tile):
+      multipliers over the texture maps, so the map detail is preserved. */
+  /** Environment reflection strength (default 1). Raise slightly for a
+      subtle glancing-angle sheen under studio lighting. */
+  envMapIntensity?: number;
+  /** Multiplies the roughness map (default 1). Lower = glossier. */
+  roughnessMult?: number;
+  /** Multiplies the metalness map (default 1 when armMap present). */
+  metalnessMult?: number;
 }
 
 export const FLOOR_OPTIONS: MaterialOption[] = [
@@ -37,6 +46,11 @@ export const FLOOR_OPTIONS: MaterialOption[] = [
     nameEn: "Real Tile",
     thumb: `${ASSETS}/thumbs/floor-real-tile.jpg`,
     tileSizeM: 5,
+    // Semi-polished porcelain sheen: a touch more environment reflection and
+    // slightly lower roughness so studio light glints at low viewing angles
+    // without looking plastic.
+    envMapIntensity: 1.25,
+    roughnessMult: 0.82,
     maps: {
       map: `${ASSETS}/floor-real-tile/textures/patio_tiles_diff_2k.jpg`,
       normalMap: `${ASSETS}/floor-real-tile/textures/patio_tiles_nor_gl_2k.jpg`,

@@ -121,6 +121,9 @@ function PbrSurfaceMaterial({
       aoMap={prepped.armMap}
       metalnessMap={prepped.armMap}
       color={opt.color ?? "#ffffff"}
+      envMapIntensity={opt.envMapIntensity ?? 1}
+      roughness={opt.roughnessMult ?? 1}
+      metalness={opt.metalnessMult ?? 0}
       transparent={opacity < 1}
       opacity={opacity}
     />
