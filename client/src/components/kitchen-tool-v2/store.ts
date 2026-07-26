@@ -39,20 +39,13 @@ export interface KitchenToolV2State {
   /** Selected test surface materials (registry ids). */
   wallMaterialId: string;
   floorMaterialId: string;
-  showCeiling: boolean;
-  ceilingPreset: "flat" | "gypsum";
   cameraMode: "perspective" | "top";
-  /** Temporary A/B comparison: procedural proof vs photoreal calibration preset. */
-  renderPreset: "procedural" | "photoreal";
 
   setInputs: (patch: Partial<DraftInputsV2>) => void;
   setRoom: (room: RoomV2 | null) => void;
   setWallMaterial: (id: string) => void;
   setFloorMaterial: (id: string) => void;
-  setShowCeiling: (v: boolean) => void;
-  setCeilingPreset: (p: "flat" | "gypsum") => void;
   setCameraMode: (m: "perspective" | "top") => void;
-  setRenderPreset: (p: "procedural" | "photoreal") => void;
   resetV2: () => void;
 }
 
@@ -82,10 +75,7 @@ function freshDraft() {
     room: null as RoomV2 | null,
     wallMaterialId: "wall_matte_warm_white",
     floorMaterialId: "floor_beige_porcelain_600",
-    showCeiling: true,
-    ceilingPreset: "flat" as const,
     cameraMode: "perspective" as const,
-    renderPreset: "photoreal" as const,
   };
 }
 
@@ -103,15 +93,18 @@ export const useKitchenToolV2Store = create<KitchenToolV2State>()(
         set({ wallMaterialId: id, updatedAt: new Date().toISOString() }),
       setFloorMaterial: (id) =>
         set({ floorMaterialId: id, updatedAt: new Date().toISOString() }),
-      setShowCeiling: (v) => set({ showCeiling: v }),
-      setCeilingPreset: (p) => set({ ceilingPreset: p }),
       setCameraMode: (m) => set({ cameraMode: m }),
-      setRenderPreset: (p) => set({ renderPreset: p }),
       resetV2: () => set({ ...freshDraft() }),
     }),
     {
       name: V2_STORAGE_KEY,
       version: ROOM_SCHEMA_VERSION_V2,
+      // Backward compatibility: older persisted drafts may contain removed
+      // display fields (showCeiling / ceilingPreset / renderPreset). The
+      // shallow merge simply ignores fields no longer in the state shape,
+      // so existing V2 drafts keep opening safely. Approved visual behavior
+      // (photoreal, flat white ceiling always on) now lives in the renderer.
+      migrate: (persisted: any) => persisted,
     }
   )
 );

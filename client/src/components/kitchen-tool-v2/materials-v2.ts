@@ -1,4 +1,9 @@
 /**
+ * LEGACY (Task V2-001E): unreachable from the customer path — kept only for
+ * geometry-test compatibility and future reference. The approved room preview
+ * now uses locked photoreal materials defined in room-preview.tsx. Safe to
+ * delete in a later cleanup task.
+ *
  * Kitchen Designer V2 — test material registry (PBR proof only).
  *
  * Exactly 2 wall + 2 floor materials. Texture repeat is derived from the

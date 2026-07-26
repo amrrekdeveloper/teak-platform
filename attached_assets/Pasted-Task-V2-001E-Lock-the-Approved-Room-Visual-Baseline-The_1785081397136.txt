@@ -1,0 +1,252 @@
+Task V2-001E — Lock the Approved Room Visual Baseline
+
+The current geometry, camera framing, persistence isolation, routes, and tests are accepted.
+
+The current visual direction is not accepted.
+
+Do not add openings, utilities, cabinets, appliances, countertops, backsplash, orders, backend persistence, or database changes.
+
+This task must simplify and lock the empty-room visual baseline to match the approved Teak reference direction.
+
+Approved product decisions
+
+1. There must be no customer-facing “Photoreal” switch.
+   - Photoreal rendering is the only rendering mode.
+   - Remove the procedural/photoreal A/B control from the UI.
+   - Remove procedural rendering from the normal customer path.
+   - Temporary legacy code may remain only if fully unreachable and clearly marked for later cleanup.
+
+2. There must be no customer-facing “Gypsum” switch.
+   - The ceiling is always a flat gypsum-board ceiling.
+   - Do not show an optional decorative recessed perimeter preset.
+   - Remove the gypsum preset toggle from the UI.
+
+3. There must be no customer-facing ceiling visibility switch.
+   - The ceiling is part of the room by default.
+   - It may be hidden automatically only when technically necessary for a top view, not by a customer settings toggle.
+
+4. Keep only two simple view controls:
+   - Perspective
+   - Top view
+
+Use compact buttons, not multiple technical switches.
+
+Wall visual direction
+
+The walls must look like freshly painted, clean, modern kitchen walls.
+
+Remove the current PaintedPlaster017 visual treatment from the approved default wall because it produces visible dirt, stains, patches, and excessive surface variation.
+
+The approved wall should be:
+
+- clean warm white
+- matte
+- visually smooth
+- subtle micro-roughness only
+- no visible stains
+- no beige patches
+- no concrete or aged-plaster appearance
+
+Use a restrained neutral warm-white base.
+
+Use the Al-Jazeera Paints Saudi white/off-white family only as a visual naming reference, such as:
+- White
+- Brilliant White
+- Off White WH-2105
+
+Do not claim an exact digital color match to a physical paint swatch.
+
+For this stage, expose only one wall finish:
+“Teak Warm White”
+“أبيض تيك الدافئ”
+
+Suggested rendering approach:
+
+- Prefer a clean MeshStandardMaterial or MeshPhysicalMaterial.
+- Use a very subtle noise or micro-normal only if it is not visibly patterned.
+- Remove PaintedPlaster017 color texture from the wall.
+- Roughness should be matte but not chalky.
+- Do not multiply the wall by a beige texture tint.
+- Ensure lighting does not turn the wall yellow or gray.
+
+Ceiling visual direction
+
+The ceiling is always:
+
+- flat gypsum board
+- clean white
+- matte
+- visually continuous
+- no perimeter drop
+- no cove-light strip
+- no decorative tray ceiling in this stage
+
+The ceiling color should be slightly cleaner/brighter than the walls.
+
+Recessed spotlights
+
+Replace the current glowing circles and point-light-only representation.
+
+Create a small reusable recessed downlight component with:
+
+- a circular trim/rim
+- a shallow recessed dark inner cavity
+- a visible diffuser or lens
+- a physically plausible diameter
+- a narrow recessed depth
+- soft downward light
+- no oversized glowing disc
+- no obvious floating circle
+- no excessive bloom or emissive glow
+
+Use a restrained number of lights based on room size.
+
+For the reference room, use four evenly spaced recessed spotlights.
+
+The light should be neutral-warm, approximately the visual appearance of 3500K–4000K, not orange.
+
+Use spotlight or a suitable soft downward light model rather than relying only on omnidirectional point lights.
+
+Floor visual direction
+
+The currently selected Tiles139 floor is not approved for the default room.
+
+It looks too rustic, stained, and visually busy.
+
+Replace the approved default floor with a clean modern porcelain look:
+
+- warm light beige or greige
+- low visual noise
+- subtle stone variation
+- matte or satin finish
+- 600 × 600 mm physical tile size
+- narrow grout lines
+- grout color close to the tile color
+- no strong brown stains
+- no aged limestone appearance
+- no artificial grid
+
+Use a suitable free CC0 PBR asset if available.
+
+If a matching clean asset is not available, create a restrained web-safe test material from a clean source image, but do not use the previous procedural grid.
+
+Skirting
+
+Use one of these approved options:
+
+- matching porcelain skirting derived from the floor material, or
+- simple clean white skirting
+
+For this stage use matching porcelain skirting if technically straightforward.
+
+Lighting calibration
+
+Remove excessive warmth and yellow cast.
+
+Target:
+
+- neutral-warm architectural interior
+- clean white ceiling
+- warm-white walls without beige staining
+- floor color remains accurate
+- soft shadows
+- no harsh directional shadow
+- no muddy gray corners
+- no overexposed ceiling
+
+Review:
+
+- HDR environment choice
+- HDR intensity
+- renderer exposure
+- hemisphere-light colors
+- key-light color
+- environment intensity
+- material envMapIntensity
+- ACES tone mapping
+
+Do not stack multiple warm light sources that tint the entire room yellow.
+
+UI simplification
+
+The header should contain only:
+
+- Back
+- Empty room preview title
+- Experimental badge, if still required internally
+- Perspective button
+- Top-view button
+
+Remove from the customer UI:
+
+- Ceiling toggle
+- Gypsum toggle
+- Photoreal toggle
+- any A/B comparison control
+
+At the bottom:
+
+- Do not show wall-material buttons in this stage because the wall is locked to one approved white.
+- Show only a small floor selector if needed for technical testing.
+- Prefer one approved default floor and one optional light-oak test floor.
+
+Store cleanup
+
+Simplify the V2 store safely.
+
+The following should no longer be customer-configurable state:
+
+- showCeiling
+- ceilingPreset
+- renderPreset
+
+Set the approved behavior directly in the renderer.
+
+Because the V2 store is already persisted, add a safe migration or backward-compatible defaults so existing V2 drafts continue to open.
+
+Do not touch the V1 storage key.
+
+Reference-room acceptance criteria
+
+Use the U-shaped reference room:
+- back wall: 4000 mm
+- left wall: 4000 mm
+- right wall: 5000 mm
+- ceiling: 2700 mm
+
+The task is not complete unless:
+
+1. Walls appear clean white/off-white, not stained, gray, or brown.
+2. The visible plaster blotches are gone.
+3. The floor appears like clean modern 600 × 600 porcelain.
+4. The ceiling is always flat and white.
+5. No gypsum-board toggle appears.
+6. No photoreal toggle appears.
+7. No ceiling toggle appears.
+8. Spotlights look recessed and architectural.
+9. Spotlights cast soft downward light.
+10. The room remains balanced and neutral-warm.
+11. Perspective and top view still work.
+12. The four room layouts remain geometrically correct.
+13. Existing geometry tests still pass.
+14. No V1 behavior changes.
+15. No paid assets or services are added.
+
+Deliverables
+
+Provide:
+
+1. Exact files changed.
+2. UI controls removed.
+3. Store migration or compatibility handling.
+4. Final wall material settings.
+5. Final ceiling material settings.
+6. Downlight geometry and lighting setup.
+7. Floor asset source and license.
+8. Lighting and renderer calibration values.
+9. Before/after screenshots from the same camera.
+10. Test results and known limitations.
+
+Stop after this task.
+
+Do not proceed to openings, utilities, cabinets, appliances, or order integration.

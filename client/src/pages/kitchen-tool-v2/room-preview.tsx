@@ -1,66 +1,108 @@
 /**
- * Kitchen Designer V2 — Architectural empty-room shell preview.
+ * Kitchen Designer V2 — Approved empty-room visual baseline (Task V2-001E).
  * Route: /kitchen-designer-v2/room-preview
  * Renders ONLY from RoomV2 (never from V1 answers/state).
  *
- * Visual-only elements (skirting, ceiling presets, cove/downlights) never
- * alter the canonical RoomV2 geometry used by the design engine.
+ * Locked product decisions:
+ * - Photoreal rendering is the ONLY rendering mode (no A/B switch).
+ * - Ceiling: always a flat, clean-white gypsum board (auto-hidden in top
+ *   view only). No gypsum tray preset, no ceiling toggle.
+ * - Wall finish is locked to one approved paint: "Teak Warm White"
+ *   (visual naming reference: Al-Jazeera Paints white/off-white family,
+ *   e.g. Off White WH-2105 — not an exact digital swatch match).
+ * - View controls: two compact buttons only (Perspective / Top).
+ *
+ * Visual-only elements (skirting, ceiling, downlights, wall thickness)
+ * never alter the canonical RoomV2 geometry used by the design engine.
  */
 import { useMemo, useEffect, Suspense } from "react";
 import { Link } from "wouter";
 import * as THREE from "three";
 import { Canvas, useThree } from "@react-three/fiber";
-import { OrbitControls, OrthographicCamera, PerspectiveCamera, Text, Environment, useTexture } from "@react-three/drei";
+import { OrbitControls, OrthographicCamera, PerspectiveCamera, Environment, useTexture } from "@react-three/drei";
 import { useLanguage } from "@/components/language-provider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-import { ArrowRight, AlertTriangle } from "lucide-react";
+import { ArrowRight, AlertTriangle, Eye, LayoutGrid } from "lucide-react";
 import { useKitchenToolV2Store } from "@/components/kitchen-tool-v2/store";
 import { type RoomV2, type RoomWallV2, roomBounds } from "@/components/kitchen-tool-v2/room-model";
-import {
-  WALL_MATERIALS_V2,
-  FLOOR_MATERIALS_V2,
-  findMaterialV2,
-  repeatForSurface,
-  type MaterialDefV2,
-} from "@/components/kitchen-tool-v2/materials-v2";
 import { V2Gate } from "@/components/kitchen-tool-v2/v2-gate";
 
 const MM = 0.001; // mm → meters
 const WALL_THICKNESS_MM = 150;
 const SKIRTING_HEIGHT_MM = 100;
 const SKIRTING_DEPTH_MM = 15;
-const GYPSUM_BORDER_MM = 450;
-const GYPSUM_DROP_MM = 140;
-const FLOOR_NORMAL_SCALE = new THREE.Vector2(0.6, 0.6);
-const PHOTO_TILE_NORMAL_SCALE = new THREE.Vector2(0.55, 0.55);
-const PHOTO_WALL_NORMAL_SCALE = new THREE.Vector2(0.35, 0.35);
+
+const FLOOR_NORMAL_SCALE = new THREE.Vector2(0.45, 0.45);
+
+/* --------------------- approved materials ------------------------- */
 
 /**
- * Photoreal calibration preset — real CC0 PBR assets served locally
- * (no runtime network requests). Sources documented in
- * client/public/textures/v2/LICENSES.md:
- * - Tiles139 (ambientCG, CC0) — beige square tiles; texture spans a 6×6 tile
- *   grid, scaled so each tile is exactly 600×600 mm ⇒ 3600 mm physical span.
- * - PaintedPlaster017 (ambientCG, CC0) — painted plaster micro-surface,
- *   tinted warm off-white; 2000×1000 mm physical span.
- * - lebombo_1k.hdr (Poly Haven, CC0) — interior HDR used for IBL only.
+ * Approved wall paint — "Teak Warm White" / "أبيض تيك الدافئ".
+ * Clean warm white, matte, visually smooth; no color texture (the previous
+ * PaintedPlaster017 treatment produced visible stains and was removed).
  */
-const PHOTO_ASSETS = {
-  hdr: "/textures/v2/lebombo_1k.hdr",
-  floor: {
-    urls: { map: "/textures/v2/tiles139_color.webp", normalMap: "/textures/v2/tiles139_normal.webp", roughnessMap: "/textures/v2/tiles139_rough.webp" },
-    physMmX: 3600,
-    physMmY: 3600,
+const WALL_PAINT = { color: "#f2ede4", roughness: 0.88 };
+/** Ceiling: flat gypsum board — slightly cleaner/brighter than the walls. */
+const CEILING_PAINT = { color: "#fafaf7", roughness: 0.93 };
+
+/**
+ * Floor registry — real/derived CC0 PBR sets served locally (no runtime
+ * network requests). Sources in client/public/textures/v2/LICENSES.md.
+ * Ids intentionally reuse the original registry ids so persisted drafts
+ * keep working without migration.
+ */
+interface FloorDefV2E {
+  id: string;
+  nameAr: string;
+  nameEn: string;
+  urls: { map: string; normalMap: string; roughnessMap: string };
+  /** Physical size of one texture repeat, mm. */
+  physMmX: number;
+  physMmY: number;
+  /** Matching skirting color derived from the floor tone. */
+  skirtingColor: string;
+  skirtingRoughness: number;
+}
+
+const PHOTO_FLOORS: FloorDefV2E[] = [
+  {
+    // Approved default: clean modern greige porcelain, 600×600 mm tiles,
+    // narrow grout close to the tile color (2×2 grid ⇒ 1200 mm repeat).
+    id: "floor_beige_porcelain_600",
+    nameAr: "بورسلان بيج فاتح 60×60",
+    nameEn: "Light beige porcelain 60×60",
+    urls: {
+      map: "/textures/v2/porcelain600_color.webp",
+      normalMap: "/textures/v2/porcelain600_normal.webp",
+      roughnessMap: "/textures/v2/porcelain600_rough.webp",
+    },
+    physMmX: 1200,
+    physMmY: 1200,
+    skirtingColor: "#d9d1c3",
+    skirtingRoughness: 0.55,
   },
-  wall: {
-    urls: { map: "/textures/v2/plaster017_color.webp", normalMap: "/textures/v2/plaster017_normal.webp", roughnessMap: "/textures/v2/plaster017_rough.webp" },
-    physMmX: 2000,
-    physMmY: 1000,
+  {
+    // Optional light-oak test floor.
+    id: "floor_light_oak_plank",
+    nameAr: "باركيه بلوط فاتح (تجريبي)",
+    nameEn: "Light oak (test)",
+    urls: {
+      map: "/textures/v2/oak051_color.webp",
+      normalMap: "/textures/v2/oak051_normal.webp",
+      roughnessMap: "/textures/v2/oak051_rough.webp",
+    },
+    physMmX: 1800,
+    physMmY: 1800,
+    // Oak has no porcelain match → approved fallback: simple clean white.
+    skirtingColor: "#f4f2ee",
+    skirtingRoughness: 0.6,
   },
-};
+];
+
+function findFloor(id: string): FloorDefV2E {
+  return PHOTO_FLOORS.find((f) => f.id === id) ?? PHOTO_FLOORS[0];
+}
 
 /**
  * Loads a shared PBR set and returns per-surface CLONES with the given UV
@@ -90,33 +132,6 @@ function usePbrMaps(urls: { map: string; normalMap: string; roughnessMap: string
       maps.map.dispose();
       maps.normalMap.dispose();
       maps.roughnessMap.dispose();
-    },
-    [maps]
-  );
-  return maps;
-}
-
-/* ------------------------- textures ------------------------------- */
-
-function useFloorMaps(def: MaterialDefV2 | undefined, wMm: number, hMm: number) {
-  const maps = useMemo(() => {
-    if (!def) return null;
-    const rep = repeatForSurface(def, wMm, hMm);
-    const apply = (tex: THREE.Texture | null) => {
-      if (tex && rep) tex.repeat.set(rep.x, rep.y);
-      return tex;
-    };
-    return {
-      map: apply(def.makeTexture ? def.makeTexture() : null),
-      normalMap: apply(def.makeNormalTexture ? def.makeNormalTexture() : null),
-      aoMap: apply(def.makeAoTexture ? def.makeAoTexture() : null),
-    };
-  }, [def?.id, wMm, hMm]);
-  useEffect(
-    () => () => {
-      maps?.map?.dispose();
-      maps?.normalMap?.dispose();
-      maps?.aoMap?.dispose();
     },
     [maps]
   );
@@ -202,109 +217,45 @@ function wallBodyTransform(wall: RoomWallV2, allWalls: RoomWallV2[]) {
     position: [(cx + ox) * MM, (wall.heightMm / 2) * MM, (cz + oz) * MM] as [number, number, number],
     rotationY: -angle,
     size: [(wall.lengthMm + extStart + extEnd) * MM, wall.heightMm * MM, WALL_THICKNESS_MM * MM] as [number, number, number],
-    lengthMm: wall.lengthMm + extStart + extEnd,
   };
 }
 
-function WallMesh({ wall, allWalls, materialDef }: { wall: RoomWallV2; allWalls: RoomWallV2[]; materialDef: MaterialDefV2 | undefined }) {
+/** Approved wall: clean matte "Teak Warm White" paint, no color texture. */
+function WallMesh({ wall, allWalls }: { wall: RoomWallV2; allWalls: RoomWallV2[] }) {
   const tr = wallBodyTransform(wall, allWalls);
   return (
     <group position={tr.position} rotation={[0, tr.rotationY, 0]}>
       <mesh castShadow receiveShadow>
         <boxGeometry args={tr.size} />
-        <meshStandardMaterial
-          color={materialDef?.baseColor ?? "#eeeeee"}
-          roughness={materialDef?.roughness ?? 0.92}
-          metalness={materialDef?.metalness ?? 0}
-        />
+        <meshStandardMaterial color={WALL_PAINT.color} roughness={WALL_PAINT.roughness} metalness={0} envMapIntensity={0.45} />
       </mesh>
     </group>
   );
 }
 
-/** Photoreal wall: real painted-plaster PBR maps, tinted warm off-white. */
-function PhotoWallMesh({ wall, allWalls }: { wall: RoomWallV2; allWalls: RoomWallV2[] }) {
-  const tr = wallBodyTransform(wall, allWalls);
-  const a = PHOTO_ASSETS.wall;
-  const maps = usePbrMaps(a.urls, tr.lengthMm / a.physMmX, wall.heightMm / a.physMmY);
-  return (
-    <group position={tr.position} rotation={[0, tr.rotationY, 0]}>
-      <mesh castShadow receiveShadow>
-        <boxGeometry args={tr.size} />
-        <meshStandardMaterial
-          color="#f3ece1"
-          map={maps.map}
-          normalMap={maps.normalMap}
-          normalScale={PHOTO_WALL_NORMAL_SCALE}
-          roughnessMap={maps.roughnessMap}
-          roughness={1}
-          metalness={0}
-        />
-      </mesh>
-    </group>
-  );
-}
-
-/** Visual-only skirting board along the interior wall-floor intersection. */
-function Skirting({ wall }: { wall: RoomWallV2 }) {
+/** Visual-only skirting; tone derived from the selected floor. */
+function Skirting({ wall, floor }: { wall: RoomWallV2; floor: FloorDefV2E }) {
   const cx = (wall.start.xMm + wall.end.xMm) / 2;
   const cz = (wall.start.zMm + wall.end.zMm) / 2;
   const angle = Math.atan2(wall.end.zMm - wall.start.zMm, wall.end.xMm - wall.start.xMm);
   const ox = wall.inwardNormal.xMm * (SKIRTING_DEPTH_MM / 2);
   const oz = wall.inwardNormal.zMm * (SKIRTING_DEPTH_MM / 2);
   return (
-    <group
-      position={[(cx + ox) * MM, (SKIRTING_HEIGHT_MM / 2) * MM, (cz + oz) * MM]}
-      rotation={[0, -angle, 0]}
-    >
+    <group position={[(cx + ox) * MM, (SKIRTING_HEIGHT_MM / 2) * MM, (cz + oz) * MM]} rotation={[0, -angle, 0]}>
       <mesh castShadow receiveShadow>
         <boxGeometry args={[wall.lengthMm * MM, SKIRTING_HEIGHT_MM * MM, SKIRTING_DEPTH_MM * MM]} />
-        <meshStandardMaterial color="#f7f5f0" roughness={0.6} metalness={0} />
+        <meshStandardMaterial color={floor.skirtingColor} roughness={floor.skirtingRoughness} metalness={0} />
       </mesh>
     </group>
   );
 }
 
-function FloorMesh({ room, materialDef }: { room: RoomV2; materialDef: MaterialDefV2 | undefined }) {
-  const b = roomBounds(room);
-  const w = b.maxX - b.minX;
-  const d = b.maxZ - b.minZ;
-  const maps = useFloorMaps(materialDef, w, d);
-  const shape = useMemo(() => {
-    const s = new THREE.Shape();
-    room.floor.polygon.forEach((p, i) => {
-      if (i === 0) s.moveTo(p.xMm * MM, p.zMm * MM);
-      else s.lineTo(p.xMm * MM, p.zMm * MM);
-    });
-    s.closePath();
-    return s;
-  }, [room]);
-  return (
-    <mesh rotation={[Math.PI / 2, 0, 0]} receiveShadow>
-      <shapeGeometry args={[shape]} />
-      <meshStandardMaterial
-        side={THREE.DoubleSide}
-        color={materialDef?.baseColor ?? "#ddd"}
-        roughness={materialDef?.roughness ?? 0.5}
-        metalness={0}
-        map={maps?.map ?? undefined}
-        normalMap={maps?.normalMap ?? undefined}
-        normalScale={FLOOR_NORMAL_SCALE}
-        aoMap={maps?.aoMap ?? undefined}
-        aoMapIntensity={0.7}
-      />
-    </mesh>
-  );
-}
-
 /**
- * Photoreal floor: real beige-tile PBR maps. shapeGeometry UVs are in WORLD
- * METERS, so the repeat is 1 / physical-span-in-meters (independent of room
- * size) — tiles stay exactly 600×600 mm.
+ * Floor: real PBR maps. shapeGeometry UVs are in WORLD METERS, so the repeat
+ * is 1 / physical-span-in-meters — tiles stay exactly 600×600 mm.
  */
-function PhotoFloorMesh({ room }: { room: RoomV2 }) {
-  const a = PHOTO_ASSETS.floor;
-  const maps = usePbrMaps(a.urls, 1 / (a.physMmX * MM), 1 / (a.physMmY * MM));
+function FloorMesh({ room, floor }: { room: RoomV2; floor: FloorDefV2E }) {
+  const maps = usePbrMaps(floor.urls, 1 / (floor.physMmX * MM), 1 / (floor.physMmY * MM));
   const shape = useMemo(() => {
     const s = new THREE.Shape();
     room.floor.polygon.forEach((p, i) => {
@@ -321,285 +272,162 @@ function PhotoFloorMesh({ room }: { room: RoomV2 }) {
         side={THREE.DoubleSide}
         map={maps.map}
         normalMap={maps.normalMap}
-        normalScale={PHOTO_TILE_NORMAL_SCALE}
+        normalScale={FLOOR_NORMAL_SCALE}
         roughnessMap={maps.roughnessMap}
         roughness={1}
         metalness={0}
-        envMapIntensity={0.55}
+        envMapIntensity={0.5}
       />
     </mesh>
   );
 }
 
-/** Flat ceiling slab (visual only). */
-function FlatCeiling({ room }: { room: RoomV2 }) {
-  const b = roomBounds(room);
-  const w = (b.maxX - b.minX) * MM;
-  const d = (b.maxZ - b.minZ) * MM;
+/* ---------------------- recessed downlights ------------------------ */
+
+const DOWNLIGHT_RADIUS = 0.045; // 90 mm diameter — physically plausible
+const DOWNLIGHT_DEPTH = 0.03; // shallow 30 mm recess
+
+/**
+ * Reusable architectural recessed downlight: circular trim rim, shallow dark
+ * inner cavity, recessed diffuser lens, and (optionally) a soft neutral-warm
+ * downward spotlight (~3500–4000K look).
+ */
+function RecessedDownlight({ x, z, ceilingY, withLight }: { x: number; z: number; ceilingY: number; withLight: boolean }) {
+  // Target is LOCAL to the fixture group (which already sits at [x, ceilingY, z]),
+  // so a straight-down aim is simply the floor point directly below: [0, -ceilingY, 0].
+  const target = useMemo(() => {
+    const o = new THREE.Object3D();
+    o.position.set(0, -ceilingY, 0);
+    return o;
+  }, [ceilingY]);
   return (
-    <mesh
-      rotation={[Math.PI / 2, 0, 0]}
-      position={[((b.minX + b.maxX) / 2) * MM, room.ceilingHeightMm * MM, ((b.minZ + b.maxZ) / 2) * MM]}
-    >
-      <planeGeometry args={[w, d]} />
-      <meshStandardMaterial color="#f6f3ee" roughness={0.95} side={THREE.DoubleSide} />
-    </mesh>
+    <group position={[x, ceilingY, z]}>
+      {/* trim rim flush with the ceiling */}
+      <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, -0.002, 0]}>
+        <ringGeometry args={[DOWNLIGHT_RADIUS, DOWNLIGHT_RADIUS + 0.008, 28]} />
+        <meshStandardMaterial color="#e9e7e2" roughness={0.4} metalness={0.15} side={THREE.DoubleSide} />
+      </mesh>
+      {/* shallow dark recessed cavity */}
+      <mesh position={[0, -DOWNLIGHT_DEPTH / 2, 0]}>
+        <cylinderGeometry args={[DOWNLIGHT_RADIUS, DOWNLIGHT_RADIUS, DOWNLIGHT_DEPTH, 28, 1, true]} />
+        <meshStandardMaterial color="#242424" roughness={0.9} metalness={0} side={THREE.BackSide} />
+      </mesh>
+      {/* recessed diffuser lens (restrained emissive — no glowing disc) */}
+      <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, -DOWNLIGHT_DEPTH + 0.008, 0]}>
+        <circleGeometry args={[DOWNLIGHT_RADIUS * 0.72, 24]} />
+        <meshStandardMaterial color="#f5f2ea" emissive="#f3e9d8" emissiveIntensity={0.85} roughness={0.6} side={THREE.DoubleSide} />
+      </mesh>
+      {withLight && (
+        <>
+          <spotLight
+            position={[0, -DOWNLIGHT_DEPTH, 0]}
+            target={target}
+            angle={0.62}
+            penumbra={0.85}
+            intensity={4.5}
+            distance={ceilingY * 2.4}
+            decay={1.8}
+            color="#fff2e0"
+          />
+          <primitive object={target} />
+        </>
+      )}
+    </group>
   );
 }
 
-/**
- * Photoreal flat ceiling: clean soft-white slab with subtle recessed
- * downlights (visual discs + at most 2 real lights for performance).
- */
-function PhotoFlatCeiling({ room }: { room: RoomV2 }) {
+/** Evenly spaced downlights from room size (4 for the reference room). */
+function downlightLayout(room: RoomV2): [number, number][] {
   const b = roomBounds(room);
   const minX = b.minX * MM, maxX = b.maxX * MM, minZ = b.minZ * MM, maxZ = b.maxZ * MM;
   const w = maxX - minX;
   const d = maxZ - minZ;
-  const cx = (minX + maxX) / 2;
-  const cz = (minZ + maxZ) / 2;
-  const h = room.ceilingHeightMm * MM;
-  const downlights = useMemo(() => {
-    const pts: [number, number][] = [];
-    const n = Math.min(2, Math.max(1, Math.round(w / 2.2)));
-    for (let i = 0; i < n; i++) {
-      const x = minX + (w * (i + 0.5)) / n;
-      pts.push([x, cz - d * 0.22]);
-      pts.push([x, cz + d * 0.22]);
+  const nx = Math.min(3, Math.max(1, Math.round(w / 2.1)));
+  const nz = Math.min(2, Math.max(1, Math.round(d / 2.1)));
+  const pts: [number, number][] = [];
+  for (let i = 0; i < nx; i++) {
+    for (let j = 0; j < nz; j++) {
+      pts.push([minX + (w * (i + 0.5)) / nx, minZ + (d * (j + 0.5)) / nz]);
     }
-    return pts.slice(0, 4);
-  }, [minX, w, cz, d]);
+  }
+  return pts.slice(0, 6);
+}
+
+/** Always-on flat gypsum-board ceiling: clean white, matte, continuous. */
+function Ceiling({ room }: { room: RoomV2 }) {
+  const b = roomBounds(room);
+  const w = (b.maxX - b.minX) * MM;
+  const d = (b.maxZ - b.minZ) * MM;
+  const cx = ((b.minX + b.maxX) / 2) * MM;
+  const cz = ((b.minZ + b.maxZ) / 2) * MM;
+  const h = room.ceilingHeightMm * MM;
+  const lights = downlightLayout(room);
   return (
     <group>
       <mesh rotation={[Math.PI / 2, 0, 0]} position={[cx, h, cz]}>
         <planeGeometry args={[w, d]} />
-        <meshStandardMaterial color="#fafaf7" roughness={0.94} metalness={0} side={THREE.DoubleSide} envMapIntensity={0.4} />
+        <meshStandardMaterial color={CEILING_PAINT.color} roughness={CEILING_PAINT.roughness} metalness={0} side={THREE.DoubleSide} envMapIntensity={0.35} />
       </mesh>
-      {downlights.map(([x, z], i) => (
-        <group key={i}>
-          <mesh rotation={[Math.PI / 2, 0, 0]} position={[x, h - 0.004, z]}>
-            <circleGeometry args={[0.04, 20]} />
-            <meshStandardMaterial color="#fefaf0" emissive="#ffedc9" emissiveIntensity={1.5} side={THREE.DoubleSide} />
-          </mesh>
-          {i < 2 && (
-            <pointLight position={[x, h - 0.18, z]} intensity={0.5} color="#ffe8c2" distance={h * 1.9} decay={1.8} />
-          )}
-        </group>
+      {lights.map(([x, z], i) => (
+        // Real spotlights capped at 4 for performance; extra fixtures are trim-only.
+        <RecessedDownlight key={i} x={x} z={z} ceilingY={h} withLight={i < 4} />
       ))}
     </group>
   );
 }
 
-/**
- * Experimental gypsum-board ceiling preset: recessed perimeter border with a
- * warm cove-light glow and a few recessed downlights. Visual only.
- */
-function GypsumCeiling({ room, lightsOn }: { room: RoomV2; lightsOn: boolean }) {
-  const b = roomBounds(room);
-  const minX = b.minX * MM, maxX = b.maxX * MM, minZ = b.minZ * MM, maxZ = b.maxZ * MM;
-  const w = maxX - minX;
-  const d = maxZ - minZ;
-  const cx = (minX + maxX) / 2;
-  const cz = (minZ + maxZ) / 2;
-  const hTop = room.ceilingHeightMm * MM; // recessed (higher) center
-  const hDrop = hTop - GYPSUM_DROP_MM * MM; // dropped perimeter
-  // Clamp the border so small rooms never produce non-positive center panels.
-  const border = Math.min(GYPSUM_BORDER_MM * MM, w / 4, d / 4);
+/* ---------------------------- scene -------------------------------- */
 
-  // Downlight positions on the dropped border (max 6 for performance).
-  const downlights = useMemo(() => {
-    const pts: [number, number][] = [];
-    const inset = border / 2;
-    const n = Math.min(3, Math.max(2, Math.round(w / 1.6)));
-    for (let i = 0; i < n; i++) {
-      const x = minX + inset + ((w - inset * 2) * (i + 0.5)) / n;
-      pts.push([x, minZ + inset]);
-      pts.push([x, maxZ - inset]);
-    }
-    return pts.slice(0, 6);
-  }, [minX, minZ, maxZ, w, border]);
-
-  const gyp = <meshStandardMaterial color="#f6f3ee" roughness={0.95} side={THREE.DoubleSide} />;
-
-  return (
-    <group>
-      {/* recessed center panel */}
-      <mesh rotation={[Math.PI / 2, 0, 0]} position={[cx, hTop, cz]}>
-        <planeGeometry args={[w - border * 2, d - border * 2]} />
-        {gyp}
-      </mesh>
-      {/* dropped perimeter border (4 slabs) */}
-      {[
-        { pos: [cx, hDrop, minZ + border / 2] as const, size: [w, border] as const },
-        { pos: [cx, hDrop, maxZ - border / 2] as const, size: [w, border] as const },
-        { pos: [minX + border / 2, hDrop, cz] as const, size: [border, d - border * 2] as const },
-        { pos: [maxX - border / 2, hDrop, cz] as const, size: [border, d - border * 2] as const },
-      ].map((s, i) => (
-        <mesh key={i} rotation={[Math.PI / 2, 0, 0]} position={[s.pos[0], s.pos[1], s.pos[2]]}>
-          <planeGeometry args={[s.size[0], s.size[1]]} />
-          {gyp}
-        </mesh>
-      ))}
-      {/* inner vertical fascia of the drop, glowing warm (cove light strip) */}
-      {[
-        { pos: [cx, (hTop + hDrop) / 2, minZ + border] as const, rot: 0, len: w - border * 2 },
-        { pos: [cx, (hTop + hDrop) / 2, maxZ - border] as const, rot: Math.PI, len: w - border * 2 },
-        { pos: [minX + border, (hTop + hDrop) / 2, cz] as const, rot: Math.PI / 2, len: d - border * 2 },
-        { pos: [maxX - border, (hTop + hDrop) / 2, cz] as const, rot: -Math.PI / 2, len: d - border * 2 },
-      ].map((s, i) => (
-        <mesh key={`cove-${i}`} position={[s.pos[0], s.pos[1], s.pos[2]]} rotation={[0, s.rot, 0]}>
-          <planeGeometry args={[s.len, GYPSUM_DROP_MM * MM]} />
-          <meshStandardMaterial
-            color="#fff5e0"
-            emissive={lightsOn ? "#ffd9a0" : "#3a3021"}
-            emissiveIntensity={lightsOn ? 1.6 : 0.1}
-            roughness={0.9}
-            side={THREE.DoubleSide}
-          />
-        </mesh>
-      ))}
-      {/* warm indirect cove fill light */}
-      {lightsOn && <pointLight position={[cx, hDrop - 0.05, cz]} intensity={0.5} color="#ffd9a8" distance={Math.max(w, d) * 1.6} />}
-      {/* recessed downlights */}
-      {downlights.map(([x, z], i) => (
-        <group key={`dl-${i}`}>
-          <mesh rotation={[Math.PI / 2, 0, 0]} position={[x, hDrop - 0.004, z]}>
-            <circleGeometry args={[0.045, 20]} />
-            <meshStandardMaterial
-              color="#fffbe8"
-              emissive={lightsOn ? "#fff0c8" : "#333"}
-              emissiveIntensity={lightsOn ? 2.2 : 0.2}
-              side={THREE.DoubleSide}
-            />
-          </mesh>
-          {lightsOn && i < 4 && (
-            <pointLight
-              position={[x, hDrop - 0.15, z]}
-              intensity={1.4}
-              color="#ffe2b0"
-              distance={room.ceilingHeightMm * MM * 1.7}
-              decay={1.7}
-            />
-          )}
-        </group>
-      ))}
-    </group>
-  );
-}
-
-function WallLabel({ wall }: { wall: RoomWallV2 }) {
-  const cx = (wall.start.xMm + wall.end.xMm) / 2;
-  const cz = (wall.start.zMm + wall.end.zMm) / 2;
-  const label = `${wall.id} — ${(wall.lengthMm / 10).toFixed(0)} cm`;
-  return (
-    <Text
-      position={[(cx + wall.inwardNormal.xMm * 120) * MM, wall.heightMm * MM * 0.62, (cz + wall.inwardNormal.zMm * 120) * MM]}
-      fontSize={0.16}
-      color="#7a6a52"
-      anchorX="center"
-      anchorY="middle"
-      outlineWidth={0.006}
-      outlineColor="#ffffff"
-      rotation={[0, Math.atan2(wall.inwardNormal.xMm, wall.inwardNormal.zMm), 0]}
-    >
-      {label}
-    </Text>
-  );
-}
-
-function RoomScene({
-  room, wallMat, floorMat, showCeiling, ceilingPreset, renderPreset,
-}: {
-  room: RoomV2;
-  wallMat: MaterialDefV2 | undefined;
-  floorMat: MaterialDefV2 | undefined;
-  showCeiling: boolean;
-  ceilingPreset: "flat" | "gypsum";
-  renderPreset: "procedural" | "photoreal";
-}) {
+function RoomScene({ room, floor, mode }: { room: RoomV2; floor: FloorDefV2E; mode: "perspective" | "top" }) {
   const b = roomBounds(room);
   const cx = ((b.minX + b.maxX) / 2) * MM;
   const cz = ((b.minZ + b.maxZ) / 2) * MM;
   const span = Math.max(b.maxX - b.minX, b.maxZ - b.minZ) * MM;
   const h = room.ceilingHeightMm * MM;
-  const gypsumOn = showCeiling && ceilingPreset === "gypsum";
-  const photo = renderPreset === "photoreal";
 
   return (
     <group>
-      {photo ? (
-        <>
-          {/*
-           * Photoreal calibration: image-based lighting from a local interior
-           * HDR (reflections + diffuse fill, background hidden), plus one very
-           * soft warm key light. No dominant directional — no harsh triangular
-           * shadow.
-           */}
-          <Suspense fallback={null}>
-            <Environment files={PHOTO_ASSETS.hdr} background={false} environmentIntensity={0.85} />
-          </Suspense>
-          <hemisphereLight args={["#fffaf0", "#cfc4b4", 0.35]} />
-          <directionalLight
-            position={[cx + span * 0.9, h * 2.2, cz + span * 1.4]}
-            intensity={0.5}
-            color="#fff3e0"
-            castShadow
-            shadow-mapSize-width={1024}
-            shadow-mapSize-height={1024}
-            shadow-bias={-0.0004}
-            shadow-radius={7}
-            shadow-camera-left={-span}
-            shadow-camera-right={span}
-            shadow-camera-top={span}
-            shadow-camera-bottom={-span}
-          />
-        </>
-      ) : (
-        <>
-          {/* procedural proof lighting (kept for A/B comparison) */}
-          <ambientLight intensity={0.35} />
-          <hemisphereLight args={["#fdf6ea", "#b8ab98", 0.5]} />
-          <directionalLight
-            position={[cx + span * 0.6, h * 1.6, cz + span * 1.2]}
-            intensity={1.25}
-            color="#fff4e2"
-            castShadow
-            shadow-mapSize-width={1024}
-            shadow-mapSize-height={1024}
-            shadow-bias={-0.0004}
-            shadow-camera-left={-span}
-            shadow-camera-right={span}
-            shadow-camera-top={span}
-            shadow-camera-bottom={-span}
-          />
-          <directionalLight position={[cx - span, h * 1.2, cz - span * 0.6]} intensity={0.3} color="#dfe8f2" />
-        </>
-      )}
+      {/*
+       * Neutral-warm architectural lighting: IBL from a local interior HDR
+       * (reflections + diffuse fill, background hidden) + neutral hemisphere
+       * + one very soft near-neutral key. No stacked warm sources, no harsh
+       * directional shadow.
+       */}
+      <Suspense fallback={null}>
+        <Environment files="/textures/v2/lebombo_1k.hdr" background={false} environmentIntensity={0.7} />
+      </Suspense>
+      <hemisphereLight args={["#ffffff", "#d6d0c6", 0.32]} />
+      <directionalLight
+        position={[cx + span * 0.9, h * 2.2, cz + span * 1.4]}
+        intensity={0.4}
+        color="#fffaf2"
+        castShadow
+        shadow-mapSize-width={1024}
+        shadow-mapSize-height={1024}
+        shadow-bias={-0.0004}
+        shadow-radius={7}
+        shadow-camera-left={-span}
+        shadow-camera-right={span}
+        shadow-camera-top={span}
+        shadow-camera-bottom={-span}
+      />
 
       <Suspense fallback={null}>
-        {photo ? (
-          <PhotoFloorMesh room={room} />
-        ) : (
-          <FloorMesh room={room} materialDef={floorMat} />
-        )}
-        {room.walls.map((w) =>
-          photo ? (
-            <PhotoWallMesh key={w.id} wall={w} allWalls={room.walls} />
-          ) : (
-            <WallMesh key={w.id} wall={w} allWalls={room.walls} materialDef={wallMat} />
-          )
-        )}
+        <FloorMesh room={room} floor={floor} />
       </Suspense>
       {room.walls.map((w) => (
-        <Skirting key={`sk-${w.id}`} wall={w} />
+        <WallMesh key={w.id} wall={w} allWalls={room.walls} />
       ))}
-      {!photo &&
-        room.walls.map((w) => <WallLabel key={`label-${w.id}`} wall={w} />)}
-      {showCeiling && ceilingPreset === "flat" && (photo ? <PhotoFlatCeiling room={room} /> : <FlatCeiling room={room} />)}
-      {gypsumOn && <GypsumCeiling room={room} lightsOn />}
+      {room.walls.map((w) => (
+        <Skirting key={`sk-${w.id}`} wall={w} floor={floor} />
+      ))}
+      {/* Ceiling is part of the room; hidden only when technically necessary (top view). */}
+      {mode !== "top" && <Ceiling room={room} />}
     </group>
   );
 }
+
+/* ----------------------------- page -------------------------------- */
 
 export default function KitchenToolV2RoomPreviewPage() {
   return (
@@ -613,9 +441,7 @@ function KitchenToolV2RoomPreviewInner() {
   const { t, lang } = useLanguage();
   const s = useKitchenToolV2Store();
   const room = s.room;
-
-  const wallMat = findMaterialV2(s.wallMaterialId);
-  const floorMat = findMaterialV2(s.floorMaterialId);
+  const floor = findFloor(s.floorMaterialId);
 
   if (!room) {
     return (
@@ -627,10 +453,6 @@ function KitchenToolV2RoomPreviewInner() {
       </div>
     );
   }
-
-  const b = roomBounds(room);
-  const cx = ((b.minX + b.maxX) / 2) * MM;
-  const cz = ((b.minZ + b.maxZ) / 2) * MM;
 
   return (
     <div className="h-screen bg-background flex flex-col" dir={lang === "ar" ? "rtl" : "ltr"}>
@@ -647,36 +469,27 @@ function KitchenToolV2RoomPreviewInner() {
           </h1>
           <Badge variant="outline">{t("تجريبي", "Experimental")}</Badge>
         </div>
-        <div className="flex flex-wrap items-center gap-4">
-          <div className="flex items-center gap-2">
-            <Switch checked={s.showCeiling} onCheckedChange={s.setShowCeiling} data-testid="switch-v2-ceiling" />
-            <Label className="text-xs">{t("السقف", "Ceiling")}</Label>
-          </div>
-          <div className="flex items-center gap-2">
-            <Switch
-              checked={s.ceilingPreset === "gypsum"}
-              onCheckedChange={(v) => s.setCeilingPreset(v ? "gypsum" : "flat")}
-              disabled={!s.showCeiling}
-              data-testid="switch-v2-gypsum"
-            />
-            <Label className="text-xs">{t("جبس بورد", "Gypsum")}</Label>
-          </div>
-          <div className="flex items-center gap-2">
-            <Switch
-              checked={s.renderPreset === "photoreal"}
-              onCheckedChange={(v) => s.setRenderPreset(v ? "photoreal" : "procedural")}
-              data-testid="switch-v2-photoreal"
-            />
-            <Label className="text-xs">{t("واقعي", "Photoreal")}</Label>
-          </div>
-          <div className="flex items-center gap-2">
-            <Switch
-              checked={s.cameraMode === "top"}
-              onCheckedChange={(v) => s.setCameraMode(v ? "top" : "perspective")}
-              data-testid="switch-v2-camera"
-            />
-            <Label className="text-xs">{t("منظور علوي", "Top view")}</Label>
-          </div>
+        <div className="flex items-center gap-1.5">
+          <Button
+            size="sm"
+            variant={s.cameraMode === "perspective" ? "default" : "outline"}
+            className="gap-1.5"
+            onClick={() => s.setCameraMode("perspective")}
+            data-testid="button-v2-view-perspective"
+          >
+            <Eye className="w-3.5 h-3.5" />
+            {t("منظور", "Perspective")}
+          </Button>
+          <Button
+            size="sm"
+            variant={s.cameraMode === "top" ? "default" : "outline"}
+            className="gap-1.5"
+            onClick={() => s.setCameraMode("top")}
+            data-testid="button-v2-view-top"
+          >
+            <LayoutGrid className="w-3.5 h-3.5" />
+            {t("علوي", "Top view")}
+          </Button>
         </div>
       </div>
 
@@ -691,8 +504,7 @@ function KitchenToolV2RoomPreviewInner() {
         <Canvas
           shadows="soft"
           dpr={[1, 1.75]}
-          gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.15 }}
-          camera={{ position: [cx, 1.6, cz + 5], fov: 60 }}
+          gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.1 }}
         >
           <CameraRig room={room} mode={s.cameraMode} />
           <OrbitControls
@@ -702,16 +514,9 @@ function KitchenToolV2RoomPreviewInner() {
             minDistance={0.6}
             maxDistance={30}
           />
-          <color attach="background" args={["#e9e4dc"]} />
-          <fog attach="fog" args={["#e9e4dc", 18, 55]} />
-          <RoomScene
-            room={room}
-            wallMat={wallMat}
-            floorMat={floorMat}
-            showCeiling={s.showCeiling}
-            ceilingPreset={s.ceilingPreset}
-            renderPreset={s.renderPreset}
-          />
+          <color attach="background" args={["#e9e6e0"]} />
+          <fog attach="fog" args={["#e9e6e0", 18, 55]} />
+          <RoomScene room={room} floor={floor} mode={s.cameraMode} />
         </Canvas>
 
         {/* Dimensions readout */}
@@ -726,40 +531,25 @@ function KitchenToolV2RoomPreviewInner() {
         </div>
       </div>
 
-      {/* Material pickers */}
-      <div className="border-t px-4 py-3 grid grid-cols-1 sm:grid-cols-2 gap-4 shrink-0">
-        <div>
-          <p className="text-xs font-bold mb-2">{t("مادة الجدران (تجريبي)", "Wall material (test)")}</p>
-          <div className="flex flex-wrap gap-2">
-            {WALL_MATERIALS_V2.map((m) => (
-              <Button
-                key={m.id}
-                size="sm"
-                variant={s.wallMaterialId === m.id ? "default" : "outline"}
-                onClick={() => s.setWallMaterial(m.id)}
-                data-testid={`button-v2-wallmat-${m.id}`}
-              >
-                {t(m.nameAr, m.nameEn)}
-              </Button>
-            ))}
-          </div>
+      {/* Floor selector only — wall finish is locked to "Teak Warm White". */}
+      <div className="border-t px-4 py-3 flex flex-wrap items-center gap-3 shrink-0">
+        <p className="text-xs font-bold">{t("الأرضية:", "Floor:")}</p>
+        <div className="flex flex-wrap gap-2">
+          {PHOTO_FLOORS.map((f) => (
+            <Button
+              key={f.id}
+              size="sm"
+              variant={floor.id === f.id ? "default" : "outline"}
+              onClick={() => s.setFloorMaterial(f.id)}
+              data-testid={`button-v2-floormat-${f.id}`}
+            >
+              {t(f.nameAr, f.nameEn)}
+            </Button>
+          ))}
         </div>
-        <div>
-          <p className="text-xs font-bold mb-2">{t("مادة الأرضية (تجريبي)", "Floor material (test)")}</p>
-          <div className="flex flex-wrap gap-2">
-            {FLOOR_MATERIALS_V2.map((m) => (
-              <Button
-                key={m.id}
-                size="sm"
-                variant={s.floorMaterialId === m.id ? "default" : "outline"}
-                onClick={() => s.setFloorMaterial(m.id)}
-                data-testid={`button-v2-floormat-${m.id}`}
-              >
-                {t(m.nameAr, m.nameEn)}
-              </Button>
-            ))}
-          </div>
-        </div>
+        <p className="text-xs text-muted-foreground ms-auto">
+          {t("الجدران: أبيض تيك الدافئ (معتمد)", "Walls: Teak Warm White (approved)")}
+        </p>
       </div>
     </div>
   );
