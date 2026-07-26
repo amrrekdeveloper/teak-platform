@@ -62,7 +62,9 @@ export const WALL_OPTIONS: MaterialOption[] = [
     nameAr: "جص مطلي",
     nameEn: "Painted Plaster",
     thumb: `${ASSETS}/thumbs/wall-plaster.jpg`,
-    color: "#f5f2ec",
+    // Warm sand-beige matching the customer's reference render (walls ~#C7AC90
+    // under light) — was a pale cream that rendered washed-out.
+    color: "#eaddc7",
     maps: {
       map: `${ASSETS}/wall/textures/painted_plaster_wall_diff_2k.jpg`,
       normalMap: `${ASSETS}/wall/textures/painted_plaster_wall_nor_gl_2k.jpg`,
@@ -135,34 +137,18 @@ export interface EnvironmentOption {
   file: string;
 }
 
+// Single realistic studio — soft warm even light, closest to the customer's
+// AI-render reference. Old saved env ids fall back to this via findEnvironmentOption.
 export const ENVIRONMENT_OPTIONS: EnvironmentOption[] = [
   {
-    id: "provence_studio",
-    nameAr: "استوديو بروفانس",
-    nameEn: "Provence Studio",
-    file: `${ASSETS}/hdri/provence_studio_2k.hdr`,
-  },
-  {
-    id: "photo_studio_01",
-    nameAr: "استوديو تصوير 1",
-    nameEn: "Photo Studio 01",
-    file: `${ASSETS}/hdri/photo_studio_01_2k.hdr`,
-  },
-  {
     id: "brown_photostudio_02",
-    nameAr: "استوديو دافئ",
-    nameEn: "Warm Studio",
+    nameAr: "استوديو واقعي",
+    nameEn: "Realistic Studio",
     file: `${ASSETS}/hdri/brown_photostudio_02_2k.hdr`,
-  },
-  {
-    id: "studio_small_03",
-    nameAr: "استوديو تباين عالي",
-    nameEn: "High Contrast Studio",
-    file: `${ASSETS}/hdri/studio_small_03_2k.hdr`,
   },
 ];
 
-export const DEFAULT_ENVIRONMENT_ID = "provence_studio";
+export const DEFAULT_ENVIRONMENT_ID = "brown_photostudio_02";
 
 export function findEnvironmentOption(id: string | undefined | null): EnvironmentOption {
   return ENVIRONMENT_OPTIONS.find((o) => o.id === id) ?? ENVIRONMENT_OPTIONS[0];

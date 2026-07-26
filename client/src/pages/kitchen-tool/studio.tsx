@@ -322,6 +322,7 @@ function MaterialBar() {
       )}
       {tab === "ambiance" && (
       <div className="flex flex-wrap items-start gap-x-8 gap-y-3">
+      {ENVIRONMENT_OPTIONS.length > 1 && (
       <div className="flex items-center gap-3 flex-wrap">
         <span className="text-xs font-bold text-foreground whitespace-nowrap">
           {t("الإضاءة والأجواء:", "Lighting & Ambiance:")}
@@ -344,6 +345,7 @@ function MaterialBar() {
           ))}
         </div>
       </div>
+      )}
       <div className="flex items-center gap-2 flex-wrap">
         <button
           type="button"

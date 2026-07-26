@@ -1980,7 +1980,7 @@ function SceneContents({
       {windowSun && <WindowSunlight sun={windowSun} envId={envOption.id} />}
       <directionalLight
         position={[center.x + roomSpan * 0.9, ceilingM + 2.6, center.z + roomSpan * 1.2]}
-        intensity={windowSun ? 0.7 : 1.35}
+        intensity={windowSun ? 0.55 : 1.0}
         castShadow
         shadow-mapSize={[2048, 2048]}
         shadow-bias={-0.0004}
@@ -1991,7 +1991,8 @@ function SceneContents({
         shadow-camera-near={0.5}
         shadow-camera-far={30}
       />
-      <ambientLight intensity={0.12} />
+      {/* Warm even fill so opposite walls don't render washed-out/uneven */}
+      <ambientLight intensity={0.32} color="#ffe9d2" />
 
       <Suspense fallback={null}>
         <Floor
