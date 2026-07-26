@@ -14,4 +14,5 @@
 - [Decor glTF front axis](decor-gltf-front-axis.md) — find a model's facing by computing front-feature mesh world centers from the gltf JSON; set rotYOffset to bring that axis to +Z, don't guess 180°.
 - [SVG drag hit target](svg-drag-hit-target.md) — pointerdown+testid go on the painted rect (not the label-holding `<g>`, whose bbox center may be unpainted); drag moves via window listeners, not svg handlers.
 - [Kitchen Designer V2 isolation](kitchen-v2-isolation.md) — experimental V2 track: own routes/storage key/mm model, never touch V1 tool or its key; vitest via `npm test`.
+- [V2 path-tracer layer](v2-pathtracer-layer.md) — live vs baked render modes; tracer runs only on the live PBR scene; frame ownership + invalidation rules (incl. async env loads).
 - [HR workflow engine invariants](hr-workflow-engine.md) — hr_actions steps advance via conditional UPDATE (409 on race); chained actions deduped by unique (linked_action_id, workflow); final step revalidates required formData.

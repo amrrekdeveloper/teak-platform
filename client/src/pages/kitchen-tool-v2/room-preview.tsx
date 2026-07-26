@@ -15,15 +15,17 @@
  * Visual-only elements (skirting, ceiling, downlights, wall thickness)
  * never alter the canonical RoomV2 geometry used by the design engine.
  */
-import { useMemo, useEffect, Suspense } from "react";
+import { useMemo, useEffect, useState, useCallback, Suspense } from "react";
 import { Link } from "wouter";
 import * as THREE from "three";
 import { Canvas, useThree, useFrame } from "@react-three/fiber";
 import { OrbitControls, OrthographicCamera, PerspectiveCamera, Environment, useTexture } from "@react-three/drei";
+import { EffectComposer, Bloom, N8AO } from "@react-three/postprocessing";
 import { useLanguage } from "@/components/language-provider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ArrowRight, AlertTriangle, Eye, LayoutGrid } from "lucide-react";
+import { ArrowRight, AlertTriangle, Eye, LayoutGrid, Sparkles, Layers, Camera } from "lucide-react";
+import { PathTracerLayer, type PathTracerStatus } from "@/components/kitchen-tool-v2/path-tracer";
 import { useKitchenToolV2Store } from "@/components/kitchen-tool-v2/store";
 import { type RoomV2, type RoomWallV2, roomBounds } from "@/components/kitchen-tool-v2/room-model";
 import { V2Gate } from "@/components/kitchen-tool-v2/v2-gate";
@@ -243,15 +245,21 @@ function wallBodyTransform(wall: RoomWallV2, allWalls: RoomWallV2[]) {
 }
 
 /** Approved wall: clean matte "Teak Warm White" paint, no color texture. */
-function WallMesh({ wall, allWalls }: { wall: RoomWallV2; allWalls: RoomWallV2[] }) {
+function WallMesh({ wall, allWalls, live }: { wall: RoomWallV2; allWalls: RoomWallV2[]; live?: boolean }) {
   const tr = wallBodyTransform(wall, allWalls);
   return (
     <group position={tr.position} rotation={[0, tr.rotationY, 0]}>
       <mesh castShadow receiveShadow>
         <boxGeometry args={tr.size} />
         {/* envMapIntensity kept very low: the warm interior HDR was tinting
-            walls beige depending on orientation (the "beige right wall"). */}
-        <meshStandardMaterial color={WALL_PAINT.color} roughness={WALL_PAINT.roughness} metalness={0} envMapIntensity={0.15} />
+            walls beige depending on orientation (the "beige right wall").
+            In live mode the wall body IS the visible surface (no baked face)
+            so it uses the Stage-1 matte warm off-white spec. */}
+        {live ? (
+          <meshStandardMaterial color="#efe9de" roughness={0.95} metalness={0} envMapIntensity={0.35} />
+        ) : (
+          <meshStandardMaterial color={WALL_PAINT.color} roughness={WALL_PAINT.roughness} metalness={0} envMapIntensity={0.15} />
+        )}
       </mesh>
     </group>
   );
@@ -567,7 +575,7 @@ const DOWNLIGHT_DEPTH = 0.055; // real 55 mm gypsum recess depth
  * plane — trim ring flush with the gypsum, diffuser lens deep inside.
  * No protruding cylinder under the ceiling anymore.
  */
-function RecessedDownlight({ x, z, ceilingY }: { x: number; z: number; ceilingY: number }) {
+function RecessedDownlight({ x, z, ceilingY, live }: { x: number; z: number; ceilingY: number; live?: boolean }) {
   return (
     <group position={[x, ceilingY, z]}>
       {/* thin trim ring flush with the gypsum surface */}
@@ -583,7 +591,17 @@ function RecessedDownlight({ x, z, ceilingY }: { x: number; z: number; ceilingY:
       {/* glowing diffuser lens recessed at the top of the cavity */}
       <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, DOWNLIGHT_DEPTH * 0.8, 0]}>
         <circleGeometry args={[DOWNLIGHT_RADIUS * 0.92, 36]} />
-        <meshStandardMaterial color="#fdf9f0" emissive="#ffedcf" emissiveIntensity={2.2} roughness={0.5} side={THREE.DoubleSide} toneMapped />
+        {/* In live mode the lens is a REAL light source: high emissive
+            intensity so Bloom (threshold > 1) and the path tracer treat it
+            as an emitter, not just a bright pixel. */}
+        <meshStandardMaterial
+          color="#fdf9f0"
+          emissive="#ffe3b3"
+          emissiveIntensity={live ? 14 : 2.2}
+          roughness={0.5}
+          side={THREE.DoubleSide}
+          toneMapped
+        />
       </mesh>
       {/* opaque cap sealing the cavity from above — the fixture housing is
           never visible even if the camera somehow ends up above the ceiling */}
@@ -668,7 +686,7 @@ function useGlowTexture() {
  * keeps it uniformly clean-white like the reference; a soft baked glow
  * decal surrounds each fixture; edges get the shared vignette AO.
  */
-function Ceiling({ room, lights }: { room: RoomV2; lights: DownlightPoint[] }) {
+function Ceiling({ room, lights, live }: { room: RoomV2; lights: DownlightPoint[]; live?: boolean }) {
   const b = roomBounds(room);
   const w = (b.maxX - b.minX) * MM;
   const d = (b.maxZ - b.minZ) * MM;
@@ -695,24 +713,31 @@ function Ceiling({ room, lights }: { room: RoomV2; lights: DownlightPoint[] }) {
   }, [room, key]);
   return (
     <group>
-      <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, h, 0]}>
+      <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, h, 0]} receiveShadow={live}>
         <shapeGeometry args={[shape, 24]} />
-        <meshBasicMaterial color={CEILING_PAINT.color} side={THREE.DoubleSide} />
+        {live ? (
+          /* Live/path-traced mode: real matte gypsum reacting to light. */
+          <meshStandardMaterial color="#fbfaf8" roughness={0.97} metalness={0} side={THREE.DoubleSide} envMapIntensity={0.25} />
+        ) : (
+          <meshBasicMaterial color={CEILING_PAINT.color} side={THREE.DoubleSide} />
+        )}
       </mesh>
-      {/* warm glow halo baked around each fixture */}
-      {lights.map((p, i) => (
-        <mesh key={`glow-${i}`} rotation={[Math.PI / 2, 0, 0]} position={[p.x, h - 0.002, p.z]}>
-          <planeGeometry args={[0.55, 0.55]} />
-          <meshBasicMaterial map={glow} transparent depthWrite={false} />
+      {/* baked-mode-only decals: glow halos + edge vignette */}
+      {!live &&
+        lights.map((p, i) => (
+          <mesh key={`glow-${i}`} rotation={[Math.PI / 2, 0, 0]} position={[p.x, h - 0.002, p.z]}>
+            <planeGeometry args={[0.55, 0.55]} />
+            <meshBasicMaterial map={glow} transparent depthWrite={false} />
+          </mesh>
+        ))}
+      {!live && (
+        <mesh rotation={[Math.PI / 2, 0, 0]} position={[cx, h - 0.003, cz]}>
+          <planeGeometry args={[w, d]} />
+          <meshBasicMaterial map={aoTex} transparent depthWrite={false} />
         </mesh>
-      ))}
-      {/* soft edge shading so the ceiling doesn't read as a flat white card */}
-      <mesh rotation={[Math.PI / 2, 0, 0]} position={[cx, h - 0.003, cz]}>
-        <planeGeometry args={[w, d]} />
-        <meshBasicMaterial map={aoTex} transparent depthWrite={false} />
-      </mesh>
+      )}
       {lights.map((p, i) => (
-        <RecessedDownlight key={i} x={p.x} z={p.z} ceilingY={h} />
+        <RecessedDownlight key={i} x={p.x} z={p.z} ceilingY={h} live={live} />
       ))}
     </group>
   );
@@ -720,41 +745,84 @@ function Ceiling({ room, lights }: { room: RoomV2; lights: DownlightPoint[] }) {
 
 /* ---------------------------- scene -------------------------------- */
 
-function RoomScene({ room, floor, mode }: { room: RoomV2; floor: FloorDefV2E; mode: "perspective" | "top" }) {
+/**
+ * Live-mode real spotlights: one warm SpotLight per ceiling fixture aimed
+ * straight down (Stage-1 spec: angle ~0.65 rad, penumbra 0.5, decay 1.7,
+ * ~3200K). Only the first few cast shadows — PCF shadow maps are the
+ * expensive part, not the lights themselves.
+ */
+const SHADOW_CASTING_SPOTS = 3;
+
+function LiveSpot({ x, z, ceilingY, castShadow }: { x: number; z: number; ceilingY: number; castShadow: boolean }) {
+  const target = useMemo(() => {
+    const t = new THREE.Object3D();
+    t.position.set(x, 0, z);
+    return t;
+  }, [x, z]);
+  return (
+    <>
+      <spotLight
+        position={[x, ceilingY - 0.01, z]}
+        target={target}
+        angle={0.65}
+        penumbra={0.5}
+        decay={1.7}
+        color="#ffd9a0"
+        intensity={14}
+        distance={ceilingY + 3}
+        castShadow={castShadow}
+        shadow-mapSize-width={1024}
+        shadow-mapSize-height={1024}
+        shadow-bias={-0.0004}
+      />
+      <primitive object={target} />
+    </>
+  );
+}
+
+function RoomScene({ room, floor, mode, live }: { room: RoomV2; floor: FloorDefV2E; mode: "perspective" | "top"; live: boolean }) {
   const lights = useMemo(() => downlightLayout(room), [room]);
 
   return (
     <group>
       {/*
-       * BAKED-LIGHTING pipeline (reference-image match): walls and ceiling
-       * are unlit surfaces carrying pre-drawn light scallops / glows / AO.
-       * Real lights only serve the PBR floor, skirting and fixture trims —
-       * so every wall reads the same warm tone from any angle, like the
-       * approved AI render.
+       * Two pipelines, user-switchable:
+       * - BAKED (default, approved): walls/ceiling are unlit surfaces with
+       *   pre-drawn scallops/glow/AO — every wall reads the same warm tone.
+       * - LIVE (Stage 1): real warm spotlights + full PBR + AO/Bloom; the
+       *   path-tracing layer refines this scene when the camera is idle.
        */}
       <Suspense fallback={null}>
-        <Environment files="/textures/v2/lebombo_1k.hdr" background={false} environmentIntensity={0.5} />
+        <Environment files="/textures/v2/lebombo_1k.hdr" background={false} environmentIntensity={live ? 0.4 : 0.5} />
       </Suspense>
-      <hemisphereLight args={["#fffdf8", "#eae5db", 0.85]} />
+      {/* Live: low fill so the spots dominate; baked: bright even fill. */}
+      <hemisphereLight args={["#fffdf8", "#eae5db", live ? 0.4 : 0.85]} />
+      {live &&
+        mode !== "top" &&
+        lights.map((p, i) => (
+          <LiveSpot key={`spot-${i}`} x={p.x} z={p.z} ceilingY={room.ceilingHeightMm * MM} castShadow={i < SHADOW_CASTING_SPOTS} />
+        ))}
 
       <Suspense fallback={null}>
         <FloorMesh room={room} floor={floor} />
       </Suspense>
-      <FloorLightPools room={room} lights={lights} />
-      <FloorEdgeAO room={room} />
+      {!live && <FloorLightPools room={room} lights={lights} />}
+      {!live && <FloorEdgeAO room={room} />}
       {room.walls.map((w) => (
-        <WallMesh key={w.id} wall={w} allWalls={room.walls} />
+        <WallMesh key={w.id} wall={w} allWalls={room.walls} live={live} />
       ))}
-      <Suspense fallback={null}>
-        {room.walls.map((w) => (
-          <BakedWallFace key={`bw-${w.id}`} wall={w} lightsAlongMm={lights.filter((l) => l.wallId === w.id).map((l) => l.alongMm)} />
-        ))}
-      </Suspense>
+      {!live && (
+        <Suspense fallback={null}>
+          {room.walls.map((w) => (
+            <BakedWallFace key={`bw-${w.id}`} wall={w} lightsAlongMm={lights.filter((l) => l.wallId === w.id).map((l) => l.alongMm)} />
+          ))}
+        </Suspense>
+      )}
       {room.walls.map((w) => (
         <Skirting key={`sk-${w.id}`} wall={w} floor={floor} />
       ))}
       {/* Ceiling is part of the room; hidden only when technically necessary (top view). */}
-      {mode !== "top" && <Ceiling room={room} lights={lights} />}
+      {mode !== "top" && <Ceiling room={room} lights={lights} live={live} />}
     </group>
   );
 }
@@ -773,6 +841,22 @@ function KitchenToolV2RoomPreviewInner() {
   const { t, lang } = useLanguage();
   const s = useKitchenToolV2Store();
   const room = s.room;
+  const live = s.renderMode === "live";
+
+  // Path-tracer status bridge (updated from inside the Canvas).
+  const [pt, setPt] = useState<PathTracerStatus>({ tracing: false, samples: 0, finalizing: false, capable: false });
+  const [finalRequestId, setFinalRequestId] = useState(0);
+  const onPtStatus = useCallback((st: PathTracerStatus) => {
+    setPt((prev) =>
+      prev.tracing === st.tracing && prev.samples === st.samples && prev.finalizing === st.finalizing && prev.capable === st.capable ? prev : st
+    );
+  }, []);
+  const onFinalDone = useCallback(() => setPt((p) => ({ ...p, finalizing: false })), []);
+
+  const ptEnabled = live && s.cameraMode === "perspective";
+  // Composer owns the frame whenever we are in live mode and the path
+  // tracer is not currently accumulating.
+  const composerActive = live && !(pt.tracing && pt.capable && ptEnabled);
   // V2-001F: floor is locked to the single approved porcelain. The oak set
   // remains as a hidden internal option (findFloor) but is not exposed in UI.
   const floor = PHOTO_FLOORS[0];
@@ -824,6 +908,40 @@ function KitchenToolV2RoomPreviewInner() {
             <LayoutGrid className="w-3.5 h-3.5" />
             {t("علوي", "Top view")}
           </Button>
+          <span className="w-px h-5 bg-border mx-0.5" />
+          <Button
+            size="sm"
+            variant={!live ? "default" : "outline"}
+            className="gap-1.5"
+            onClick={() => s.setRenderMode("baked")}
+            data-testid="button-v2-render-baked"
+          >
+            <Layers className="w-3.5 h-3.5" />
+            {t("معتمد", "Baked")}
+          </Button>
+          <Button
+            size="sm"
+            variant={live ? "default" : "outline"}
+            className="gap-1.5"
+            onClick={() => s.setRenderMode("live")}
+            data-testid="button-v2-render-live"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            {t("واقعي", "Realistic")}
+          </Button>
+          {ptEnabled && pt.capable && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5"
+              disabled={pt.finalizing}
+              onClick={() => setFinalRequestId((n) => n + 1)}
+              data-testid="button-v2-final-render"
+            >
+              <Camera className="w-3.5 h-3.5" />
+              {pt.finalizing ? t("جارٍ التصيير…", "Rendering…") : t("عرض نهائي", "Final render")}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -851,9 +969,41 @@ function KitchenToolV2RoomPreviewInner() {
             maxDistance={s.cameraMode === "top" ? 30 : 12}
           />
           <color attach="background" args={["#e9e6e0"]} />
-          <fog attach="fog" args={["#e9e6e0", 18, 55]} />
-          <RoomScene room={room} floor={floor} mode={s.cameraMode} />
+          {/* Fog would be path-traced as participating media weirdness —
+              keep it for the baked pipeline only. */}
+          {!live && <fog attach="fog" args={["#e9e6e0", 18, 55]} />}
+          <RoomScene room={room} floor={floor} mode={s.cameraMode} live={live} />
+          {composerActive && (
+            <EffectComposer>
+              {/* Corners read darker than wall centers (Stage-1 spec). */}
+              <N8AO aoRadius={0.5} intensity={2.5} distanceFalloff={0.6} quality="medium" />
+              {/* HIGH threshold: only the emissive lenses bloom, never walls. */}
+              <Bloom luminanceThreshold={1.1} mipmapBlur intensity={0.5} />
+            </EffectComposer>
+          )}
+          {live && (
+            <PathTracerLayer
+              enabled={ptEnabled}
+              composerActive={composerActive}
+              onStatus={onPtStatus}
+              finalRequestId={finalRequestId}
+              onFinalDone={onFinalDone}
+            />
+          )}
         </Canvas>
+
+        {/* Subtle non-blocking quality indicator while accumulating */}
+        {live && pt.tracing && pt.capable && (
+          <div
+            className="absolute bottom-3 end-3 flex items-center gap-2 rounded-full bg-background/85 backdrop-blur border px-3 py-1.5 text-xs pointer-events-none"
+            data-testid="indicator-v2-pathtrace"
+          >
+            <span className={`w-2 h-2 rounded-full ${pt.finalizing ? "bg-amber-500" : "bg-emerald-500"} animate-pulse`} />
+            {pt.finalizing
+              ? t(`عرض نهائي… ${pt.samples}`, `Final render… ${pt.samples}`)
+              : t(`تحسين الجودة… ${pt.samples}`, `Refining… ${pt.samples}`)}
+          </div>
+        )}
 
         {/* Dimensions readout */}
         <div className="absolute top-3 start-3 rounded-md bg-background/85 backdrop-blur border p-3 text-xs space-y-1" data-testid="panel-v2-dimensions">

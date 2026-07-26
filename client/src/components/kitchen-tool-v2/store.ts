@@ -40,12 +40,20 @@ export interface KitchenToolV2State {
   wallMaterialId: string;
   floorMaterialId: string;
   cameraMode: "perspective" | "top";
+  /**
+   * Render pipeline for the room preview:
+   * - "baked": approved unlit baked-lighting look (default, always safe).
+   * - "live": real spotlights + PBR + AO/Bloom; on capable desktops a
+   *   progressive path tracer refines the frame when the camera is idle.
+   */
+  renderMode: "baked" | "live";
 
   setInputs: (patch: Partial<DraftInputsV2>) => void;
   setRoom: (room: RoomV2 | null) => void;
   setWallMaterial: (id: string) => void;
   setFloorMaterial: (id: string) => void;
   setCameraMode: (m: "perspective" | "top") => void;
+  setRenderMode: (m: "baked" | "live") => void;
   resetV2: () => void;
 }
 
@@ -76,6 +84,7 @@ function freshDraft() {
     wallMaterialId: "wall_matte_warm_white",
     floorMaterialId: "floor_beige_porcelain_600",
     cameraMode: "perspective" as const,
+    renderMode: "baked" as const,
   };
 }
 
@@ -94,6 +103,7 @@ export const useKitchenToolV2Store = create<KitchenToolV2State>()(
       setFloorMaterial: (id) =>
         set({ floorMaterialId: id, updatedAt: new Date().toISOString() }),
       setCameraMode: (m) => set({ cameraMode: m }),
+      setRenderMode: (m) => set({ renderMode: m }),
       resetV2: () => set({ ...freshDraft() }),
     }),
     {
