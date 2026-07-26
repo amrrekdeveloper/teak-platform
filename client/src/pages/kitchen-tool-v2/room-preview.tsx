@@ -323,112 +323,226 @@ function useEdgeVignetteTexture(edgeAlpha: number) {
   return tex;
 }
 
-/** Transparent AO overlays hugging the interior faces of the room shell. */
-function CornerAO({ room }: { room: RoomV2 }) {
-  const tex = useEdgeVignetteTexture(0.34);
+/** Transparent AO overlay for the floor edges (walls/ceiling carry their own baked shading). */
+function FloorEdgeAO({ room }: { room: RoomV2 }) {
+  const tex = useEdgeVignetteTexture(0.22);
   const b = roomBounds(room);
   const w = (b.maxX - b.minX) * MM;
   const d = (b.maxZ - b.minZ) * MM;
   const cx = ((b.minX + b.maxX) / 2) * MM;
   const cz = ((b.minZ + b.maxZ) / 2) * MM;
-  const h = room.ceilingHeightMm * MM;
-  const GAP = 0.003; // 3 mm inside the surface to avoid z-fighting
-  const mat = (
-    <meshBasicMaterial map={tex} transparent depthWrite={false} polygonOffset polygonOffsetFactor={-1} />
-  );
   return (
-    <group>
-      {/* walls */}
-      {room.walls.map((wl) => {
-        const mx = ((wl.start.xMm + wl.end.xMm) / 2 + wl.inwardNormal.xMm * GAP * 1000) * MM;
-        const mz = ((wl.start.zMm + wl.end.zMm) / 2 + wl.inwardNormal.zMm * GAP * 1000) * MM;
-        // Rotate plane's +Z normal to the wall's inward normal.
-        const yaw = Math.atan2(wl.inwardNormal.xMm, wl.inwardNormal.zMm);
-        return (
-          <mesh key={`ao-${wl.id}`} position={[mx, (wl.heightMm / 2) * MM, mz]} rotation={[0, yaw, 0]}>
-            <planeGeometry args={[wl.lengthMm * MM, wl.heightMm * MM]} />
-            {mat}
-          </mesh>
-        );
-      })}
-      {/* floor */}
-      <mesh position={[cx, GAP, cz]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[w, d]} />
-        {mat}
-      </mesh>
-      {/* ceiling */}
-      <mesh position={[cx, h - GAP, cz]} rotation={[Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[w, d]} />
-        {mat}
-      </mesh>
-    </group>
+    <mesh position={[cx, 0.002, cz]} rotation={[-Math.PI / 2, 0, 0]}>
+      <planeGeometry args={[w, d]} />
+      <meshBasicMaterial map={tex} transparent depthWrite={false} polygonOffset polygonOffsetFactor={-1} />
+    </mesh>
+  );
+}
+
+/* ---------------------- baked wall lightmaps ------------------------ */
+
+/**
+ * The core of the reference-image match. Real-time WebGL cannot reproduce
+ * the global-illumination softness of the approved AI render, so instead we
+ * BAKE the lighting into a per-wall canvas texture generated from the exact
+ * wall dimensions the customer enters:
+ *  - warm-white base with a gentle vertical gradient,
+ *  - ceiling-hugging light scallops directly above each downlight position,
+ *  - soft corner shading at both wall ends,
+ *  - subtle contact shadow at the ceiling line and near the skirting.
+ * The baked plane is UNLIT (meshBasicMaterial) so every wall reads as the
+ * same warm tone regardless of orientation — no gray-vs-white walls.
+ */
+const PX_PER_M = 150;
+
+function drawScallop(ctx: CanvasRenderingContext2D, xPx: number, hPx: number) {
+  // Ellipse of light attached to the ceiling line, fading downward.
+  const rx = 0.62 * PX_PER_M;
+  const ry = 1.05 * PX_PER_M;
+  ctx.save();
+  ctx.translate(xPx, 0);
+  ctx.scale(1, ry / rx);
+  const g = ctx.createRadialGradient(0, 0, 0, 0, 0, rx);
+  g.addColorStop(0, "rgba(255,252,244,0.85)");
+  g.addColorStop(0.45, "rgba(255,250,240,0.42)");
+  g.addColorStop(1, "rgba(255,250,240,0)");
+  ctx.fillStyle = g;
+  ctx.fillRect(-rx, 0, rx * 2, Math.min(hPx, ry * 1.15));
+  ctx.restore();
+}
+
+function useWallBakeTexture(lengthMm: number, heightMm: number, lightsAlongMm: number[]) {
+  const key = lightsAlongMm.join(",");
+  const tex = useMemo(() => {
+    const lenM = lengthMm * MM;
+    const hM = heightMm * MM;
+    const W = Math.min(2048, Math.max(256, Math.round(lenM * PX_PER_M)));
+    const H = Math.min(1024, Math.max(256, Math.round(hM * PX_PER_M)));
+    const sx = W / (lenM * PX_PER_M); // compensation if clamped
+    const canvas = document.createElement("canvas");
+    canvas.width = W;
+    canvas.height = H;
+    const ctx = canvas.getContext("2d")!;
+
+    // 1) Base: warm greige, slightly dimmer toward the floor (like the render).
+    const base = ctx.createLinearGradient(0, 0, 0, H);
+    base.addColorStop(0, "#efe9dd");
+    base.addColorStop(0.55, "#eae3d5");
+    base.addColorStop(1, "#e6dfd0");
+    ctx.fillStyle = base;
+    ctx.fillRect(0, 0, W, H);
+
+    // 2) Broad soft spill across the upper wall (light from the downlight row).
+    const spill = ctx.createLinearGradient(0, 0, 0, H * 0.55);
+    spill.addColorStop(0, "rgba(255,250,240,0.30)");
+    spill.addColorStop(1, "rgba(255,250,240,0)");
+    ctx.fillStyle = spill;
+    ctx.fillRect(0, 0, W, H * 0.55);
+
+    // 3) Ceiling-hugging scallops above each downlight of this wall.
+    // Independent X/Y compensation for canvas clamping so scallop shape
+    // stays physically correct on very short or very long walls.
+    const sy = H / (hM * PX_PER_M);
+    ctx.save();
+    ctx.scale(sx, sy);
+    for (const along of lightsAlongMm) drawScallop(ctx, along * MM * PX_PER_M, hM * PX_PER_M);
+    ctx.restore();
+
+    // 4) Corner shading at both wall ends (soft GI-style occlusion).
+    const cw = Math.min(W * 0.18, 0.6 * PX_PER_M * sx);
+    const left = ctx.createLinearGradient(0, 0, cw, 0);
+    left.addColorStop(0, "rgba(78,68,54,0.20)");
+    left.addColorStop(1, "rgba(78,68,54,0)");
+    ctx.fillStyle = left;
+    ctx.fillRect(0, 0, cw, H);
+    const right = ctx.createLinearGradient(W, 0, W - cw, 0);
+    right.addColorStop(0, "rgba(78,68,54,0.20)");
+    right.addColorStop(1, "rgba(78,68,54,0)");
+    ctx.fillStyle = right;
+    ctx.fillRect(W - cw, 0, cw, H);
+
+    // 5) Thin contact shadow at the ceiling junction + near the skirting.
+    const top = ctx.createLinearGradient(0, 0, 0, H * 0.03);
+    top.addColorStop(0, "rgba(70,62,50,0.16)");
+    top.addColorStop(1, "rgba(70,62,50,0)");
+    ctx.fillStyle = top;
+    ctx.fillRect(0, 0, W, H * 0.03);
+    const bottom = ctx.createLinearGradient(0, H, 0, H - H * 0.05);
+    bottom.addColorStop(0, "rgba(70,62,50,0.10)");
+    bottom.addColorStop(1, "rgba(70,62,50,0)");
+    ctx.fillStyle = bottom;
+    ctx.fillRect(0, H - H * 0.05, W, H * 0.05);
+
+    const t = new THREE.CanvasTexture(canvas);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.anisotropy = 8;
+    return t;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lengthMm, heightMm, key]);
+  useEffect(() => () => tex.dispose(), [tex]);
+  return tex;
+}
+
+/** Opaque baked interior face of one wall — this IS the visible wall surface. */
+function BakedWallFace({ wall, lightsAlongMm }: { wall: RoomWallV2; lightsAlongMm: number[] }) {
+  const tex = useWallBakeTexture(wall.lengthMm, wall.heightMm, lightsAlongMm);
+  const GAP_MM = 2; // sit 2 mm inside the box face to avoid z-fighting
+  const mx = ((wall.start.xMm + wall.end.xMm) / 2 + wall.inwardNormal.xMm * GAP_MM) * MM;
+  const mz = ((wall.start.zMm + wall.end.zMm) / 2 + wall.inwardNormal.zMm * GAP_MM) * MM;
+  const yaw = Math.atan2(wall.inwardNormal.xMm, wall.inwardNormal.zMm);
+  // planeGeometry U runs along local +X = (cos yaw, 0, -sin yaw). If that
+  // direction opposes the wall's start→end direction, flip the texture so
+  // scallop positions match the physical downlight positions.
+  const ux = Math.cos(yaw);
+  const uz = -Math.sin(yaw);
+  const wx = wall.end.xMm - wall.start.xMm;
+  const wz = wall.end.zMm - wall.start.zMm;
+  const flipped = ux * wx + uz * wz < 0;
+  useEffect(() => {
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.repeat.x = flipped ? -1 : 1;
+    tex.needsUpdate = true;
+  }, [tex, flipped]);
+  return (
+    <mesh position={[mx, (wall.heightMm / 2) * MM, mz]} rotation={[0, yaw, 0]}>
+      <planeGeometry args={[wall.lengthMm * MM, wall.heightMm * MM]} />
+      <meshBasicMaterial map={tex} toneMapped />
+    </mesh>
+  );
+}
+
+/* ---------------------- baked floor light pools --------------------- */
+
+/** Soft brighter pools on the floor under each downlight (baked, additive-free). */
+function FloorLightPools({ room, lights }: { room: RoomV2; lights: DownlightPoint[] }) {
+  const b = roomBounds(room);
+  const w = (b.maxX - b.minX) * MM;
+  const d = (b.maxZ - b.minZ) * MM;
+  const cx = ((b.minX + b.maxX) / 2) * MM;
+  const cz = ((b.minZ + b.maxZ) / 2) * MM;
+  const key = lights.map((l) => `${l.x.toFixed(2)},${l.z.toFixed(2)}`).join(";");
+  const tex = useMemo(() => {
+    const W = 512;
+    const H = Math.max(64, Math.round((512 * d) / Math.max(w, 0.01)));
+    const canvas = document.createElement("canvas");
+    canvas.width = W;
+    canvas.height = H;
+    const ctx = canvas.getContext("2d")!;
+    ctx.clearRect(0, 0, W, H);
+    for (const l of lights) {
+      const px = ((l.x - b.minX * MM) / w) * W;
+      const py = ((l.z - b.minZ * MM) / d) * H;
+      const r = (0.85 / w) * W;
+      const g = ctx.createRadialGradient(px, py, 0, px, py, r);
+      g.addColorStop(0, "rgba(255,249,235,0.20)");
+      g.addColorStop(0.6, "rgba(255,249,235,0.08)");
+      g.addColorStop(1, "rgba(255,249,235,0)");
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, H);
+    }
+    const t = new THREE.CanvasTexture(canvas);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, w, d]);
+  useEffect(() => () => tex.dispose(), [tex]);
+  return (
+    <mesh position={[cx, 0.0015, cz]} rotation={[-Math.PI / 2, 0, 0]}>
+      <planeGeometry args={[w, d]} />
+      <meshBasicMaterial map={tex} transparent depthWrite={false} />
+    </mesh>
   );
 }
 
 /* ---------------------- recessed downlights ------------------------ */
 
 const DOWNLIGHT_RADIUS = 0.045; // 90 mm diameter — physically plausible
-const DOWNLIGHT_DEPTH = 0.03; // shallow 30 mm recess
+const DOWNLIGHT_DEPTH = 0.055; // real 55 mm gypsum recess depth
 
 /**
- * Reusable architectural recessed downlight: circular trim rim, shallow dark
- * inner cavity, recessed diffuser lens, and (optionally) a soft neutral-warm
- * downward spotlight (~3500–4000K look).
+ * TRULY recessed downlight: the ceiling has a real circular cutout (see
+ * Ceiling below), and this fixture places the cavity ABOVE the ceiling
+ * plane — trim ring flush with the gypsum, diffuser lens deep inside.
+ * No protruding cylinder under the ceiling anymore.
  */
-function RecessedDownlight({
-  x,
-  z,
-  ceilingY,
-  withLight,
-  aimX = 0,
-  aimZ = 0,
-}: {
-  x: number;
-  z: number;
-  ceilingY: number;
-  withLight: boolean;
-  /** Local lateral aim offset (m) — tilts the beam toward the nearby wall so it leaves a soft wall-washing scallop. */
-  aimX?: number;
-  aimZ?: number;
-}) {
-  // Target is LOCAL to the fixture group (which already sits at [x, ceilingY, z]).
-  const target = useMemo(() => {
-    const o = new THREE.Object3D();
-    o.position.set(aimX, -ceilingY, aimZ);
-    return o;
-  }, [ceilingY, aimX, aimZ]);
+function RecessedDownlight({ x, z, ceilingY }: { x: number; z: number; ceilingY: number }) {
   return (
     <group position={[x, ceilingY, z]}>
-      {/* wide WHITE trim rim flush with the ceiling (reads as a real fixture) */}
-      <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, -0.0015, 0]}>
-        <ringGeometry args={[DOWNLIGHT_RADIUS * 0.82, DOWNLIGHT_RADIUS + 0.014, 32]} />
-        <meshStandardMaterial color="#fafaf8" roughness={0.35} metalness={0.05} side={THREE.DoubleSide} />
+      {/* thin trim ring flush with the gypsum surface */}
+      <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, -0.001, 0]}>
+        <ringGeometry args={[DOWNLIGHT_RADIUS * 0.86, DOWNLIGHT_RADIUS + 0.011, 40]} />
+        <meshStandardMaterial color="#f2f0ec" roughness={0.4} metalness={0.05} side={THREE.DoubleSide} />
       </mesh>
-      {/* shallow LIGHT-GRAY recessed cavity — no harsh dark hole */}
-      <mesh position={[0, -DOWNLIGHT_DEPTH / 2, 0]}>
-        <cylinderGeometry args={[DOWNLIGHT_RADIUS * 0.82, DOWNLIGHT_RADIUS * 0.82, DOWNLIGHT_DEPTH, 32, 1, true]} />
-        <meshStandardMaterial color="#b9b6b0" roughness={0.7} metalness={0} side={THREE.BackSide} />
+      {/* cavity wall INSIDE the ceiling thickness (visible through the cutout) */}
+      <mesh position={[0, DOWNLIGHT_DEPTH / 2, 0]}>
+        <cylinderGeometry args={[DOWNLIGHT_RADIUS, DOWNLIGHT_RADIUS, DOWNLIGHT_DEPTH, 40, 1, true]} />
+        <meshStandardMaterial color="#c9c5be" roughness={0.75} metalness={0} side={THREE.BackSide} />
       </mesh>
-      {/* diffuser lens just inside the opening — softly lit, no bloom */}
-      <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, -DOWNLIGHT_DEPTH * 0.45, 0]}>
-        <circleGeometry args={[DOWNLIGHT_RADIUS * 0.78, 28]} />
-        <meshStandardMaterial color="#fdf9f0" emissive="#f6ecd9" emissiveIntensity={1.5} roughness={0.5} side={THREE.DoubleSide} toneMapped />
+      {/* glowing diffuser lens recessed at the top of the cavity */}
+      <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, DOWNLIGHT_DEPTH * 0.8, 0]}>
+        <circleGeometry args={[DOWNLIGHT_RADIUS * 0.92, 36]} />
+        <meshStandardMaterial color="#fdf9f0" emissive="#ffedcf" emissiveIntensity={2.2} roughness={0.5} side={THREE.DoubleSide} toneMapped />
       </mesh>
-      {withLight && (
-        <>
-          <spotLight
-            position={[0, -DOWNLIGHT_DEPTH, 0]}
-            target={target}
-            angle={0.55}
-            penumbra={0.55}
-            intensity={7}
-            distance={ceilingY * 3}
-            decay={1.6}
-            color="#fff3e2"
-          />
-          <primitive object={target} />
-        </>
-      )}
     </group>
   );
 }
@@ -436,9 +550,9 @@ function RecessedDownlight({
 interface DownlightPoint {
   x: number;
   z: number;
-  /** Local aim offset toward the washed wall (m). */
-  aimX: number;
-  aimZ: number;
+  wallId: string;
+  /** Distance along the wall from its start, mm. */
+  alongMm: number;
 }
 
 /** Distance from wall interior face to the perimeter downlight row (mm). */
@@ -448,9 +562,8 @@ const DOWNLIGHT_SPACING_MM = 1500;
 
 /**
  * Reference-image layout: perimeter rows of downlights parallel to each
- * wall (~600 mm out), tilted slightly toward the wall so each fixture
- * leaves a soft wall-washing scallop — the key realism cue in the
- * approved reference render.
+ * wall (~600 mm out). Fixture positions drive BOTH the 3D fixtures and
+ * the baked wall scallops, so they always line up for any dimensions.
  */
 function downlightLayout(room: RoomV2): DownlightPoint[] {
   const pts: DownlightPoint[] = [];
@@ -468,8 +581,7 @@ function downlightLayout(room: RoomV2): DownlightPoint[] {
       const along = DOWNLIGHT_WALL_OFFSET_MM + (usable * (i + 0.5)) / n;
       const x = (wallDef.start.xMm + ux * along + inx * DOWNLIGHT_WALL_OFFSET_MM) * MM;
       const z = (wallDef.start.zMm + uz * along + inz * DOWNLIGHT_WALL_OFFSET_MM) * MM;
-      // Aim ~350 mm back toward the wall so the cone grazes it (scallop).
-      pts.push({ x, z, aimX: -inx * 0.35, aimZ: -inz * 0.35 });
+      pts.push({ x, z, wallId: wallDef.id, alongMm: along });
     }
   }
   // Deduplicate fixtures that ended up close together at corners.
@@ -477,28 +589,82 @@ function downlightLayout(room: RoomV2): DownlightPoint[] {
   for (const p of pts) {
     if (!dedup.some((q) => Math.hypot(q.x - p.x, q.z - p.z) < 0.7)) dedup.push(p);
   }
-  return dedup.slice(0, 12);
+  return dedup.slice(0, 16);
 }
 
-/** Always-on flat gypsum-board ceiling: clean white, matte, continuous. */
-function Ceiling({ room }: { room: RoomV2 }) {
+/** Shared soft radial glow decal texture (warm light halo on the gypsum). */
+function useGlowTexture() {
+  const tex = useMemo(() => {
+    const S = 128;
+    const canvas = document.createElement("canvas");
+    canvas.width = S;
+    canvas.height = S;
+    const ctx = canvas.getContext("2d")!;
+    const g = ctx.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
+    g.addColorStop(0, "rgba(255,241,214,0.55)");
+    g.addColorStop(0.4, "rgba(255,244,222,0.22)");
+    g.addColorStop(1, "rgba(255,244,222,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, S, S);
+    const t = new THREE.CanvasTexture(canvas);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  }, []);
+  useEffect(() => () => tex.dispose(), [tex]);
+  return tex;
+}
+
+/**
+ * Flat gypsum-board ceiling with REAL circular cutouts at each downlight
+ * (shapeGeometry holes) so fixtures are genuinely recessed. Unlit material
+ * keeps it uniformly clean-white like the reference; a soft baked glow
+ * decal surrounds each fixture; edges get the shared vignette AO.
+ */
+function Ceiling({ room, lights }: { room: RoomV2; lights: DownlightPoint[] }) {
   const b = roomBounds(room);
   const w = (b.maxX - b.minX) * MM;
   const d = (b.maxZ - b.minZ) * MM;
   const cx = ((b.minX + b.maxX) / 2) * MM;
   const cz = ((b.minZ + b.maxZ) / 2) * MM;
   const h = room.ceilingHeightMm * MM;
-  const lights = downlightLayout(room);
+  const glow = useGlowTexture();
+  const aoTex = useEdgeVignetteTexture(0.16);
+  const key = lights.map((l) => `${l.x.toFixed(2)},${l.z.toFixed(2)}`).join(";");
+  const shape = useMemo(() => {
+    const s = new THREE.Shape();
+    room.floor.polygon.forEach((p, i) => {
+      if (i === 0) s.moveTo(p.xMm * MM, p.zMm * MM);
+      else s.lineTo(p.xMm * MM, p.zMm * MM);
+    });
+    s.closePath();
+    for (const l of lights) {
+      const holePath = new THREE.Path();
+      holePath.absarc(l.x, l.z, DOWNLIGHT_RADIUS, 0, Math.PI * 2, true);
+      s.holes.push(holePath);
+    }
+    return s;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [room, key]);
   return (
     <group>
-      <mesh rotation={[Math.PI / 2, 0, 0]} position={[cx, h, cz]}>
+      <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, h, 0]}>
+        <shapeGeometry args={[shape, 24]} />
+        <meshBasicMaterial color={CEILING_PAINT.color} side={THREE.DoubleSide} />
+      </mesh>
+      {/* warm glow halo baked around each fixture */}
+      {lights.map((p, i) => (
+        <mesh key={`glow-${i}`} rotation={[Math.PI / 2, 0, 0]} position={[p.x, h - 0.002, p.z]}>
+          <planeGeometry args={[0.55, 0.55]} />
+          <meshBasicMaterial map={glow} transparent depthWrite={false} />
+        </mesh>
+      ))}
+      {/* soft edge shading so the ceiling doesn't read as a flat white card */}
+      <mesh rotation={[Math.PI / 2, 0, 0]} position={[cx, h - 0.003, cz]}>
         <planeGeometry args={[w, d]} />
-        <meshStandardMaterial color={CEILING_PAINT.color} roughness={CEILING_PAINT.roughness} metalness={0} side={THREE.DoubleSide} envMapIntensity={0.1} />
+        <meshBasicMaterial map={aoTex} transparent depthWrite={false} />
       </mesh>
       {lights.map((p, i) => (
-        // Real spotlights capped at 8 (no shadow-casting) for performance;
-        // any extra fixtures beyond that are trim-only.
-        <RecessedDownlight key={i} x={p.x} z={p.z} aimX={p.aimX} aimZ={p.aimZ} ceilingY={h} withLight={i < 8} />
+        <RecessedDownlight key={i} x={p.x} z={p.z} ceilingY={h} />
       ))}
     </group>
   );
@@ -507,54 +673,38 @@ function Ceiling({ room }: { room: RoomV2 }) {
 /* ---------------------------- scene -------------------------------- */
 
 function RoomScene({ room, floor, mode }: { room: RoomV2; floor: FloorDefV2E; mode: "perspective" | "top" }) {
-  const b = roomBounds(room);
-  const cx = ((b.minX + b.maxX) / 2) * MM;
-  const cz = ((b.minZ + b.maxZ) / 2) * MM;
-  const span = Math.max(b.maxX - b.minX, b.maxZ - b.minZ) * MM;
-  const h = room.ceilingHeightMm * MM;
+  const lights = useMemo(() => downlightLayout(room), [room]);
 
   return (
     <group>
       {/*
-       * Neutral-warm architectural lighting: IBL from a local interior HDR
-       * (reflections + diffuse fill, background hidden) + neutral hemisphere
-       * + one very soft near-neutral key. No stacked warm sources, no harsh
-       * directional shadow.
+       * BAKED-LIGHTING pipeline (reference-image match): walls and ceiling
+       * are unlit surfaces carrying pre-drawn light scallops / glows / AO.
+       * Real lights only serve the PBR floor, skirting and fixture trims —
+       * so every wall reads the same warm tone from any angle, like the
+       * approved AI render.
        */}
       <Suspense fallback={null}>
-        <Environment files="/textures/v2/lebombo_1k.hdr" background={false} environmentIntensity={0.45} />
+        <Environment files="/textures/v2/lebombo_1k.hdr" background={false} environmentIntensity={0.5} />
       </Suspense>
-      {/* Neutral hemisphere (no warm ground bounce → no beige cast on walls). */}
-      <hemisphereLight args={["#ffffff", "#e8e4dd", 0.38]} />
-      {/* Kept soft/low: the perimeter downlight scallops carry the scene. */}
-      <directionalLight
-        position={[cx + span * 0.9, h * 2.2, cz + span * 1.4]}
-        intensity={0.3}
-        color="#ffffff"
-        castShadow
-        shadow-mapSize-width={1024}
-        shadow-mapSize-height={1024}
-        shadow-bias={-0.0004}
-        shadow-radius={7}
-        shadow-camera-left={-span}
-        shadow-camera-right={span}
-        shadow-camera-top={span}
-        shadow-camera-bottom={-span}
-      />
+      <hemisphereLight args={["#fffdf8", "#eae5db", 0.85]} />
 
       <Suspense fallback={null}>
         <FloorMesh room={room} floor={floor} />
       </Suspense>
+      <FloorLightPools room={room} lights={lights} />
+      <FloorEdgeAO room={room} />
       {room.walls.map((w) => (
         <WallMesh key={w.id} wall={w} allWalls={room.walls} />
+      ))}
+      {room.walls.map((w) => (
+        <BakedWallFace key={`bw-${w.id}`} wall={w} lightsAlongMm={lights.filter((l) => l.wallId === w.id).map((l) => l.alongMm)} />
       ))}
       {room.walls.map((w) => (
         <Skirting key={`sk-${w.id}`} wall={w} floor={floor} />
       ))}
       {/* Ceiling is part of the room; hidden only when technically necessary (top view). */}
-      {mode !== "top" && <Ceiling room={room} />}
-      {/* Approximate corner ambient occlusion (visual only). */}
-      {mode !== "top" && <CornerAO room={room} />}
+      {mode !== "top" && <Ceiling room={room} lights={lights} />}
     </group>
   );
 }
