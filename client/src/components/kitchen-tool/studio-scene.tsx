@@ -396,16 +396,170 @@ interface WallFadeEntry {
 }
 type WallFadeMap = Record<string, WallFadeEntry>;
 
+/* ── Baked plaster walls (reference-render look) ──────────
+ * The customer's approved AI render has warm, uniform walls with soft light
+ * scallops under each downlight — real-time PBR walls read gray/cold and the
+ * old overlay planes produced a two-tone (white + yellow) mess. Like the
+ * approved V2 empty-room preview, we BAKE the lighting into an UNLIT canvas
+ * texture per wall piece: one warm tone everywhere, scallops inside the
+ * texture itself, GI-style corner shading, plaster grain. */
+const WALL_BAKE_PX_PER_M = 150;
+
+function useBakedWallTexture(
+  seg: WallSegment,
+  piece: WallPiece,
+  ceilingM: number,
+  scallops: number[],
+  lightsOn: boolean
+) {
+  const plaster = useTexture("/textures/v2/plaster_detail.webp");
+  const key = `${piece.u0.toFixed(3)},${piece.u1.toFixed(3)},${piece.h0.toFixed(3)},${piece.h1.toFixed(3)},${ceilingM},${scallops.map((s) => s.toFixed(2)).join("|")},${lightsOn}`;
+  const tex = useMemo(() => {
+    const wM = piece.u1 - piece.u0;
+    const hM = piece.h1 - piece.h0;
+    const W = Math.min(2048, Math.max(64, Math.round(wM * WALL_BAKE_PX_PER_M)));
+    const H = Math.min(1024, Math.max(64, Math.round(hM * WALL_BAKE_PX_PER_M)));
+    const canvas = document.createElement("canvas");
+    canvas.width = W;
+    canvas.height = H;
+    const ctx = canvas.getContext("2d")!;
+    // Segment-space mapping: xSeg (m from wall start) → px, ySeg (m below
+    // ceiling) → px. This piece covers u0..u1 × (ceilingM-h1)..(ceilingM-h0).
+    const pxPerMx = W / wM;
+    const pxPerMy = H / hM;
+    const toX = (uM: number) => (uM - piece.u0) * pxPerMx;
+    const toY = (yDownM: number) => (yDownM - (ceilingM - piece.h1)) * pxPerMy;
+
+    // 1) Warm base gradient (deliberately below white so tonemapping cannot
+    // clip it — scallops must stay clearly brighter than the base).
+    const base = ctx.createLinearGradient(0, toY(0), 0, toY(ceilingM));
+    base.addColorStop(0, "#e1d6c2");
+    base.addColorStop(0.55, "#d9cdb7");
+    base.addColorStop(1, "#d2c5ad");
+    ctx.fillStyle = base;
+    ctx.fillRect(0, 0, W, H);
+
+    // 1b) Real plaster grain (Poly Haven, CC0), subtle overlay.
+    const img = plaster.image as CanvasImageSource | undefined;
+    if (img) {
+      const pat = ctx.createPattern(img, "repeat");
+      if (pat) {
+        ctx.save();
+        ctx.globalAlpha = 0.16;
+        ctx.globalCompositeOperation = "overlay";
+        ctx.fillStyle = pat;
+        ctx.fillRect(0, 0, W, H);
+        ctx.restore();
+      }
+    }
+
+    if (lightsOn) {
+      // 2) Broad soft spill across the upper wall from the downlight row.
+      const spillEnd = toY(ceilingM * 0.55);
+      const spill = ctx.createLinearGradient(0, toY(0), 0, spillEnd);
+      spill.addColorStop(0, "rgba(255,246,228,0.26)");
+      spill.addColorStop(1, "rgba(255,246,228,0)");
+      ctx.fillStyle = spill;
+      ctx.fillRect(0, 0, W, Math.max(spillEnd, 0));
+
+      // 3) Ceiling-hugging warm scallops above each downlight of this wall.
+      for (const along of scallops) {
+        const cxPx = toX(along);
+        if (cxPx < -0.8 * pxPerMx || cxPx > W + 0.8 * pxPerMx) continue;
+        const rx = 0.62 * pxPerMx;
+        const ry = 1.05 * pxPerMy;
+        ctx.save();
+        ctx.translate(cxPx, toY(0));
+        ctx.scale(1, ry / rx);
+        const g = ctx.createRadialGradient(0, 0, 0, 0, 0, rx);
+        g.addColorStop(0, "rgba(255,243,219,0.85)");
+        g.addColorStop(0.45, "rgba(255,244,224,0.42)");
+        g.addColorStop(1, "rgba(255,244,224,0)");
+        ctx.fillStyle = g;
+        ctx.fillRect(-rx, 0, rx * 2, rx * 1.15);
+        ctx.restore();
+      }
+    }
+
+    // 4) GI-style corner shading at both SEGMENT ends (not piece ends).
+    const cwM = 0.6;
+    const leftEnd = toX(cwM);
+    if (leftEnd > 0) {
+      const gL = ctx.createLinearGradient(toX(0), 0, leftEnd, 0);
+      gL.addColorStop(0, "rgba(78,68,54,0.20)");
+      gL.addColorStop(1, "rgba(78,68,54,0)");
+      ctx.fillStyle = gL;
+      ctx.fillRect(Math.max(toX(0), 0), 0, Math.min(leftEnd, W), H);
+    }
+    const segLen = seg.length * CM;
+    const rightStart = toX(segLen - cwM);
+    if (rightStart < W) {
+      const gR = ctx.createLinearGradient(toX(segLen), 0, rightStart, 0);
+      gR.addColorStop(0, "rgba(78,68,54,0.20)");
+      gR.addColorStop(1, "rgba(78,68,54,0)");
+      ctx.fillStyle = gR;
+      ctx.fillRect(Math.max(rightStart, 0), 0, W - Math.max(rightStart, 0), H);
+    }
+
+    // 5) Thin contact shadow at the ceiling line + near the skirting.
+    const topEnd = toY(0.09);
+    if (topEnd > 0) {
+      const gT = ctx.createLinearGradient(0, toY(0), 0, topEnd);
+      gT.addColorStop(0, "rgba(70,62,50,0.16)");
+      gT.addColorStop(1, "rgba(70,62,50,0)");
+      ctx.fillStyle = gT;
+      ctx.fillRect(0, Math.max(toY(0), 0), W, Math.min(topEnd, H));
+    }
+    const botStart = toY(ceilingM - 0.15);
+    if (botStart < H) {
+      const gB = ctx.createLinearGradient(0, toY(ceilingM), 0, botStart);
+      gB.addColorStop(0, "rgba(70,62,50,0.10)");
+      gB.addColorStop(1, "rgba(70,62,50,0)");
+      ctx.fillStyle = gB;
+      ctx.fillRect(0, Math.max(botStart, 0), W, H - Math.max(botStart, 0));
+    }
+
+    const t = new THREE.CanvasTexture(canvas);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.anisotropy = 8;
+    return t;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, plaster]);
+  useEffect(() => () => tex.dispose(), [tex]);
+  return tex;
+}
+
+function BakedWallMaterial({
+  seg,
+  piece,
+  ceilingM,
+  scallops,
+}: {
+  seg: WallSegment;
+  piece: WallPiece;
+  ceilingM: number;
+  scallops: number[];
+}) {
+  const lightsOn = useKitchenToolStore((s) => s.lightsOn ?? false);
+  const tex = useBakedWallTexture(seg, piece, ceilingM, scallops, lightsOn);
+  // Unlit: every wall reads the same warm tone regardless of orientation.
+  return <meshBasicMaterial map={tex} toneMapped />;
+}
+
 function WallPieceMesh({
   seg,
   piece,
   option,
   fadeMap,
+  ceilingM,
+  scallops,
 }: {
   seg: WallSegment;
   piece: WallPiece;
   option: MaterialOption;
   fadeMap: React.MutableRefObject<WallFadeMap>;
+  ceilingM: number;
+  scallops: number[];
 }) {
   const meshRef = useRef<THREE.Mesh>(null);
   const { origin, dir, out, theta } = useMemo(() => segVectors(seg), [seg]);
@@ -443,7 +597,11 @@ function WallPieceMesh({
   return (
     <mesh ref={meshRef} position={position} rotation={[0, theta, 0]} castShadow receiveShadow>
       <boxGeometry args={[w, h, WALL_T]} />
-      <SurfaceMaterial key={option.id} opt={option} repeatX={w / (option.tileSizeM ?? 1)} repeatY={h / (option.tileSizeM ?? 1)} />
+      {option.maps ? (
+        <SurfaceMaterial key={option.id} opt={option} repeatX={w / (option.tileSizeM ?? 1)} repeatY={h / (option.tileSizeM ?? 1)} />
+      ) : (
+        <BakedWallMaterial seg={seg} piece={piece} ceilingM={ceilingM} scallops={scallops} />
+      )}
     </mesh>
   );
 }
@@ -460,6 +618,16 @@ function Walls({
   option: MaterialOption;
 }) {
   const fadeMap = useRef<WallFadeMap>({});
+
+  // Downlight positions along each wall drive the baked wall scallops so
+  // they always line up with the physical ceiling fixtures.
+  const scallopsBySeg = useMemo(() => {
+    const map: Record<string, number[]> = {};
+    for (const l of downlightLayout(segments)) {
+      (map[l.segId] ??= []).push(l.along);
+    }
+    return map;
+  }, [segments]);
 
   // Per-segment fade: if the camera sits on the outward side of a wall
   // (it would occlude the interior), fade that whole segment down.
@@ -510,6 +678,8 @@ function Walls({
             piece={p}
             option={option}
             fadeMap={fadeMap}
+            ceilingM={ceilingM}
+            scallops={scallopsBySeg[seg.id] ?? []}
           />
         ));
       })}
@@ -571,8 +741,8 @@ function Baseboard({
           <mesh key={i} position={p} rotation={[0, theta, 0]} receiveShadow>
             <boxGeometry args={[len, BASEBOARD_H, BASEBOARD_T]} />
             {/* Skirting in the same beige family as the reference floor —
-                the old near-black strip looked alien next to the tiles. */}
-            <meshStandardMaterial color="#a89a86" roughness={0.5} />
+                unlit so it matches the baked walls' warm tone. */}
+            <meshBasicMaterial color="#b3a58f" />
           </mesh>
         );
       })}
@@ -681,10 +851,9 @@ function Ceiling({
         <extrudeGeometry
           args={[shape, { depth: CEILING_SLAB_T, bevelEnabled: false, curveSegments: 24 }]}
         />
-        <meshStandardMaterial
-          color={plaster.color ?? "#f9f8f5"}
-          roughness={plaster.roughness ?? 0.92}
-        />
+        {/* Unlit warm white — matches the baked walls so the ceiling never
+            reads gray/blue under the live studio lighting. */}
+        <meshBasicMaterial color="#f4efe6" />
       </mesh>
       {showSoffit &&
         segments.map((seg) => (
@@ -915,77 +1084,51 @@ function getGlowTexture(): THREE.Texture {
   return glowTexCache;
 }
 
-/** Ceiling-hugging light scallop texture (ellipse fading downward),
- *  drawn once and reused by every wall overlay. */
-let scallopTexCache: THREE.Texture | null = null;
-function getScallopTexture(): THREE.Texture {
-  if (scallopTexCache) return scallopTexCache;
-  const W = 256;
-  const H = 384;
-  const canvas = document.createElement("canvas");
-  canvas.width = W;
-  canvas.height = H;
-  const ctx = canvas.getContext("2d")!;
-  ctx.save();
-  ctx.translate(W / 2, 0);
-  ctx.scale(1, H / (W / 2));
-  const g = ctx.createRadialGradient(0, 0, 0, 0, 0, W / 2);
-  g.addColorStop(0, "rgba(255,250,240,0.75)");
-  g.addColorStop(0.45, "rgba(255,248,236,0.34)");
-  g.addColorStop(1, "rgba(255,248,236,0)");
-  ctx.fillStyle = g;
-  ctx.fillRect(-W / 2, 0, W, W / 2);
-  ctx.restore();
-  scallopTexCache = new THREE.CanvasTexture(canvas);
-  scallopTexCache.colorSpace = THREE.SRGBColorSpace;
-  return scallopTexCache;
-}
-
-/** Baked light scallops on the wall directly below each downlight —
- *  the soft arcs of light seen in the reference render. */
-function WallScallops({
-  segments,
+/** Soft baked warm light pools on the floor under each downlight —
+ *  replaces the harsh real spotlights (which produced strong two-tone
+ *  yellow blobs and heavy reflections). */
+function FloorLightPools({
+  bounds,
   lights,
-  ceilingM,
 }: {
-  segments: WallSegment[];
+  bounds: { minX: number; minY: number; maxX: number; maxY: number };
   lights: DownlightPoint[];
-  ceilingM: number;
 }) {
-  const tex = getScallopTexture();
-  const planes = useMemo(() => {
-    const out: { key: string; pos: THREE.Vector3; theta: number }[] = [];
+  const w = Math.max((bounds.maxX - bounds.minX) * CM, 0.1);
+  const d = Math.max((bounds.maxY - bounds.minY) * CM, 0.1);
+  const cx = ((bounds.minX + bounds.maxX) / 2) * CM;
+  const cz = ((bounds.minY + bounds.maxY) / 2) * CM;
+  const key = lights.map((l) => `${l.x.toFixed(2)},${l.z.toFixed(2)}`).join(";");
+  const tex = useMemo(() => {
+    const W = 512;
+    const H = Math.max(64, Math.round((512 * d) / w));
+    const canvas = document.createElement("canvas");
+    canvas.width = W;
+    canvas.height = H;
+    const ctx = canvas.getContext("2d")!;
+    ctx.clearRect(0, 0, W, H);
     for (const l of lights) {
-      const seg = segments.find((s) => s.id === l.segId);
-      if (!seg) continue;
-      const { origin, dir, theta } = segVectors(seg);
-      const inward = inwardOf(seg);
-      const p = origin
-        .clone()
-        .addScaledVector(dir, l.along)
-        .addScaledVector(inward, 0.004); // just off the wall face
-      p.y = ceilingM - 0.55; // scallop center: ellipse hugs the ceiling line
-      out.push({ key: `${l.segId}-${l.along.toFixed(2)}`, pos: p, theta });
+      const px = ((l.x - bounds.minX * CM) / w) * W;
+      const py = ((l.z - bounds.minY * CM) / d) * H;
+      const r = (0.85 / w) * W;
+      const g = ctx.createRadialGradient(px, py, 0, px, py, r);
+      g.addColorStop(0, "rgba(255,243,219,0.18)");
+      g.addColorStop(0.6, "rgba(255,243,219,0.07)");
+      g.addColorStop(1, "rgba(255,243,219,0)");
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, H);
     }
-    return out;
-  }, [segments, lights, ceilingM]);
-
+    const t = new THREE.CanvasTexture(canvas);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, w, d]);
+  useEffect(() => () => tex.dispose(), [tex]);
   return (
-    <>
-      {planes.map((pl) => (
-        <mesh key={pl.key} position={pl.pos} rotation={[0, pl.theta, 0]}>
-          <planeGeometry args={[1.3, 1.1]} />
-          <meshBasicMaterial
-            map={tex}
-            transparent
-            depthWrite={false}
-            side={THREE.DoubleSide}
-            polygonOffset
-            polygonOffsetFactor={-1}
-          />
-        </mesh>
-      ))}
-    </>
+    <mesh position={[cx, 0.002, cz]} rotation={[-Math.PI / 2, 0, 0]}>
+      <planeGeometry args={[w, d]} />
+      <meshBasicMaterial map={tex} transparent depthWrite={false} />
+    </mesh>
   );
 }
 
@@ -1001,18 +1144,13 @@ function Downlights({
   ceilingM: number;
   segments: WallSegment[];
 }) {
-  const { lightsOn, lightColor } = useLighting();
+  // Single warm tone everywhere — the customer explicitly rejected any
+  // white/cool light mixing with the warm scallops. Real spotlights were
+  // removed: ALL light effects are now baked (walls, ceiling halos, floor
+  // pools) so they share the exact same color temperature.
+  const lightsOn = useKitchenToolStore((s) => s.lightsOn ?? false);
   const lights = useMemo(() => downlightLayout(segments), [segments]);
   const glow = getGlowTexture();
-
-  // Spread the limited real spotlights evenly across the fixtures.
-  const realSpotIdx = useMemo(() => {
-    const n = Math.min(4, lights.length);
-    const idx = new Set<number>();
-    for (let i = 0; i < n; i++)
-      idx.add(Math.round((lights.length - 1) * (n === 1 ? 0.5 : i / (n - 1))));
-    return idx;
-  }, [lights]);
 
   return (
     <>
@@ -1023,61 +1161,21 @@ function Downlights({
             z={l.z}
             ceilingM={ceilingM}
             lit={lightsOn}
-            lightColor={lightColor}
+            lightColor={WARM_LIGHT}
           />
           {lightsOn && (
-            <>
-              {/* warm halo on the gypsum around the fixture */}
-              <mesh
-                rotation={[Math.PI / 2, 0, 0]}
-                position={[l.x, ceilingM - 0.002, l.z]}
-              >
-                <planeGeometry args={[0.55, 0.55]} />
-                <meshBasicMaterial map={glow} transparent depthWrite={false} side={THREE.DoubleSide} />
-              </mesh>
-              {realSpotIdx.has(i) && (
-                <SpotDown x={l.x} z={l.z} ceilingM={ceilingM} color={lightColor} />
-              )}
-            </>
+            /* warm halo on the gypsum around the fixture */
+            <mesh
+              rotation={[Math.PI / 2, 0, 0]}
+              position={[l.x, ceilingM - 0.002, l.z]}
+            >
+              <planeGeometry args={[0.55, 0.55]} />
+              <meshBasicMaterial map={glow} transparent depthWrite={false} side={THREE.DoubleSide} />
+            </mesh>
           )}
         </group>
       ))}
-      {lightsOn && (
-        <WallScallops segments={segments} lights={lights} ceilingM={ceilingM} />
-      )}
-    </>
-  );
-}
-
-function SpotDown({
-  x,
-  z,
-  ceilingM,
-  color,
-}: {
-  x: number;
-  z: number;
-  ceilingM: number;
-  color: string;
-}) {
-  const target = useMemo(() => {
-    const t = new THREE.Object3D();
-    t.position.set(x, 0, z);
-    return t;
-  }, [x, z]);
-  return (
-    <>
-      <spotLight
-        position={[x, ceilingM - 0.02, z]}
-        target={target}
-        angle={0.6}
-        penumbra={0.6}
-        color={color}
-        intensity={10}
-        distance={ceilingM + 2}
-        decay={1.4}
-      />
-      <primitive object={target} />
+      {lightsOn && <FloorLightPools bounds={bounds} lights={lights} />}
     </>
   );
 }

@@ -48,11 +48,11 @@ export const FLOOR_OPTIONS: MaterialOption[] = [
     nameEn: "Real Tile",
     thumb: `${ASSETS}/thumbs/floor-real-tile.jpg`,
     tileSizeM: 1.6,
-    // Semi-polished porcelain sheen: a touch more environment reflection and
-    // slightly lower roughness so studio light glints at low viewing angles
-    // without looking plastic.
-    envMapIntensity: 1.25,
-    roughnessMult: 0.9,
+    // Matte porcelain like the reference render: reflections were far too
+    // strong at 1.25 (customer: "الانعكاس قوي جدا وغبي") — keep only a faint
+    // sheen at grazing angles.
+    envMapIntensity: 0.45,
+    roughnessMult: 1.0,
     maps: {
       map: `${ASSETS}/floor-real-tile/textures/porcelain_beige_diff_2k.jpg`,
       normalMap: `${ASSETS}/floor-real-tile/textures/porcelain_beige_nor_gl_2k.jpg`,
