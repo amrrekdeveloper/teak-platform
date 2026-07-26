@@ -1,13 +1,16 @@
 /**
- * Kitchen Designer V2 — Empty 3D room preview.
+ * Kitchen Designer V2 — Architectural empty-room shell preview.
  * Route: /kitchen-designer-v2/room-preview
  * Renders ONLY from RoomV2 (never from V1 answers/state).
+ *
+ * Visual-only elements (skirting, ceiling presets, cove/downlights) never
+ * alter the canonical RoomV2 geometry used by the design engine.
  */
 import { useMemo, useEffect } from "react";
 import { Link } from "wouter";
 import * as THREE from "three";
-import { Canvas } from "@react-three/fiber";
-import { OrbitControls, Text, OrthographicCamera, PerspectiveCamera } from "@react-three/drei";
+import { Canvas, useThree } from "@react-three/fiber";
+import { OrbitControls, OrthographicCamera, PerspectiveCamera, Text } from "@react-three/drei";
 import { useLanguage } from "@/components/language-provider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -26,39 +29,141 @@ import {
 import { V2Gate } from "@/components/kitchen-tool-v2/v2-gate";
 
 const MM = 0.001; // mm → meters
-const WALL_THICKNESS_MM = 100;
+const WALL_THICKNESS_MM = 150;
+const SKIRTING_HEIGHT_MM = 100;
+const SKIRTING_DEPTH_MM = 15;
+const GYPSUM_BORDER_MM = 450;
+const GYPSUM_DROP_MM = 140;
+const FLOOR_NORMAL_SCALE = new THREE.Vector2(0.6, 0.6);
 
-function useSurfaceTexture(def: MaterialDefV2 | undefined, wMm: number, hMm: number) {
-  const texture = useMemo(() => {
-    if (!def?.makeTexture) return null;
-    const tex = def.makeTexture();
+/* ------------------------- textures ------------------------------- */
+
+function useFloorMaps(def: MaterialDefV2 | undefined, wMm: number, hMm: number) {
+  const maps = useMemo(() => {
+    if (!def) return null;
     const rep = repeatForSurface(def, wMm, hMm);
-    if (rep) tex.repeat.set(rep.x, rep.y);
-    return tex;
+    const apply = (tex: THREE.Texture | null) => {
+      if (tex && rep) tex.repeat.set(rep.x, rep.y);
+      return tex;
+    };
+    return {
+      map: apply(def.makeTexture ? def.makeTexture() : null),
+      normalMap: apply(def.makeNormalTexture ? def.makeNormalTexture() : null),
+      aoMap: apply(def.makeAoTexture ? def.makeAoTexture() : null),
+    };
   }, [def?.id, wMm, hMm]);
-  useEffect(() => () => { texture?.dispose(); }, [texture]);
-  return texture;
+  useEffect(
+    () => () => {
+      maps?.map?.dispose();
+      maps?.normalMap?.dispose();
+      maps?.aoMap?.dispose();
+    },
+    [maps]
+  );
+  return maps;
 }
 
-function WallMesh({ wall, materialDef }: { wall: RoomWallV2; materialDef: MaterialDefV2 | undefined }) {
-  const cx = (wall.start.xMm + wall.end.xMm) / 2;
-  const cz = (wall.start.zMm + wall.end.zMm) / 2;
+/* ------------------------- camera framing -------------------------- */
+
+/**
+ * Auto-frames the room whenever the room geometry or camera mode changes.
+ * Perspective mode: human-height interior view. Top mode: TRUE orthographic
+ * plan view sized to the room bounding box (no perspective distortion).
+ */
+function CameraRig({ room, mode }: { room: RoomV2; mode: "perspective" | "top" }) {
+  const { camera, controls, size } = useThree() as any;
+  const b = roomBounds(room);
+  const cx = ((b.minX + b.maxX) / 2) * MM;
+  const cz = ((b.minZ + b.maxZ) / 2) * MM;
+  const spanX = (b.maxX - b.minX) * MM;
+  const spanZ = (b.maxZ - b.minZ) * MM;
+  const span = Math.max(spanX, spanZ);
+  const h = room.ceilingHeightMm * MM;
+
+  // Orthographic zoom so the room bounding box fills ~82% of the viewport.
+  const orthoZoom = Math.max(
+    10,
+    Math.min(size.width / Math.max(spanX, 0.5), size.height / Math.max(spanZ, 0.5)) * 0.82
+  );
+
+  useEffect(() => {
+    if (mode === "top") {
+      camera.position.set(cx, h + Math.max(span, 2.5), cz);
+      camera.up.set(0, 0, -1);
+      camera.lookAt(cx, 0, cz);
+      if (controls) controls.target.set(cx, 0, cz);
+    } else {
+      // Human-height interior perspective: stand inside/near the open side
+      // (positive Z is away from wall A), look toward wall A.
+      const eyeY = 1.6;
+      const dist = Math.max(spanZ * 1.05, span * 0.75) + 1.2;
+      camera.position.set(cx, eyeY, b.maxZ * MM + (dist - spanZ) * 0.55);
+      camera.up.set(0, 1, 0);
+      if (controls) controls.target.set(cx, h * 0.45, cz * 0.6);
+    }
+    camera.updateProjectionMatrix();
+    controls?.update();
+  }, [room, mode, camera, controls]);
+
+  return mode === "top" ? (
+    <OrthographicCamera makeDefault position={[cx, h + Math.max(span, 2.5), cz]} zoom={orthoZoom} near={0.05} far={200} />
+  ) : (
+    <PerspectiveCamera makeDefault fov={60} near={0.05} far={200} />
+  );
+}
+
+/* --------------------------- meshes -------------------------------- */
+
+function samePoint(a: { xMm: number; zMm: number }, b: { xMm: number; zMm: number }) {
+  return Math.abs(a.xMm - b.xMm) < 0.5 && Math.abs(a.zMm - b.zMm) < 0.5;
+}
+
+function WallMesh({ wall, allWalls, materialDef }: { wall: RoomWallV2; allWalls: RoomWallV2[]; materialDef: MaterialDefV2 | undefined }) {
+  // Extend the wall body by one thickness ONLY at ends that meet another wall,
+  // so 90° corners close cleanly without free ends jutting out.
+  const others = allWalls.filter((w) => w.id !== wall.id);
+  const startConnected = others.some((w) => samePoint(w.start, wall.start) || samePoint(w.end, wall.start));
+  const endConnected = others.some((w) => samePoint(w.start, wall.end) || samePoint(w.end, wall.end));
+  const extStart = startConnected ? WALL_THICKNESS_MM : 0;
+  const extEnd = endConnected ? WALL_THICKNESS_MM : 0;
+
   const angle = Math.atan2(wall.end.zMm - wall.start.zMm, wall.end.xMm - wall.start.xMm);
-  // Offset wall body half a thickness OUTWARD (opposite inward normal)
+  const ux = Math.cos(angle);
+  const uz = Math.sin(angle);
+  const cx = (wall.start.xMm + wall.end.xMm) / 2 + (ux * (extEnd - extStart)) / 2;
+  const cz = (wall.start.zMm + wall.end.zMm) / 2 + (uz * (extEnd - extStart)) / 2;
+  // Wall body sits OUTSIDE the canonical line: interior face == canonical dimension.
   const ox = -wall.inwardNormal.xMm * (WALL_THICKNESS_MM / 2);
   const oz = -wall.inwardNormal.zMm * (WALL_THICKNESS_MM / 2);
   return (
-    <group
-      position={[(cx + ox) * MM, (wall.heightMm / 2) * MM, (cz + oz) * MM]}
-      rotation={[0, -angle, 0]}
-    >
-      <mesh>
-        <boxGeometry args={[wall.lengthMm * MM, wall.heightMm * MM, WALL_THICKNESS_MM * MM]} />
+    <group position={[(cx + ox) * MM, (wall.heightMm / 2) * MM, (cz + oz) * MM]} rotation={[0, -angle, 0]}>
+      <mesh castShadow receiveShadow>
+        <boxGeometry args={[(wall.lengthMm + extStart + extEnd) * MM, wall.heightMm * MM, WALL_THICKNESS_MM * MM]} />
         <meshStandardMaterial
           color={materialDef?.baseColor ?? "#eeeeee"}
-          roughness={materialDef?.roughness ?? 0.9}
+          roughness={materialDef?.roughness ?? 0.92}
           metalness={materialDef?.metalness ?? 0}
         />
+      </mesh>
+    </group>
+  );
+}
+
+/** Visual-only skirting board along the interior wall-floor intersection. */
+function Skirting({ wall }: { wall: RoomWallV2 }) {
+  const cx = (wall.start.xMm + wall.end.xMm) / 2;
+  const cz = (wall.start.zMm + wall.end.zMm) / 2;
+  const angle = Math.atan2(wall.end.zMm - wall.start.zMm, wall.end.xMm - wall.start.xMm);
+  const ox = wall.inwardNormal.xMm * (SKIRTING_DEPTH_MM / 2);
+  const oz = wall.inwardNormal.zMm * (SKIRTING_DEPTH_MM / 2);
+  return (
+    <group
+      position={[(cx + ox) * MM, (SKIRTING_HEIGHT_MM / 2) * MM, (cz + oz) * MM]}
+      rotation={[0, -angle, 0]}
+    >
+      <mesh castShadow receiveShadow>
+        <boxGeometry args={[wall.lengthMm * MM, SKIRTING_HEIGHT_MM * MM, SKIRTING_DEPTH_MM * MM]} />
+        <meshStandardMaterial color="#f7f5f0" roughness={0.6} metalness={0} />
       </mesh>
     </group>
   );
@@ -68,7 +173,7 @@ function FloorMesh({ room, materialDef }: { room: RoomV2; materialDef: MaterialD
   const b = roomBounds(room);
   const w = b.maxX - b.minX;
   const d = b.maxZ - b.minZ;
-  const texture = useSurfaceTexture(materialDef, w, d);
+  const maps = useFloorMaps(materialDef, w, d);
   const shape = useMemo(() => {
     const s = new THREE.Shape();
     room.floor.polygon.forEach((p, i) => {
@@ -79,74 +184,206 @@ function FloorMesh({ room, materialDef }: { room: RoomV2; materialDef: MaterialD
     return s;
   }, [room]);
   return (
-    <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, 0, 0]} scale={[1, 1, 1]}>
+    <mesh rotation={[Math.PI / 2, 0, 0]} receiveShadow>
       <shapeGeometry args={[shape]} />
       <meshStandardMaterial
         side={THREE.DoubleSide}
         color={materialDef?.baseColor ?? "#ddd"}
         roughness={materialDef?.roughness ?? 0.5}
         metalness={0}
-        map={texture ?? undefined}
+        map={maps?.map ?? undefined}
+        normalMap={maps?.normalMap ?? undefined}
+        normalScale={FLOOR_NORMAL_SCALE}
+        aoMap={maps?.aoMap ?? undefined}
+        aoMapIntensity={0.7}
       />
     </mesh>
   );
 }
 
-function CeilingMesh({ room }: { room: RoomV2 }) {
+/** Flat ceiling slab (visual only). */
+function FlatCeiling({ room }: { room: RoomV2 }) {
   const b = roomBounds(room);
   const w = (b.maxX - b.minX) * MM;
   const d = (b.maxZ - b.minZ) * MM;
   return (
     <mesh
       rotation={[Math.PI / 2, 0, 0]}
-      position={[(b.minX + b.maxX) / 2 * MM, room.ceilingHeightMm * MM, (b.minZ + b.maxZ) / 2 * MM]}
+      position={[((b.minX + b.maxX) / 2) * MM, room.ceilingHeightMm * MM, ((b.minZ + b.maxZ) / 2) * MM]}
     >
       <planeGeometry args={[w, d]} />
-      <meshStandardMaterial color="#f5f2ec" roughness={0.95} side={THREE.DoubleSide} />
+      <meshStandardMaterial color="#f6f3ee" roughness={0.95} side={THREE.DoubleSide} />
     </mesh>
+  );
+}
+
+/**
+ * Experimental gypsum-board ceiling preset: recessed perimeter border with a
+ * warm cove-light glow and a few recessed downlights. Visual only.
+ */
+function GypsumCeiling({ room, lightsOn }: { room: RoomV2; lightsOn: boolean }) {
+  const b = roomBounds(room);
+  const minX = b.minX * MM, maxX = b.maxX * MM, minZ = b.minZ * MM, maxZ = b.maxZ * MM;
+  const w = maxX - minX;
+  const d = maxZ - minZ;
+  const cx = (minX + maxX) / 2;
+  const cz = (minZ + maxZ) / 2;
+  const hTop = room.ceilingHeightMm * MM; // recessed (higher) center
+  const hDrop = hTop - GYPSUM_DROP_MM * MM; // dropped perimeter
+  // Clamp the border so small rooms never produce non-positive center panels.
+  const border = Math.min(GYPSUM_BORDER_MM * MM, w / 4, d / 4);
+
+  // Downlight positions on the dropped border (max 6 for performance).
+  const downlights = useMemo(() => {
+    const pts: [number, number][] = [];
+    const inset = border / 2;
+    const n = Math.min(3, Math.max(2, Math.round(w / 1.6)));
+    for (let i = 0; i < n; i++) {
+      const x = minX + inset + ((w - inset * 2) * (i + 0.5)) / n;
+      pts.push([x, minZ + inset]);
+      pts.push([x, maxZ - inset]);
+    }
+    return pts.slice(0, 6);
+  }, [minX, minZ, maxZ, w, border]);
+
+  const gyp = <meshStandardMaterial color="#f6f3ee" roughness={0.95} side={THREE.DoubleSide} />;
+
+  return (
+    <group>
+      {/* recessed center panel */}
+      <mesh rotation={[Math.PI / 2, 0, 0]} position={[cx, hTop, cz]}>
+        <planeGeometry args={[w - border * 2, d - border * 2]} />
+        {gyp}
+      </mesh>
+      {/* dropped perimeter border (4 slabs) */}
+      {[
+        { pos: [cx, hDrop, minZ + border / 2] as const, size: [w, border] as const },
+        { pos: [cx, hDrop, maxZ - border / 2] as const, size: [w, border] as const },
+        { pos: [minX + border / 2, hDrop, cz] as const, size: [border, d - border * 2] as const },
+        { pos: [maxX - border / 2, hDrop, cz] as const, size: [border, d - border * 2] as const },
+      ].map((s, i) => (
+        <mesh key={i} rotation={[Math.PI / 2, 0, 0]} position={[s.pos[0], s.pos[1], s.pos[2]]}>
+          <planeGeometry args={[s.size[0], s.size[1]]} />
+          {gyp}
+        </mesh>
+      ))}
+      {/* inner vertical fascia of the drop, glowing warm (cove light strip) */}
+      {[
+        { pos: [cx, (hTop + hDrop) / 2, minZ + border] as const, rot: 0, len: w - border * 2 },
+        { pos: [cx, (hTop + hDrop) / 2, maxZ - border] as const, rot: Math.PI, len: w - border * 2 },
+        { pos: [minX + border, (hTop + hDrop) / 2, cz] as const, rot: Math.PI / 2, len: d - border * 2 },
+        { pos: [maxX - border, (hTop + hDrop) / 2, cz] as const, rot: -Math.PI / 2, len: d - border * 2 },
+      ].map((s, i) => (
+        <mesh key={`cove-${i}`} position={[s.pos[0], s.pos[1], s.pos[2]]} rotation={[0, s.rot, 0]}>
+          <planeGeometry args={[s.len, GYPSUM_DROP_MM * MM]} />
+          <meshStandardMaterial
+            color="#fff5e0"
+            emissive={lightsOn ? "#ffd9a0" : "#3a3021"}
+            emissiveIntensity={lightsOn ? 1.6 : 0.1}
+            roughness={0.9}
+            side={THREE.DoubleSide}
+          />
+        </mesh>
+      ))}
+      {/* warm indirect cove fill light */}
+      {lightsOn && <pointLight position={[cx, hDrop - 0.05, cz]} intensity={0.5} color="#ffd9a8" distance={Math.max(w, d) * 1.6} />}
+      {/* recessed downlights */}
+      {downlights.map(([x, z], i) => (
+        <group key={`dl-${i}`}>
+          <mesh rotation={[Math.PI / 2, 0, 0]} position={[x, hDrop - 0.004, z]}>
+            <circleGeometry args={[0.045, 20]} />
+            <meshStandardMaterial
+              color="#fffbe8"
+              emissive={lightsOn ? "#fff0c8" : "#333"}
+              emissiveIntensity={lightsOn ? 2.2 : 0.2}
+              side={THREE.DoubleSide}
+            />
+          </mesh>
+          {lightsOn && i < 4 && (
+            <pointLight
+              position={[x, hDrop - 0.15, z]}
+              intensity={1.4}
+              color="#ffe2b0"
+              distance={room.ceilingHeightMm * MM * 1.7}
+              decay={1.7}
+            />
+          )}
+        </group>
+      ))}
+    </group>
   );
 }
 
 function WallLabel({ wall }: { wall: RoomWallV2 }) {
   const cx = (wall.start.xMm + wall.end.xMm) / 2;
   const cz = (wall.start.zMm + wall.end.zMm) / 2;
-  const inX = wall.inwardNormal.xMm;
-  const inZ = wall.inwardNormal.zMm;
   const label = `${wall.id} — ${(wall.lengthMm / 10).toFixed(0)} cm`;
   return (
     <Text
-      position={[(cx + inX * 250) * MM, (wall.heightMm + 200) * MM, (cz + inZ * 250) * MM]}
-      fontSize={0.22}
-      color="#8a6d3b"
+      position={[(cx + wall.inwardNormal.xMm * 120) * MM, wall.heightMm * MM * 0.62, (cz + wall.inwardNormal.zMm * 120) * MM]}
+      fontSize={0.16}
+      color="#7a6a52"
       anchorX="center"
       anchorY="middle"
-      outlineWidth={0.008}
+      outlineWidth={0.006}
       outlineColor="#ffffff"
+      rotation={[0, Math.atan2(wall.inwardNormal.xMm, wall.inwardNormal.zMm), 0]}
     >
       {label}
     </Text>
   );
 }
 
-function RoomScene({ room, wallMat, floorMat, showCeiling }: {
+function RoomScene({
+  room, wallMat, floorMat, showCeiling, ceilingPreset,
+}: {
   room: RoomV2;
   wallMat: MaterialDefV2 | undefined;
   floorMat: MaterialDefV2 | undefined;
   showCeiling: boolean;
+  ceilingPreset: "flat" | "gypsum";
 }) {
+  const b = roomBounds(room);
+  const cx = ((b.minX + b.maxX) / 2) * MM;
+  const cz = ((b.minZ + b.maxZ) / 2) * MM;
+  const span = Math.max(b.maxX - b.minX, b.maxZ - b.minZ) * MM;
+  const h = room.ceilingHeightMm * MM;
+  const gypsumOn = showCeiling && ceilingPreset === "gypsum";
+
   return (
     <group>
-      <ambientLight intensity={0.55} />
-      <directionalLight position={[4, 6, 3]} intensity={0.9} />
-      <directionalLight position={[-4, 5, -2]} intensity={0.35} />
+      {/* balanced interior lighting: ambient + hemisphere base */}
+      <ambientLight intensity={0.35} />
+      <hemisphereLight args={["#fdf6ea", "#b8ab98", 0.5]} />
+      {/* soft key light with shadows (window-like, from the open side) */}
+      <directionalLight
+        position={[cx + span * 0.6, h * 1.6, cz + span * 1.2]}
+        intensity={1.25}
+        color="#fff4e2"
+        castShadow
+        shadow-mapSize-width={1024}
+        shadow-mapSize-height={1024}
+        shadow-bias={-0.0004}
+        shadow-camera-left={-span}
+        shadow-camera-right={span}
+        shadow-camera-top={span}
+        shadow-camera-bottom={-span}
+      />
+      {/* subtle cool fill from the opposite side */}
+      <directionalLight position={[cx - span, h * 1.2, cz - span * 0.6]} intensity={0.3} color="#dfe8f2" />
+
       <FloorMesh room={room} materialDef={floorMat} />
       {room.walls.map((w) => (
-        <WallMesh key={w.id} wall={w} materialDef={wallMat} />
+        <WallMesh key={w.id} wall={w} allWalls={room.walls} materialDef={wallMat} />
+      ))}
+      {room.walls.map((w) => (
+        <Skirting key={`sk-${w.id}`} wall={w} />
       ))}
       {room.walls.map((w) => (
         <WallLabel key={`label-${w.id}`} wall={w} />
       ))}
-      {showCeiling && <CeilingMesh room={room} />}
+      {showCeiling && ceilingPreset === "flat" && <FlatCeiling room={room} />}
+      {gypsumOn && <GypsumCeiling room={room} lightsOn />}
     </group>
   );
 }
@@ -179,13 +416,12 @@ function KitchenToolV2RoomPreviewInner() {
   }
 
   const b = roomBounds(room);
-  const centerX = ((b.minX + b.maxX) / 2) * MM;
-  const centerZ = ((b.minZ + b.maxZ) / 2) * MM;
-  const span = Math.max(b.maxX - b.minX, b.maxZ - b.minZ) * MM;
+  const cx = ((b.minX + b.maxX) / 2) * MM;
+  const cz = ((b.minZ + b.maxZ) / 2) * MM;
 
   return (
-    <div className="min-h-screen bg-background flex flex-col" dir={lang === "ar" ? "rtl" : "ltr"}>
-      <div className="border-b px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+    <div className="h-screen bg-background flex flex-col" dir={lang === "ar" ? "rtl" : "ltr"}>
+      <div className="border-b px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 shrink-0">
         <div className="flex items-center gap-3">
           <Link href="/kitchen-designer-v2/space">
             <Button variant="ghost" size="sm" className="gap-1" data-testid="button-v2-back">
@@ -193,7 +429,7 @@ function KitchenToolV2RoomPreviewInner() {
               {t("رجوع", "Back")}
             </Button>
           </Link>
-          <h1 className="font-bold" data-testid="text-v2-preview-title">
+          <h1 className="font-bold text-sm sm:text-base" data-testid="text-v2-preview-title">
             {t("معاينة الغرفة الفارغة", "Empty Room Preview")}
           </h1>
           <Badge variant="outline">{t("تجريبي", "Experimental")}</Badge>
@@ -202,6 +438,15 @@ function KitchenToolV2RoomPreviewInner() {
           <div className="flex items-center gap-2">
             <Switch checked={s.showCeiling} onCheckedChange={s.setShowCeiling} data-testid="switch-v2-ceiling" />
             <Label className="text-xs">{t("السقف", "Ceiling")}</Label>
+          </div>
+          <div className="flex items-center gap-2">
+            <Switch
+              checked={s.ceilingPreset === "gypsum"}
+              onCheckedChange={(v) => s.setCeilingPreset(v ? "gypsum" : "flat")}
+              disabled={!s.showCeiling}
+              data-testid="switch-v2-gypsum"
+            />
+            <Label className="text-xs">{t("جبس بورد", "Gypsum")}</Label>
           </div>
           <div className="flex items-center gap-2">
             <Switch
@@ -215,35 +460,36 @@ function KitchenToolV2RoomPreviewInner() {
       </div>
 
       {room.measurementConfidence === "approximate" && (
-        <div className="flex items-center gap-2 bg-amber-500/10 border-b border-amber-400/40 px-4 py-2 text-sm text-amber-700 dark:text-amber-400" data-testid="warning-v2-preview-approximate">
-          <AlertTriangle className="w-4 h-4 shrink-0" />
+        <div className="flex items-center gap-2 bg-amber-500/10 border-b border-amber-400/40 px-4 py-1.5 text-xs text-amber-700 dark:text-amber-400 shrink-0" data-testid="warning-v2-preview-approximate">
+          <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
           {t("قياسات تقريبية — غير معتمدة للتصنيع.", "Approximate measurements — not approved for manufacturing.")}
         </div>
       )}
 
-      <div className="flex-1 relative min-h-[420px]">
-        <Canvas shadows={false} dpr={[1, 2]}>
-          {s.cameraMode === "top" ? (
-            <OrthographicCamera
-              makeDefault
-              position={[centerX, Math.max(6, span * 1.5), centerZ]}
-              zoom={Math.max(40, 420 / Math.max(span, 1))}
-              near={0.1}
-              far={100}
-            />
-          ) : (
-            <PerspectiveCamera
-              makeDefault
-              position={[centerX + span * 0.9, room.ceilingHeightMm * MM * 1.3, centerZ + span * 1.15]}
-              fov={50}
-            />
-          )}
+      <div className="flex-1 relative min-h-0">
+        <Canvas
+          shadows="soft"
+          dpr={[1, 1.75]}
+          gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.15 }}
+          camera={{ position: [cx, 1.6, cz + 5], fov: 60 }}
+        >
+          <CameraRig room={room} mode={s.cameraMode} />
           <OrbitControls
-            target={[centerX, room.ceilingHeightMm * MM * 0.35, centerZ]}
+            makeDefault
             enableRotate={s.cameraMode !== "top"}
+            maxPolarAngle={Math.PI * 0.52}
+            minDistance={0.6}
+            maxDistance={30}
           />
-          <color attach="background" args={["#f2efe9"]} />
-          <RoomScene room={room} wallMat={wallMat} floorMat={floorMat} showCeiling={s.showCeiling} />
+          <color attach="background" args={["#e9e4dc"]} />
+          <fog attach="fog" args={["#e9e4dc", 18, 55]} />
+          <RoomScene
+            room={room}
+            wallMat={wallMat}
+            floorMat={floorMat}
+            showCeiling={s.showCeiling}
+            ceilingPreset={s.ceilingPreset}
+          />
         </Canvas>
 
         {/* Dimensions readout */}
@@ -259,7 +505,7 @@ function KitchenToolV2RoomPreviewInner() {
       </div>
 
       {/* Material pickers */}
-      <div className="border-t px-4 py-3 grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="border-t px-4 py-3 grid grid-cols-1 sm:grid-cols-2 gap-4 shrink-0">
         <div>
           <p className="text-xs font-bold mb-2">{t("مادة الجدران (تجريبي)", "Wall material (test)")}</p>
           <div className="flex flex-wrap gap-2">

@@ -40,6 +40,7 @@ export interface KitchenToolV2State {
   wallMaterialId: string;
   floorMaterialId: string;
   showCeiling: boolean;
+  ceilingPreset: "flat" | "gypsum";
   cameraMode: "perspective" | "top";
 
   setInputs: (patch: Partial<DraftInputsV2>) => void;
@@ -47,6 +48,7 @@ export interface KitchenToolV2State {
   setWallMaterial: (id: string) => void;
   setFloorMaterial: (id: string) => void;
   setShowCeiling: (v: boolean) => void;
+  setCeilingPreset: (p: "flat" | "gypsum") => void;
   setCameraMode: (m: "perspective" | "top") => void;
   resetV2: () => void;
 }
@@ -77,7 +79,8 @@ function freshDraft() {
     room: null as RoomV2 | null,
     wallMaterialId: "wall_matte_warm_white",
     floorMaterialId: "floor_beige_porcelain_600",
-    showCeiling: false,
+    showCeiling: true,
+    ceilingPreset: "flat" as const,
     cameraMode: "perspective" as const,
   };
 }
@@ -97,6 +100,7 @@ export const useKitchenToolV2Store = create<KitchenToolV2State>()(
       setFloorMaterial: (id) =>
         set({ floorMaterialId: id, updatedAt: new Date().toISOString() }),
       setShowCeiling: (v) => set({ showCeiling: v }),
+      setCeilingPreset: (p) => set({ ceilingPreset: p }),
       setCameraMode: (m) => set({ cameraMode: m }),
       resetV2: () => set({ ...freshDraft() }),
     }),

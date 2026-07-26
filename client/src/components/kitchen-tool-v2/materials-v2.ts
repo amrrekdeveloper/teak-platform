@@ -10,12 +10,14 @@
 import * as THREE from "three";
 
 export type SurfaceKindV2 = "wall" | "floor";
+export type FinishTypeV2 = "matte_paint" | "porcelain" | "wood";
 
 export interface MaterialDefV2 {
   id: string;
   kind: SurfaceKindV2;
   nameAr: string;
   nameEn: string;
+  finish: FinishTypeV2;
   /** Physical size of one texture unit (tile/plank) in mm, or null for plain paint. */
   physical: { widthMm: number; heightMm: number } | null;
   baseColor: string;
@@ -28,8 +30,12 @@ export interface MaterialDefV2 {
     roughness?: string;
     ao?: string;
   };
-  /** Procedural placeholder texture generator (used until real maps exist). */
+  /** Procedural placeholder base-color texture generator. */
   makeTexture?: () => THREE.Texture;
+  /** Procedural placeholder normal-map generator (subtle surface relief). */
+  makeNormalTexture?: () => THREE.Texture;
+  /** Procedural placeholder AO-map generator (grout/seam darkening). */
+  makeAoTexture?: () => THREE.Texture;
 }
 
 /* -------------------- procedural texture helpers -------------------- */
@@ -91,6 +97,73 @@ function lightOakPlankTexture(): THREE.Texture {
   });
 }
 
+function makeDataTexture(
+  size: number,
+  draw: (ctx: CanvasRenderingContext2D, s: number) => void
+): THREE.Texture {
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext("2d")!;
+  draw(ctx, size);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.anisotropy = 8;
+  // Normal/AO maps are linear data, not sRGB.
+  tex.colorSpace = THREE.NoColorSpace;
+  return tex;
+}
+
+/** Normal map: flat surface with a soft grout groove at the tile borders. */
+function tileGroutNormal(): THREE.Texture {
+  return makeDataTexture(256, (ctx, s) => {
+    ctx.fillStyle = "#8080ff"; // flat normal
+    ctx.fillRect(0, 0, s, s);
+    const g = 5;
+    // groove edges: tilt normals inward around the border
+    ctx.fillStyle = "#6a74f0";
+    ctx.fillRect(0, 0, s, g);
+    ctx.fillRect(0, 0, g, s);
+    ctx.fillStyle = "#968cf0";
+    ctx.fillRect(0, s - g, s, g);
+    ctx.fillRect(s - g, 0, g, s);
+  });
+}
+
+/** Normal map: gentle along-grain waviness + seam grooves for planks. */
+function plankSeamNormal(): THREE.Texture {
+  return makeDataTexture(256, (ctx, s) => {
+    ctx.fillStyle = "#8080ff";
+    ctx.fillRect(0, 0, s, s);
+    for (let i = 0; i < 26; i++) {
+      const y = Math.random() * s;
+      ctx.strokeStyle = `rgba(${110 + Math.random() * 30},${120 + Math.random() * 20},255,0.25)`;
+      ctx.lineWidth = 1 + Math.random() * 2;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(s, y + (Math.random() - 0.5) * 6);
+      ctx.stroke();
+    }
+    const g = 4;
+    ctx.fillStyle = "#6a74f0";
+    ctx.fillRect(0, 0, s, g);
+    ctx.fillRect(0, 0, g, s);
+    ctx.fillStyle = "#968cf0";
+    ctx.fillRect(0, s - g, s, g);
+    ctx.fillRect(s - g, 0, g, s);
+  });
+}
+
+/** AO map: slight darkening at tile/plank borders. */
+function borderAo(): THREE.Texture {
+  return makeDataTexture(256, (ctx, s) => {
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, s, s);
+    ctx.strokeStyle = "rgba(0,0,0,0.35)";
+    ctx.lineWidth = 6;
+    ctx.strokeRect(0, 0, s, s);
+  });
+}
+
 /* --------------------------- registry ------------------------------ */
 
 export const WALL_MATERIALS_V2: MaterialDefV2[] = [
@@ -99,6 +172,7 @@ export const WALL_MATERIALS_V2: MaterialDefV2[] = [
     kind: "wall",
     nameAr: "دهان أبيض دافئ مطفي",
     nameEn: "Matte Warm White Paint",
+    finish: "matte_paint",
     physical: null,
     baseColor: "#f3ede2",
     roughness: 0.92,
@@ -109,6 +183,7 @@ export const WALL_MATERIALS_V2: MaterialDefV2[] = [
     kind: "wall",
     nameAr: "دهان رمادي فاتح",
     nameEn: "Light Gray Paint",
+    finish: "matte_paint",
     physical: null,
     baseColor: "#cfd2d4",
     roughness: 0.9,
@@ -122,22 +197,28 @@ export const FLOOR_MATERIALS_V2: MaterialDefV2[] = [
     kind: "floor",
     nameAr: "بورسلان بيج 60×60 سم",
     nameEn: "Beige Porcelain Tile 600×600 mm",
+    finish: "porcelain",
     physical: { widthMm: 600, heightMm: 600 },
     baseColor: "#ffffff",
     roughness: 0.35,
     metalness: 0,
     makeTexture: beigePorcelainTexture,
+    makeNormalTexture: tileGroutNormal,
+    makeAoTexture: borderAo,
   },
   {
     id: "floor_light_oak_plank",
     kind: "floor",
     nameAr: "باركيه بلوط فاتح 18×120 سم",
     nameEn: "Light Oak Plank 180×1200 mm",
+    finish: "wood",
     physical: { widthMm: 1200, heightMm: 180 },
     baseColor: "#ffffff",
     roughness: 0.55,
     metalness: 0,
     makeTexture: lightOakPlankTexture,
+    makeNormalTexture: plankSeamNormal,
+    makeAoTexture: borderAo,
   },
 ];
 
