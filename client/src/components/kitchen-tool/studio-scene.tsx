@@ -570,7 +570,9 @@ function Baseboard({
         return (
           <mesh key={i} position={p} rotation={[0, theta, 0]} receiveShadow>
             <boxGeometry args={[len, BASEBOARD_H, BASEBOARD_T]} />
-            <meshStandardMaterial color="#3a3a3c" roughness={0.6} />
+            {/* Skirting in the same beige family as the reference floor —
+                the old near-black strip looked alien next to the tiles. */}
+            <meshStandardMaterial color="#a89a86" roughness={0.5} />
           </mesh>
         );
       })}
@@ -618,6 +620,9 @@ function Floor({
  *  cove/cornice was removed; COVE_DROP stays exported (now 0) because cabinet
  *  mount-height limits in studio.tsx reference it. */
 export const COVE_DROP = 0;
+/** Gypsum slab thickness — deep enough to fully enclose the recessed
+ *  downlight cavities (0.055 m) so nothing protrudes above the ceiling. */
+const CEILING_SLAB_T = 0.08;
 
 /* Artificial lighting colors */
 const WARM_LIGHT = "#ffcc80";
@@ -664,12 +669,21 @@ function Ceiling({
 
   return (
     <>
-      <mesh position={[0, ceilingM, 0]} rotation={[Math.PI / 2, 0, 0]} receiveShadow>
-        <shapeGeometry args={[shape, 24]} />
+      {/* Real gypsum slab (8 cm thick, extruded upward) so the recessed
+          fixtures are fully enclosed inside the ceiling — nothing pokes out
+          when viewed from outside/above. Local +Z extrusion maps to -Y after
+          the PI/2 X-rotation, so position at ceilingM + thickness. */}
+      <mesh
+        position={[0, ceilingM + CEILING_SLAB_T, 0]}
+        rotation={[Math.PI / 2, 0, 0]}
+        receiveShadow
+      >
+        <extrudeGeometry
+          args={[shape, { depth: CEILING_SLAB_T, bevelEnabled: false, curveSegments: 24 }]}
+        />
         <meshStandardMaterial
           color={plaster.color ?? "#f9f8f5"}
           roughness={plaster.roughness ?? 0.92}
-          side={THREE.DoubleSide}
         />
       </mesh>
       {showSoffit &&

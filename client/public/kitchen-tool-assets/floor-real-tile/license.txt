@@ -1,9 +1,8 @@
-Real Tile ("بلاط حقيقي") floor material
-Asset: Patio Tiles (2K JPG: diff / nor_gl / arm)
-Source: Poly Haven — https://polyhaven.com/a/patio_tiles
-License: CC0 1.0 (public domain equivalent, commercial use allowed)
-Note: same material set the customer attached as glTF (patio_tiles_2k.gltf);
-texture images were fetched from the original Poly Haven source.
-Calibration (2026-07-26): maps recolored/softened to match customer's sand
-reference (avg #C8AC8F): diff desaturated+tinted, grout lifted; normal
-softened ~55%; ARM AO lifted / roughness ×0.82. Derived from the same CC0 source.
+Floor "Real Tile" (بلاط حقيقي) — smooth large-format beige porcelain.
+Procedurally generated to match the customer's AI-render reference room:
+- base tint #B6A794 sampled from the reference floor
+- soft large-scale mottling + fine porcelain grain from ambientCG
+  "Porcelain001" (CC0 / public domain, https://ambientcg.com)
+- thin 2x2 grout grid -> tileSizeM=1.6 gives 80 cm tiles
+- ARM: AO ~1.0 (grout slightly occluded), roughness 0.4 base / ~0.85 grout,
+  metalness 0. Normal is a heavily softened Porcelain001 NormalGL.

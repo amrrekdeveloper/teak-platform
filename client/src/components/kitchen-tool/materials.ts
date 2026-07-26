@@ -37,24 +37,26 @@ export interface MaterialOption {
 
 export const FLOOR_OPTIONS: MaterialOption[] = [
   {
-    // Customer-approved "Real Tile" — Poly Haven patio_tiles (CC0), the exact
-    // material set the user attached as glTF. The 2K repeat spans a 5×5 tile
-    // grid, so tileSizeM=5 renders each tile as a large ~100 cm square that
-    // tiles across the whole floor from the room corner (no mid-tile start).
+    // Customer-approved "Real Tile" — smooth large-format beige porcelain
+    // matching the AI-render reference: procedurally built (base tint #B6A794
+    // sampled from the reference floor, soft mottling, fine porcelain grain
+    // from ambientCG Porcelain001 CC0, thin 2×2 grout grid). The texture
+    // spans 2×2 tiles, so tileSizeM=1.6 renders each tile as an 80 cm square
+    // starting flush at the room corner.
     id: "real-tile",
     nameAr: "بلاط حقيقي",
     nameEn: "Real Tile",
     thumb: `${ASSETS}/thumbs/floor-real-tile.jpg`,
-    tileSizeM: 5,
+    tileSizeM: 1.6,
     // Semi-polished porcelain sheen: a touch more environment reflection and
     // slightly lower roughness so studio light glints at low viewing angles
     // without looking plastic.
     envMapIntensity: 1.25,
-    roughnessMult: 0.82,
+    roughnessMult: 0.9,
     maps: {
-      map: `${ASSETS}/floor-real-tile/textures/patio_tiles_diff_2k.jpg`,
-      normalMap: `${ASSETS}/floor-real-tile/textures/patio_tiles_nor_gl_2k.jpg`,
-      armMap: `${ASSETS}/floor-real-tile/textures/patio_tiles_arm_2k.jpg`,
+      map: `${ASSETS}/floor-real-tile/textures/porcelain_beige_diff_2k.jpg`,
+      normalMap: `${ASSETS}/floor-real-tile/textures/porcelain_beige_nor_gl_2k.jpg`,
+      armMap: `${ASSETS}/floor-real-tile/textures/porcelain_beige_arm_2k.jpg`,
     },
   },
   {
