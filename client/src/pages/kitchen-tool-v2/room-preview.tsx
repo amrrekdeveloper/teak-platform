@@ -42,9 +42,9 @@ const FLOOR_NORMAL_SCALE = new THREE.Vector2(0.45, 0.45);
  * Clean warm white, matte, visually smooth; no color texture (the previous
  * PaintedPlaster017 treatment produced visible stains and was removed).
  */
-const WALL_PAINT = { color: "#f2ede4", roughness: 0.88 };
+const WALL_PAINT = { color: "#f6f4ef", roughness: 0.9 };
 /** Ceiling: flat gypsum board — slightly cleaner/brighter than the walls. */
-const CEILING_PAINT = { color: "#fafaf7", roughness: 0.93 };
+const CEILING_PAINT = { color: "#fbfaf8", roughness: 0.93 };
 
 /**
  * Floor registry — real/derived CC0 PBR sets served locally (no runtime
@@ -168,13 +168,13 @@ function CameraRig({ room, mode }: { room: RoomV2; mode: "perspective" | "top" }
       camera.lookAt(cx, 0, cz);
       if (controls) controls.target.set(cx, 0, cz);
     } else {
-      // Human-height interior perspective: stand inside/near the open side
-      // (positive Z is away from wall A), look toward wall A.
-      const eyeY = 1.6;
-      const dist = Math.max(spanZ * 1.05, span * 0.75) + 1.2;
-      camera.position.set(cx, eyeY, b.maxZ * MM + (dist - spanZ) * 0.55);
+      // Human eye-level interior perspective, framed slightly off-axis like
+      // an interior visualization (not a frontal CAD box view).
+      const eyeY = 1.55;
+      const dist = Math.max(spanZ * 1.0, span * 0.72) + 1.1;
+      camera.position.set(cx + spanX * 0.16, eyeY, b.maxZ * MM + (dist - spanZ) * 0.5);
       camera.up.set(0, 1, 0);
-      if (controls) controls.target.set(cx, h * 0.45, cz * 0.6);
+      if (controls) controls.target.set(cx - spanX * 0.08, h * 0.42, b.minZ * MM + spanZ * 0.35);
     }
     camera.updateProjectionMatrix();
     controls?.update();
@@ -227,7 +227,9 @@ function WallMesh({ wall, allWalls }: { wall: RoomWallV2; allWalls: RoomWallV2[]
     <group position={tr.position} rotation={[0, tr.rotationY, 0]}>
       <mesh castShadow receiveShadow>
         <boxGeometry args={tr.size} />
-        <meshStandardMaterial color={WALL_PAINT.color} roughness={WALL_PAINT.roughness} metalness={0} envMapIntensity={0.45} />
+        {/* envMapIntensity kept very low: the warm interior HDR was tinting
+            walls beige depending on orientation (the "beige right wall"). */}
+        <meshStandardMaterial color={WALL_PAINT.color} roughness={WALL_PAINT.roughness} metalness={0} envMapIntensity={0.15} />
       </mesh>
     </group>
   );
@@ -276,7 +278,7 @@ function FloorMesh({ room, floor }: { room: RoomV2; floor: FloorDefV2E }) {
         roughnessMap={maps.roughnessMap}
         roughness={1}
         metalness={0}
-        envMapIntensity={0.5}
+        envMapIntensity={0.3}
       />
     </mesh>
   );
@@ -302,32 +304,32 @@ function RecessedDownlight({ x, z, ceilingY, withLight }: { x: number; z: number
   }, [ceilingY]);
   return (
     <group position={[x, ceilingY, z]}>
-      {/* trim rim flush with the ceiling */}
-      <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, -0.002, 0]}>
-        <ringGeometry args={[DOWNLIGHT_RADIUS, DOWNLIGHT_RADIUS + 0.008, 28]} />
-        <meshStandardMaterial color="#e9e7e2" roughness={0.4} metalness={0.15} side={THREE.DoubleSide} />
+      {/* wide WHITE trim rim flush with the ceiling (reads as a real fixture) */}
+      <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, -0.0015, 0]}>
+        <ringGeometry args={[DOWNLIGHT_RADIUS * 0.82, DOWNLIGHT_RADIUS + 0.014, 32]} />
+        <meshStandardMaterial color="#fafaf8" roughness={0.35} metalness={0.05} side={THREE.DoubleSide} />
       </mesh>
-      {/* shallow dark recessed cavity */}
+      {/* shallow LIGHT-GRAY recessed cavity — no harsh dark hole */}
       <mesh position={[0, -DOWNLIGHT_DEPTH / 2, 0]}>
-        <cylinderGeometry args={[DOWNLIGHT_RADIUS, DOWNLIGHT_RADIUS, DOWNLIGHT_DEPTH, 28, 1, true]} />
-        <meshStandardMaterial color="#242424" roughness={0.9} metalness={0} side={THREE.BackSide} />
+        <cylinderGeometry args={[DOWNLIGHT_RADIUS * 0.82, DOWNLIGHT_RADIUS * 0.82, DOWNLIGHT_DEPTH, 32, 1, true]} />
+        <meshStandardMaterial color="#b9b6b0" roughness={0.7} metalness={0} side={THREE.BackSide} />
       </mesh>
-      {/* recessed diffuser lens (restrained emissive — no glowing disc) */}
-      <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, -DOWNLIGHT_DEPTH + 0.008, 0]}>
-        <circleGeometry args={[DOWNLIGHT_RADIUS * 0.72, 24]} />
-        <meshStandardMaterial color="#f5f2ea" emissive="#f3e9d8" emissiveIntensity={0.85} roughness={0.6} side={THREE.DoubleSide} />
+      {/* diffuser lens just inside the opening — softly lit, no bloom */}
+      <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, -DOWNLIGHT_DEPTH * 0.45, 0]}>
+        <circleGeometry args={[DOWNLIGHT_RADIUS * 0.78, 28]} />
+        <meshStandardMaterial color="#fdf9f0" emissive="#f6ecd9" emissiveIntensity={1.5} roughness={0.5} side={THREE.DoubleSide} toneMapped />
       </mesh>
       {withLight && (
         <>
           <spotLight
             position={[0, -DOWNLIGHT_DEPTH, 0]}
             target={target}
-            angle={0.62}
-            penumbra={0.85}
-            intensity={4.5}
-            distance={ceilingY * 2.4}
-            decay={1.8}
-            color="#fff2e0"
+            angle={0.7}
+            penumbra={0.9}
+            intensity={5.5}
+            distance={ceilingY * 2.6}
+            decay={1.7}
+            color="#fff4e4"
           />
           <primitive object={target} />
         </>
@@ -366,7 +368,7 @@ function Ceiling({ room }: { room: RoomV2 }) {
     <group>
       <mesh rotation={[Math.PI / 2, 0, 0]} position={[cx, h, cz]}>
         <planeGeometry args={[w, d]} />
-        <meshStandardMaterial color={CEILING_PAINT.color} roughness={CEILING_PAINT.roughness} metalness={0} side={THREE.DoubleSide} envMapIntensity={0.35} />
+        <meshStandardMaterial color={CEILING_PAINT.color} roughness={CEILING_PAINT.roughness} metalness={0} side={THREE.DoubleSide} envMapIntensity={0.1} />
       </mesh>
       {lights.map(([x, z], i) => (
         // Real spotlights capped at 4 for performance; extra fixtures are trim-only.
@@ -394,13 +396,14 @@ function RoomScene({ room, floor, mode }: { room: RoomV2; floor: FloorDefV2E; mo
        * directional shadow.
        */}
       <Suspense fallback={null}>
-        <Environment files="/textures/v2/lebombo_1k.hdr" background={false} environmentIntensity={0.7} />
+        <Environment files="/textures/v2/lebombo_1k.hdr" background={false} environmentIntensity={0.55} />
       </Suspense>
-      <hemisphereLight args={["#ffffff", "#d6d0c6", 0.32]} />
+      {/* Neutral hemisphere (no warm ground bounce → no beige cast on walls). */}
+      <hemisphereLight args={["#ffffff", "#e8e5e0", 0.45]} />
       <directionalLight
         position={[cx + span * 0.9, h * 2.2, cz + span * 1.4]}
-        intensity={0.4}
-        color="#fffaf2"
+        intensity={0.55}
+        color="#ffffff"
         castShadow
         shadow-mapSize-width={1024}
         shadow-mapSize-height={1024}
@@ -441,7 +444,9 @@ function KitchenToolV2RoomPreviewInner() {
   const { t, lang } = useLanguage();
   const s = useKitchenToolV2Store();
   const room = s.room;
-  const floor = findFloor(s.floorMaterialId);
+  // V2-001F: floor is locked to the single approved porcelain. The oak set
+  // remains as a hidden internal option (findFloor) but is not exposed in UI.
+  const floor = PHOTO_FLOORS[0];
 
   if (!room) {
     return (
@@ -531,25 +536,10 @@ function KitchenToolV2RoomPreviewInner() {
         </div>
       </div>
 
-      {/* Floor selector only — wall finish is locked to "Teak Warm White". */}
-      <div className="border-t px-4 py-3 flex flex-wrap items-center gap-3 shrink-0">
-        <p className="text-xs font-bold">{t("الأرضية:", "Floor:")}</p>
-        <div className="flex flex-wrap gap-2">
-          {PHOTO_FLOORS.map((f) => (
-            <Button
-              key={f.id}
-              size="sm"
-              variant={floor.id === f.id ? "default" : "outline"}
-              onClick={() => s.setFloorMaterial(f.id)}
-              data-testid={`button-v2-floormat-${f.id}`}
-            >
-              {t(f.nameAr, f.nameEn)}
-            </Button>
-          ))}
-        </div>
-        <p className="text-xs text-muted-foreground ms-auto">
-          {t("الجدران: أبيض تيك الدافئ (معتمد)", "Walls: Teak Warm White (approved)")}
-        </p>
+      {/* Minimal footer — finishes are locked (walls: Teak Warm White, floor: approved porcelain). */}
+      <div className="border-t px-4 py-2 flex items-center justify-between gap-3 shrink-0 text-xs text-muted-foreground">
+        <span>{t("الأرضية: بورسلان بيج فاتح 60×60 (معتمد)", "Floor: light beige porcelain 60×60 (approved)")}</span>
+        <span>{t("الجدران: أبيض تيك الدافئ (معتمد)", "Walls: Teak Warm White (approved)")}</span>
       </div>
     </div>
   );

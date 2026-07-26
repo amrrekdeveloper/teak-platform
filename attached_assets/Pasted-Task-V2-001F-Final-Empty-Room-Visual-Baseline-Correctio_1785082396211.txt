@@ -1,0 +1,116 @@
+Task V2-001F — Final Empty Room Visual Baseline Correction
+
+The latest V2 preview is still not accepted visually.
+
+Do not proceed to openings, utilities, cabinets, appliances, or any kitchen design logic.
+
+This task is only to correct the empty-room visual baseline.
+
+Current problems observed in the latest preview:
+- right wall is still beige
+- ceiling is still beige and not a clean white gypsum ceiling
+- floor is too washed out and not reading as premium modern porcelain
+- downlights still look like small black slits instead of believable recessed spotlights
+- lighting is still flat and the room still reads like a simple 3D box
+- overall result is still far from the approved reference room
+
+Required corrections
+
+1) Lock all walls to one approved finish only
+- All interior walls must use the exact same material and color
+- No wall may appear beige, gray, or warmer than the others
+- Remove any per-wall tint differences
+- Approved wall finish:
+  Arabic: أبيض تيك الدافئ
+  English: Teak Warm White
+- Visual target:
+  clean, modern, smooth, matte, warm white
+- Suggested base color family:
+  around #F6F4EF to #F7F5F1
+- No visible stains, plaster blotches, or aged texture
+
+2) Lock the ceiling to one approved finish only
+- Ceiling must always be flat gypsum board
+- No decorative tray ceiling
+- No beige tint
+- Use one clean white ceiling material only
+- Ceiling should be slightly cleaner/brighter than walls
+- Suggested ceiling color family:
+  around #FAF9F6 to #FBFAF8
+
+3) Fix the floor
+- Remove the current washed-out look
+- Default floor must read as premium modern porcelain tile
+- 600x600 mm
+- warm light beige / greige
+- low contrast
+- subtle natural variation
+- matte or satin
+- narrow grout lines close to tile color
+- no strong wood effect
+- no rustic limestone look
+- no heavy reflection
+- no blown-out brightness
+
+If needed, keep only one approved porcelain floor in the UI and hide experimental alternatives.
+
+4) Rebuild the recessed spotlights visually
+- Current black slit look is not accepted
+- Each spotlight must read as a real recessed ceiling downlight:
+  - white trim/rim
+  - small recessed cavity
+  - subtle lens/diffuser
+  - believable diameter
+  - soft downward illumination
+- Use four spotlights in the reference room
+- Light color must be neutral-warm (approx visual 3500K–4000K)
+- No orange cast
+- No harsh dark holes
+
+5) Correct lighting and camera
+- Room must feel like a clean architectural interior, not a raw 3D box
+- Reduce flatness
+- Keep lighting balanced and soft
+- No yellow cast on walls or ceiling
+- No overexposed floor
+- No muddy shadows
+- Use a human eye-level perspective camera
+- Frame the room elegantly from inside, similar to an interior visualization, not like an empty CAD box
+
+6) Simplify UI
+- Keep only:
+  - Back
+  - Empty room preview title
+  - Experimental badge (if necessary)
+  - Perspective
+  - Top view
+- Remove temporary or unnecessary customer-facing experimental controls
+- At the bottom, keep the interface minimal
+- If a floor selector is still needed for testing, keep at most one approved porcelain option and one hidden internal option if absolutely necessary
+
+Acceptance criteria
+This task is not complete unless:
+1. all walls look visually unified
+2. right wall is no longer beige
+3. ceiling is clean white and clearly different from the previous beige look
+4. floor reads as premium porcelain, not washed-out or rustic
+5. downlights look recessed and believable
+6. overall room feels clean, elegant, and close to the approved reference image
+7. room no longer reads like a simple cardboard 3D box
+8. perspective and top view still work
+9. no V1 behavior changes
+10. no paid assets or services are added
+
+Deliverables
+Please provide:
+1. exact files changed
+2. exact wall color value
+3. exact ceiling color value
+4. exact floor asset/material used
+5. exact downlight model approach
+6. lighting calibration values
+7. before/after screenshots from the same camera
+8. known limitations
+
+Stop after this task only.
+Do not continue to openings, utilities, or cabinets.
