@@ -4,3 +4,6 @@ Source: Poly Haven — https://polyhaven.com/a/patio_tiles
 License: CC0 1.0 (public domain equivalent, commercial use allowed)
 Note: same material set the customer attached as glTF (patio_tiles_2k.gltf);
 texture images were fetched from the original Poly Haven source.
+Calibration (2026-07-26): maps recolored/softened to match customer's sand
+reference (avg #C8AC8F): diff desaturated+tinted, grout lifted; normal
+softened ~55%; ARM AO lifted / roughness ×0.82. Derived from the same CC0 source.
