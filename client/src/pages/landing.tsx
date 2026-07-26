@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { motion, AnimatePresence, useInView } from "framer-motion";
 import { useTheme } from "@/components/theme-provider";
 import { useLanguage } from "@/components/language-provider";
+import { useAuth } from "@/hooks/use-auth";
 import {
   Sun,
   Moon,
@@ -175,8 +176,14 @@ function Navbar() {
     return () => window.removeEventListener("scroll", handler);
   }, []);
 
+  const { user } = useAuth();
+  const canSeeV2 = !!user && ["owner", "it", "designer"].includes(user.role);
+
   const navLinks = [
     { href: "/kitchen-designer", labelAr: "صمّم مطبخك", labelEn: "Design Your Kitchen" },
+    ...(canSeeV2
+      ? [{ href: "/kitchen-designer-v2", labelAr: "صمم مطبخك 2 — تجريبي", labelEn: "Design Your Kitchen 2 — Experimental" }]
+      : []),
     { href: "#gallery", labelAr: "معرض أعمالنا", labelEn: "Our Gallery" },
     { href: "#projects", labelAr: "مشاريعنا", labelEn: "Projects" },
     { href: "#location", labelAr: "فروعنا", labelEn: "Branches" },

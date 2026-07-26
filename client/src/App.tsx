@@ -85,6 +85,9 @@ const KitchenToolDimensionsLazy = lazy(() => import("@/pages/kitchen-tool/dimens
 const KitchenToolOpeningsLazy = lazy(() => import("@/pages/kitchen-tool/openings"));
 const KitchenToolUtilitiesLazy = lazy(() => import("@/pages/kitchen-tool/utilities"));
 const KitchenToolStudioLazy = lazy(() => import("@/pages/kitchen-tool/studio"));
+const KitchenToolV2LandingLazy = lazy(() => import("@/pages/kitchen-tool-v2/index"));
+const KitchenToolV2SpaceLazy = lazy(() => import("@/pages/kitchen-tool-v2/space"));
+const KitchenToolV2RoomPreviewLazy = lazy(() => import("@/pages/kitchen-tool-v2/room-preview"));
 
 function KitchenToolFallback() {
   return (
@@ -359,6 +362,9 @@ function Router() {
       <Route path="/kitchen-designer/utilities" component={KitchenToolUtilities} />
       <Route path="/kitchen-designer/studio" component={KitchenToolStudio} />
       <Route path="/kitchen-designer" component={KitchenToolLanding} />
+      <Route path="/kitchen-designer-v2/space">{() => <Suspense fallback={<KitchenToolFallback />}><KitchenToolV2SpaceLazy /></Suspense>}</Route>
+      <Route path="/kitchen-designer-v2/room-preview">{() => <Suspense fallback={<KitchenToolFallback />}><KitchenToolV2RoomPreviewLazy /></Suspense>}</Route>
+      <Route path="/kitchen-designer-v2">{() => <Suspense fallback={<KitchenToolFallback />}><KitchenToolV2LandingLazy /></Suspense>}</Route>
       <Route path="/view-3d" component={Scene3DPage} />
       <Route path="/scene-3d" component={Scene3DPage} />
       <Route path="/dashboard" nest component={DashboardRoutes} />

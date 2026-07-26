@@ -1,0 +1,255 @@
+Task V2-001 — Kitchen Designer V2 Isolation and Empty Room Proof
+
+Context
+
+This is an existing production application. The current “Design Your Kitchen” tool must remain fully operational and must not be refactored, migrated, renamed, or modified as part of this task.
+
+We are creating a completely isolated experimental replacement called “Design Your Kitchen 2”.
+
+Before changing code, inspect the current repository structure and identify:
+
+1. The current kitchen designer routes and components.
+2. The existing Zustand/local persistence store.
+3. The existing Three.js / React Three Fiber room, walls, floor, camera, lighting, and environment components.
+4. Any reusable geometry or rendering utilities.
+5. The current public landing-page entry point.
+
+Do not implement cabinets, appliances, openings, utilities, quotations, orders, customer login, or backend persistence in this task.
+
+Primary objective
+
+Create an isolated Kitchen Designer V2 foundation that allows us to:
+
+- choose a room layout,
+- enter room dimensions,
+- generate an empty 3D room,
+- inspect its dimensions and geometry,
+- apply one test wall material and one test floor material,
+- save and restore the V2 draft independently,
+- verify that V1 remains unchanged.
+
+Isolation requirements
+
+Create new V2 routes under a separate namespace such as:
+
+- /kitchen-designer-v2
+- /kitchen-designer-v2/space
+- /kitchen-designer-v2/room-preview
+
+Do not replace or redirect any existing V1 route.
+
+Use a separate persistent-storage key:
+
+teak-kitchen-tool-v2
+
+The V2 store must include:
+
+- schemaVersion
+- draftId
+- createdAt
+- updatedAt
+- room data
+- selected test surface materials
+
+Do not read, overwrite, clear, or migrate the existing V1 storage key.
+
+Create a V2-only reset action that clears only teak-kitchen-tool-v2.
+
+Room data model
+
+Create a typed V2 room model with millimeters as the canonical internal unit.
+
+Suggested structure:
+
+type RoomLayoutV2 =
+  | "single_wall"
+  | "l_shape"
+  | "u_shape"
+  | "galley";
+
+interface RoomPointV2 {
+  xMm: number;
+  zMm: number;
+}
+
+interface RoomWallV2 {
+  id: string;
+  label: string;
+  lengthMm: number;
+  heightMm: number;
+  start: RoomPointV2;
+  end: RoomPointV2;
+  inwardNormal: RoomPointV2;
+}
+
+interface RoomFloorV2 {
+  polygon: RoomPointV2[];
+}
+
+interface RoomV2 {
+  schemaVersion: number;
+  layout: RoomLayoutV2;
+  ceilingHeightMm: number;
+  roomType: "closed" | "open";
+  measurementConfidence: "exact" | "approximate";
+  walls: RoomWallV2[];
+  floor: RoomFloorV2;
+}
+
+The precise names may be adjusted to match the repository conventions, but the semantics and isolation requirements must be preserved.
+
+Supported layouts
+
+Implement exactly these four fixed orthogonal layouts:
+
+1. Single wall
+2. L shape
+3. U shape
+4. Galley / two parallel walls
+
+Rules:
+
+- All connected corners must remain 90 degrees.
+- Galley walls must remain parallel.
+- Wall IDs must be stable and deterministic.
+- Wall order must be deterministic.
+- The inward-facing normal of every wall must be explicit.
+- The floor polygon must be generated from the room dimensions.
+- Do not allow free-angle wall editing.
+- Do not add drag handles for wall endpoints in this task.
+
+Space input page
+
+Create a clean RTL-first Arabic interface with English translation support, consistent with the existing Teak design system.
+
+The page should include:
+
+1. Four visual layout cards.
+2. A simple 2D layout preview.
+3. Dimension inputs in centimeters for the customer.
+4. Internal conversion from centimeters to millimeters.
+5. Ceiling height.
+6. Closed or open space.
+7. Exact or approximate measurements.
+8. A button to save and preview the room.
+
+Validation:
+
+- Required dimensions cannot be empty.
+- Values must be positive numbers.
+- Clearly unreasonable dimensions should show a warning.
+- Do not allow continuing when the required geometry cannot be created.
+- Approximate measurements must show a visible non-blocking warning that they are not approved for manufacturing.
+
+Empty 3D room preview
+
+Create an empty-room preview that renders:
+
+- walls,
+- floor,
+- optional ceiling visibility,
+- perspective camera,
+- top camera,
+- orbit controls,
+- soft basic lighting,
+- visible dimension labels,
+- wall labels A, B, C, etc.
+
+The 3D room must be generated only from RoomV2.
+
+Do not read answers.layout or any legacy V1 setup answer.
+
+Do not render cabinets, appliances, decorative objects, doors, windows, plumbing, electricity, or gas points.
+
+PBR surface proof
+
+This task is only a technical proof, not the final material catalog.
+
+Create a small typed material registry containing exactly:
+
+Wall materials:
+- Matte warm white paint
+- Light gray paint
+
+Floor materials:
+- Beige porcelain tile, physical tile size 600 × 600 mm
+- Light oak plank, physical plank size 180 × 1200 mm
+
+Requirements:
+
+- Use PBR-capable materials compatible with the existing renderer.
+- Texture scale/repeat must derive from the physical dimensions.
+- The 600 × 600 tile must visibly repeat at its real scale.
+- The 180 × 1200 plank must visibly repeat at its real scale.
+- Applying a visual material must not modify room geometry.
+- Surface materials must not participate in collision geometry.
+- Keep the material registry extensible for future Base Color, Normal, Roughness, and AO maps.
+- Use lightweight local placeholder/generated textures if final production texture files are not yet available.
+- Do not download large texture packs or add paid services.
+
+Tests
+
+Add focused unit tests for the pure room-geometry generator.
+
+Tests must verify at minimum:
+
+- deterministic IDs and wall ordering,
+- requested wall lengths equal generated lengths,
+- L-shape connected walls are perpendicular,
+- U-shape walls connect correctly without unintended gaps,
+- galley walls are parallel,
+- floor polygon is valid,
+- centimeter input is converted correctly to millimeters,
+- invalid inputs are rejected,
+- V2 reset does not reference the V1 persistence key.
+
+Also run the existing project tests and type checking relevant to changed files.
+
+Regression protection
+
+The following are strict requirements:
+
+- Do not modify V1 behavior.
+- Do not change existing V1 URLs.
+- Do not reuse the V1 persistence key.
+- Do not migrate legacy designs.
+- Do not change quotation, order, customer portal, site survey, or production workflows.
+- Do not modify database schemas.
+- Do not add new paid external services.
+- Do not publish or deploy the application.
+- Avoid broad dependency upgrades.
+- Reuse existing compatible rendering dependencies where possible.
+
+Landing-page access
+
+Add a clearly labeled temporary entry:
+
+“صمم مطبخك 2 — تجريبي”
+“Design Your Kitchen 2 — Experimental”
+
+For the first internal phase, make this entry visible only to authenticated owner, IT, or designer roles if that can be done safely without changing the public landing-page behavior.
+
+If role-gated access on the public page would require broad authentication changes, do not implement it. Instead provide the direct V2 URL and document that limitation.
+
+Deliverables
+
+At completion, provide:
+
+1. A concise summary of all files created and changed.
+2. The V2 routes.
+3. The V2 persistence key and schema version.
+4. The room geometry model.
+5. The tests added and their results.
+6. Confirmation that V1 files and behavior were not changed, or an exact list of any unavoidable V1 changes.
+7. Known limitations.
+8. Manual QA steps for all four layouts.
+9. A screenshot or preview of:
+   - the space input page,
+   - each 2D layout,
+   - one empty 3D room,
+   - porcelain floor repetition,
+   - oak plank repetition.
+
+Stop after completing this task.
+
+Do not proceed to openings, utilities, cabinets, appliances, backsplash editing, a full material-management system, order integration, or deployment.
