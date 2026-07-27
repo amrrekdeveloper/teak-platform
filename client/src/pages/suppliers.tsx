@@ -65,7 +65,7 @@ function SupplierForm({ data, onChange, onSubmit, isPending, submitLabel }: {
           </div>
           <div className="space-y-1.5">
             <Label className="text-sm font-medium">{t("الهاتف", "Phone")}</Label>
-            <div className="relative">
+            <div className="relative" dir="ltr">
               <Input
                 type="tel"
                 inputMode="numeric"
@@ -90,7 +90,7 @@ function SupplierForm({ data, onChange, onSubmit, isPending, submitLabel }: {
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1.5">
             <Label className="text-sm font-medium">{t("البريد الإلكتروني", "Email")}</Label>
-            <div className="relative">
+            <div className="relative" dir="ltr">
               <Input
                 type="email"
                 value={data.email}
@@ -105,7 +105,7 @@ function SupplierForm({ data, onChange, onSubmit, isPending, submitLabel }: {
           </div>
           <div className="space-y-1.5">
             <Label className="text-sm font-medium">{t("الرقم الضريبي", "Tax Number")}</Label>
-            <div className="relative">
+            <div className="relative" dir="ltr">
               <Input
                 value={data.taxNumber}
                 onChange={e => onChange({ ...data, taxNumber: e.target.value })}
