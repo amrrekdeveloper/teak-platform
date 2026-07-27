@@ -12,12 +12,16 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, Plus, Search, Building2, Phone, Mail, MapPin, Pencil, CheckCircle2, XCircle, Clock } from "lucide-react";
+import { Loader2, Plus, Search, Building2, Phone, Mail, MapPin, Pencil, CheckCircle2, XCircle, Clock, User, Hash, Package, FileText } from "lucide-react";
 
 type SupplierFormData = {
   name: string; contactPerson: string; phone: string; email: string;
   address: string; materials: string; taxNumber: string; notes: string;
 };
+
+function FieldIcon({ icon: Icon }: { icon: React.ElementType }) {
+  return <Icon className="absolute top-1/2 -translate-y-1/2 end-3 w-4 h-4 text-muted-foreground pointer-events-none" />;
+}
 
 function SupplierForm({ data, onChange, onSubmit, isPending, submitLabel }: {
   data: SupplierFormData; onChange: (d: SupplierFormData) => void;
@@ -25,43 +29,151 @@ function SupplierForm({ data, onChange, onSubmit, isPending, submitLabel }: {
 }) {
   const { t } = useLanguage();
   return (
-    <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-3">
-        <div className="col-span-2 space-y-1">
-          <Label>{t("اسم المورد", "Supplier Name")} *</Label>
-          <Input value={data.name} onChange={e => onChange({ ...data, name: e.target.value })} data-testid="input-supplier-name" />
+    <div className="space-y-5">
+
+      {/* القسم الأول: الهوية */}
+      <div className="space-y-3">
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider border-b pb-1">
+          {t("بيانات المورد", "Supplier Info")}
+        </p>
+        <div className="space-y-1.5">
+          <Label className="text-sm font-medium">{t("اسم المورد", "Supplier Name")} <span className="text-destructive">*</span></Label>
+          <div className="relative">
+            <Input
+              value={data.name}
+              onChange={e => onChange({ ...data, name: e.target.value })}
+              placeholder={t("مثال: مؤسسة الخشب السعودي", "e.g. Saudi Wood Est.")}
+              className="pe-9"
+              data-testid="input-supplier-name"
+            />
+            <FieldIcon icon={Building2} />
+          </div>
         </div>
-        <div className="space-y-1">
-          <Label>{t("جهة الاتصال", "Contact Person")}</Label>
-          <Input value={data.contactPerson} onChange={e => onChange({ ...data, contactPerson: e.target.value })} data-testid="input-contact-person" />
-        </div>
-        <div className="space-y-1">
-          <Label>{t("الهاتف", "Phone")}</Label>
-          <Input type="tel" inputMode="numeric" value={data.phone} onChange={e => onChange({ ...data, phone: e.target.value })} data-testid="input-supplier-phone" />
-        </div>
-        <div className="space-y-1">
-          <Label>{t("البريد", "Email")}</Label>
-          <Input value={data.email} onChange={e => onChange({ ...data, email: e.target.value })} data-testid="input-supplier-email" />
-        </div>
-        <div className="space-y-1">
-          <Label>{t("الرقم الضريبي", "Tax Number")}</Label>
-          <Input value={data.taxNumber} onChange={e => onChange({ ...data, taxNumber: e.target.value })} data-testid="input-tax-number" />
-        </div>
-        <div className="col-span-2 space-y-1">
-          <Label>{t("العنوان", "Address")}</Label>
-          <Input value={data.address} onChange={e => onChange({ ...data, address: e.target.value })} data-testid="input-supplier-address" />
-        </div>
-        <div className="col-span-2 space-y-1">
-          <Label>{t("المواد المتوفرة", "Available Materials")}</Label>
-          <Input value={data.materials} onChange={e => onChange({ ...data, materials: e.target.value })} placeholder={t("خشب، MDF، حديد...", "Wood, MDF, Iron...")} data-testid="input-materials" />
-        </div>
-        <div className="col-span-2 space-y-1">
-          <Label>{t("ملاحظات", "Notes")}</Label>
-          <Textarea value={data.notes} onChange={e => onChange({ ...data, notes: e.target.value })} data-testid="input-supplier-notes" />
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label className="text-sm font-medium">{t("جهة الاتصال", "Contact Person")}</Label>
+            <div className="relative">
+              <Input
+                value={data.contactPerson}
+                onChange={e => onChange({ ...data, contactPerson: e.target.value })}
+                placeholder={t("الاسم الكامل", "Full name")}
+                className="pe-9"
+                data-testid="input-contact-person"
+              />
+              <FieldIcon icon={User} />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-sm font-medium">{t("الهاتف", "Phone")}</Label>
+            <div className="relative">
+              <Input
+                type="tel"
+                inputMode="numeric"
+                value={data.phone}
+                onChange={e => onChange({ ...data, phone: e.target.value })}
+                placeholder="05xxxxxxxx"
+                className="pe-9"
+                dir="ltr"
+                data-testid="input-supplier-phone"
+              />
+              <FieldIcon icon={Phone} />
+            </div>
+          </div>
         </div>
       </div>
-      <Button className="w-full" onClick={onSubmit} disabled={!data.name || isPending} data-testid="button-submit-supplier">
-        {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : submitLabel}
+
+      {/* القسم الثاني: التواصل */}
+      <div className="space-y-3">
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider border-b pb-1">
+          {t("بيانات التواصل", "Contact Details")}
+        </p>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label className="text-sm font-medium">{t("البريد الإلكتروني", "Email")}</Label>
+            <div className="relative">
+              <Input
+                type="email"
+                value={data.email}
+                onChange={e => onChange({ ...data, email: e.target.value })}
+                placeholder="example@domain.com"
+                className="pe-9"
+                dir="ltr"
+                data-testid="input-supplier-email"
+              />
+              <FieldIcon icon={Mail} />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-sm font-medium">{t("الرقم الضريبي", "Tax Number")}</Label>
+            <div className="relative">
+              <Input
+                value={data.taxNumber}
+                onChange={e => onChange({ ...data, taxNumber: e.target.value })}
+                placeholder="3xxxxxxxxxx3"
+                className="pe-9"
+                dir="ltr"
+                data-testid="input-tax-number"
+              />
+              <FieldIcon icon={Hash} />
+            </div>
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-sm font-medium">{t("العنوان", "Address")}</Label>
+          <div className="relative">
+            <Input
+              value={data.address}
+              onChange={e => onChange({ ...data, address: e.target.value })}
+              placeholder={t("المدينة - الحي - الشارع", "City - District - Street")}
+              className="pe-9"
+              data-testid="input-supplier-address"
+            />
+            <FieldIcon icon={MapPin} />
+          </div>
+        </div>
+      </div>
+
+      {/* القسم الثالث: التفاصيل */}
+      <div className="space-y-3">
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider border-b pb-1">
+          {t("تفاصيل إضافية", "Additional Details")}
+        </p>
+        <div className="space-y-1.5">
+          <Label className="text-sm font-medium">{t("المواد المتوفرة", "Available Materials")}</Label>
+          <div className="relative">
+            <Input
+              value={data.materials}
+              onChange={e => onChange({ ...data, materials: e.target.value })}
+              placeholder={t("خشب، MDF، حديد، زجاج...", "Wood, MDF, Iron, Glass...")}
+              className="pe-9"
+              data-testid="input-materials"
+            />
+            <FieldIcon icon={Package} />
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-sm font-medium">{t("ملاحظات", "Notes")}</Label>
+          <div className="relative">
+            <Textarea
+              value={data.notes}
+              onChange={e => onChange({ ...data, notes: e.target.value })}
+              placeholder={t("أي معلومات إضافية عن المورد...", "Any additional info...")}
+              className="resize-none pe-9 min-h-[80px]"
+              data-testid="input-supplier-notes"
+            />
+            <FileText className="absolute top-3 end-3 w-4 h-4 text-muted-foreground pointer-events-none" />
+          </div>
+        </div>
+      </div>
+
+      <Button
+        className="w-full h-11 text-base font-semibold"
+        onClick={onSubmit}
+        disabled={!data.name || isPending}
+        data-testid="button-submit-supplier"
+      >
+        {isPending ? <Loader2 className="w-4 h-4 animate-spin me-2" /> : null}
+        {submitLabel}
       </Button>
     </div>
   );
