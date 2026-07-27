@@ -1082,7 +1082,7 @@ function EmployeeDetailDialog({ emp, users, onClose }: { emp: Employee; users: a
       queryClient.invalidateQueries({ queryKey: ["/api/employees"] });
       toast({ title: t("تم تحديث بيانات الموظف", "Employee updated") });
     },
-    onError: () => toast({ title: t("حدث خطأ في التحديث", "Error updating"), variant: "destructive" }),
+    onError: (err: any) => toast({ title: err?.message || t("حدث خطأ في التحديث", "Error updating"), variant: "destructive" }),
   });
 
   const attendanceMutation = useMutation({
@@ -1099,6 +1099,7 @@ function EmployeeDetailDialog({ emp, users, onClose }: { emp: Employee; users: a
 
   const handleUpdate = () => {
     const data: any = {
+      employeeNumber: editForm.employeeNumber.trim(),
       fullNameAr: editForm.fullNameAr.trim(),
       fullNameEn: editForm.fullNameEn?.trim() || null,
       position: editForm.position.trim(),

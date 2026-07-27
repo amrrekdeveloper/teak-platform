@@ -3399,10 +3399,16 @@ export async function registerRoutes(
       if (!parsed.fullNameAr || !String(parsed.fullNameAr).trim()) {
         return res.status(400).json({ message: "اسم الموظف مطلوب", messageEn: "Employee name is required" });
       }
+      const num = String(parsed.employeeNumber || "").trim();
+      if (!num) return res.status(400).json({ message: "رقم الموظف مطلوب", messageEn: "Employee number is required" });
+      parsed.employeeNumber = num;
+      const dup = (await storage.getEmployees()).find(e => e.employeeNumber === num);
+      if (dup) return res.status(409).json({ message: `رقم الموظف ${num} مستخدم لموظف آخر`, messageEn: `Employee number ${num} is already in use` });
       const emp = await storage.createEmployee(parsed);
       res.status(201).json(emp);
     } catch (error: any) {
       if (error?.name === "ZodError") return res.status(400).json({ message: "بيانات غير صالحة", messageEn: "Invalid data", errors: error.errors });
+      if (error?.code === "23505") return res.status(409).json({ message: "رقم الموظف مستخدم لموظف آخر", messageEn: "Employee number already in use" });
       console.error("Employee creation error:", error);
       res.status(500).json({ message: "حدث خطأ في إضافة الموظف", messageEn: "Error creating employee" });
     }
@@ -3413,10 +3419,19 @@ export async function registerRoutes(
       if ("fullNameAr" in req.body && (!req.body.fullNameAr || !String(req.body.fullNameAr).trim())) {
         return res.status(400).json({ message: "اسم الموظف مطلوب", messageEn: "Employee name is required" });
       }
+      if ("employeeNumber" in req.body) {
+        const num = String(req.body.employeeNumber || "").trim();
+        if (!num) return res.status(400).json({ message: "رقم الموظف مطلوب", messageEn: "Employee number is required" });
+        req.body.employeeNumber = num;
+        const empId = parseInt(String(req.params.id));
+        const existing = (await storage.getEmployees()).find(e => e.employeeNumber === num && e.id !== empId);
+        if (existing) return res.status(409).json({ message: `رقم الموظف ${num} مستخدم لموظف آخر`, messageEn: `Employee number ${num} is already in use` });
+      }
       const updated = await storage.updateEmployee(parseInt(req.params.id), req.body);
       if (!updated) return res.status(404).json({ message: "الموظف غير موجود", messageEn: "Employee not found" });
       res.json(updated);
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.code === "23505") return res.status(409).json({ message: "رقم الموظف مستخدم لموظف آخر", messageEn: "Employee number already in use" });
       res.status(500).json({ message: "حدث خطأ في تحديث الموظف", messageEn: "Error updating employee" });
     }
   });
@@ -7994,7 +8009,7 @@ export async function registerRoutes(
           return {
             id: e.id,
             employeeNumber: e.employeeNumber,
-            nameAr: user?.fullNameAr || e.phone || e.employeeNumber,
+            nameAr: e.fullNameAr?.trim() || user?.fullNameAr || e.phone || e.employeeNumber,
             phone: user?.phone || e.phone,
             locationName: e.fingerprintLocation || e.fingerScanLocation || "غير محدد",
             hasPin: !!user?.employeePin,
@@ -8021,7 +8036,7 @@ export async function registerRoutes(
       return res.json({
         id: employee.id,
         employeeNumber: employee.employeeNumber,
-        nameAr: empUser?.fullNameAr || employee.phone || employee.employeeNumber,
+        nameAr: employee.fullNameAr?.trim() || empUser?.fullNameAr || employee.phone || employee.employeeNumber,
         phone: empUser?.phone || employee.phone || phone,
         locationName: employee.fingerprintLocation || employee.fingerScanLocation || "غير محدد",
         attendanceEnabled: employee.attendanceEnabled,
@@ -8413,7 +8428,7 @@ export async function registerRoutes(
         results.push({
           employeeId: emp.id,
           employeeNumber: emp.employeeNumber,
-          nameAr: user?.fullNameAr || emp.phone || emp.employeeNumber,
+          nameAr: emp.fullNameAr?.trim() || user?.fullNameAr || emp.phone || emp.employeeNumber,
           department: emp.department,
           late, absent, incomplete, score, level,
         });
@@ -8554,7 +8569,7 @@ export async function registerRoutes(
           return {
             id: e.id,
             employeeNumber: e.employeeNumber,
-            nameAr: user?.fullNameAr || e.phone || e.employeeNumber,
+            nameAr: e.fullNameAr?.trim() || user?.fullNameAr || e.phone || e.employeeNumber,
             phone: user?.phone || e.phone,
             department: e.department,
             locationName: e.fingerprintLocation || e.fingerScanLocation || "غير محدد",
