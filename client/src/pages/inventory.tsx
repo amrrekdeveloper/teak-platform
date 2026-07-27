@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLanguage } from "@/components/language-provider";
 import { useAuth } from "@/hooks/use-auth";
+import { Textarea } from "@/components/ui/textarea";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { InventoryItem, Warehouse } from "@shared/schema";
@@ -17,6 +18,7 @@ import { Loader2, Plus, Package, AlertTriangle, ArrowUpCircle, ArrowDownCircle, 
 const STOCK_OUT_REASONS = [
   { value: "production_use", ar: "استخدام في الإنتاج", en: "Production use" },
   { value: "contract_delivery", ar: "تسليم لعقد", en: "Contract delivery" },
+  { value: "supplier_return", ar: "إرجاع لمورد", en: "Return to supplier" },
   { value: "damaged", ar: "تالف", en: "Damaged" },
   { value: "sample", ar: "عينة", en: "Sample" },
   { value: "adjustment", ar: "تسوية جردية", en: "Inventory adjustment" },
@@ -59,7 +61,8 @@ export default function InventoryPage() {
     warehouseId: "", unit: "piece", quantity: "0", minQuantity: "0", costPerUnit: "0", location: "",
   });
 
-  const [txData, setTxData] = useState({ type: "stock_in", quantity: "", reason: "", contractId: "" });
+  const EMPTY_TX = { type: "stock_in", quantity: "", reason: "", contractId: "", supplierId: "", notes: "" };
+  const [txData, setTxData] = useState(EMPTY_TX);
   const [uploading, setUploading] = useState(false);
 
   const uploadImage = async (file: File): Promise<string | null> => {
@@ -89,6 +92,10 @@ export default function InventoryPage() {
 
   const { data: contracts = [] } = useQuery<{ id: number; contractNumber: string }[]>({
     queryKey: ["/api/contracts"],
+  });
+
+  const { data: suppliersList = [] } = useQuery<{ id: number; nameAr: string; nameEn?: string | null }[]>({
+    queryKey: ["/api/suppliers"],
   });
 
   const warehouseName = (id: number | null | undefined) => {
@@ -149,8 +156,11 @@ export default function InventoryPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/inventory"] });
       setTxOpen(null);
-      setTxData({ type: "stock_in", quantity: "", reason: "", contractId: "" });
+      setTxData(EMPTY_TX);
       toast({ title: t("تم تسجيل الحركة بنجاح", "Transaction recorded") });
+    },
+    onError: (err: any) => {
+      toast({ title: err?.message || t("حدث خطأ في تسجيل الحركة", "Error recording transaction"), variant: "destructive" });
     },
   });
 
@@ -452,10 +462,10 @@ export default function InventoryPage() {
                   </div>
 
                   <div className="flex gap-2">
-                    <Button size="sm" variant="outline" className="flex-1 text-green-600" onClick={() => { setTxOpen(item); setTxData({ type: "stock_in", quantity: "", reason: "", contractId: "" }); }} data-testid={`button-stock-in-${item.id}`}>
+                    <Button size="sm" variant="outline" className="flex-1 text-green-600" onClick={() => { setTxOpen(item); setTxData({ ...EMPTY_TX, type: "stock_in" }); }} data-testid={`button-stock-in-${item.id}`}>
                       <ArrowDownCircle className="w-3.5 h-3.5 me-1" />{t("إدخال", "Stock In")}
                     </Button>
-                    <Button size="sm" variant="outline" className="flex-1 text-red-600" onClick={() => { setTxOpen(item); setTxData({ type: "stock_out", quantity: "", reason: "", contractId: "" }); }} data-testid={`button-stock-out-${item.id}`}>
+                    <Button size="sm" variant="outline" className="flex-1 text-red-600" onClick={() => { setTxOpen(item); setTxData({ ...EMPTY_TX, type: "stock_out" }); }} data-testid={`button-stock-out-${item.id}`}>
                       <ArrowUpCircle className="w-3.5 h-3.5 me-1" />{t("إخراج", "Stock Out")}
                     </Button>
                   </div>
@@ -483,7 +493,7 @@ export default function InventoryPage() {
               <>
                 <div className="space-y-1">
                   <Label>{t("السبب", "Reason")} <span className="text-destructive">*</span></Label>
-                  <Select value={txData.reason} onValueChange={v => setTxData({ ...txData, reason: v })}>
+                  <Select value={txData.reason} onValueChange={v => setTxData({ ...txData, reason: v, supplierId: v === "supplier_return" ? txData.supplierId : "" })}>
                     <SelectTrigger data-testid="select-tx-reason"><SelectValue placeholder={t("اختر السبب", "Select reason")} /></SelectTrigger>
                     <SelectContent>
                       {STOCK_OUT_REASONS.map(r => (
@@ -492,6 +502,43 @@ export default function InventoryPage() {
                     </SelectContent>
                   </Select>
                 </div>
+                <div className="space-y-1">
+                  <Label>{t("تفاصيل السبب", "Reason details")} <span className="text-destructive">*</span></Label>
+                  <Textarea
+                    rows={2}
+                    value={txData.notes}
+                    onChange={e => setTxData({ ...txData, notes: e.target.value })}
+                    placeholder={t("اذكر تفاصيل سبب الإخراج...", "Describe why the stock is being taken out...")}
+                    data-testid="input-tx-notes"
+                  />
+                </div>
+                {txData.reason === "supplier_return" ? (
+                  <div className="space-y-1">
+                    <Label>{t("المورد", "Supplier")} <span className="text-destructive">*</span></Label>
+                    <Select value={txData.supplierId || "none"} onValueChange={v => setTxData({ ...txData, supplierId: v === "none" ? "" : v })}>
+                      <SelectTrigger data-testid="select-tx-supplier"><SelectValue placeholder={t("اختر المورد", "Select supplier")} /></SelectTrigger>
+                      <SelectContent>
+                        {suppliersList.map(s => (
+                          <SelectItem key={s.id} value={s.id.toString()}>{t(s.nameAr, s.nameEn || s.nameAr)}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">{t("سيتم تخفيض ذمم المورد بقيمة تكلفة الأصناف المُرجعة.", "The supplier's payable balance entry will reflect the returned items' cost.")}</p>
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    <Label>{t("ربط بمورد (اختياري)", "Link to supplier (optional)")}</Label>
+                    <Select value={txData.supplierId || "none"} onValueChange={v => setTxData({ ...txData, supplierId: v === "none" ? "" : v })}>
+                      <SelectTrigger data-testid="select-tx-supplier"><SelectValue placeholder={t("بدون مورد", "No supplier")} /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">{t("بدون مورد", "No supplier")}</SelectItem>
+                        {suppliersList.map(s => (
+                          <SelectItem key={s.id} value={s.id.toString()}>{t(s.nameAr, s.nameEn || s.nameAr)}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
                 <div className="space-y-1">
                   <Label>{t("ربط بعقد (اختياري)", "Link to contract (optional)")}</Label>
                   <Select value={txData.contractId || "none"} onValueChange={v => setTxData({ ...txData, contractId: v === "none" ? "" : v })}>
@@ -540,8 +587,11 @@ export default function InventoryPage() {
             )}
             <Button
               className="w-full"
-              onClick={() => txOpen && txMutation.mutate({ inventoryId: txOpen.id, type: txData.type, quantity: txData.quantity, reason: txData.reason, contractId: txData.contractId || null })}
-              disabled={!txData.quantity || parseFloat(txData.quantity) <= 0 || !txData.reason || txMutation.isPending}
+              onClick={() => txOpen && txMutation.mutate({ inventoryId: txOpen.id, type: txData.type, quantity: txData.quantity, reason: txData.reason, contractId: txData.contractId || null, supplierId: txData.supplierId || null, notes: txData.notes.trim() || null })}
+              disabled={
+                !txData.quantity || parseFloat(txData.quantity) <= 0 || !txData.reason || txMutation.isPending ||
+                (txData.type === "stock_out" && (!txData.notes.trim() || (txData.reason === "supplier_return" && !txData.supplierId)))
+              }
               data-testid="button-submit-tx"
             >
               {txMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : t("تأكيد", "Confirm")}

@@ -442,6 +442,16 @@ export async function registerRoutes(
     console.warn("User permissions migration warning (non-fatal):", permsMigrationError instanceof Error ? permsMigrationError.message : String(permsMigrationError));
   }
 
+  // Inventory transactions: supplier link + mandatory stock-out reason details.
+  try {
+    await db.execute(`
+      ALTER TABLE inventory_transactions ADD COLUMN IF NOT EXISTS supplier_id INTEGER REFERENCES suppliers(id);
+      ALTER TABLE inventory_transactions ADD COLUMN IF NOT EXISTS notes TEXT;
+    `);
+  } catch (invTxMigrationError) {
+    console.warn("Inventory transactions migration warning (non-fatal):", invTxMigrationError instanceof Error ? invTxMigrationError.message : String(invTxMigrationError));
+  }
+
   // Kitchen-tool pricing: per-grade prices on adeko products + material grade.
   try {
     await db.execute(`
@@ -3119,20 +3129,42 @@ export async function registerRoutes(
 
   app.post("/api/inventory-transactions", requireRole("owner", "assistant", "warehouse"), async (req, res) => {
     try {
-      const { inventoryId, type, quantity, reason, contractId, workOrderId, purchaseOrderId } = req.body;
+      const { inventoryId, type, quantity, reason, contractId, supplierId, notes, workOrderId, purchaseOrderId } = req.body;
       if (!inventoryId || !type || !quantity) {
         return res.status(400).json({ message: "بيانات ناقصة", messageEn: "Missing required fields" });
       }
       const txQty = parseFloat(quantity);
       if (txQty <= 0) return res.status(400).json({ message: "الكمية يجب أن تكون أكبر من صفر", messageEn: "Quantity must be greater than zero" });
 
-      const STOCK_OUT_REASONS = ["production_use", "contract_delivery", "damaged", "sample", "adjustment", "other"];
+      const STOCK_OUT_REASONS = ["production_use", "contract_delivery", "supplier_return", "damaged", "sample", "adjustment", "other"];
       const STOCK_IN_REASONS = ["purchase", "customer_return", "production_return", "adjustment", "transfer", "other"];
       if (type === "stock_out" && !STOCK_OUT_REASONS.includes(reason)) {
         return res.status(400).json({ message: "يجب اختيار سبب صحيح للإخراج", messageEn: "A valid stock-out reason is required" });
       }
       if (type === "stock_in" && !STOCK_IN_REASONS.includes(reason)) {
         return res.status(400).json({ message: "يجب اختيار سبب صحيح للإدخال", messageEn: "A valid stock-in reason is required" });
+      }
+
+      // Stock-out: reason details are mandatory
+      const notesText = typeof notes === "string" ? notes.trim() : "";
+      if (type === "stock_out" && !notesText) {
+        return res.status(400).json({ message: "تفاصيل السبب إجبارية لإخراج المخزون", messageEn: "Reason details are required for stock-out" });
+      }
+
+      // Supplier link: required for supplier returns, optional otherwise; must reference a real supplier
+      let supplierIdNum: number | null = null;
+      if (supplierId !== undefined && supplierId !== null && supplierId !== "") {
+        supplierIdNum = parseInt(String(supplierId));
+        if (isNaN(supplierIdNum)) {
+          return res.status(400).json({ message: "معرف المورد غير صالح", messageEn: "Invalid supplier id" });
+        }
+      }
+      if (type === "stock_out" && reason === "supplier_return" && !supplierIdNum) {
+        return res.status(400).json({ message: "يجب اختيار المورد عند الإرجاع لمورد", messageEn: "A supplier is required for supplier returns" });
+      }
+      if (supplierIdNum) {
+        const supplier = await storage.getSupplier(supplierIdNum);
+        if (!supplier) return res.status(400).json({ message: "المورد غير موجود", messageEn: "Supplier not found" });
       }
 
       const item = await storage.getInventoryItem(inventoryId);
@@ -3144,7 +3176,7 @@ export async function registerRoutes(
       }
 
       const contractIdNum = contractId ? parseInt(contractId) : null;
-      const tx = await storage.createInventoryTransaction({ inventoryId, type, quantity, reason, contractId: contractIdNum, workOrderId, purchaseOrderId, performedBy: req.session.userId });
+      const tx = await storage.createInventoryTransaction({ inventoryId, type, quantity, reason, contractId: contractIdNum, supplierId: supplierIdNum, notes: notesText || null, workOrderId, purchaseOrderId, performedBy: req.session.userId });
 
       let newQty = currentQty;
       if (type === "stock_in") newQty = currentQty + txQty;
@@ -3160,10 +3192,14 @@ export async function registerRoutes(
           const totalCost = unitCost * txQty;
           if (totalCost > 0) {
             const matName = item.materialNameAr || item.materialNameEn || `#${inventoryId}`;
+            // Supplier returns reduce supplier payables instead of expensing to COGS
+            const debitLine = reason === "supplier_return"
+              ? { entryId: 0, accountCode: "2111", accountNameAr: "ذمم الموردين", debit: totalCost.toFixed(2), credit: "0" }
+              : { entryId: 0, accountCode: "5100", accountNameAr: "تكلفة المواد الخام", debit: totalCost.toFixed(2), credit: "0" };
             await storage.createJournalEntry(
               {
                 date: new Date().toISOString().slice(0, 10),
-                description: `إخراج مخزون: ${matName} (${txQty})`,
+                description: `إخراج مخزون: ${matName} (${txQty})${notesText ? ` — ${notesText}` : ""}`,
                 reference: `INV-OUT-${tx.id}`,
                 referenceType: "inventory_out",
                 referenceId: tx.id,
@@ -3171,7 +3207,7 @@ export async function registerRoutes(
                 createdBy: req.session.userId,
               } as any,
               [
-                { entryId: 0, accountCode: "5100", accountNameAr: "تكلفة المواد الخام", debit: totalCost.toFixed(2), credit: "0" },
+                debitLine,
                 { entryId: 0, accountCode: "1130", accountNameAr: "المخزون", debit: "0", credit: totalCost.toFixed(2) },
               ] as any,
             );

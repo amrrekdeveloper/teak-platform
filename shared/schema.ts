@@ -763,6 +763,8 @@ export const inventoryTransactions = pgTable("inventory_transactions", {
   quantity: decimal("quantity", { precision: 12, scale: 2 }).notNull(),
   reason: text("reason"),
   contractId: integer("contract_id").references(() => contracts.id),
+  supplierId: integer("supplier_id"),
+  notes: text("notes"),
   workOrderId: integer("work_order_id").references(() => workOrders.id),
   purchaseOrderId: integer("purchase_order_id"),
   performedBy: integer("performed_by").references(() => users.id),
