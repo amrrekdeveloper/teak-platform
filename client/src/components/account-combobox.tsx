@@ -18,8 +18,15 @@ export type AccountOption = {
   nameEn?: string | null;
 };
 
+export type AccountGroup = {
+  label: string;
+  accounts: AccountOption[];
+};
+
 type AccountComboboxProps = {
   accounts: AccountOption[];
+  /** Optional grouped rendering; when provided, `accounts` should be the flat union (used for lookup). */
+  groups?: AccountGroup[];
   value: string;
   onChange: (code: string, account: AccountOption | undefined) => void;
   placeholder?: string;
@@ -32,6 +39,7 @@ type AccountComboboxProps = {
 
 export function AccountCombobox({
   accounts,
+  groups,
   value,
   onChange,
   placeholder = "اختر حساباً",
@@ -90,25 +98,33 @@ export function AccountCombobox({
           />
           <CommandList className="max-h-52">
             <CommandEmpty className="py-4 text-center text-xs text-muted-foreground">{emptyText}</CommandEmpty>
-            <CommandGroup>
-              {accounts.map((a) => (
-                <CommandItem
-                  key={a.code}
-                  value={`${a.code} ${a.nameAr} ${a.nameEn || ""}`}
-                  onSelect={() => handleSelect(a)}
-                  onPointerDown={(e) => {
-                    e.preventDefault();
-                    handleSelect(a);
-                  }}
-                  className="text-xs cursor-pointer"
-                  data-testid={testId ? `${testId}-option-${a.code}` : undefined}
-                >
-                  <Check className={cn("me-2 h-3.5 w-3.5", value === a.code ? "opacity-100" : "opacity-0")} />
-                  <span className="font-mono">{a.code}</span>
-                  <span className="ms-2 truncate text-muted-foreground">{a.nameAr}</span>
-                </CommandItem>
-              ))}
-            </CommandGroup>
+            {(groups && groups.length > 0
+              ? groups.filter((g) => g.accounts.length > 0)
+              : [{ label: "", accounts }]
+            ).map((group, gi) => (
+              <CommandGroup
+                key={group.label || gi}
+                heading={group.label || undefined}
+              >
+                {group.accounts.map((a) => (
+                  <CommandItem
+                    key={a.code}
+                    value={`${a.code} ${a.nameAr} ${a.nameEn || ""}`}
+                    onSelect={() => handleSelect(a)}
+                    onPointerDown={(e) => {
+                      e.preventDefault();
+                      handleSelect(a);
+                    }}
+                    className="text-xs cursor-pointer"
+                    data-testid={testId ? `${testId}-option-${a.code}` : undefined}
+                  >
+                    <Check className={cn("me-2 h-3.5 w-3.5", value === a.code ? "opacity-100" : "opacity-0")} />
+                    <span className="font-mono">{a.code}</span>
+                    <span className="ms-2 truncate text-muted-foreground">{a.nameAr}</span>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            ))}
           </CommandList>
         </Command>
       </PopoverContent>

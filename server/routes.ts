@@ -9204,6 +9204,18 @@ export async function registerRoutes(
       const payName = await resolveName(paymentAccountCode);
       const counterName = await resolveName(counterAccountCode);
 
+      // Reject posting to header/parent (non-postable) or inactive accounts — both legs
+      const allAccounts = await storage.getChartOfAccounts();
+      for (const code of [paymentAccountCode, counterAccountCode]) {
+        if (allAccounts.some(a => a.parentCode === code)) {
+          return res.status(400).json({ message: `لا يمكن الترحيل على الحساب ${code} لأنه حساب رئيسي تجميعي — اختر حساباً فرعياً تحته` });
+        }
+        const acc = allAccounts.find(a => a.code === code);
+        if (acc && acc.isActive === false) {
+          return res.status(400).json({ message: `الحساب ${code} غير نشط — لا يمكن الترحيل عليه` });
+        }
+      }
+
       const lines: any[] = [];
       if (voucherKind === "receipt") {
         // Money in: debit cash/bank, credit the source account

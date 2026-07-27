@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation, Link } from "wouter";
 import { useLanguage } from "@/components/language-provider";
@@ -492,6 +492,35 @@ export default function FinanceAccountsPage() {
       : a.type === "expense" || a.type === "cost" || a.code?.startsWith("113"),
   );
   const paymentAccounts = (accounts as any[]).filter((a: any) => a.code?.startsWith("111") && a.code !== "1110");
+
+  // الحساب المقابل في السندات: حسابات قابلة للترحيل فقط (لا رئيسية تجميعية)، بدون حساب الدفع المختار
+  const { counterAccounts, counterAccountGroups } = useMemo(() => {
+    const list = accounts as any[];
+    const parentCodes = new Set(list.map(a => a.parentCode).filter(Boolean));
+    const postable = list.filter(a =>
+      !parentCodes.has(a.code) &&
+      a.isActive !== false &&
+      a.code !== voucherForm.paymentAccountCode
+    );
+    const isReceipt = voucherForm.voucherKind === "receipt";
+    const isCustomer = (a: any) => /عميل|عملاء|مدينون/.test(a.nameAr || "");
+    const isSupplier = (a: any) => /مورد|موردون|دائنون/.test(a.nameAr || "");
+    const preferred = postable.filter(a =>
+      isReceipt
+        ? a.type === "revenue" || (a.type === "asset" && isCustomer(a)) || (a.type === "liability" && /مقدم|أمانات/.test(a.nameAr || ""))
+        : a.type === "expense" || a.type === "cost" || (a.type === "liability" && isSupplier(a))
+    );
+    const preferredCodes = new Set(preferred.map(a => a.code));
+    const others = postable.filter(a => !preferredCodes.has(a.code));
+    const groups = [
+      {
+        label: isReceipt ? t("الأكثر استخداماً لسند القبض", "Common for receipts") : t("الأكثر استخداماً لسند الصرف", "Common for payments"),
+        accounts: preferred,
+      },
+      { label: t("حسابات أخرى", "Other accounts"), accounts: others },
+    ];
+    return { counterAccounts: postable, counterAccountGroups: groups };
+  }, [accounts, voucherForm.voucherKind, voucherForm.paymentAccountCode, t]);
 
   const handleRecordInvoice = () => {
     if (!invForm.date) return toast({ title: t("تاريخ الفاتورة مطلوب", "Invoice date required"), variant: "destructive" });
@@ -1461,19 +1490,27 @@ export default function FinanceAccountsPage() {
               <AccountCombobox
                 accounts={paymentAccounts}
                 value={voucherForm.paymentAccountCode}
-                onChange={(code) => setVoucherForm(f => ({ ...f, paymentAccountCode: code }))}
+                onChange={(code) => setVoucherForm(f => ({ ...f, paymentAccountCode: code, counterAccountCode: f.counterAccountCode === code ? "" : f.counterAccountCode }))}
                 placeholder={t("اختر حساب الصندوق / البنك", "Select cash / bank account")}
                 testId="select-voucher-payment"
               />
             </div>
 
             <div className="space-y-1">
-              <Label className="text-xs">{voucherForm.voucherKind === "receipt" ? t("الحساب المقابل (المصدر)", "Counter Account (Source)") : t("الحساب المقابل (الوجهة)", "Counter Account (Destination)")} *</Label>
+              <Label className="text-xs">
+                {voucherForm.voucherKind === "receipt" ? t("الحساب الدائن — مصدر المبلغ", "Credit Account — money source") : t("الحساب المدين — وجه الصرف", "Debit Account — spend target")} *
+              </Label>
+              <p className="text-[11px] text-muted-foreground leading-snug">
+                {voucherForm.voucherKind === "receipt"
+                  ? t("الحساب الذي جاء منه المبلغ: إيراد مبيعات، عميل، دفعة مقدمة...", "Where the money came from: sales revenue, a customer, an advance...")
+                  : t("الحساب الذي صُرف له المبلغ: مصروف، مورد، سلفة موظف...", "What the money was spent on: an expense, a supplier, an employee advance...")}
+              </p>
               <AccountCombobox
-                accounts={accounts}
+                accounts={counterAccounts}
+                groups={counterAccountGroups}
                 value={voucherForm.counterAccountCode}
                 onChange={(code) => setVoucherForm(f => ({ ...f, counterAccountCode: code }))}
-                placeholder={t("اختر الحساب المقابل", "Select counter account")}
+                placeholder={voucherForm.voucherKind === "receipt" ? t("اختر الحساب الدائن", "Select credit account") : t("اختر الحساب المدين", "Select debit account")}
                 testId="select-voucher-counter"
               />
             </div>
@@ -1488,6 +1525,42 @@ export default function FinanceAccountsPage() {
                 data-testid="input-voucher-amount"
               />
             </div>
+
+            {(() => {
+              const pay = (accounts as any[]).find(a => a.code === voucherForm.paymentAccountCode);
+              const counter = (accounts as any[]).find(a => a.code === voucherForm.counterAccountCode);
+              const amt = parseFloat(voucherForm.amount || "0");
+              if (!pay || !counter || !(amt > 0) || pay.code === counter.code) return null;
+              const isReceipt = voucherForm.voucherKind === "receipt";
+              const debitAcc = isReceipt ? pay : counter;
+              const creditAcc = isReceipt ? counter : pay;
+              return (
+                <div className="rounded-md border bg-muted/40 p-2.5" data-testid="preview-voucher-entry">
+                  <p className="text-[11px] font-semibold text-muted-foreground mb-1.5">{t("القيد الذي سيتم ترحيله:", "Journal entry to be posted:")}</p>
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="text-muted-foreground">
+                        <th className="text-start font-medium pb-1">{t("الحساب", "Account")}</th>
+                        <th className="text-end font-medium pb-1 w-20">{t("مدين", "Debit")}</th>
+                        <th className="text-end font-medium pb-1 w-20">{t("دائن", "Credit")}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td className="py-0.5"><span className="font-mono">{debitAcc.code}</span> {debitAcc.nameAr}</td>
+                        <td className="text-end tabular-nums font-semibold">{amt.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                        <td className="text-end tabular-nums text-muted-foreground">—</td>
+                      </tr>
+                      <tr>
+                        <td className="py-0.5"><span className="font-mono">{creditAcc.code}</span> {creditAcc.nameAr}</td>
+                        <td className="text-end tabular-nums text-muted-foreground">—</td>
+                        <td className="text-end tabular-nums font-semibold">{amt.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              );
+            })()}
 
             <AttachmentListField
               label={t("إيصالات (صور / PDF — يمكن اختيار أكثر من ملف)", "Receipts (Images / PDF — multiple allowed)")}
