@@ -151,6 +151,40 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
+// Maps API path prefixes to the sidebar module permission key that governs them.
+// When a role check fails, a per-account "grant" for the mapped module key allows access —
+// so granting a module in the permissions editor actually works at the API level,
+// not just for sidebar visibility.
+const API_PERMISSION_BYPASS: { prefix: string; key: string; exclude?: string[]; readOnly?: boolean }[] = [
+  { prefix: "/api/attendance/monitor", key: "/attendance-monitor" },
+  // Settings-level surfaces stay read-only via grant: mutations remain role-gated
+  { prefix: "/api/attendance/zones", key: "/attendance-monitor", readOnly: true },
+  { prefix: "/api/attendance/work-settings", key: "/attendance-monitor", readOnly: true },
+  { prefix: "/api/attendance/device-report", key: "/attendance-monitor" },
+  { prefix: "/api/attendance/violations", key: "/attendance-monitor" },
+  { prefix: "/api/attendance/risk-scores", key: "/attendance-monitor" },
+  // Core monitor workflow includes correcting records / overrides
+  { prefix: "/api/attendance/record", key: "/attendance-monitor" },
+  { prefix: "/api/attendance/audit-log", key: "/attendance-monitor" },
+  { prefix: "/api/inventory-transactions", key: "/inventory" },
+  { prefix: "/api/inventory", key: "/inventory" },
+  { prefix: "/api/warehouses", key: "/inventory", readOnly: true },
+  { prefix: "/api/suppliers", key: "/suppliers", exclude: ["/approval"] },
+  { prefix: "/api/purchase-orders", key: "/purchases" },
+];
+
+async function hasModuleGrantForPath(user: User, method: string, path: string): Promise<boolean> {
+  const entry = API_PERMISSION_BYPASS.find(
+    (e) =>
+      (path === e.prefix || path.startsWith(e.prefix + "/")) &&
+      !(e.exclude || []).some((suffix) => path.endsWith(suffix)),
+  );
+  if (!entry) return false;
+  if (entry.readOnly && method !== "GET") return false;
+  const effective = await getEffectivePermissionsForUser(user);
+  return effective.includes(entry.key);
+}
+
 export function requireRole(...roles: string[]) {
   return async (req: Request, res: Response, next: NextFunction) => {
     if (!req.session.userId) {
@@ -170,6 +204,9 @@ export function requireRole(...roles: string[]) {
       }
 
       if (!roles.includes(user.role) && user.role !== "owner" && user.role !== "it") {
+        // Per-account module grant can open API access for the granted module
+        const granted = await hasModuleGrantForPath(user, req.method, req.path);
+        if (granted) return next();
         return res.status(403).json({
           message: "ليس لديك صلاحية للوصول لهذا المورد",
           messageEn: "You do not have permission to access this resource",
