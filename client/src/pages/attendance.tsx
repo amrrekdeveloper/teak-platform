@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useLanguage } from "@/components/language-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -65,7 +66,7 @@ function getDeviceId(): string {
   }
 }
 
-function FingerprintAnimation({ onComplete }: { onComplete: () => void }) {
+function FingerprintAnimation({ onComplete, t }: { onComplete: () => void; t: (ar: string, en: string) => string }) {
   const [phase, setPhase] = useState<"idle" | "scanning" | "done">("idle");
   const [touched, setTouched] = useState(false);
 
@@ -82,7 +83,7 @@ function FingerprintAnimation({ onComplete }: { onComplete: () => void }) {
   return (
     <div className="flex flex-col items-center gap-6 py-4">
       <p className="text-lg font-medium text-center text-foreground">
-        {phase === "idle" ? "ضع إصبعك على البصمة للتسجيل" : phase === "scanning" ? "جاري التحقق..." : "تم التحقق بنجاح ✓"}
+        {phase === "idle" ? t("ضع إصبعك على البصمة للتسجيل", "Place your finger on the scanner") : phase === "scanning" ? t("جاري التحقق...", "Verifying...") : t("تم التحقق بنجاح ✓", "Verified successfully ✓")}
       </p>
 
       <div
@@ -138,25 +139,25 @@ function FingerprintAnimation({ onComplete }: { onComplete: () => void }) {
   );
 }
 
-function AttendanceStatusBadge({ status }: { status: string }) {
+function AttendanceStatusBadge({ status, t }: { status: string; t: (ar: string, en: string) => string }) {
   const map: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
-    present: { label: "حاضر", variant: "default" },
-    late: { label: "متأخر", variant: "secondary" },
-    absent: { label: "غائب", variant: "destructive" },
-    missing_checkout: { label: "نقص خروج", variant: "outline" },
-    missing_checkin: { label: "نقص دخول", variant: "outline" },
-    permission: { label: "إذن", variant: "secondary" },
+    present: { label: t("حاضر", "Present"), variant: "default" },
+    late: { label: t("متأخر", "Late"), variant: "secondary" },
+    absent: { label: t("غائب", "Absent"), variant: "destructive" },
+    missing_checkout: { label: t("نقص خروج", "Missing check-out"), variant: "outline" },
+    missing_checkin: { label: t("نقص دخول", "Missing check-in"), variant: "outline" },
+    permission: { label: t("إذن", "Permission"), variant: "secondary" },
   };
   const s = map[status] || { label: status, variant: "outline" as const };
   return <Badge variant={s.variant}>{s.label}</Badge>;
 }
 
-function formatTime(ts: string) {
-  return new Date(ts).toLocaleTimeString("ar-SA", { hour: "2-digit", minute: "2-digit", hour12: true });
+function formatTime(ts: string, locale: string) {
+  return new Date(ts).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit", hour12: true });
 }
 
-function formatDate(ts: string) {
-  return new Date(ts).toLocaleDateString("ar-SA", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+function formatDate(ts: string, locale: string) {
+  return new Date(ts).toLocaleDateString(locale, { weekday: "long", year: "numeric", month: "long", day: "numeric" });
 }
 
 function groupRecordsByDay(records: AttendanceRecord[]) {
@@ -199,7 +200,10 @@ export default function AttendancePage() {
   const [historyFrom, setHistoryFrom] = useState("");
   const [historyTo, setHistoryTo] = useState("");
   const { toast } = useToast();
+  const { t, lang, toggleLang, isRTL } = useLanguage();
+  const timeLocale = lang === "ar" ? "ar-SA" : "en-US";
   const qc = useQueryClient();
+  const pickMsg = (body: any, fallback: string) => (lang === "en" && body?.messageEn) || body?.message || fallback;
   const deviceInfo = useRef(getDeviceInfo());
   const deviceFingerprint = useRef(getDeviceId());
 
@@ -228,18 +232,18 @@ export default function AttendancePage() {
   const verifyMutation = useMutation({
     mutationFn: (pwd: string) => apiRequest("POST", "/api/attendance/verify-password", { password: pwd }),
     onSuccess: () => setStep("lookup"),
-    onError: () => toast({ title: "كلمة المرور خاطئة", description: "أدخل كلمة المرور الصحيحة", variant: "destructive" }),
+    onError: () => toast({ title: t("كلمة المرور خاطئة", "Wrong password"), description: t("أدخل كلمة المرور الصحيحة", "Enter the correct password"), variant: "destructive" }),
   });
 
   const lookupMutation = useMutation({
-    mutationFn: (ph: string) => fetch(`/api/attendance/employee-lookup?phone=${ph}`).then(async r => { if (!r.ok) throw new Error((await r.json()).message); return r.json(); }),
+    mutationFn: (ph: string) => fetch(`/api/attendance/employee-lookup?phone=${ph}`).then(async r => { if (!r.ok) throw new Error(pickMsg(await r.json(), t("حدث خطأ", "An error occurred"))); return r.json(); }),
     onSuccess: (data: EmployeeInfo) => {
       setEmployee(data);
       const nextType = data.lastRecord?.type === "check_in" ? "check_out" : "check_in";
       setActionType(nextType);
       setStep("action");
     },
-    onError: (err: Error) => toast({ title: "خطأ", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: t("خطأ", "Error"), description: err.message, variant: "destructive" }),
   });
 
   const recordMutation = useMutation({
@@ -251,7 +255,7 @@ export default function AttendancePage() {
       });
       if (!r.ok) {
         const body = await r.json().catch(() => ({}));
-        throw Object.assign(new Error(body.message || "تعذّر تسجيل الحضور"), { requirePin: body.requirePin });
+        throw Object.assign(new Error(pickMsg(body, t("تعذّر تسجيل الحضور", "Could not record attendance"))), { requirePin: body.requirePin });
       }
       return r.json();
     },
@@ -264,7 +268,7 @@ export default function AttendancePage() {
         setPin("");
         setStep("pin");
       }
-      toast({ title: "خطأ", description: err.message, variant: "destructive" });
+      toast({ title: t("خطأ", "Error"), description: err.message, variant: "destructive" });
     },
   });
 
@@ -273,20 +277,20 @@ export default function AttendancePage() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ employeeId: employee?.id, employeePhone: employee?.phone, pin: p, type: actionType }),
-    }).then(async r => { if (!r.ok) throw new Error((await r.json()).message); return r.json(); }),
+    }).then(async r => { if (!r.ok) throw new Error(pickMsg(await r.json(), t("حدث خطأ", "An error occurred"))); return r.json(); }),
     onSuccess: () => {
       setPin("");
       setFingerprintDone(false);
       setStep("fingerprint");
     },
-    onError: (err: Error) => toast({ title: "خطأ", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: t("خطأ", "Error"), description: err.message, variant: "destructive" }),
   });
 
   const permMutation = useMutation({
     mutationFn: (data: object) => apiRequest("POST", "/api/attendance/permission", data),
     onSuccess: () => {
       setPermissionDialog(false);
-      toast({ title: "تم إرسال طلب الاستئذان", description: "تمت الموافقة تلقائياً" });
+      toast({ title: t("تم إرسال طلب الاستئذان", "Permission request sent"), description: t("تمت الموافقة تلقائياً", "Approved automatically") });
     },
   });
 
@@ -376,17 +380,26 @@ export default function AttendancePage() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-background flex flex-col" dir="rtl">
+    <div className="min-h-screen bg-background flex flex-col" dir={isRTL ? "rtl" : "ltr"}>
       {/* Header */}
       <div className="bg-primary text-primary-foreground py-4 px-6 flex items-center gap-3 shadow-md">
         <img src={teakLogo} alt="Teak" className="w-10 h-10 object-contain brightness-0 invert" />
         <div>
-          <h1 className="font-bold text-lg leading-tight">نظام مراقبة الدوام</h1>
-          <p className="text-primary-foreground/70 text-sm">تيك للتصنيع والتجارة</p>
+          <h1 className="font-bold text-lg leading-tight">{t("نظام مراقبة الدوام", "Attendance System")}</h1>
+          <p className="text-primary-foreground/70 text-sm">{t("تيك للتصنيع والتجارة", "Teak Manufacturing & Trading")}</p>
         </div>
         <div className="ms-auto flex items-center gap-2">
-          <Shield className="w-5 h-5 opacity-60" />
-          <span className="text-sm opacity-70">بوابة الموظفين</span>
+          <Shield className="w-5 h-5 opacity-60 hidden sm:block" />
+          <span className="text-sm opacity-70 hidden sm:block">{t("بوابة الموظفين", "Employee Portal")}</span>
+          <Button
+            variant="secondary"
+            size="sm"
+            className="h-8 px-3 font-bold"
+            onClick={toggleLang}
+            data-testid="button-toggle-language"
+          >
+            {lang === "ar" ? "EN" : "ع"}
+          </Button>
         </div>
       </div>
 
@@ -403,13 +416,13 @@ export default function AttendancePage() {
                     <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto">
                       <Shield className="w-8 h-8 text-primary" />
                     </div>
-                    <h2 className="text-2xl font-bold">تسجيل الدوام</h2>
-                    <p className="text-muted-foreground text-sm">أدخل كلمة المرور للمتابعة</p>
+                    <h2 className="text-2xl font-bold">{t("تسجيل الدوام", "Attendance Check-in")}</h2>
+                    <p className="text-muted-foreground text-sm">{t("أدخل كلمة المرور للمتابعة", "Enter the password to continue")}</p>
                   </div>
                   <div className="space-y-3">
                     <Input
                       type="password"
-                      placeholder="كلمة المرور"
+                      placeholder={t("كلمة المرور", "Password")}
                       value={password}
                       onChange={e => setPassword(e.target.value)}
                       onKeyDown={e => e.key === "Enter" && verifyMutation.mutate(password)}
@@ -422,7 +435,7 @@ export default function AttendancePage() {
                       disabled={verifyMutation.isPending || !password}
                       data-testid="button-attendance-login"
                     >
-                      {verifyMutation.isPending ? "جاري التحقق..." : "دخول"}
+                      {verifyMutation.isPending ? t("جاري التحقق...", "Verifying...") : t("دخول", "Enter")}
                       <ChevronRight className="w-4 h-4 ms-1" />
                     </Button>
                   </div>
@@ -438,12 +451,12 @@ export default function AttendancePage() {
                     <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto">
                       <Fingerprint className="w-8 h-8 text-primary" />
                     </div>
-                    <h2 className="text-xl font-bold">تعريف الموظف</h2>
+                    <h2 className="text-xl font-bold">{t("تعريف الموظف", "Employee Identification")}</h2>
                   </div>
 
                   <div className="space-y-4">
                     <div className="space-y-2">
-                      <label className="text-sm font-medium text-muted-foreground">ابحث برقم الجوال</label>
+                      <label className="text-sm font-medium text-muted-foreground">{t("ابحث برقم الجوال", "Search by phone number")}</label>
                       <div className="flex gap-2">
                         <Input
                           type="tel"
@@ -459,7 +472,7 @@ export default function AttendancePage() {
                           disabled={lookupMutation.isPending || !phone}
                           data-testid="button-attendance-lookup"
                         >
-                          {lookupMutation.isPending ? "..." : "بحث"}
+                          {lookupMutation.isPending ? "..." : t("بحث", "Search")}
                         </Button>
                       </div>
                       {lookupMutation.isError && (
@@ -472,13 +485,13 @@ export default function AttendancePage() {
 
                     <div className="relative">
                       <div className="absolute inset-0 flex items-center"><div className="w-full border-t" /></div>
-                      <div className="relative flex justify-center text-xs text-muted-foreground"><span className="bg-card px-2">أو اختر اسمك من القائمة</span></div>
+                      <div className="relative flex justify-center text-xs text-muted-foreground"><span className="bg-card px-2">{t("أو اختر اسمك من القائمة", "Or pick your name from the list")}</span></div>
                     </div>
 
                     <div className="space-y-2">
                       <Input
                         type="text"
-                        placeholder="ابحث بالاسم..."
+                        placeholder={t("ابحث بالاسم...", "Search by name...")}
                         value={employeeSearch}
                         onChange={e => setEmployeeSearch(e.target.value)}
                         data-testid="input-employee-search"
@@ -490,7 +503,7 @@ export default function AttendancePage() {
                             <button
                               key={emp.id}
                               onClick={() => handleSelectEmployee(String(emp.id))}
-                              className="w-full flex items-center gap-3 px-3 py-3 text-right hover:bg-muted/40 active:bg-muted/60 transition-colors"
+                              className="w-full flex items-center gap-3 px-3 py-3 text-start hover:bg-muted/40 active:bg-muted/60 transition-colors"
                               data-testid={`option-employee-${emp.id}`}
                             >
                               <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center text-sm font-bold text-primary shrink-0">
@@ -507,7 +520,7 @@ export default function AttendancePage() {
                             </button>
                           ))}
                         {employeesList.filter(emp => emp.nameAr.toLowerCase().includes(employeeSearch.trim().toLowerCase())).length === 0 && (
-                          <p className="px-3 py-6 text-center text-sm text-muted-foreground">لا يوجد موظف مطابق</p>
+                          <p className="px-3 py-6 text-center text-sm text-muted-foreground">{t("لا يوجد موظف مطابق", "No matching employee")}</p>
                         )}
                       </div>
                     </div>
@@ -539,9 +552,9 @@ export default function AttendancePage() {
                   {/* Last record */}
                   {employee.lastRecord && (
                     <div className="text-center text-sm text-muted-foreground">
-                      آخر تسجيل: <span className="font-medium text-foreground">
-                        {employee.lastRecord.type === "check_in" ? "دخول" : "خروج"}
-                      </span> في {formatTime(employee.lastRecord.checkTime)}
+                      {t("آخر تسجيل:", "Last record:")} <span className="font-medium text-foreground">
+                        {employee.lastRecord.type === "check_in" ? t("دخول", "Check-in") : t("خروج", "Check-out")}
+                      </span> {t("في", "at")} {formatTime(employee.lastRecord.checkTime, timeLocale)}
                     </div>
                   )}
 
@@ -557,7 +570,7 @@ export default function AttendancePage() {
                       data-testid="button-check-in"
                     >
                       <LogIn className="w-8 h-8" />
-                      <span className="font-bold">تسجيل دخول</span>
+                      <span className="font-bold">{t("تسجيل دخول", "Check In")}</span>
                     </button>
                     <button
                       className={`rounded-xl p-5 flex flex-col items-center gap-2 border-2 transition-all ${
@@ -569,7 +582,7 @@ export default function AttendancePage() {
                       data-testid="button-check-out"
                     >
                       <LogOut className="w-8 h-8" />
-                      <span className="font-bold">تسجيل خروج</span>
+                      <span className="font-bold">{t("تسجيل خروج", "Check Out")}</span>
                     </button>
                   </div>
 
@@ -577,26 +590,29 @@ export default function AttendancePage() {
                   {!locationReady && (
                     <div className="flex items-center gap-2 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-xl p-3 text-sm text-blue-700 dark:text-blue-300">
                       <Loader2 className="w-4 h-4 animate-spin shrink-0" />
-                      <span>جاري تحديد موقعك الجغرافي...</span>
+                      <span>{t("جاري تحديد موقعك الجغرافي...", "Detecting your location...")}</span>
                     </div>
                   )}
                   {locationReady && location && (
                     <div className="flex items-center gap-2 bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-xl p-3 text-sm text-green-700 dark:text-green-300">
                       <MapPin className="w-4 h-4 shrink-0" />
-                      <span>تم تحديد موقعك بنجاح ✓</span>
+                      <span>{t("تم تحديد موقعك بنجاح ✓", "Location detected successfully ✓")}</span>
                     </div>
                   )}
                   {locationReady && locationPermDenied && (
                     <div className="bg-red-50 dark:bg-red-950/30 border border-red-300 dark:border-red-800 rounded-xl p-4 space-y-2">
                       <div className="flex items-center gap-2 text-red-700 dark:text-red-400 font-semibold">
                         <AlertCircle className="w-5 h-5 shrink-0" />
-                        <span>مخالفة: رُفض الإذن بتحديد الموقع</span>
+                        <span>{t("مخالفة: رُفض الإذن بتحديد الموقع", "Violation: location permission denied")}</span>
                       </div>
                       <p className="text-sm text-red-600 dark:text-red-300">
-                        لقد رفضت السماح بتحديد الموقع. هذا يُعدّ مخالفة لشروط العمل. لا يقبل النظام تسجيل الدوام بدون تحديد الموقع الجغرافي. يجب السماح بتحديد الموقع من إعدادات المتصفح ثم إعادة المحاولة.
+                        {t(
+                          "لقد رفضت السماح بتحديد الموقع. هذا يُعدّ مخالفة لشروط العمل. لا يقبل النظام تسجيل الدوام بدون تحديد الموقع الجغرافي. يجب السماح بتحديد الموقع من إعدادات المتصفح ثم إعادة المحاولة.",
+                          "You denied location access. This is considered a work-policy violation. The system does not accept attendance records without a location. Allow location access in your browser settings, then try again.",
+                        )}
                       </p>
                       <Button size="sm" variant="outline" className="border-red-400 text-red-700 hover:bg-red-100" onClick={requestLocation} data-testid="button-retry-location">
-                        <MapPin className="w-4 h-4 me-1" /> إعادة المحاولة
+                        <MapPin className="w-4 h-4 me-1" /> {t("إعادة المحاولة", "Try again")}
                       </Button>
                     </div>
                   )}
@@ -609,7 +625,7 @@ export default function AttendancePage() {
                       data-testid="button-proceed-fingerprint"
                     >
                       {!locationReady ? <Loader2 className="w-4 h-4 animate-spin ms-2" /> : <ChevronRight className="w-5 h-5 ms-2" />}
-                      متابعة
+                      {t("متابعة", "Continue")}
                     </Button>
                     <Button variant="outline" onClick={handleReset} data-testid="button-reset-lookup">
                       <RotateCcw className="w-4 h-4" />
@@ -622,14 +638,14 @@ export default function AttendancePage() {
                       onClick={() => { setStep("history"); }}
                       data-testid="link-view-history"
                     >
-                      عرض سجل حضوري
+                      {t("عرض سجل حضوري", "View my attendance history")}
                     </button>
                     <button
                       className="text-xs text-muted-foreground hover:text-foreground underline"
                       onClick={() => setPermissionDialog(true)}
                       data-testid="link-request-permission"
                     >
-                      طلب استئذان
+                      {t("طلب استئذان", "Request permission")}
                     </button>
                   </div>
                 </div>
@@ -644,16 +660,16 @@ export default function AttendancePage() {
                     <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto">
                       <Shield className="w-8 h-8 text-primary" />
                     </div>
-                    <h2 className="text-xl font-bold">تأكيد الهوية</h2>
+                    <h2 className="text-xl font-bold">{t("تأكيد الهوية", "Identity Confirmation")}</h2>
                     <p className="text-muted-foreground text-sm">
-                      {employee.nameAr} — أدخل الرقم السري الوظيفي لتأكيد {actionType === "check_in" ? "تسجيل الدخول" : "تسجيل الخروج"}
+                      {employee.nameAr} — {t("أدخل الرقم السري الوظيفي لتأكيد", "enter your employee PIN to confirm")} {actionType === "check_in" ? t("تسجيل الدخول", "check-in") : t("تسجيل الخروج", "check-out")}
                     </p>
                   </div>
                   <div className="space-y-3">
                     <Input
                       type="password"
                       inputMode="numeric"
-                      placeholder="الرقم السري الوظيفي"
+                      placeholder={t("الرقم السري الوظيفي", "Employee PIN")}
                       value={pin}
                       onChange={e => setPin(e.target.value)}
                       onKeyDown={e => e.key === "Enter" && pin && verifyPinMutation.mutate(pin)}
@@ -674,11 +690,11 @@ export default function AttendancePage() {
                         disabled={verifyPinMutation.isPending || !pin}
                         data-testid="button-verify-pin"
                       >
-                        {verifyPinMutation.isPending ? "جاري التحقق..." : "تأكيد ومتابعة"}
+                        {verifyPinMutation.isPending ? t("جاري التحقق...", "Verifying...") : t("تأكيد ومتابعة", "Confirm & continue")}
                         <ChevronRight className="w-4 h-4 ms-1" />
                       </Button>
                       <Button variant="outline" onClick={() => setStep("action")} data-testid="button-pin-back">
-                        رجوع
+                        {t("رجوع", "Back")}
                       </Button>
                     </div>
                   </div>
@@ -692,7 +708,7 @@ export default function AttendancePage() {
                 <div className="bg-card border rounded-2xl p-8 shadow-lg space-y-4">
                   <div className="text-center">
                     <h2 className="text-xl font-bold">
-                      {actionType === "check_in" ? "تسجيل دخول" : "تسجيل خروج"}
+                      {actionType === "check_in" ? t("تسجيل دخول", "Check In") : t("تسجيل خروج", "Check Out")}
                     </h2>
                     <p className="text-muted-foreground text-sm mt-1">{employee?.nameAr}</p>
                   </div>
@@ -700,24 +716,24 @@ export default function AttendancePage() {
                     location ? (
                       <div className="flex items-center justify-center gap-1.5 text-xs text-green-600 bg-green-50 dark:bg-green-950/30 rounded-lg py-2">
                         <MapPin className="w-3.5 h-3.5" />
-                        <span>تم تحديد موقعك الجغرافي</span>
+                        <span>{t("تم تحديد موقعك الجغرافي", "Your location was detected")}</span>
                       </div>
                     ) : (
                       <div className="flex items-center justify-center gap-1.5 text-xs text-orange-600 bg-orange-50 dark:bg-orange-950/30 rounded-lg py-2">
                         <MapPin className="w-3.5 h-3.5" />
-                        <span>لم يتم تحديد الموقع — سيُسجَّل بدون إحداثيات</span>
+                        <span>{t("لم يتم تحديد الموقع — سيُسجَّل بدون إحداثيات", "Location not detected — will be recorded without coordinates")}</span>
                       </div>
                     )
                   ) : (
                     <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground bg-muted/30 rounded-lg py-2">
                       <MapPin className="w-3.5 h-3.5 animate-pulse" />
-                      <span>للدقة في تسجيل موقع البصمة، اسمح للمتصفح بتحديد موقعك</span>
+                      <span>{t("للدقة في تسجيل موقع البصمة، اسمح للمتصفح بتحديد موقعك", "For accurate location logging, allow the browser to access your location")}</span>
                     </div>
                   )}
-                  <FingerprintAnimation onComplete={handleFingerprintComplete} />
+                  <FingerprintAnimation onComplete={handleFingerprintComplete} t={t} />
                   {(recordMutation.isPending || (fingerprintDone && !locationReady)) && (
                     <p className="text-center text-sm text-muted-foreground animate-pulse">
-                      {fingerprintDone && !locationReady ? "جاري تحديد الموقع..." : "جاري حفظ البيانات..."}
+                      {fingerprintDone && !locationReady ? t("جاري تحديد الموقع...", "Detecting location...") : t("جاري حفظ البيانات...", "Saving...")}
                     </p>
                   )}
                 </div>
@@ -738,11 +754,11 @@ export default function AttendancePage() {
                   </motion.div>
                   <div>
                     <h2 className="text-2xl font-bold text-green-600">
-                      {actionType === "check_in" ? "تم تسجيل الدخول" : "تم تسجيل الخروج"}
+                      {actionType === "check_in" ? t("تم تسجيل الدخول", "Checked in successfully") : t("تم تسجيل الخروج", "Checked out successfully")}
                     </h2>
                     <p className="text-muted-foreground mt-1">{employee?.nameAr}</p>
                     <p className="text-lg font-mono font-medium mt-2 text-foreground">
-                      {new Date().toLocaleTimeString("ar-SA", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true })}
+                      {new Date().toLocaleTimeString(timeLocale, { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true })}
                     </p>
                     <div className="flex items-center justify-center gap-1.5 mt-1 text-sm text-muted-foreground">
                       {employee?.locationName === "معرض" ? <Building2 className="w-4 h-4" /> : <Factory className="w-4 h-4" />}
@@ -751,11 +767,11 @@ export default function AttendancePage() {
                   </div>
                   <div className="flex gap-2">
                     <Button variant="outline" className="flex-1" onClick={handleReset} data-testid="button-new-record">
-                      تسجيل جديد
+                      {t("تسجيل جديد", "New record")}
                     </Button>
                     <Button className="flex-1" onClick={() => setStep("history")} data-testid="button-view-my-history">
                       <FileText className="w-4 h-4 me-1" />
-                      سجلاتي
+                      {t("سجلاتي", "My records")}
                     </Button>
                   </div>
                 </div>
@@ -771,12 +787,12 @@ export default function AttendancePage() {
                       <ChevronRight className="w-5 h-5" />
                     </Button>
                     <div>
-                      <p className="font-bold">سجل الحضور</p>
+                      <p className="font-bold">{t("سجل الحضور", "Attendance History")}</p>
                       <p className="text-xs text-muted-foreground">{employee.nameAr}</p>
                     </div>
                     <Button variant="ghost" size="sm" className="ms-auto" onClick={() => setPermissionDialog(true)} data-testid="button-request-permission-history">
                       <FileText className="w-4 h-4 me-1" />
-                      استئذان
+                      {t("استئذان", "Permission")}
                     </Button>
                   </div>
 
@@ -787,7 +803,7 @@ export default function AttendancePage() {
                       value={historyFrom}
                       onChange={e => setHistoryFrom(e.target.value)}
                       className="flex-1 h-8 text-xs"
-                      placeholder="من"
+                      placeholder={t("من", "From")}
                       data-testid="input-history-from"
                     />
                     <Input
@@ -795,7 +811,7 @@ export default function AttendancePage() {
                       value={historyTo}
                       onChange={e => setHistoryTo(e.target.value)}
                       className="flex-1 h-8 text-xs"
-                      placeholder="إلى"
+                      placeholder={t("إلى", "To")}
                       data-testid="input-history-to"
                     />
                   </div>
@@ -804,14 +820,14 @@ export default function AttendancePage() {
                     {myRecords.length === 0 ? (
                       <div className="p-8 text-center text-muted-foreground">
                         <Calendar className="w-10 h-10 mx-auto mb-3 opacity-30" />
-                        <p>لا توجد سجلات</p>
+                        <p>{t("لا توجد سجلات", "No records")}</p>
                       </div>
                     ) : (
                       groupRecordsByDay(myRecords).map(([day, recs]) => (
                         <div key={day}>
                           <div className="px-4 py-2 bg-muted/20 flex items-center justify-between">
-                            <span className="text-xs font-medium text-muted-foreground">{formatDate(recs[0].checkTime)}</span>
-                            <AttendanceStatusBadge status={getDayStatus(recs)} />
+                            <span className="text-xs font-medium text-muted-foreground">{formatDate(recs[0].checkTime, timeLocale)}</span>
+                            <AttendanceStatusBadge status={getDayStatus(recs)} t={t} />
                           </div>
                           {recs.map(rec => (
                             <div key={rec.id} className="px-4 py-3 flex items-center gap-3" data-testid={`row-attendance-${rec.id}`}>
@@ -825,25 +841,25 @@ export default function AttendancePage() {
                               </div>
                               <div className="flex-1">
                                 <p className="text-sm font-medium">
-                                  {rec.type === "check_in" ? "تسجيل دخول" : "تسجيل خروج"}
+                                  {rec.type === "check_in" ? t("تسجيل دخول", "Check-in") : t("تسجيل خروج", "Check-out")}
                                 </p>
                                 <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
                                   <Clock className="w-3 h-3" />
-                                  {formatTime(rec.checkTime)}
+                                  {formatTime(rec.checkTime, timeLocale)}
                                   {rec.locationName && <> · {rec.locationName}</>}
-                                  {rec.isManualEdit && <Badge variant="outline" className="text-[9px] h-4">تعديل يدوي</Badge>}
+                                  {rec.isManualEdit && <Badge variant="outline" className="text-[9px] h-4">{t("تعديل يدوي", "Manual edit")}</Badge>}
                                   {rec.notes && <Badge variant="secondary" className="text-[9px] h-4">{rec.notes}</Badge>}
                                 </p>
                               </div>
                               {rec.isOutOfZone ? (
-                                <span title="خارج النطاق الجغرافي" className="flex items-center gap-0.5 text-orange-500 text-xs">
+                                <span title={t("خارج النطاق الجغرافي", "Out of allowed zone")} className="flex items-center gap-0.5 text-orange-500 text-xs">
                                   <MapPin className="w-3.5 h-3.5" />
                                   ⚠️
                                 </span>
                               ) : rec.latitude ? (
-                                <span title="داخل النطاق الجغرافي" className="text-green-500 text-sm">✅</span>
+                                <span title={t("داخل النطاق الجغرافي", "Within allowed zone")} className="text-green-500 text-sm">✅</span>
                               ) : (
-                                <span title="لا توجد بيانات موقع" className="text-muted-foreground text-sm">➖</span>
+                                <span title={t("لا توجد بيانات موقع", "No location data")} className="text-muted-foreground text-sm">➖</span>
                               )}
                             </div>
                           ))}
@@ -861,43 +877,43 @@ export default function AttendancePage() {
 
       {/* Permission Dialog */}
       <Dialog open={permissionDialog} onOpenChange={setPermissionDialog}>
-        <DialogContent dir="rtl">
+        <DialogContent dir={isRTL ? "rtl" : "ltr"}>
           <DialogHeader>
-            <DialogTitle>طلب استئذان</DialogTitle>
+            <DialogTitle>{t("طلب استئذان", "Permission Request")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-1">
-              <label className="text-sm font-medium">نوع الإذن</label>
+              <label className="text-sm font-medium">{t("نوع الإذن", "Permission type")}</label>
               <Select value={permType} onValueChange={setPermType}>
                 <SelectTrigger data-testid="select-permission-type">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="permission">استئذان</SelectItem>
-                  <SelectItem value="leave">إجازة</SelectItem>
-                  <SelectItem value="sick">إجازة مرضية</SelectItem>
-                  <SelectItem value="official">مهمة رسمية</SelectItem>
-                  <SelectItem value="remote">عمل عن بُعد</SelectItem>
+                  <SelectItem value="permission">{t("استئذان", "Permission")}</SelectItem>
+                  <SelectItem value="leave">{t("إجازة", "Leave")}</SelectItem>
+                  <SelectItem value="sick">{t("إجازة مرضية", "Sick leave")}</SelectItem>
+                  <SelectItem value="official">{t("مهمة رسمية", "Official assignment")}</SelectItem>
+                  <SelectItem value="remote">{t("عمل عن بُعد", "Remote work")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-1">
-              <label className="text-sm font-medium">عدد الساعات</label>
+              <label className="text-sm font-medium">{t("عدد الساعات", "Hours")}</label>
               <Select value={permHours} onValueChange={setPermHours}>
                 <SelectTrigger data-testid="select-permission-hours">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   {["0.5", "1", "1.5", "2", "3", "4", "8"].map(h => (
-                    <SelectItem key={h} value={h}>{h === "8" ? "يوم كامل" : `${h} ساعة`}</SelectItem>
+                    <SelectItem key={h} value={h}>{h === "8" ? t("يوم كامل", "Full day") : t(`${h} ساعة`, `${h} hour(s)`)}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-1">
-              <label className="text-sm font-medium">السبب</label>
+              <label className="text-sm font-medium">{t("السبب", "Reason")}</label>
               <Textarea
-                placeholder="اكتب سبب الاستئذان..."
+                placeholder={t("اكتب سبب الاستئذان...", "Write the reason...")}
                 value={permReason}
                 onChange={e => setPermReason(e.target.value)}
                 data-testid="input-permission-reason"
@@ -905,7 +921,7 @@ export default function AttendancePage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setPermissionDialog(false)}>إلغاء</Button>
+            <Button variant="outline" onClick={() => setPermissionDialog(false)}>{t("إلغاء", "Cancel")}</Button>
             <Button
               onClick={() => {
                 const today = new Date().toISOString().split("T")[0];
@@ -921,7 +937,7 @@ export default function AttendancePage() {
               disabled={permMutation.isPending}
               data-testid="button-submit-permission"
             >
-              {permMutation.isPending ? "جاري الإرسال..." : "إرسال الطلب"}
+              {permMutation.isPending ? t("جاري الإرسال...", "Sending...") : t("إرسال الطلب", "Submit request")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -929,7 +945,7 @@ export default function AttendancePage() {
 
       {/* Footer */}
       <div className="text-center py-3 text-xs text-muted-foreground border-t">
-        تيك للتصنيع والتجارة © {new Date().getFullYear()}
+        {t("تيك للتصنيع والتجارة", "Teak Manufacturing & Trading")} © {new Date().getFullYear()}
       </div>
     </div>
   );

@@ -7930,7 +7930,7 @@ export async function registerRoutes(
       return res.status(429).json({ message: "تجاوزت عدد المحاولات. انتظر دقيقة ثم أعد المحاولة." });
     }
     const { phone } = req.body;
-    if (!phone) return res.status(400).json({ message: "رقم الجوال مطلوب" });
+    if (!phone) return res.status(400).json({ message: "رقم الجوال مطلوب", messageEn: "Phone number is required" });
     try {
       const normalizedPhone = normalizePhone(String(phone));
       const user = await storage.getUserByPhone(normalizedPhone);
@@ -8010,7 +8010,7 @@ export async function registerRoutes(
   function requireAttendanceAuth(req: Request, res: Response, next: NextFunction) {
     const session = (req as any).session;
     if (session?.attendanceAuth) return next();
-    return res.status(401).json({ message: "يجب تسجيل الدخول لبوابة الدوام أولاً" });
+    return res.status(401).json({ message: "يجب تسجيل الدخول لبوابة الدوام أولاً", messageEn: "You must sign in to the attendance portal first" });
   }
 
   app.post("/api/attendance/verify-password", async (req, res) => {
@@ -8019,7 +8019,7 @@ export async function registerRoutes(
     const limiter = attendanceRateLimit.get(ip) || { count: 0, resetAt: now + ATTENDANCE_WINDOW_MS };
     if (now > limiter.resetAt) { limiter.count = 0; limiter.resetAt = now + ATTENDANCE_WINDOW_MS; }
     if (limiter.count >= ATTENDANCE_MAX_ATTEMPTS) {
-      return res.status(429).json({ success: false, message: "تجاوزت عدد المحاولات المسموحة. حاول بعد 15 دقيقة." });
+      return res.status(429).json({ success: false, message: "تجاوزت عدد المحاولات المسموحة. حاول بعد 15 دقيقة.", messageEn: "Too many attempts. Try again in 15 minutes." });
     }
     limiter.count++;
     attendanceRateLimit.set(ip, limiter);
@@ -8031,7 +8031,7 @@ export async function registerRoutes(
       limiter.count = 0;
       return res.json({ success: true });
     }
-    return res.status(401).json({ success: false, message: "كلمة المرور غير صحيحة" });
+    return res.status(401).json({ success: false, message: "كلمة المرور غير صحيحة", messageEn: "Incorrect password" });
   });
 
   app.get("/api/attendance/employees-list", requireAttendanceAuth, async (_req, res) => {
@@ -8053,20 +8053,20 @@ export async function registerRoutes(
         });
       res.json(activeEmployees);
     } catch {
-      res.status(500).json({ message: "حدث خطأ" });
+      res.status(500).json({ message: "حدث خطأ", messageEn: "An error occurred" });
     }
   });
 
   app.get("/api/attendance/employee-lookup", requireAttendanceAuth, async (req, res) => {
     const { phone } = req.query as { phone?: string };
-    if (!phone) return res.status(400).json({ message: "رقم الجوال مطلوب" });
+    if (!phone) return res.status(400).json({ message: "رقم الجوال مطلوب", messageEn: "Phone number is required" });
     try {
       const allEmployees = await storage.getEmployees();
       const allUsers = await storage.getUsers();
       const user = allUsers.find(u => u.phone === phone);
       let employee = user ? allEmployees.find(e => e.userId === user.id) : undefined;
       if (!employee) employee = allEmployees.find(e => e.phone === phone);
-      if (!employee) return res.status(404).json({ message: "لم يُعثَر على موظف بهذا الرقم" });
+      if (!employee) return res.status(404).json({ message: "لم يُعثَر على موظف بهذا الرقم", messageEn: "No employee found with this number" });
       const empUser = allUsers.find(u => u.id === employee!.userId);
       const lastRecord = await storage.getLastAttendanceRecord(employee.id, phone);
       return res.json({
@@ -8080,7 +8080,7 @@ export async function registerRoutes(
         lastRecord: lastRecord ? { type: lastRecord.type, checkTime: lastRecord.checkTime } : null,
       });
     } catch {
-      res.status(500).json({ message: "حدث خطأ" });
+      res.status(500).json({ message: "حدث خطأ", messageEn: "An error occurred" });
     }
   });
 
@@ -8094,13 +8094,13 @@ export async function registerRoutes(
     const limiter = attendancePinRateLimit.get(ip) || { count: 0, resetAt: now + ATTENDANCE_WINDOW_MS };
     if (now > limiter.resetAt) { limiter.count = 0; limiter.resetAt = now + ATTENDANCE_WINDOW_MS; }
     if (limiter.count >= ATTENDANCE_PIN_MAX_ATTEMPTS) {
-      return res.status(429).json({ success: false, message: "تجاوزت عدد المحاولات المسموحة. حاول بعد قليل." });
+      return res.status(429).json({ success: false, message: "تجاوزت عدد المحاولات المسموحة. حاول بعد قليل.", messageEn: "Too many attempts. Try again shortly." });
     }
     limiter.count++;
     attendancePinRateLimit.set(ip, limiter);
 
     const { employeeId, employeePhone, pin, type } = req.body;
-    if (!pin) return res.status(400).json({ success: false, message: "الرقم السري الوظيفي مطلوب" });
+    if (!pin) return res.status(400).json({ success: false, message: "الرقم السري الوظيفي مطلوب", messageEn: "Employee PIN is required" });
     try {
       const allEmployees = await storage.getEmployees();
       const allUsers = await storage.getUsers();
@@ -8109,7 +8109,7 @@ export async function registerRoutes(
         const user = allUsers.find(u => u.phone === employeePhone);
         employee = user ? allEmployees.find(e => e.userId === user.id) : allEmployees.find(e => e.phone === employeePhone);
       }
-      if (!employee) return res.status(404).json({ success: false, message: "لم يُعثَر على الموظف" });
+      if (!employee) return res.status(404).json({ success: false, message: "لم يُعثَر على الموظف", messageEn: "Employee not found" });
       const empUser = allUsers.find(u => u.id === employee!.userId);
       const storedPin = empUser?.employeePin;
       if (!storedPin) return res.json({ success: true, noPin: true });
@@ -8125,7 +8125,7 @@ export async function registerRoutes(
         };
         return res.json({ success: true });
       }
-      return res.status(401).json({ success: false, message: "الرقم السري الوظيفي غير صحيح" });
+      return res.status(401).json({ success: false, message: "الرقم السري الوظيفي غير صحيح", messageEn: "Incorrect employee PIN" });
     } catch {
       res.status(500).json({ success: false, message: "حدث خطأ" });
     }
@@ -8133,7 +8133,7 @@ export async function registerRoutes(
 
   app.post("/api/attendance/record", requireAttendanceAuth, async (req, res) => {
     const { employeeId, employeePhone, employeeNameAr, type, locationName: clientLocationName, latitude, longitude, deviceInfo, deviceFingerprint, notes } = req.body;
-    if (!type || !["check_in", "check_out"].includes(type)) return res.status(400).json({ message: "نوع السجل غير صالح" });
+    if (!type || !["check_in", "check_out"].includes(type)) return res.status(400).json({ message: "نوع السجل غير صالح", messageEn: "Invalid record type" });
 
     // Server-side PIN enforcement: if the resolved employee has an employeePin,
     // the request must be backed by a recent, matching /verify-pin success
@@ -8155,7 +8155,7 @@ export async function registerRoutes(
             && Number(v.employeeId) === Number(pinEmployee.id)
             && (!v.type || v.type === type);
           if (!valid) {
-            return res.status(403).json({ message: "يجب تأكيد الرقم السري الوظيفي قبل التسجيل", requirePin: true });
+            return res.status(403).json({ message: "يجب تأكيد الرقم السري الوظيفي قبل التسجيل", messageEn: "Employee PIN must be confirmed before recording", requirePin: true });
           }
           // Consume the verification so it can't be replayed.
           (req as any).session.attendancePinVerified = undefined;
@@ -8163,7 +8163,7 @@ export async function registerRoutes(
       }
     } catch (e) {
       console.error("PIN enforcement error:", e);
-      return res.status(500).json({ message: "حدث خطأ أثناء التحقق من الهوية" });
+      return res.status(500).json({ message: "حدث خطأ أثناء التحقق من الهوية", messageEn: "Error verifying identity" });
     }
 
     // Reject check-out without a prior check-in on the same day.
@@ -8212,11 +8212,11 @@ export async function registerRoutes(
           } catch (ve) {
             console.error("Violation logging error:", ve);
           }
-          return res.status(400).json({ message: "تعذّر تسجيل الخروج: لم يتم رصد حركة دخول مطابقة لهذا اليوم — سجّل دخولك أولاً" });
+          return res.status(400).json({ message: "تعذّر تسجيل الخروج: لم يتم رصد حركة دخول مطابقة لهذا اليوم — سجّل دخولك أولاً", messageEn: "Cannot check out: no matching check-in was found for today — check in first" });
         }
       } catch (e) {
         console.error("Check-out validation error:", e);
-        return res.status(500).json({ message: "حدث خطأ أثناء التحقق من سجل الدخول" });
+        return res.status(500).json({ message: "حدث خطأ أثناء التحقق من سجل الدخول", messageEn: "Error verifying check-in record" });
       }
     }
 
@@ -8275,7 +8275,7 @@ export async function registerRoutes(
       res.json(record);
     } catch (error) {
       console.error("Attendance record error:", error);
-      res.status(500).json({ message: "حدث خطأ أثناء تسجيل الحضور" });
+      res.status(500).json({ message: "حدث خطأ أثناء تسجيل الحضور", messageEn: "Error recording attendance" });
     }
   });
 
@@ -8290,13 +8290,13 @@ export async function registerRoutes(
       });
       res.json(records);
     } catch {
-      res.status(500).json({ message: "حدث خطأ" });
+      res.status(500).json({ message: "حدث خطأ", messageEn: "An error occurred" });
     }
   });
 
   app.post("/api/attendance/permission", requireAttendanceAuth, async (req, res) => {
     const { employeeId, employeePhone, date, type, startTime, endTime, hoursRequested, reason } = req.body;
-    if (!date || !type) return res.status(400).json({ message: "البيانات غير مكتملة" });
+    if (!date || !type) return res.status(400).json({ message: "البيانات غير مكتملة", messageEn: "Incomplete data" });
     try {
       const perm = await storage.createAttendancePermission({
         employeeId: employeeId || null,
@@ -8338,7 +8338,7 @@ export async function registerRoutes(
       } catch { /* non-blocking */ }
       res.json(perm);
     } catch {
-      res.status(500).json({ message: "حدث خطأ" });
+      res.status(500).json({ message: "حدث خطأ", messageEn: "An error occurred" });
     }
   });
 
