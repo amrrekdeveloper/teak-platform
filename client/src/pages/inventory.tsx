@@ -13,7 +13,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Plus, Package, AlertTriangle, ArrowUpCircle, ArrowDownCircle, Search, Pencil, Trash2, AlertCircle, ImageIcon, Warehouse as WarehouseIcon, Settings, QrCode } from "lucide-react";
+import { Loader2, Plus, Package, AlertTriangle, ArrowUpCircle, ArrowDownCircle, Search, Pencil, Trash2, AlertCircle, ImageIcon, Warehouse as WarehouseIcon, Settings, QrCode, LayoutGrid, Table2, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 const STOCK_OUT_REASONS = [
   { value: "production_use", ar: "استخدام في الإنتاج", en: "Production use" },
@@ -50,11 +51,17 @@ export default function InventoryPage() {
   const canManageWarehouses = user?.role === "owner" || user?.role === "assistant";
   const [search, setSearch] = useState("");
   const [warehouseFilter, setWarehouseFilter] = useState("all");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [stockFilter, setStockFilter] = useState("all");
+  const [viewMode, setViewMode] = useState<"table" | "cards">("table");
+  const [sortBy, setSortBy] = useState<"name" | "quantity" | "cost" | "value" | "category">("name");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [createOpen, setCreateOpen] = useState(false);
   const [txOpen, setTxOpen] = useState<InventoryItem | null>(null);
   const [editItem, setEditItem] = useState<InventoryItem | null>(null);
   const [deleteItem, setDeleteItem] = useState<InventoryItem | null>(null);
   const [manageWarehousesOpen, setManageWarehousesOpen] = useState(false);
+  const [newWarehouse, setNewWarehouse] = useState({ nameAr: "", nameEn: "" });
 
   const [newItem, setNewItem] = useState({
     materialNameAr: "", materialNameEn: "", sku: "", category: "", color: "", imageUrl: "",
@@ -176,6 +183,18 @@ export default function InventoryPage() {
     },
   });
 
+  const createWarehouseMutation = useMutation({
+    mutationFn: (data: { nameAr: string; nameEn: string }) => apiRequest("POST", "/api/warehouses", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/warehouses"] });
+      setNewWarehouse({ nameAr: "", nameEn: "" });
+      toast({ title: t("تمت إضافة المستودع", "Warehouse added") });
+    },
+    onError: (err: any) => {
+      toast({ title: err?.message || t("خطأ في إضافة المستودع", "Failed to add warehouse"), variant: "destructive" });
+    },
+  });
+
   const warehouseMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: any }) => apiRequest("PATCH", `/api/warehouses/${id}`, data),
     onSuccess: () => {
@@ -187,12 +206,52 @@ export default function InventoryPage() {
     },
   });
 
+  const categories = Array.from(new Set(items.map(i => i.category).filter((c): c is string => !!c && c.trim() !== ""))).sort();
+
+  const isLowItem = (item: InventoryItem) => {
+    const qty = parseFloat(item.quantity?.toString() || "0");
+    const minQty = parseFloat(item.minQuantity?.toString() || "0");
+    return qty <= minQty && minQty > 0;
+  };
+  const itemValue = (item: InventoryItem) =>
+    parseFloat(item.quantity?.toString() || "0") * parseFloat(item.costPerUnit?.toString() || "0");
+
   const filtered = items.filter(item => {
     const matchesSearch = item.materialNameAr.includes(search) || item.materialNameEn.toLowerCase().includes(search.toLowerCase()) ||
       (item.sku && item.sku.toLowerCase().includes(search.toLowerCase()));
     const matchesWarehouse = warehouseFilter === "all" || item.warehouseId === parseInt(warehouseFilter);
-    return matchesSearch && matchesWarehouse;
+    const matchesCategory = categoryFilter === "all" || item.category === categoryFilter;
+    const matchesStock =
+      stockFilter === "all" ||
+      (stockFilter === "low" && isLowItem(item)) ||
+      (stockFilter === "out" && parseFloat(item.quantity?.toString() || "0") <= 0) ||
+      (stockFilter === "ok" && !isLowItem(item) && parseFloat(item.quantity?.toString() || "0") > 0);
+    return matchesSearch && matchesWarehouse && matchesCategory && matchesStock;
+  }).sort((a, b) => {
+    let cmp = 0;
+    switch (sortBy) {
+      case "name": cmp = (a.materialNameAr || "").localeCompare(b.materialNameAr || "", "ar"); break;
+      case "category": cmp = (a.category || "").localeCompare(b.category || "", "ar"); break;
+      case "quantity": cmp = parseFloat(a.quantity?.toString() || "0") - parseFloat(b.quantity?.toString() || "0"); break;
+      case "cost": cmp = parseFloat(a.costPerUnit?.toString() || "0") - parseFloat(b.costPerUnit?.toString() || "0"); break;
+      case "value": cmp = itemValue(a) - itemValue(b); break;
+    }
+    return sortDir === "asc" ? cmp : -cmp;
   });
+
+  const toggleSort = (key: typeof sortBy) => {
+    if (sortBy === key) setSortDir(d => (d === "asc" ? "desc" : "asc"));
+    else { setSortBy(key); setSortDir(key === "name" || key === "category" ? "asc" : "desc"); }
+  };
+
+  const SortHeader = ({ label, k, className }: { label: string; k: typeof sortBy; className?: string }) => (
+    <TableHead className={className}>
+      <button type="button" className="inline-flex items-center gap-1 hover:text-foreground" onClick={() => toggleSort(k)} data-testid={`sort-${k}`}>
+        {label}
+        {sortBy === k ? (sortDir === "asc" ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />) : <ArrowUpDown className="w-3 h-3 opacity-40" />}
+      </button>
+    </TableHead>
+  );
 
   const lowStockCount = items.filter(i => parseFloat(i.quantity?.toString() || "0") <= parseFloat(i.minQuantity?.toString() || "0")).length;
   const totalValue = items.reduce((sum, i) => sum + parseFloat(i.quantity?.toString() || "0") * parseFloat(i.costPerUnit?.toString() || "0"), 0);
@@ -357,7 +416,7 @@ export default function InventoryPage() {
           />
         </div>
         <Select value={warehouseFilter} onValueChange={setWarehouseFilter}>
-          <SelectTrigger className="w-full sm:w-56" data-testid="select-warehouse-filter">
+          <SelectTrigger className="w-full sm:w-48" data-testid="select-warehouse-filter">
             <WarehouseIcon className="w-4 h-4 me-2" />
             <SelectValue />
           </SelectTrigger>
@@ -368,10 +427,119 @@ export default function InventoryPage() {
             ))}
           </SelectContent>
         </Select>
+        {categories.length > 0 && (
+          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+            <SelectTrigger className="w-full sm:w-44" data-testid="select-category-filter">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{t("كل الفئات", "All Categories")}</SelectItem>
+              {categories.map(c => (
+                <SelectItem key={c} value={c}>{c}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+        <Select value={stockFilter} onValueChange={setStockFilter}>
+          <SelectTrigger className="w-full sm:w-44" data-testid="select-stock-filter">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t("كل الحالات", "All Stock States")}</SelectItem>
+            <SelectItem value="low">{t("مخزون منخفض", "Low stock")}</SelectItem>
+            <SelectItem value="out">{t("نفد المخزون", "Out of stock")}</SelectItem>
+            <SelectItem value="ok">{t("مخزون سليم", "Healthy stock")}</SelectItem>
+          </SelectContent>
+        </Select>
+        <div className="flex rounded-md border overflow-hidden shrink-0">
+          <Button variant={viewMode === "table" ? "secondary" : "ghost"} size="icon" className="rounded-none" onClick={() => setViewMode("table")} data-testid="button-view-table" title={t("عرض جدول", "Table view")}>
+            <Table2 className="w-4 h-4" />
+          </Button>
+          <Button variant={viewMode === "cards" ? "secondary" : "ghost"} size="icon" className="rounded-none" onClick={() => setViewMode("cards")} data-testid="button-view-cards" title={t("عرض بطاقات", "Card view")}>
+            <LayoutGrid className="w-4 h-4" />
+          </Button>
+        </div>
       </div>
 
       {filtered.length === 0 ? (
         <Card><CardContent className="p-8 text-center text-muted-foreground">{t("لا توجد مواد", "No materials found")}</CardContent></Card>
+      ) : viewMode === "table" ? (
+        <Card>
+          <CardContent className="p-0 overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <SortHeader label={t("المادة", "Material")} k="name" />
+                  <SortHeader label={t("الفئة", "Category")} k="category" className="hidden md:table-cell" />
+                  <TableHead className="hidden lg:table-cell">{t("المستودع", "Warehouse")}</TableHead>
+                  <SortHeader label={t("الكمية", "Qty")} k="quantity" />
+                  <TableHead className="hidden sm:table-cell">{t("الحد الأدنى", "Min")}</TableHead>
+                  <SortHeader label={t("التكلفة", "Cost")} k="cost" className="hidden md:table-cell" />
+                  <SortHeader label={t("القيمة", "Value")} k="value" className="hidden md:table-cell" />
+                  <TableHead>{t("الحالة", "Status")}</TableHead>
+                  <TableHead className="text-start">{t("إجراءات", "Actions")}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filtered.map(item => {
+                  const qty = parseFloat(item.quantity?.toString() || "0");
+                  const minQty = parseFloat(item.minQuantity?.toString() || "0");
+                  const isLow = isLowItem(item);
+                  const isOut = qty <= 0;
+                  const cost = parseFloat(item.costPerUnit?.toString() || "0");
+                  const unitLabel = unitLabels[item.unit] || { ar: item.unit, en: item.unit };
+                  return (
+                    <TableRow key={item.id} data-testid={`row-inventory-${item.id}`}>
+                      <TableCell>
+                        <div className="flex items-center gap-2 min-w-0">
+                          {item.imageUrl ? (
+                            <img src={item.imageUrl} alt="" className="w-9 h-9 rounded object-cover border shrink-0" />
+                          ) : (
+                            <div className="w-9 h-9 rounded border border-dashed flex items-center justify-center text-muted-foreground shrink-0"><Package className="w-4 h-4" /></div>
+                          )}
+                          <div className="min-w-0">
+                            <p className="font-medium truncate max-w-48">{t(item.materialNameAr, item.materialNameEn)}</p>
+                            <p className="text-xs text-muted-foreground font-mono truncate">{item.sku}{item.color ? ` · ${item.color}` : ""}</p>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="hidden md:table-cell text-sm">{item.category || "—"}</TableCell>
+                      <TableCell className="hidden lg:table-cell text-sm">{warehouseName(item.warehouseId) || "—"}</TableCell>
+                      <TableCell className="font-semibold tabular-nums">{qty} <span className="text-xs text-muted-foreground font-normal">{t(unitLabel.ar, unitLabel.en)}</span></TableCell>
+                      <TableCell className="hidden sm:table-cell tabular-nums text-sm">{minQty}</TableCell>
+                      <TableCell className="hidden md:table-cell tabular-nums text-sm">{cost > 0 ? cost.toLocaleString() : "—"}</TableCell>
+                      <TableCell className="hidden md:table-cell tabular-nums text-sm">{cost > 0 ? (qty * cost).toLocaleString(undefined, { maximumFractionDigits: 0 }) : "—"}</TableCell>
+                      <TableCell>
+                        {isOut ? <Badge variant="destructive" className="text-[10px]">{t("نافد", "Out")}</Badge>
+                          : isLow ? <Badge className="text-[10px] bg-orange-500 hover:bg-orange-500 text-white">{t("منخفض", "Low")}</Badge>
+                          : <Badge variant="secondary" className="text-[10px]">{t("متوفر", "OK")}</Badge>}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-0.5">
+                          <Button size="icon" variant="ghost" className="h-7 w-7 text-green-600" title={t("إدخال", "Stock in")} onClick={() => { setTxOpen(item); setTxData({ ...EMPTY_TX, type: "stock_in" }); }} data-testid={`button-stock-in-${item.id}`}>
+                            <ArrowDownCircle className="w-4 h-4" />
+                          </Button>
+                          <Button size="icon" variant="ghost" className="h-7 w-7 text-red-600" title={t("إخراج", "Stock out")} onClick={() => { setTxOpen(item); setTxData({ ...EMPTY_TX, type: "stock_out" }); }} data-testid={`button-stock-out-${item.id}`}>
+                            <ArrowUpCircle className="w-4 h-4" />
+                          </Button>
+                          <Button size="icon" variant="ghost" className="h-7 w-7" title={t("طباعة الباركود", "Print barcode")} onClick={() => printLabel(item)} data-testid={`button-print-label-${item.id}`}>
+                            <QrCode className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button size="icon" variant="ghost" className="h-7 w-7" title={t("تعديل", "Edit")} onClick={() => setEditItem(item)} data-testid={`button-edit-inventory-${item.id}`}>
+                            <Pencil className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10" title={t("حذف", "Delete")} onClick={() => setDeleteItem(item)} data-testid={`button-delete-inventory-${item.id}`}>
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map(item => {
@@ -721,11 +889,32 @@ export default function InventoryPage() {
       <Dialog open={manageWarehousesOpen} onOpenChange={setManageWarehousesOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader><DialogTitle>{t("إدارة المستودعات", "Manage Warehouses")}</DialogTitle></DialogHeader>
-          <p className="text-sm text-muted-foreground">{t("يمكنك تعديل أسماء المستودعات الأربعة.", "You can rename the four warehouses.")}</p>
-          <div className="space-y-4 mt-2">
+          <p className="text-sm text-muted-foreground">{t("يمكنك تعديل أسماء المستودعات أو إضافة مستودع جديد.", "You can rename warehouses or add a new one.")}</p>
+          <div className="space-y-4 mt-2 max-h-80 overflow-y-auto pe-1">
             {warehouses.map(w => (
               <WarehouseRow key={w.id} warehouse={w} onSave={(data) => warehouseMutation.mutate({ id: w.id, data })} saving={warehouseMutation.isPending} t={t} />
             ))}
+          </div>
+          <div className="rounded-md border p-3 mt-2 space-y-2">
+            <p className="text-sm font-semibold flex items-center gap-1.5"><Plus className="w-4 h-4" />{t("إضافة مستودع جديد", "Add new warehouse")}</p>
+            <div className="flex items-end gap-2">
+              <div className="flex-1 space-y-1">
+                <Label className="text-xs">{t("الاسم بالعربي", "Name (AR)")}</Label>
+                <Input value={newWarehouse.nameAr} onChange={e => setNewWarehouse({ ...newWarehouse, nameAr: e.target.value })} data-testid="input-new-warehouse-ar" />
+              </div>
+              <div className="flex-1 space-y-1">
+                <Label className="text-xs">{t("الاسم بالإنجليزي", "Name (EN)")}</Label>
+                <Input value={newWarehouse.nameEn} onChange={e => setNewWarehouse({ ...newWarehouse, nameEn: e.target.value })} data-testid="input-new-warehouse-en" />
+              </div>
+              <Button
+                size="sm"
+                disabled={!newWarehouse.nameAr.trim() || !newWarehouse.nameEn.trim() || createWarehouseMutation.isPending}
+                onClick={() => createWarehouseMutation.mutate({ nameAr: newWarehouse.nameAr.trim(), nameEn: newWarehouse.nameEn.trim() })}
+                data-testid="button-add-warehouse"
+              >
+                {createWarehouseMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : t("إضافة", "Add")}
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
