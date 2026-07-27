@@ -182,7 +182,7 @@ function Navbar() {
   const navLinks = [
     { href: "/kitchen-designer", labelAr: "صمّم مطبخك", labelEn: "Design Your Kitchen" },
     ...(canSeeV2
-      ? [{ href: "/kitchen-designer-v2", labelAr: "صمم مطبخك 2 — تجريبي", labelEn: "Design Your Kitchen 2 — Experimental" }]
+      ? [{ href: "/kitchen-designer-v2", labelAr: "صمم مطبخك 2 — تحت التطوير", labelEn: "Design Your Kitchen 2 — Under Development" }]
       : []),
     { href: "#gallery", labelAr: "معرض أعمالنا", labelEn: "Our Gallery" },
     { href: "#projects", labelAr: "مشاريعنا", labelEn: "Projects" },
