@@ -37,7 +37,7 @@ function SupplierForm({ data, onChange, onSubmit, isPending, submitLabel }: {
         </div>
         <div className="space-y-1">
           <Label>{t("الهاتف", "Phone")}</Label>
-          <Input value={data.phone} onChange={e => onChange({ ...data, phone: e.target.value })} data-testid="input-supplier-phone" />
+          <Input type="tel" inputMode="numeric" value={data.phone} onChange={e => onChange({ ...data, phone: e.target.value })} data-testid="input-supplier-phone" />
         </div>
         <div className="space-y-1">
           <Label>{t("البريد", "Email")}</Label>
