@@ -14,6 +14,59 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Loader2, Plus, Search, Building2, Phone, Mail, MapPin, Pencil, CheckCircle2, XCircle, Clock } from "lucide-react";
 
+type SupplierFormData = {
+  name: string; contactPerson: string; phone: string; email: string;
+  address: string; materials: string; taxNumber: string; notes: string;
+};
+
+function SupplierForm({ data, onChange, onSubmit, isPending, submitLabel }: {
+  data: SupplierFormData; onChange: (d: SupplierFormData) => void;
+  onSubmit: () => void; isPending: boolean; submitLabel: string;
+}) {
+  const { t } = useLanguage();
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-3">
+        <div className="col-span-2 space-y-1">
+          <Label>{t("اسم المورد", "Supplier Name")} *</Label>
+          <Input value={data.name} onChange={e => onChange({ ...data, name: e.target.value })} data-testid="input-supplier-name" />
+        </div>
+        <div className="space-y-1">
+          <Label>{t("جهة الاتصال", "Contact Person")}</Label>
+          <Input value={data.contactPerson} onChange={e => onChange({ ...data, contactPerson: e.target.value })} data-testid="input-contact-person" />
+        </div>
+        <div className="space-y-1">
+          <Label>{t("الهاتف", "Phone")}</Label>
+          <Input value={data.phone} onChange={e => onChange({ ...data, phone: e.target.value })} data-testid="input-supplier-phone" />
+        </div>
+        <div className="space-y-1">
+          <Label>{t("البريد", "Email")}</Label>
+          <Input value={data.email} onChange={e => onChange({ ...data, email: e.target.value })} data-testid="input-supplier-email" />
+        </div>
+        <div className="space-y-1">
+          <Label>{t("الرقم الضريبي", "Tax Number")}</Label>
+          <Input value={data.taxNumber} onChange={e => onChange({ ...data, taxNumber: e.target.value })} data-testid="input-tax-number" />
+        </div>
+        <div className="col-span-2 space-y-1">
+          <Label>{t("العنوان", "Address")}</Label>
+          <Input value={data.address} onChange={e => onChange({ ...data, address: e.target.value })} data-testid="input-supplier-address" />
+        </div>
+        <div className="col-span-2 space-y-1">
+          <Label>{t("المواد المتوفرة", "Available Materials")}</Label>
+          <Input value={data.materials} onChange={e => onChange({ ...data, materials: e.target.value })} placeholder={t("خشب، MDF، حديد...", "Wood, MDF, Iron...")} data-testid="input-materials" />
+        </div>
+        <div className="col-span-2 space-y-1">
+          <Label>{t("ملاحظات", "Notes")}</Label>
+          <Textarea value={data.notes} onChange={e => onChange({ ...data, notes: e.target.value })} data-testid="input-supplier-notes" />
+        </div>
+      </div>
+      <Button className="w-full" onClick={onSubmit} disabled={!data.name || isPending} data-testid="button-submit-supplier">
+        {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : submitLabel}
+      </Button>
+    </div>
+  );
+}
+
 export default function SuppliersPage() {
   const { t } = useLanguage();
   const { user } = useAuth();
@@ -72,50 +125,6 @@ export default function SuppliersPage() {
   if (isLoading) {
     return <div className="flex items-center justify-center h-64"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
   }
-
-  const SupplierForm = ({ data, onChange, onSubmit, isPending, submitLabel }: {
-    data: typeof emptyForm; onChange: (d: typeof emptyForm) => void; onSubmit: () => void; isPending: boolean; submitLabel: string;
-  }) => (
-    <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-3">
-        <div className="col-span-2 space-y-1">
-          <Label>{t("اسم المورد", "Supplier Name")} *</Label>
-          <Input value={data.name} onChange={e => onChange({ ...data, name: e.target.value })} data-testid="input-supplier-name" />
-        </div>
-        <div className="space-y-1">
-          <Label>{t("جهة الاتصال", "Contact Person")}</Label>
-          <Input value={data.contactPerson} onChange={e => onChange({ ...data, contactPerson: e.target.value })} data-testid="input-contact-person" />
-        </div>
-        <div className="space-y-1">
-          <Label>{t("الهاتف", "Phone")}</Label>
-          <Input value={data.phone} onChange={e => onChange({ ...data, phone: e.target.value })} data-testid="input-supplier-phone" />
-        </div>
-        <div className="space-y-1">
-          <Label>{t("البريد", "Email")}</Label>
-          <Input value={data.email} onChange={e => onChange({ ...data, email: e.target.value })} data-testid="input-supplier-email" />
-        </div>
-        <div className="space-y-1">
-          <Label>{t("الرقم الضريبي", "Tax Number")}</Label>
-          <Input value={data.taxNumber} onChange={e => onChange({ ...data, taxNumber: e.target.value })} data-testid="input-tax-number" />
-        </div>
-        <div className="col-span-2 space-y-1">
-          <Label>{t("العنوان", "Address")}</Label>
-          <Input value={data.address} onChange={e => onChange({ ...data, address: e.target.value })} data-testid="input-supplier-address" />
-        </div>
-        <div className="col-span-2 space-y-1">
-          <Label>{t("المواد المتوفرة", "Available Materials")}</Label>
-          <Input value={data.materials} onChange={e => onChange({ ...data, materials: e.target.value })} placeholder={t("خشب، MDF، حديد...", "Wood, MDF, Iron...")} data-testid="input-materials" />
-        </div>
-        <div className="col-span-2 space-y-1">
-          <Label>{t("ملاحظات", "Notes")}</Label>
-          <Textarea value={data.notes} onChange={e => onChange({ ...data, notes: e.target.value })} data-testid="input-supplier-notes" />
-        </div>
-      </div>
-      <Button className="w-full" onClick={onSubmit} disabled={!data.name || isPending} data-testid="button-submit-supplier">
-        {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : submitLabel}
-      </Button>
-    </div>
-  );
 
   return (
     <div className="space-y-6">
