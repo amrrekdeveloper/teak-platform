@@ -96,7 +96,7 @@ const menuItems: MenuItem[] = [
   { titleAr: "أوامر العمل", titleEn: "Work Orders", icon: ClipboardCheck, path: "/work-orders", roles: ["owner", "assistant", "it", "production", "designer"], group: "manufacturing_supply" },
   { titleAr: "الإنتاج", titleEn: "Production", icon: Factory, path: "/production", roles: ["owner", "assistant", "it", "production"], group: "manufacturing_supply" },
   { titleAr: "المخزون", titleEn: "Inventory", icon: Package, path: "/inventory", roles: ["owner", "assistant", "it", "warehouse", "purchasing"], group: "manufacturing_supply" },
-  { titleAr: "الموردون", titleEn: "Suppliers", icon: Building2, path: "/suppliers", roles: ["owner", "assistant", "it", "warehouse", "purchasing"], group: "manufacturing_supply" },
+  { titleAr: "الموردون", titleEn: "Suppliers", icon: Building2, path: "/suppliers", roles: ["owner", "assistant", "it", "warehouse", "purchasing", "accountant"], group: "manufacturing_supply" },
   { titleAr: "المشتريات", titleEn: "Purchase Orders", icon: ShoppingCart, path: "/purchases", roles: ["owner", "assistant", "it", "purchasing"], group: "manufacturing_supply" },
   // 6. Field Operations & After-sales
   { titleAr: "التوصيل", titleEn: "Deliveries", icon: Truck, path: "/deliveries", roles: ["owner", "assistant", "it", "delivery"], group: "field_ops" },

@@ -1576,6 +1576,9 @@ export const journalEntryLines = pgTable("journal_entry_lines", {
   debit: decimal("debit", { precision: 15, scale: 2 }).notNull().default("0"),
   credit: decimal("credit", { precision: 15, scale: 2 }).notNull().default("0"),
   notes: text("notes"),
+  // دفتر مساعد: ربط سطر القيد بطرف محدد (عميل/مورد) لاستخراج كشف حساب لكل طرف
+  partyType: text("party_type"), // "customer" | "supplier"
+  partyId: integer("party_id"),
 });
 
 export const insertJournalEntryLineSchema = createInsertSchema(journalEntryLines).omit({

@@ -3257,7 +3257,40 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/suppliers/:id", requireRole("owner", "assistant", "warehouse", "purchasing"), async (req, res) => {
+  // الحركات المالية للمورد (دفتر مساعد) — لأدوار المالية فقط
+  app.get("/api/suppliers/:id/financials", requireRole("owner", "assistant", "accountant"), async (req, res) => {
+    try {
+      const supplierId = parseInt(String(req.params.id));
+      if (!Number.isInteger(supplierId) || supplierId <= 0) return res.status(400).json({ message: "معرف المورد غير صحيح" });
+      const { pool } = await import("./db");
+      const result = await pool.query(
+        `SELECT jel.id, jel.account_code, jel.account_name_ar, jel.debit, jel.credit,
+                je.id AS entry_id, je.entry_number, je.date AS entry_date, je.description, je.reference_type
+         FROM journal_entry_lines jel
+         INNER JOIN journal_entries je ON jel.entry_id = je.id
+         WHERE je.status = 'posted' AND jel.party_type = 'supplier' AND jel.party_id = $1
+         ORDER BY je.date, je.id, jel.id`,
+        [supplierId]
+      );
+      // حساب ذمم الموردين خصوم: الدائن = التزام علينا (فاتورة/استحقاق)، المدين = سداد له
+      let totalDebit = 0, totalCredit = 0, running = 0;
+      const movements = result.rows.map((l: any) => {
+        const d = parseFloat(String(l.debit || 0));
+        const c = parseFloat(String(l.credit || 0));
+        totalDebit += d; totalCredit += c;
+        running += c - d; // الرصيد الدائن = المتبقي للمورد
+        return { ...l, runningBalance: +running.toFixed(2) };
+      });
+      res.json({
+        totalPaid: +totalDebit.toFixed(2),      // ما صُرف له
+        totalOwed: +totalCredit.toFixed(2),     // ما استحق له
+        balance: +(totalCredit - totalDebit).toFixed(2), // المتبقي له (موجب = علينا له)
+        movements,
+      });
+    } catch (e: any) { res.status(500).json({ message: e.message || "حدث خطأ" }); }
+  });
+
+  app.get("/api/suppliers/:id", requireRole("owner", "assistant", "warehouse", "purchasing", "accountant"), async (req, res) => {
     try {
       const s = await storage.getSupplier(parseInt(req.params.id));
       if (!s) return res.status(404).json({ message: "المورد غير موجود", messageEn: "Supplier not found" });
@@ -8854,6 +8887,8 @@ export async function registerRoutes(
       await db.execute(`ALTER TABLE inventory ADD COLUMN IF NOT EXISTS warehouse_id INTEGER`);
       await db.execute(`ALTER TABLE inventory_transactions ADD COLUMN IF NOT EXISTS contract_id INTEGER`);
       await db.execute(`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS approval_status TEXT NOT NULL DEFAULT 'approved'`);
+      await db.execute(`ALTER TABLE journal_entry_lines ADD COLUMN IF NOT EXISTS party_type TEXT`);
+      await db.execute(`ALTER TABLE journal_entry_lines ADD COLUMN IF NOT EXISTS party_id INTEGER`);
       await db.execute(`
         CREATE TABLE IF NOT EXISTS warehouses (
           id SERIAL PRIMARY KEY,
@@ -9235,6 +9270,14 @@ export async function registerRoutes(
   app.post("/api/accounting/record-voucher", requireRole("owner", "assistant", "accountant"), async (req, res) => {
     try {
       const { voucherKind, date, reference, partyName, paymentAccountCode, counterAccountCode } = req.body;
+      // دفتر مساعد: ربط سطر الذمم بالطرف (عميل/مورد) عند اختياره من القائمة
+      const partyType = req.body.partyType === "customer" || req.body.partyType === "supplier" ? req.body.partyType : null;
+      let partyId = partyType && Number.isInteger(Number(req.body.partyId)) && Number(req.body.partyId) > 0 ? Number(req.body.partyId) : null;
+      if (partyId) {
+        // تحقق من وجود الطرف فعلياً قبل الربط حتى لا تُخزّن روابط يتيمة
+        const exists = partyType === "customer" ? await storage.getCustomer(partyId) : await storage.getSupplier(partyId);
+        if (!exists) partyId = null;
+      }
       const amount = parseNum(req.body.amount);
 
       if (voucherKind !== "receipt" && voucherKind !== "payment") {
@@ -9286,14 +9329,15 @@ export async function registerRoutes(
         }
       }
 
+      const partyFields = partyType && partyId ? { partyType, partyId } : {};
       const lines: any[] = [];
       if (voucherKind === "receipt") {
         // Money in: debit cash/bank, credit the source account
         lines.push({ entryId: 0, accountCode: paymentAccountCode, accountNameAr: payName, debit: amount.toFixed(2), credit: "0" });
-        lines.push({ entryId: 0, accountCode: counterAccountCode, accountNameAr: counterName, debit: "0", credit: amount.toFixed(2) });
+        lines.push({ entryId: 0, accountCode: counterAccountCode, accountNameAr: counterName, debit: "0", credit: amount.toFixed(2), ...partyFields });
       } else {
         // Money out: debit the destination account, credit cash/bank
-        lines.push({ entryId: 0, accountCode: counterAccountCode, accountNameAr: counterName, debit: amount.toFixed(2), credit: "0" });
+        lines.push({ entryId: 0, accountCode: counterAccountCode, accountNameAr: counterName, debit: amount.toFixed(2), credit: "0", ...partyFields });
         lines.push({ entryId: 0, accountCode: paymentAccountCode, accountNameAr: payName, debit: "0", credit: amount.toFixed(2) });
       }
 
@@ -9962,7 +10006,7 @@ export async function registerRoutes(
           status: "posted",
           createdBy: (req as any).userId,
         },
-        linesToSave.map(l => ({ ...l, notes: "" }))
+        linesToSave.map(l => ({ ...l, entryId: 0, notes: "" }))
       );
       res.json(entry);
     } catch (e: any) { res.status(400).json({ message: e.message || "حدث خطأ" }); }

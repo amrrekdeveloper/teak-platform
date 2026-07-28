@@ -395,6 +395,8 @@ export default function FinanceAccountsPage() {
       date: voucherForm.date,
       reference: voucherForm.reference,
       partyName: voucherForm.partyName || resolved.party || "",
+      partyType: resolved.partyType,
+      partyId: resolved.partyId,
       paymentAccountCode: voucherForm.paymentAccountCode,
       counterAccountCode: resolved.accountCode,
       amount: amt,
@@ -569,15 +571,15 @@ export default function FinanceAccountsPage() {
     };
   }, [accounts, vCustomers, vSuppliers, arControlAccount, apControlAccount, voucherForm.voucherKind, voucherForm.paymentAccountCode, t]);
 
-  // تحويل اختيار الطرف (عميل/مورد) إلى حساب الذمم الذي سيُرحّل عليه القيد + اسم الطرف
-  const resolveVoucherCounter = (code: string): { accountCode: string; account?: any; party?: string } => {
+  // تحويل اختيار الطرف (عميل/مورد) إلى حساب الذمم الذي سيُرحّل عليه القيد + اسم الطرف ومعرفه (دفتر مساعد)
+  const resolveVoucherCounter = (code: string): { accountCode: string; account?: any; party?: string; partyType?: "customer" | "supplier"; partyId?: number } => {
     if (code.startsWith("cust:")) {
       const c = (vCustomers as any[]).find((x: any) => String(x.id) === code.slice(5));
-      return { accountCode: arControlAccount?.code || "", account: arControlAccount, party: c?.fullName };
+      return { accountCode: arControlAccount?.code || "", account: arControlAccount, party: c?.fullName, partyType: "customer", partyId: c?.id };
     }
     if (code.startsWith("supp:")) {
       const s = (vSuppliers as any[]).find((x: any) => String(x.id) === code.slice(5));
-      return { accountCode: apControlAccount?.code || "", account: apControlAccount, party: s?.name };
+      return { accountCode: apControlAccount?.code || "", account: apControlAccount, party: s?.name, partyType: "supplier", partyId: s?.id };
     }
     return { accountCode: code, account: (accounts as any[]).find((a: any) => a.code === code) };
   };

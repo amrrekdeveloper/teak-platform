@@ -56,7 +56,7 @@ export const PERMISSION_MODULES: PermissionModule[] = [
   { key: "/work-orders", titleAr: "أوامر العمل", titleEn: "Work Orders", group: "manufacturing", roles: ["owner", "assistant", "it", "production", "designer"] },
   { key: "/production", titleAr: "الإنتاج", titleEn: "Production", group: "manufacturing", roles: ["owner", "assistant", "it", "production"] },
   { key: "/inventory", titleAr: "المخزون", titleEn: "Inventory", group: "warehouse", roles: ["owner", "assistant", "it", "warehouse", "purchasing"] },
-  { key: "/suppliers", titleAr: "الموردون", titleEn: "Suppliers", group: "warehouse", roles: ["owner", "assistant", "it", "warehouse", "purchasing"] },
+  { key: "/suppliers", titleAr: "الموردون", titleEn: "Suppliers", group: "warehouse", roles: ["owner", "assistant", "it", "warehouse", "purchasing", "accountant"] },
   { key: "/purchases", titleAr: "المشتريات", titleEn: "Purchase Orders", group: "warehouse", roles: ["owner", "assistant", "it", "purchasing"] },
   { key: "/deliveries", titleAr: "التوصيل", titleEn: "Deliveries", group: "services", roles: ["owner", "assistant", "it", "delivery"] },
   { key: "/installations", titleAr: "التركيب والصيانة", titleEn: "Installation & Maintenance", group: "services", roles: ["owner", "assistant", "it", "installation"] },
