@@ -166,7 +166,8 @@ interface PlanSvgProps {
   selectedOpeningId?: string | null;
   draggingOpeningId?: string | null;
   onSelectOpening?: (id: string) => void;
-  onDragOpening?: (id: string, desiredDistance: number) => void;
+  /** Called continuously while dragging; wallId is the wall the pointer is nearest to (may differ from the opening's current wall). */
+  onDragOpening?: (id: string, desiredDistance: number, wallId: string) => void;
   onDragEnd?: () => void;
   utilities?: KitchenUtility[];
   selectedUtilityId?: string | null;
@@ -202,7 +203,7 @@ export default function KitchenPlanSvg({
   t,
 }: PlanSvgProps) {
   const svgRef = useRef<SVGSVGElement>(null);
-  const dragRef = useRef<{ id: string; offset: number; wallId: string } | null>(null);
+  const dragRef = useRef<{ id: string; offset: number; wallId: string; width: number } | null>(null);
   const [, forceRender] = useState(0);
 
   const segments = getWallSegments(layout, walls);
@@ -268,6 +269,17 @@ export default function KitchenPlanSvg({
     return { x: pt.x, y: pt.y };
   }, []);
 
+  const distanceToSegment = useCallback((seg: WallSegment, x: number, y: number) => {
+    const dx = seg.x2 - seg.x1;
+    const dy = seg.y2 - seg.y1;
+    const lenSq = dx * dx + dy * dy;
+    const tRaw = lenSq === 0 ? 0 : ((x - seg.x1) * dx + (y - seg.y1) * dy) / lenSq;
+    const tc = Math.min(Math.max(tRaw, 0), 1);
+    const cx = seg.x1 + tc * dx;
+    const cy = seg.y1 + tc * dy;
+    return Math.hypot(x - cx, y - cy);
+  }, []);
+
   const distanceAlongWall = useCallback(
     (seg: WallSegment, x: number, y: number) => {
       const dx = seg.x2 - seg.x1;
@@ -292,6 +304,7 @@ export default function KitchenPlanSvg({
       id: opening.id,
       offset: along - opening.distanceFromWallStart,
       wallId: opening.wallId,
+      width: opening.width,
     };
     onSelectOpening?.(opening.id);
     forceRender((n) => n + 1);
@@ -300,11 +313,27 @@ export default function KitchenPlanSvg({
       const drag = dragRef.current;
       const cb = dragCbRef.current;
       if (!drag || !cb) return;
-      const s = segByIdRef.current.get(drag.wallId);
       const p = toSvgPoint(ev.clientX, ev.clientY);
-      if (!s || !p) return;
-      const alongNow = distanceAlongWall(s, p.x, p.y);
-      cb(drag.id, alongNow - drag.offset);
+      if (!p) return;
+      // Snap to the wall nearest the pointer (allows moving between walls)
+      let best: WallSegment | null = null;
+      let bestD = Infinity;
+      for (const s of segmentsRef.current) {
+        const d = distanceToSegment(s, p.x, p.y);
+        if (d < bestD) {
+          bestD = d;
+          best = s;
+        }
+      }
+      if (!best) return;
+      if (best.id !== drag.wallId) {
+        // Switched wall: center the opening under the pointer
+        drag.wallId = best.id;
+        drag.offset = drag.width / 2;
+        forceRender((n) => n + 1);
+      }
+      const alongNow = distanceAlongWall(best, p.x, p.y);
+      cb(drag.id, alongNow - drag.offset, best.id);
     };
     const onWindowUp = () => {
       window.removeEventListener("pointermove", onWindowMove);
@@ -413,8 +442,21 @@ export default function KitchenPlanSvg({
           cursor = Math.max(cursor, o.distanceFromWallStart + o.width);
         }
         if (cursor < seg.length) pieces.push([cursor, seg.length]);
+        const isDropTarget = isDraggingNow && dragRef.current?.wallId === seg.id;
         return (
           <g key={seg.id}>
+            {isDropTarget && (
+              <line
+                x1={seg.x1}
+                y1={seg.y1}
+                x2={seg.x2}
+                y2={seg.y2}
+                strokeWidth={WALL_T * 2.2}
+                strokeLinecap="butt"
+                className="stroke-primary/25"
+                data-testid={`plan-wall-target-${seg.id}`}
+              />
+            )}
             {pieces.map(([d0, d1], i) => {
               const p0 = pointAlong(seg, d0);
               const p1 = pointAlong(seg, d1);
@@ -427,7 +469,7 @@ export default function KitchenPlanSvg({
                   y2={p1.y}
                   strokeWidth={WALL_T}
                   strokeLinecap="butt"
-                  className="stroke-foreground/60"
+                  className={isDropTarget ? "stroke-primary/70" : "stroke-foreground/60"}
                 />
               );
             })}

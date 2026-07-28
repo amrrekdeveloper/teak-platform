@@ -194,16 +194,22 @@ export default function KitchenToolDetailsPage() {
     setPlacementKind(null);
   };
 
-  const handleDragOpening = (id: string, desired: number) => {
+  const handleDragOpening = (id: string, desired: number, targetWallId?: string) => {
     const opening = openings.find((o) => o.id === id);
     if (!opening) return;
-    const wall = wallById.get(opening.wallId);
+    const wallId = targetWallId ?? opening.wallId;
+    const wall = wallById.get(wallId);
     if (!wall) return;
     const wallLength = clampWallLength(wall.length);
-    const gaps = freeGaps(openings, opening.wallId, wallLength, opening.width, id);
+    const gaps = freeGaps(openings, wallId, wallLength, opening.width, id);
     const clamped = clampIntoGaps(gaps, desired);
     if (clamped === null) return;
-    updateOpening(id, { distanceFromWallStart: Math.round(clamped) });
+    if (wallId !== opening.wallId) {
+      updateOpening(id, { wallId, distanceFromWallStart: Math.round(clamped) });
+      setSelectedWallId(wallId);
+    } else {
+      updateOpening(id, { distanceFromWallStart: Math.round(clamped) });
+    }
   };
 
   const handleWidthChange = (raw: number) => {
