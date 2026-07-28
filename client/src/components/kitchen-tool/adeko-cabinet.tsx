@@ -21,6 +21,7 @@ import {
   DEFAULT_ADEKO_FINISH,
   DEFAULT_ADEKO_TOP_FINISH,
   ADEKO_HANDLE_COLORS,
+  CARCASS_OFFWHITE,
   type AdekoFinish,
   type AdekoTopFinish,
   type AdekoHandleStyle,
@@ -238,6 +239,178 @@ function AdekoDrawerFace({
   );
 }
 
+/** Chrome faucet: base + column + spout, standing at the counter rear. */
+function Faucet({
+  topY,
+  z,
+  steelMat,
+}: {
+  topY: number;
+  z: number;
+  steelMat: THREE.Material;
+}) {
+  return (
+    <group position={[0, topY, z]}>
+      <mesh material={steelMat} position={[0, 0.015, 0]} castShadow>
+        <cylinderGeometry args={[0.022, 0.026, 0.03, 16]} />
+      </mesh>
+      <mesh material={steelMat} position={[0, 0.14, 0]} castShadow>
+        <cylinderGeometry args={[0.011, 0.011, 0.25, 12]} />
+      </mesh>
+      {/* Curved spout approximated: short bend + horizontal reach toward the basin */}
+      <mesh material={steelMat} position={[0, 0.265, 0.02]} rotation={[Math.PI / 2.6, 0, 0]} castShadow>
+        <cylinderGeometry args={[0.01, 0.01, 0.09, 12]} />
+      </mesh>
+      <mesh material={steelMat} position={[0, 0.28, 0.09]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+        <cylinderGeometry args={[0.009, 0.009, 0.1, 12]} />
+      </mesh>
+      {/* Lever */}
+      <mesh material={steelMat} position={[0.03, 0.05, 0]} rotation={[0, 0, -0.5]} castShadow>
+        <cylinderGeometry args={[0.006, 0.006, 0.07, 8]} />
+      </mesh>
+    </group>
+  );
+}
+
+/** One recessed stainless basin (rim + cavity). */
+function Basin({
+  x,
+  topY,
+  bw,
+  bd,
+  depth,
+  steelMat,
+  darkMat,
+}: {
+  x: number;
+  topY: number;
+  bw: number;
+  bd: number;
+  depth: number;
+  steelMat: THREE.Material;
+  darkMat: THREE.Material;
+}) {
+  const wall = 0.012;
+  return (
+    <group position={[x, topY, 0.03]}>
+      {/* Rim plate slightly proud of the counter */}
+      <mesh material={steelMat} position={[0, 0.004, 0]}>
+        <boxGeometry args={[bw + 0.04, 0.008, bd + 0.04]} />
+      </mesh>
+      {/* Cavity walls */}
+      <mesh material={steelMat} position={[-bw / 2 + wall / 2, -depth / 2, 0]}>
+        <boxGeometry args={[wall, depth, bd]} />
+      </mesh>
+      <mesh material={steelMat} position={[bw / 2 - wall / 2, -depth / 2, 0]}>
+        <boxGeometry args={[wall, depth, bd]} />
+      </mesh>
+      <mesh material={steelMat} position={[0, -depth / 2, -bd / 2 + wall / 2]}>
+        <boxGeometry args={[bw - 2 * wall, depth, wall]} />
+      </mesh>
+      <mesh material={steelMat} position={[0, -depth / 2, bd / 2 - wall / 2]}>
+        <boxGeometry args={[bw - 2 * wall, depth, wall]} />
+      </mesh>
+      {/* Bottom with drain */}
+      <mesh material={steelMat} position={[0, -depth, 0]}>
+        <boxGeometry args={[bw, wall, bd]} />
+      </mesh>
+      <mesh material={darkMat} position={[0, -depth + wall, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <circleGeometry args={[0.02, 16]} />
+      </mesh>
+    </group>
+  );
+}
+
+/** Built-in oven front face (dark glass door + steel handle + control strip). */
+function OvenFace({
+  y,
+  h,
+  fw,
+  faceZ,
+  darkMat,
+  glassMat,
+  steelMat,
+  micro,
+}: {
+  y: number;
+  h: number;
+  fw: number;
+  faceZ: number;
+  darkMat: THREE.Material;
+  glassMat: THREE.Material;
+  steelMat: THREE.Material;
+  /** Microwave proportions (shallower door, wider control zone). */
+  micro?: boolean;
+}) {
+  const ctrlH = micro ? 0.05 : 0.07;
+  const doorH = h - ctrlH - 0.01;
+  return (
+    <group position={[0, y, faceZ]}>
+      {/* Face panel */}
+      <mesh material={darkMat} castShadow>
+        <boxGeometry args={[fw, h, DOOR_T]} />
+      </mesh>
+      {/* Control strip on top */}
+      <mesh material={steelMat} position={[0, h / 2 - ctrlH / 2, DOOR_T / 2 + 0.002]}>
+        <boxGeometry args={[fw - 0.02, ctrlH - 0.015, 0.004]} />
+      </mesh>
+      {/* Door glass window */}
+      <mesh
+        material={glassMat}
+        position={[0, -ctrlH / 2, DOOR_T / 2 + 0.003]}
+      >
+        <boxGeometry args={[fw * 0.82, doorH * 0.62, 0.005]} />
+      </mesh>
+      {/* Handle bar */}
+      <mesh
+        material={steelMat}
+        position={[0, h / 2 - ctrlH - 0.035, DOOR_T / 2 + 0.028]}
+        rotation={[0, 0, Math.PI / 2]}
+        castShadow
+      >
+        <cylinderGeometry args={[0.009, 0.009, fw * 0.85, 12]} />
+      </mesh>
+    </group>
+  );
+}
+
+/** Black-glass cooktop with 4 burner rings, laid on the counter. */
+function CooktopPlate({
+  topY,
+  W,
+  D,
+  glassMat,
+  darkMat,
+}: {
+  topY: number;
+  W: number;
+  D: number;
+  glassMat: THREE.Material;
+  darkMat: THREE.Material;
+}) {
+  const pw = Math.min(W - 0.06, 0.75);
+  const pd = D - 0.14;
+  const bx = pw / 4.5;
+  const bz = pd / 4.5;
+  return (
+    <group position={[0, topY, 0.01]}>
+      <mesh material={glassMat}>
+        <boxGeometry args={[pw, 0.012, pd]} />
+      </mesh>
+      {[
+        [-bx, -bz],
+        [bx, -bz],
+        [-bx, bz],
+        [bx, bz],
+      ].map(([x, z], i) => (
+        <mesh key={i} material={darkMat} position={[x, 0.0075, z]} rotation={[-Math.PI / 2, 0, 0]}>
+          <ringGeometry args={[0.03, 0.055, 24]} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
 /** Shared material set for parametric Adeko cabinets (straight + corner). */
 function useAdekoMaterials(
   W: number,
@@ -284,11 +457,12 @@ function useAdekoMaterials(
           color: new THREE.Color(finish.tint).multiplyScalar(1.04),
         })
       : mkFlat(finish.tint, 1.04);
-    const carcassMat = finish.wood
-      ? mkWood(W * 1.2, 1.0, 0, {
-          color: new THREE.Color(finish.tint).multiplyScalar(0.96),
-        })
-      : mkFlat(finish.tint, 0.96);
+    // Carcass is ALWAYS matte off-white melamine (factory standard) — only
+    // doors, panels and tops follow the customer's chosen finish.
+    const carcassMat = new THREE.MeshStandardMaterial({
+      color: CARCASS_OFFWHITE,
+      roughness: 0.85,
+    });
     // Interior always a light melamine look — reads clearly when open.
     const interiorMat = new THREE.MeshStandardMaterial({
       color: "#efe9dd",
@@ -304,17 +478,43 @@ function useAdekoMaterials(
       side: THREE.DoubleSide,
     });
 
-    const stMap = prepWood(stone.map, W * 0.9, 0.6);
-    const stArm = prepWood(stone.armMap, W * 0.9, 0.6);
-    clones.push(stMap, stArm);
-    const stoneMat = new THREE.MeshStandardMaterial({
-      map: stMap,
-      aoMap: stArm,
-      roughnessMap: stArm,
-      metalnessMap: stArm,
-      roughness: 1,
-      metalness: 1,
-      ...(topFinish.tint ? { color: new THREE.Color(topFinish.tint) } : {}),
+    let stoneMat: THREE.MeshStandardMaterial;
+    if (topFinish.metal) {
+      // Brushed stainless steel — plain metal, no stone texture.
+      stoneMat = new THREE.MeshStandardMaterial({
+        color: "#c9cdd1",
+        metalness: 0.92,
+        roughness: 0.32,
+      });
+    } else {
+      const stMap = prepWood(stone.map, W * 0.9, 0.6);
+      const stArm = prepWood(stone.armMap, W * 0.9, 0.6);
+      clones.push(stMap, stArm);
+      stoneMat = new THREE.MeshStandardMaterial({
+        map: stMap,
+        aoMap: stArm,
+        roughnessMap: stArm,
+        metalnessMap: stArm,
+        roughness: 1,
+        metalness: 1,
+        ...(topFinish.tint ? { color: new THREE.Color(topFinish.tint) } : {}),
+      });
+    }
+    // Shared appliance materials (sinks, faucet, oven fronts).
+    const steelMat = new THREE.MeshStandardMaterial({
+      color: "#c4c8cc",
+      metalness: 0.95,
+      roughness: 0.25,
+    });
+    const applianceDarkMat = new THREE.MeshStandardMaterial({
+      color: "#1c1d1f",
+      metalness: 0.35,
+      roughness: 0.35,
+    });
+    const applianceGlassMat = new THREE.MeshStandardMaterial({
+      color: "#121316",
+      metalness: 0.55,
+      roughness: 0.12,
     });
     const kickMat = new THREE.MeshStandardMaterial({ color: "#2d2d30", roughness: 0.55 });
     const metalMat = new THREE.MeshStandardMaterial({
@@ -331,6 +531,9 @@ function useAdekoMaterials(
       panelMat,
       glassMat,
       metalMat,
+      steelMat,
+      applianceDarkMat,
+      applianceGlassMat,
       clones,
     };
   }, [wood.map, wood.armMap, stone.map, stone.armMap, W, finish, topFinish, handleColorHex]);
@@ -366,8 +569,19 @@ export default function AdekoBaseCabinet({
 
   const [openDoors, setOpenDoors] = useState<boolean[]>([]);
 
-  const { doorMat, carcassMat, interiorMat, stoneMat, kickMat, panelMat, glassMat, metalMat } =
-    useAdekoMaterials(W, finish, topFinish, handleColorHex);
+  const {
+    doorMat,
+    carcassMat,
+    interiorMat,
+    stoneMat,
+    kickMat,
+    panelMat,
+    glassMat,
+    metalMat,
+    steelMat,
+    applianceDarkMat,
+    applianceGlassMat,
+  } = useAdekoMaterials(W, finish, topFinish, handleColorHex);
 
   const built = useMemo(() => {
     const isBase = kind.place === "base";
@@ -400,6 +614,17 @@ export default function AdekoBaseCabinet({
           dh: upperH - 2 * GAP,
         });
       }
+    }
+
+    // Appliance tower: door rows shrink to leave a fixed band for the
+    // built-in oven (0.9–1.5m) and microwave (1.5–1.92m).
+    if (kind.feature === "tallOven" && kind.place === "tall") {
+      rows.length = 0;
+      const lowerBandH = 0.9 - kickH - 2 * GAP;
+      if (lowerBandH > 0.1) rows.push({ y: kickH + GAP + lowerBandH / 2, dh: lowerBandH });
+      const upperStart = 1.95;
+      const upperBandH = carcassTop - upperStart - GAP;
+      if (upperBandH > 0.12) rows.push({ y: upperStart + upperBandH / 2, dh: upperBandH });
     }
 
     // Drawer stack faces (fill the whole field evenly).
@@ -468,7 +693,8 @@ export default function AdekoBaseCabinet({
     );
   }
 
-  const showFronts = doors.length > 0 || drawerFaces.length > 0;
+  const showFronts =
+    doors.length > 0 || drawerFaces.length > 0 || kind.feature === "cooktop";
 
   return (
     <group>
@@ -605,6 +831,116 @@ export default function AdekoBaseCabinet({
           showHandle={handleStyle !== "none"}
         />
       ))}
+
+      {/* ── Functional features: sinks, laundry tub, cooktop+oven, tower ── */}
+      {(kind.feature === "sink1" || kind.feature === "sink2") && hasTop && (
+        <>
+          {kind.feature === "sink1" ? (
+            <Basin
+              x={0}
+              topY={carcassTop + TOP_T}
+              bw={Math.min(0.44, W * 0.55)}
+              bd={Math.min(0.42, D * 0.62)}
+              depth={0.17}
+              steelMat={steelMat}
+              darkMat={applianceDarkMat}
+            />
+          ) : (
+            <>
+              <Basin
+                x={-W * 0.22}
+                topY={carcassTop + TOP_T}
+                bw={Math.min(0.36, W * 0.38)}
+                bd={Math.min(0.42, D * 0.62)}
+                depth={0.17}
+                steelMat={steelMat}
+                darkMat={applianceDarkMat}
+              />
+              <Basin
+                x={W * 0.22}
+                topY={carcassTop + TOP_T}
+                bw={Math.min(0.36, W * 0.38)}
+                bd={Math.min(0.42, D * 0.62)}
+                depth={0.17}
+                steelMat={steelMat}
+                darkMat={applianceDarkMat}
+              />
+            </>
+          )}
+          <Faucet topY={carcassTop + TOP_T} z={-D / 2 + 0.09} steelMat={steelMat} />
+        </>
+      )}
+
+      {kind.feature === "laundry" && hasTop && (
+        <>
+          <Basin
+            x={0}
+            topY={carcassTop + TOP_T}
+            bw={Math.min(0.5, W * 0.6)}
+            bd={Math.min(0.46, D * 0.65)}
+            depth={0.24}
+            steelMat={steelMat}
+            darkMat={applianceDarkMat}
+          />
+          <Faucet topY={carcassTop + TOP_T} z={-D / 2 + 0.09} steelMat={steelMat} />
+        </>
+      )}
+
+      {kind.feature === "cooktop" && hasTop && (
+        <>
+          <CooktopPlate
+            topY={carcassTop + TOP_T + 0.006}
+            W={W}
+            D={D}
+            glassMat={applianceGlassMat}
+            darkMat={applianceDarkMat}
+          />
+          {/* Built-in oven at the top of the front field, under the cooktop */}
+          <OvenFace
+            y={kickH + bodyH - GAP - Math.min(bodyH - 2 * GAP, 0.62) / 2}
+            h={Math.min(bodyH - 2 * GAP, 0.62)}
+            fw={W - 2 * GAP}
+            faceZ={doorZ}
+            darkMat={applianceDarkMat}
+            glassMat={applianceGlassMat}
+            steelMat={steelMat}
+          />
+          {/* Filler strip below the oven when the field is taller than the oven */}
+          {bodyH - 0.62 - 2 * GAP > 0.03 && (
+            <mesh
+              material={doorMat}
+              position={[0, kickH + (bodyH - 0.62) / 2, doorZ]}
+              castShadow
+            >
+              <boxGeometry args={[W - 2 * GAP, bodyH - 0.62 - 2 * GAP, DOOR_T]} />
+            </mesh>
+          )}
+        </>
+      )}
+
+      {kind.feature === "tallOven" && (
+        <>
+          <OvenFace
+            y={0.9 + 0.3}
+            h={0.6}
+            fw={W - 2 * GAP}
+            faceZ={doorZ}
+            darkMat={applianceDarkMat}
+            glassMat={applianceGlassMat}
+            steelMat={steelMat}
+          />
+          <OvenFace
+            y={1.5 + 0.21}
+            h={0.42}
+            fw={W - 2 * GAP}
+            faceZ={doorZ}
+            darkMat={applianceDarkMat}
+            glassMat={applianceGlassMat}
+            steelMat={steelMat}
+            micro
+          />
+        </>
+      )}
     </group>
   );
 }

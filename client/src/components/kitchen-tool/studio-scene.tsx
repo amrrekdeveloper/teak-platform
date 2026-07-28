@@ -1194,6 +1194,18 @@ function resolvePlacedFinish(
     placed.finishWoodTypeId != null
       ? adekoFinishById?.[placed.finishWoodTypeId]
       : undefined;
+  // New door system: explicit pattern (wood grain / solid) + color override
+  // the wood-type mapping — the material is always MR chipboard.
+  if (placed.doorPattern) {
+    const b = base ?? DEFAULT_ADEKO_FINISH;
+    const tint = placed.finishColor ?? b.tint;
+    return {
+      id: `${placed.doorPattern}-${tint}`,
+      tint,
+      wood: placed.doorPattern === "wood",
+      roughness: 0.5,
+    };
+  }
   if (!placed.finishColor) return base;
   const b = base ?? DEFAULT_ADEKO_FINISH;
   return { ...b, id: `${b.id}-custom-${placed.finishColor}`, tint: placed.finishColor };
@@ -1215,6 +1227,7 @@ function PlacedCabinetMesh({
   adekoFinishById?: Record<number, AdekoFinish>;
 }) {
   const { lightsOn, lightColor } = useLighting();
+  const ledStrips = useKitchenToolStore((s) => s.ledStrips ?? true);
   const seg = segments.find((s) => s.id === placed.wallId);
 
   const lCorner = isLCorner(def);
@@ -1310,7 +1323,7 @@ function PlacedCabinetMesh({
           }}
         />
       )}
-      {def.level === "upper" && lightsOn && !built.corner && (
+      {def.level === "upper" && lightsOn && ledStrips && !built.corner && (
         <mesh position={[0, -0.008, def.depth / 2 - 0.02]}>
           <boxGeometry args={[Math.max(def.width - 0.04, 0.1), 0.014, 0.025]} />
           <meshStandardMaterial
@@ -1954,6 +1967,8 @@ function SceneContents({
   tourActive = false,
   onTourEnd,
   viewRequest,
+  snapshotRequest,
+  onSnapshot,
 }: StudioSceneProps) {
   const [camAnimating, setCamAnimating] = useState(false);
   const segments = useMemo(() => getWallSegments(layout, walls), [layout, walls]);
@@ -2178,11 +2193,18 @@ function SceneContents({
 
   return (
     <>
-      <Environment files={envOption.file} background blur={0.7} />
+      {/* Lower blur + environmentIntensity kill the old hazy/foggy cast while
+          keeping soft HDRI reflections on PBR surfaces. */}
+      <Environment
+        files={envOption.file}
+        background
+        blur={0.35}
+        environmentIntensity={0.75}
+      />
       {windowSun && <WindowSunlight sun={windowSun} envId={envOption.id} />}
       <directionalLight
         position={[center.x + roomSpan * 0.9, ceilingM + 2.6, center.z + roomSpan * 1.2]}
-        intensity={windowSun ? 0.55 : 1.0}
+        intensity={windowSun ? 0.65 : 1.1}
         castShadow
         shadow-mapSize={[2048, 2048]}
         shadow-bias={-0.0004}
@@ -2193,8 +2215,9 @@ function SceneContents({
         shadow-camera-near={0.5}
         shadow-camera-far={30}
       />
-      {/* Warm even fill so opposite walls don't render washed-out/uneven */}
-      <ambientLight intensity={0.32} color="#ffe9d2" />
+      {/* Warm even fill so opposite walls don't render washed-out/uneven —
+          kept low so blacks stay deep (no milky wash). */}
+      <ambientLight intensity={0.24} color="#ffe3c4" />
 
       <Suspense fallback={null}>
         <Floor
@@ -2298,8 +2321,46 @@ function SceneContents({
         enableDamping
         enabled={!drag && !decorDrag && !tourActive && !camAnimating}
       />
+
+      <SnapshotHandler request={snapshotRequest} onSnapshot={onSnapshot} />
     </>
   );
+}
+
+/**
+ * High-resolution presentation render: temporarily upsizes the WebGL buffer
+ * (~2× up to 3840px wide), renders one frame, exports PNG, then restores.
+ */
+function SnapshotHandler({
+  request,
+  onSnapshot,
+}: {
+  request?: number;
+  onSnapshot?: (dataUrl: string) => void;
+}) {
+  const { gl, scene, camera } = useThree();
+  const lastRef = useRef(0);
+  useEffect(() => {
+    if (!request || request === lastRef.current || !onSnapshot) return;
+    lastRef.current = request;
+    const prev = new THREE.Vector2();
+    gl.getSize(prev);
+    const prevPixelRatio = gl.getPixelRatio();
+    try {
+      const scale = Math.min(2, 3840 / Math.max(prev.x, 1));
+      gl.setPixelRatio(1);
+      gl.setSize(Math.round(prev.x * scale * prevPixelRatio), Math.round(prev.y * scale * prevPixelRatio), false);
+      if (camera instanceof THREE.PerspectiveCamera) camera.updateProjectionMatrix();
+      gl.render(scene, camera);
+      onSnapshot(gl.domElement.toDataURL("image/png"));
+    } finally {
+      gl.setPixelRatio(prevPixelRatio);
+      gl.setSize(prev.x, prev.y, false);
+      if (camera instanceof THREE.PerspectiveCamera) camera.updateProjectionMatrix();
+      gl.render(scene, camera);
+    }
+  }, [request, onSnapshot, gl, scene, camera]);
+  return null;
 }
 
 /* ── Public component ────────────────────────────────────── */
@@ -2321,6 +2382,10 @@ export interface StudioSceneProps {
   tourActive?: boolean;
   /** Called when the user interrupts the auto tour. */
   onTourEnd?: () => void;
+  /** High-res snapshot request: bump the counter to capture a PNG. */
+  snapshotRequest?: number;
+  /** Receives the captured PNG data URL. */
+  onSnapshot?: (dataUrl: string) => void;
   /** Camera preset request (person / top / iso / reset) — animated. */
   viewRequest?: CameraViewRequest | null;
 }
@@ -2344,6 +2409,7 @@ export default function StudioScene(props: StudioSceneProps) {
       gl={{ antialias: true }}
       onCreated={({ gl }) => {
         gl.toneMapping = THREE.ACESFilmicToneMapping;
+        gl.toneMappingExposure = 1.12;
         gl.outputColorSpace = THREE.SRGBColorSpace;
       }}
       data-testid="canvas-studio-3d"

@@ -65,7 +65,18 @@ export interface AdekoKind {
   open: boolean;
   /** Thin filler strip — plain slab, no fronts. */
   filler: boolean;
+  /** Built-in functional feature rendered in 3D (sink, cooktop, appliances…). */
+  feature?: CabinetFeature;
 }
+
+/**
+ * Functional cabinet features rendered visibly in the scene:
+ * - sink1 / sink2: kitchen sink cabinet, 1 or 2 stainless basins + faucet
+ * - laundry: laundry cabinet — deep stainless tub + faucet (marble top option)
+ * - cooktop: cooktop on the counter with a built-in oven front below
+ * - tallOven: tall tower with built-in oven + microwave
+ */
+export type CabinetFeature = "sink1" | "sink2" | "laundry" | "cooktop" | "tallOven";
 
 /** Raw product row from /api/kitchen-tool/products. */
 export interface AdekoProductRow {
@@ -154,7 +165,13 @@ export function classifyAdekoProduct(p: AdekoProductRow): AdekoKind | null {
     doors = wM >= 0.7 ? 2 : 1;
   }
 
-  return { place, doors, drawers, topDrawer, glass, open, filler };
+  // Functional features detected from the catalog description.
+  let feature: CabinetFeature | undefined;
+  if (place === "base" && /sink/.test(desc)) {
+    feature = /double|2 ?bowl|two bowl/.test(desc) || wM >= 1.0 ? "sink2" : "sink1";
+  }
+
+  return { place, doors, drawers, topDrawer, glass, open, filler, feature };
 }
 
 /** Default bottom height (m) for a wall unit: top aligned near 2.2m. */
@@ -238,8 +255,82 @@ export function adekoDefFromProduct(p: AdekoProductRow): CabinetDef | null {
  */
 export const CABINET_DEFS: CabinetDef[] = [];
 
+/**
+ * Static parametric defs completing the catalog with units the Adeko feed
+ * lacks (sinks with faucet, laundry, cooktop+oven, tall appliance tower).
+ * Ids start with "adeko-x-" so legacy-cleanup (non-adeko ids) never drops them.
+ */
+export const EXTRA_CABINET_DEFS: CabinetDef[] = [
+  {
+    id: "adeko-x-sink1-80",
+    nameAr: "خزانة حوض (حوض واحد)",
+    nameEn: "Sink Unit Single Bowl 80",
+    level: "base",
+    width: 0.8,
+    depth: 0.6,
+    height: 0.9,
+    mountY: 0,
+    parametricKind: { place: "base", doors: 2, drawers: 0, topDrawer: false, glass: false, open: false, filler: false, feature: "sink1" },
+  },
+  {
+    id: "adeko-x-sink2-100",
+    nameAr: "خزانة حوض (حوضان)",
+    nameEn: "Sink Unit Double Bowl 100",
+    level: "base",
+    width: 1.0,
+    depth: 0.6,
+    height: 0.9,
+    mountY: 0,
+    parametricKind: { place: "base", doors: 2, drawers: 0, topDrawer: false, glass: false, open: false, filler: false, feature: "sink2" },
+  },
+  {
+    id: "adeko-x-laundry-90",
+    nameAr: "خزانة غسيل",
+    nameEn: "Laundry Unit 90",
+    level: "base",
+    width: 0.9,
+    depth: 0.65,
+    height: 0.9,
+    mountY: 0,
+    parametricKind: { place: "base", doors: 2, drawers: 0, topDrawer: false, glass: false, open: false, filler: false, feature: "laundry" },
+  },
+  {
+    id: "adeko-x-cooktop-60",
+    nameAr: "خزانة موقد بفرن مدمج",
+    nameEn: "Cooktop Unit Built-in Oven 60",
+    level: "base",
+    width: 0.6,
+    depth: 0.6,
+    height: 0.9,
+    mountY: 0,
+    parametricKind: { place: "base", doors: 0, drawers: 0, topDrawer: false, glass: false, open: false, filler: false, feature: "cooktop" },
+  },
+  {
+    id: "adeko-x-cooktop-90",
+    nameAr: "خزانة موقد بفرن مدمج",
+    nameEn: "Cooktop Unit Built-in Oven 90",
+    level: "base",
+    width: 0.9,
+    depth: 0.6,
+    height: 0.9,
+    mountY: 0,
+    parametricKind: { place: "base", doors: 0, drawers: 0, topDrawer: false, glass: false, open: false, filler: false, feature: "cooktop" },
+  },
+  {
+    id: "adeko-x-tower-60",
+    nameAr: "برج أجهزة (فرن + ميكرويف)",
+    nameEn: "Appliance Tower Oven+Microwave 60",
+    level: "base",
+    width: 0.6,
+    depth: 0.6,
+    height: 2.2,
+    mountY: 0,
+    parametricKind: { place: "tall", doors: 2, drawers: 0, topDrawer: false, glass: false, open: false, filler: false, feature: "tallOven" },
+  },
+];
+
 /** Dynamic defs built from the real Adeko catalog (registered at runtime). */
-const ADEKO_DEFS: CabinetDef[] = [];
+const ADEKO_DEFS: CabinetDef[] = [...EXTRA_CABINET_DEFS];
 
 /** Register (or replace) a catalog-backed def. Idempotent by id. */
 export function registerAdekoDef(def: CabinetDef) {

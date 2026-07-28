@@ -219,6 +219,50 @@ const ADEKO_FINISHES: Record<string, AdekoFinish> = {
 
 export const DEFAULT_ADEKO_FINISH: AdekoFinish = ADEKO_FINISHES.oak;
 
+/* ── Real-world door system: one material (MR chipboard), two patterns ── */
+
+/** Cabinet carcass is ALWAYS matte off-white melamine — not customer-selectable. */
+export const CARCASS_OFFWHITE = "#f0ece2";
+
+/** Door surface pattern: wood grain texture or solid painted color. */
+export type AdekoDoorPattern = "wood" | "solid";
+
+export interface AdekoDoorColor {
+  id: string;
+  nameAr: string;
+  nameEn: string;
+  hex: string;
+}
+
+/** Factory color range for moisture-resistant chipboard doors (both patterns). */
+export const ADEKO_DOOR_COLORS: AdekoDoorColor[] = [
+  { id: "off-white", nameAr: "أوف وايت", nameEn: "Off-White", hex: "#f1ede3" },
+  { id: "white", nameAr: "أبيض", nameEn: "White", hex: "#f7f6f2" },
+  { id: "cream", nameAr: "كريمي", nameEn: "Cream", hex: "#eadfc8" },
+  { id: "sand", nameAr: "رملي", nameEn: "Sand", hex: "#d9c9a8" },
+  { id: "oak", nameAr: "بلوط فاتح", nameEn: "Light Oak", hex: "#e5c496" },
+  { id: "walnut", nameAr: "جوزي", nameEn: "Walnut", hex: "#9a7050" },
+  { id: "coffee", nameAr: "بني غامق", nameEn: "Dark Brown", hex: "#6b4f3a" },
+  { id: "gray", nameAr: "رمادي فاتح", nameEn: "Light Gray", hex: "#d4d4d0" },
+  { id: "graphite", nameAr: "جرافيت", nameEn: "Graphite", hex: "#585a5c" },
+  { id: "sage", nameAr: "أخضر زيتي", nameEn: "Sage Green", hex: "#a8b096" },
+  { id: "navy", nameAr: "كحلي", nameEn: "Navy Blue", hex: "#3b4a5e" },
+  { id: "black", nameAr: "أسود مطفي", nameEn: "Matte Black", hex: "#2e2f31" },
+];
+
+export const DEFAULT_DOOR_PATTERN: AdekoDoorPattern = "wood";
+export const DEFAULT_DOOR_COLOR = ADEKO_DOOR_COLORS[4]; // light oak
+
+/** Build the render finish for a door pattern + color choice. */
+export function buildAdekoFinish(pattern: AdekoDoorPattern, hex: string): AdekoFinish {
+  return {
+    id: `${pattern}-${hex}`,
+    tint: hex,
+    wood: pattern === "wood",
+    roughness: 0.5,
+  };
+}
+
 /** Map a factory wood type (by name) to a realistic 3D finish. */
 export function adekoFinishForWoodType(nameAr: string, nameEn: string): AdekoFinish {
   const en = (nameEn || "").toLowerCase();
@@ -249,6 +293,8 @@ export interface AdekoTopFinish {
   swatch: string;
   /** Optional tint applied over the texture. */
   tint?: string;
+  /** Brushed stainless-steel surface — rendered as metal, texture ignored. */
+  metal?: boolean;
 }
 
 const KT_ASSETS = "/kitchen-tool-assets";
@@ -285,6 +331,15 @@ export const ADEKO_TOP_FINISHES: AdekoTopFinish[] = [
     map: `${KT_ASSETS}/floor-tile-beige/textures/interior_tiles_diff_2k.jpg`,
     armMap: `${KT_ASSETS}/floor-tile-beige/textures/interior_tiles_arm_2k.jpg`,
     swatch: "#d8cbb4",
+  },
+  {
+    id: "stainless",
+    nameAr: "ستانلس ستيل",
+    nameEn: "Stainless Steel",
+    map: `${KT_ASSETS}/floor-cartago-grey/textures/grey_cartago_01_diff_2k.jpg`,
+    armMap: `${KT_ASSETS}/floor-cartago-grey/textures/grey_cartago_01_arm_2k.jpg`,
+    swatch: "#c8ccd0",
+    metal: true,
   },
   {
     id: "oak-wood",

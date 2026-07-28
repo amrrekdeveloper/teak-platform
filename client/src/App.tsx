@@ -80,10 +80,8 @@ import NotFound from "@/pages/not-found";
 import { getPermissionKeyForLocation } from "@shared/permissions";
 
 const KitchenToolLandingLazy = lazy(() => import("@/pages/kitchen-tool/landing"));
-const KitchenToolSetupLazy = lazy(() => import("@/pages/kitchen-tool/setup"));
-const KitchenToolDimensionsLazy = lazy(() => import("@/pages/kitchen-tool/dimensions"));
-const KitchenToolOpeningsLazy = lazy(() => import("@/pages/kitchen-tool/openings"));
-const KitchenToolUtilitiesLazy = lazy(() => import("@/pages/kitchen-tool/utilities"));
+const KitchenToolSpaceLazy = lazy(() => import("@/pages/kitchen-tool/space"));
+const KitchenToolDetailsLazy = lazy(() => import("@/pages/kitchen-tool/details"));
 const KitchenToolStudioLazy = lazy(() => import("@/pages/kitchen-tool/studio"));
 const KitchenToolV2LandingLazy = lazy(() => import("@/pages/kitchen-tool-v2/index"));
 const KitchenToolV2SpaceLazy = lazy(() => import("@/pages/kitchen-tool-v2/space"));
@@ -105,34 +103,18 @@ function KitchenToolLanding() {
   );
 }
 
-function KitchenToolSetup() {
+function KitchenToolSpace() {
   return (
     <Suspense fallback={<KitchenToolFallback />}>
-      <KitchenToolSetupLazy />
+      <KitchenToolSpaceLazy />
     </Suspense>
   );
 }
 
-function KitchenToolDimensions() {
+function KitchenToolDetails() {
   return (
     <Suspense fallback={<KitchenToolFallback />}>
-      <KitchenToolDimensionsLazy />
-    </Suspense>
-  );
-}
-
-function KitchenToolOpenings() {
-  return (
-    <Suspense fallback={<KitchenToolFallback />}>
-      <KitchenToolOpeningsLazy />
-    </Suspense>
-  );
-}
-
-function KitchenToolUtilities() {
-  return (
-    <Suspense fallback={<KitchenToolFallback />}>
-      <KitchenToolUtilitiesLazy />
+      <KitchenToolDetailsLazy />
     </Suspense>
   );
 }
@@ -356,10 +338,13 @@ function Router() {
       <Route path="/attendance" component={AttendancePage} />
       <Route path="/finance-login" component={FinanceLoginPage} />
       <Route path="/system-admin" component={SystemAdminLogin} />
-      <Route path="/kitchen-designer/setup" component={KitchenToolSetup} />
-      <Route path="/kitchen-designer/dimensions" component={KitchenToolDimensions} />
-      <Route path="/kitchen-designer/openings" component={KitchenToolOpenings} />
-      <Route path="/kitchen-designer/utilities" component={KitchenToolUtilities} />
+      <Route path="/kitchen-designer/space" component={KitchenToolSpace} />
+      <Route path="/kitchen-designer/details" component={KitchenToolDetails} />
+      {/* Legacy 5-step wizard routes → new 3-stage wizard */}
+      <Route path="/kitchen-designer/setup" component={KitchenToolSpace} />
+      <Route path="/kitchen-designer/dimensions" component={KitchenToolSpace} />
+      <Route path="/kitchen-designer/openings" component={KitchenToolDetails} />
+      <Route path="/kitchen-designer/utilities" component={KitchenToolDetails} />
       <Route path="/kitchen-designer/studio" component={KitchenToolStudio} />
       <Route path="/kitchen-designer" component={KitchenToolLanding} />
       <Route path="/kitchen-designer-v2/space">{() => <Suspense fallback={<KitchenToolFallback />}><KitchenToolV2SpaceLazy /></Suspense>}</Route>

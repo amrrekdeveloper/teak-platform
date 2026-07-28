@@ -2,15 +2,12 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { DEFAULT_ENVIRONMENT_ID, DEFAULT_CEILING_ID } from "@/components/kitchen-tool/materials";
 
-export type OvenPlacement = "under_counter" | "tall_cabinet";
-export type HoodType = "wall" | "integrated";
-export type FridgeType = "freestanding" | "integrated";
 export type KitchenLayout = "I" | "L" | "U" | "parallel";
 
+/** How confident the customer is in the entered room measurements. */
+export type MeasureAccuracy = "exact" | "approx";
+
 export interface KitchenAnswers {
-  ovenPlacement: OvenPlacement | null;
-  hoodType: HoodType | null;
-  fridgeType: FridgeType | null;
   layout: KitchenLayout | null;
 }
 
@@ -51,6 +48,8 @@ export interface PlacedCabinetState {
   finishWoodTypeId?: number;
   /** Optional custom paint color (hex) overriding the finish tint. */
   finishColor?: string;
+  /** Door surface pattern: wood grain or solid color (MR chipboard). */
+  doorPattern?: "wood" | "solid";
   /** Adeko parametric cabinets only — handle style ("bar" | "none"). */
   handleStyle?: "bar" | "none";
   /** Adeko parametric cabinets only — handle color. */
@@ -217,6 +216,8 @@ interface KitchenToolState {
   wallsLayout: KitchenLayout | null;
   /** Fully close the room with an extra wall (L/U/parallel only). */
   closed: boolean;
+  /** Measurement accuracy declared by the customer (exact vs approximate). */
+  measureAccuracy: MeasureAccuracy;
   ceilingHeight: number;
   openings: KitchenOpening[];
   utilities: KitchenUtility[];
@@ -231,6 +232,8 @@ interface KitchenToolState {
   lightTemp: "warm" | "cool";
   /** Gypsum soffit box above upper cabinets in the 3D studio. */
   showSoffit: boolean;
+  /** Under-cabinet LED strips (independent of the main lights). */
+  ledStrips: boolean;
   /** Cabinets placed in the 3D studio. */
   placedCabinets: PlacedCabinetState[];
   /** Decor items (appliances/furniture/plants/details) placed in the 3D studio. */
@@ -239,6 +242,7 @@ interface KitchenToolState {
   setStep: (step: number) => void;
   ensureWalls: (layout: KitchenLayout) => void;
   setClosed: (value: boolean) => void;
+  setMeasureAccuracy: (value: MeasureAccuracy) => void;
   setWallLength: (id: string, length: number) => void;
   setCeilingHeight: (height: number) => void;
   addOpening: (opening: KitchenOpening) => void;
@@ -254,6 +258,7 @@ interface KitchenToolState {
   toggleLights: () => void;
   setLightTemp: (temp: "warm" | "cool") => void;
   setShowSoffit: (value: boolean) => void;
+  setLedStrips: (value: boolean) => void;
   addPlacedCabinet: (cabinet: PlacedCabinetState) => void;
   movePlacedCabinet: (id: string, wallId: string, offset: number) => void;
   setPlacedCabinetHeight: (id: string, mountY: number) => void;
@@ -262,7 +267,7 @@ interface KitchenToolState {
     patch: Partial<
       Pick<
         PlacedCabinetState,
-        "finishWoodTypeId" | "finishColor" | "handleStyle" | "handleColor" | "topFinishId" | "doorHinge" | "rotYOffset"
+        "finishWoodTypeId" | "finishColor" | "doorPattern" | "handleStyle" | "handleColor" | "topFinishId" | "doorHinge" | "rotYOffset"
       >
     >
   ) => void;
@@ -275,9 +280,6 @@ interface KitchenToolState {
 }
 
 const initialAnswers: KitchenAnswers = {
-  ovenPlacement: null,
-  hoodType: null,
-  fridgeType: null,
   layout: null,
 };
 
@@ -289,6 +291,7 @@ export const useKitchenToolStore = create<KitchenToolState>()(
       walls: [],
       wallsLayout: null,
       closed: false,
+      measureAccuracy: "exact",
       ceilingHeight: CEILING_DEFAULT,
       openings: [],
       utilities: [],
@@ -299,6 +302,7 @@ export const useKitchenToolStore = create<KitchenToolState>()(
       lightsOn: false,
       lightTemp: "warm",
       showSoffit: true,
+      ledStrips: true,
       placedCabinets: [],
       placedDecor: [],
       setAnswer: (key, value) =>
@@ -354,6 +358,7 @@ export const useKitchenToolStore = create<KitchenToolState>()(
           );
           return { closed, walls, wallsLayout: layout, openings, utilities, placedCabinets, placedDecor };
         }),
+      setMeasureAccuracy: (value) => set({ measureAccuracy: value }),
       setWallLength: (id, length) =>
         set((state) => {
           const layout = state.answers.layout ?? "L";
@@ -394,6 +399,7 @@ export const useKitchenToolStore = create<KitchenToolState>()(
       toggleLights: () => set((state) => ({ lightsOn: !state.lightsOn })),
       setLightTemp: (temp) => set({ lightTemp: temp }),
       setShowSoffit: (value) => set({ showSoffit: value }),
+      setLedStrips: (value) => set({ ledStrips: value }),
       addPlacedCabinet: (cabinet) =>
         set((state) => ({
           placedCabinets: [...(state.placedCabinets ?? []), cabinet],
@@ -442,6 +448,7 @@ export const useKitchenToolStore = create<KitchenToolState>()(
           walls: [],
           wallsLayout: null,
           closed: false,
+          measureAccuracy: "exact",
           ceilingHeight: CEILING_DEFAULT,
           openings: [],
           utilities: [],
@@ -452,6 +459,7 @@ export const useKitchenToolStore = create<KitchenToolState>()(
           lightsOn: false,
           lightTemp: "warm",
           showSoffit: true,
+          ledStrips: true,
           placedCabinets: [],
           placedDecor: [],
         }),
