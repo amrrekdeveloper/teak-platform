@@ -1,13 +1,12 @@
-import { Component, useEffect, useState, type ReactNode } from "react";
+import { useEffect } from "react";
 import { useLocation } from "wouter";
-import { ChevronRight, ChevronLeft, Ruler, Box, Map as MapIcon } from "lucide-react";
+import { ChevronRight, ChevronLeft, Ruler } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useLanguage } from "@/components/language-provider";
 import DesktopGate from "@/components/kitchen-tool/desktop-gate";
 import KitchenPlanSvg, { wallLabelAr, wallLabelEn } from "@/components/kitchen-tool/plan-svg";
-import RoomPreview3D from "@/components/kitchen-tool/room-preview-3d";
 import { ToolStages, ToolNav } from "@/components/kitchen-tool/tool-stages";
 import {
   useKitchenToolStore,
@@ -22,20 +21,6 @@ import {
   type KitchenLayout,
   type MeasureAccuracy,
 } from "@/components/kitchen-tool/store";
-
-/** Falls back to the 2D plan when WebGL is unavailable. */
-class PreviewErrorBoundary extends Component<
-  { fallback: ReactNode; children: ReactNode },
-  { hasError: boolean }
-> {
-  state = { hasError: false };
-  static getDerivedStateFromError() {
-    return { hasError: true };
-  }
-  render() {
-    return this.state.hasError ? this.props.fallback : this.props.children;
-  }
-}
 
 const LAYOUT_OPTIONS: { value: KitchenLayout; ar: string; en: string }[] = [
   { value: "L", ar: "حرف L", en: "L-Shape" },
@@ -63,7 +48,6 @@ export default function KitchenToolSpacePage() {
   } = useKitchenToolStore();
 
   const layout: KitchenLayout = answers.layout ?? "L";
-  const [view3d, setView3d] = useState(true);
 
   useEffect(() => {
     if (!answers.layout) {
@@ -234,64 +218,22 @@ export default function KitchenToolSpacePage() {
             </div>
           </div>
 
-          {/* Live preview: 3D room / 2D plan */}
+          {/* Live preview: 2D top plan */}
           <div className="bg-card border border-border rounded-xl p-4 xl:p-6 min-h-[480px] flex flex-col">
-            <div className="flex items-center justify-end gap-2 mb-3">
-              <Button
-                variant={view3d ? "default" : "outline"}
-                size="sm"
-                className="font-bold"
-                onClick={() => setView3d(true)}
-                data-testid="button-preview-3d"
-              >
-                <Box className="w-4 h-4 me-1" />
-                {t("منظور ثلاثي الأبعاد", "3D View")}
-              </Button>
-              <Button
-                variant={!view3d ? "default" : "outline"}
-                size="sm"
-                className="font-bold"
-                onClick={() => setView3d(false)}
-                data-testid="button-preview-2d"
-              >
-                <MapIcon className="w-4 h-4 me-1" />
+            <div className="flex items-center justify-end mb-3">
+              <span className="text-sm font-bold text-muted-foreground" data-testid="text-preview-plan-label">
                 {t("مسقط علوي", "Top Plan")}
-              </Button>
+              </span>
             </div>
-            {view3d ? (
-              <PreviewErrorBoundary
-                fallback={
-                  <div className="flex-1 flex items-center justify-center">
-                    <KitchenPlanSvg
-                      layout={layout}
-                      walls={walls}
-                      openings={openings}
-                      t={t}
-                      className="w-full max-h-[520px]"
-                    />
-                  </div>
-                }
-              >
-              <RoomPreview3D
+            <div className="flex-1 flex items-center justify-center">
+              <KitchenPlanSvg
                 layout={layout}
                 walls={walls}
-                ceilingHeight={ceilingHeight}
                 openings={openings}
-                isRTL={isRTL}
-                className="flex-1 min-h-[440px] rounded-lg overflow-hidden bg-gradient-to-b from-sky-50 to-stone-100 dark:from-slate-900 dark:to-slate-800"
+                t={t}
+                className="w-full max-h-[520px]"
               />
-              </PreviewErrorBoundary>
-            ) : (
-              <div className="flex-1 flex items-center justify-center">
-                <KitchenPlanSvg
-                  layout={layout}
-                  walls={walls}
-                  openings={openings}
-                  t={t}
-                  className="w-full max-h-[520px]"
-                />
-              </div>
-            )}
+            </div>
           </div>
         </div>
 
