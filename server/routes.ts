@@ -3248,7 +3248,7 @@ export async function registerRoutes(
 
   // ==================== SUPPLIERS ====================
 
-  app.get("/api/suppliers", requireRole("owner", "assistant", "warehouse", "purchasing"), async (_req, res) => {
+  app.get("/api/suppliers", requireRole("owner", "assistant", "warehouse", "purchasing", "accountant"), async (_req, res) => {
     try {
       const list = await storage.getSuppliers();
       res.json(list);
@@ -9098,7 +9098,27 @@ export async function registerRoutes(
         return acc.nameAr;
       };
 
-      const VAT_OUTPUT = "2121", VAT_INPUT = "2122", CUSTOMER_AR = "1121", SUPPLIER_AP = "2111";
+      // Resolve control/VAT accounts from the live chart of accounts by role, not hardcoded
+      // codes — production charts use different numbering (e.g. 11000201 ذمم العملاء).
+      const invAccounts = await storage.getChartOfAccounts();
+      const invParentCodes = new Set(invAccounts.map(a => a.parentCode).filter(Boolean));
+      const invLeaf = (a: any) => !invParentCodes.has(a.code);
+      const findByRole = (pred: (a: any) => boolean, fallbackCode: string) =>
+        invAccounts.find(a => invLeaf(a) && a.isActive !== false && pred(a))?.code ||
+        (invAccounts.some(a => a.code === fallbackCode) ? fallbackCode : "");
+      const CUSTOMER_AR = findByRole(a => a.type === "asset" && /ذمم/.test(a.nameAr || "") && /عملاء|عميل/.test(a.nameAr || ""), "1121");
+      const SUPPLIER_AP = findByRole(a => a.type === "liability" && /ذمم/.test(a.nameAr || "") && /مورد/.test(a.nameAr || ""), "2111");
+      const VAT_OUTPUT = findByRole(a => /ضريبة/.test(a.nameAr || "") && /مخرجات/.test(a.nameAr || ""), "2121");
+      const VAT_INPUT = findByRole(a => /ضريبة/.test(a.nameAr || "") && /مدخلات/.test(a.nameAr || ""), "2122");
+      if (invoiceKind === "sales" && terms === "credit" && !CUSTOMER_AR) {
+        return res.status(400).json({ message: "لم يتم العثور على حساب ذمم العملاء في شجرة الحسابات" });
+      }
+      if (invoiceKind === "purchase" && terms === "credit" && !SUPPLIER_AP) {
+        return res.status(400).json({ message: "لم يتم العثور على حساب ذمم الموردين في شجرة الحسابات" });
+      }
+      if (vatAmount > 0 && ((invoiceKind === "sales" && !VAT_OUTPUT) || (invoiceKind === "purchase" && !VAT_INPUT))) {
+        return res.status(400).json({ message: "لم يتم العثور على حساب ضريبة القيمة المضافة في شجرة الحسابات" });
+      }
       const reAccountName = await resolveName(revenueExpenseAccountCode);
       const lines: any[] = [];
 
@@ -9233,15 +9253,29 @@ export async function registerRoutes(
         if (!acc) throw new Error(`الحساب ${code} غير موجود في شجرة الحسابات`);
         return acc.nameAr;
       };
-      // Payment account must be a cash/bank account (codes 111x, excluding the 1110 parent)
-      if (!String(paymentAccountCode).startsWith("111") || paymentAccountCode === "1110") {
+      // Payment account must be a postable account inside the cash/bank branch of the tree.
+      // Detected by walking ancestors (names like «النقدية والبنوك») — NOT a hardcoded code
+      // prefix, because production charts use different numbering (e.g. 11000101).
+      const allAccounts = await storage.getChartOfAccounts();
+      const byCode = new Map(allAccounts.map(a => [a.code, a]));
+      const CASH_BANK_RE = /صندوق|بنك|نقد|cash|bank/i;
+      const inCashBankTree = (code: string): boolean => {
+        let cur = byCode.get(code);
+        let guard = 0;
+        while (cur && guard++ < 12) {
+          if (CASH_BANK_RE.test(cur.nameAr || "") || CASH_BANK_RE.test((cur as any).nameEn || "")) return true;
+          cur = cur.parentCode ? byCode.get(cur.parentCode) : undefined;
+        }
+        return false;
+      };
+      const payAcc = byCode.get(String(paymentAccountCode));
+      if (!payAcc || payAcc.type !== "asset" || !inCashBankTree(String(paymentAccountCode))) {
         return res.status(400).json({ message: "حساب الدفع يجب أن يكون حساب صندوق أو بنك" });
       }
       const payName = await resolveName(paymentAccountCode);
       const counterName = await resolveName(counterAccountCode);
 
       // Reject posting to header/parent (non-postable) or inactive accounts — both legs
-      const allAccounts = await storage.getChartOfAccounts();
       for (const code of [paymentAccountCode, counterAccountCode]) {
         if (allAccounts.some(a => a.parentCode === code)) {
           return res.status(400).json({ message: `لا يمكن الترحيل على الحساب ${code} لأنه حساب رئيسي تجميعي — اختر حساباً فرعياً تحته` });

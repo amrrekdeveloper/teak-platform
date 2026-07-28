@@ -16,6 +16,8 @@ export type AccountOption = {
   code: string;
   nameAr: string;
   nameEn?: string | null;
+  /** Optional label rendered instead of the raw code (e.g. "عميل" for a customer party option). */
+  codeLabel?: string;
 };
 
 export type AccountGroup = {
@@ -73,7 +75,11 @@ export function AccountCombobox({
           data-testid={testId}
         >
           <span className="truncate">
-            {selected ? `${selected.code} - ${selected.nameAr}` : placeholder}
+            {selected
+              ? selected.codeLabel
+                ? `${selected.nameAr} (${selected.codeLabel})`
+                : `${selected.code} - ${selected.nameAr}`
+              : placeholder}
           </span>
           <ChevronsUpDown className="ms-1 h-3.5 w-3.5 shrink-0 opacity-50" />
         </Button>
@@ -119,7 +125,11 @@ export function AccountCombobox({
                     data-testid={testId ? `${testId}-option-${a.code}` : undefined}
                   >
                     <Check className={cn("me-2 h-3.5 w-3.5", value === a.code ? "opacity-100" : "opacity-0")} />
-                    <span className="font-mono">{a.code}</span>
+                    {a.codeLabel ? (
+                      <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-sans text-muted-foreground">{a.codeLabel}</span>
+                    ) : (
+                      <span className="font-mono">{a.code}</span>
+                    )}
                     <span className="ms-2 truncate text-muted-foreground">{a.nameAr}</span>
                   </CommandItem>
                 ))}

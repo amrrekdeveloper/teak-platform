@@ -365,6 +365,10 @@ export default function FinanceAccountsPage() {
   const [voucherForm, setVoucherForm] = useState(VOUCHER_EMPTY());
   const [voucherAttachments, setVoucherAttachments] = useState<{ url: string; name: string }[]>([]);
 
+  // العملاء والموردون — تظهر أسماؤهم في قوائم السندات كخيارات بحث تُرحّل على حسابات الذمم
+  const { data: vCustomers = [] } = useQuery<any[]>({ queryKey: ["/api/customers"], enabled: voucherDialog });
+  const { data: vSuppliers = [] } = useQuery<any[]>({ queryKey: ["/api/suppliers"], enabled: voucherDialog });
+
   const recordVoucherMut = useMutation({
     mutationFn: (data: any) => apiRequest("POST", "/api/accounting/record-voucher", data),
     onSuccess: () => {
@@ -383,14 +387,16 @@ export default function FinanceAccountsPage() {
     if (!(amt > 0)) return toast({ title: t("المبلغ يجب أن يكون أكبر من صفر", "Amount must be greater than zero"), variant: "destructive" });
     if (!voucherForm.paymentAccountCode) return toast({ title: t("يجب اختيار حساب الصندوق/البنك", "Select cash/bank account"), variant: "destructive" });
     if (!voucherForm.counterAccountCode) return toast({ title: t("يجب اختيار الحساب المقابل", "Select counter account"), variant: "destructive" });
-    if (voucherForm.paymentAccountCode === voucherForm.counterAccountCode) return toast({ title: t("لا يمكن أن يكون الحسابان متطابقين", "Accounts cannot be identical"), variant: "destructive" });
+    const resolved = resolveVoucherCounter(voucherForm.counterAccountCode);
+    if (!resolved.accountCode) return toast({ title: t("لم يتم العثور على حساب الذمم المناسب في شجرة الحسابات", "Receivables/payables control account not found in the chart of accounts"), variant: "destructive" });
+    if (voucherForm.paymentAccountCode === resolved.accountCode) return toast({ title: t("لا يمكن أن يكون الحسابان متطابقين", "Accounts cannot be identical"), variant: "destructive" });
     recordVoucherMut.mutate({
       voucherKind: voucherForm.voucherKind,
       date: voucherForm.date,
       reference: voucherForm.reference,
-      partyName: voucherForm.partyName,
+      partyName: voucherForm.partyName || resolved.party || "",
       paymentAccountCode: voucherForm.paymentAccountCode,
-      counterAccountCode: voucherForm.counterAccountCode,
+      counterAccountCode: resolved.accountCode,
       amount: amt,
       attachments: voucherAttachments,
     });
@@ -491,9 +497,37 @@ export default function FinanceAccountsPage() {
       ? a.type === "revenue"
       : a.type === "expense" || a.type === "cost" || a.code?.startsWith("113"),
   );
-  const paymentAccounts = (accounts as any[]).filter((a: any) => a.code?.startsWith("111") && a.code !== "1110");
+  // حسابات الصندوق/البنك: تُكتشف من موقعها في الشجرة (فرع النقدية والبنوك) لا من رمز ثابت —
+  // شجرة الإنتاج تستخدم ترميزاً مختلفاً (مثل 11000101) عن شجرة البيئة التجريبية (111x)
+  const { paymentAccounts, arControlAccount, apControlAccount } = useMemo(() => {
+    const list = accounts as any[];
+    const byCode = new Map(list.map((a: any) => [a.code, a]));
+    const parentCodes = new Set(list.map((a: any) => a.parentCode).filter(Boolean));
+    const isLeaf = (a: any) => !parentCodes.has(a.code);
+    const CASH_BANK_RE = /صندوق|بنك|نقد|cash|bank/i;
+    const inCashBankTree = (a: any) => {
+      let cur: any = a;
+      let guard = 0;
+      while (cur && guard++ < 12) {
+        if (CASH_BANK_RE.test(cur.nameAr || "") || CASH_BANK_RE.test(cur.nameEn || "")) return true;
+        cur = cur.parentCode ? byCode.get(cur.parentCode) : null;
+      }
+      return false;
+    };
+    const paymentAccounts = list.filter((a: any) =>
+      a.type === "asset" && a.isActive !== false && isLeaf(a) && inCashBankTree(a)
+    );
+    // حسابات المراقبة (الذمم): ذمم العملاء / ذمم الموردين — الترحيل الإجمالي وفق نمط حساب المراقبة + دفتر مساعد
+    const arControlAccount =
+      list.find((a: any) => a.type === "asset" && isLeaf(a) && a.isActive !== false && /ذمم/.test(a.nameAr || "") && /عملاء|عميل/.test(a.nameAr || "")) ||
+      byCode.get("1121");
+    const apControlAccount =
+      list.find((a: any) => a.type === "liability" && isLeaf(a) && a.isActive !== false && /ذمم/.test(a.nameAr || "") && /مورد/.test(a.nameAr || "")) ||
+      byCode.get("2111");
+    return { paymentAccounts, arControlAccount, apControlAccount };
+  }, [accounts]);
 
-  // الحساب المقابل في السندات: حسابات قابلة للترحيل فقط (لا رئيسية تجميعية)، بدون حساب الدفع المختار
+  // الحساب المقابل في السندات: العملاء والموردون كأطراف (تُرحّل على حسابات الذمم) + كل الحسابات القابلة للترحيل
   const { counterAccounts, counterAccountGroups } = useMemo(() => {
     const list = accounts as any[];
     const parentCodes = new Set(list.map(a => a.parentCode).filter(Boolean));
@@ -512,15 +546,41 @@ export default function FinanceAccountsPage() {
     );
     const preferredCodes = new Set(preferred.map(a => a.code));
     const others = postable.filter(a => !preferredCodes.has(a.code));
+    const customerOptions = arControlAccount
+      ? (vCustomers as any[]).map((c: any) => ({ code: `cust:${c.id}`, nameAr: c.fullName || "", nameEn: c.phone || "", codeLabel: t("عميل", "Customer") }))
+      : [];
+    const supplierOptions = apControlAccount
+      ? (vSuppliers as any[]).map((s: any) => ({ code: `supp:${s.id}`, nameAr: s.name || "", nameEn: s.contactPerson || "", codeLabel: t("مورد", "Supplier") }))
+      : [];
+    const customerGroup = { label: t("العملاء", "Customers"), accounts: customerOptions };
+    const supplierGroup = { label: t("الموردون", "Suppliers"), accounts: supplierOptions };
+    const partyGroups = isReceipt ? [customerGroup, supplierGroup] : [supplierGroup, customerGroup];
     const groups = [
+      ...partyGroups,
       {
         label: isReceipt ? t("الأكثر استخداماً لسند القبض", "Common for receipts") : t("الأكثر استخداماً لسند الصرف", "Common for payments"),
         accounts: preferred,
       },
       { label: t("حسابات أخرى", "Other accounts"), accounts: others },
     ];
-    return { counterAccounts: postable, counterAccountGroups: groups };
-  }, [accounts, voucherForm.voucherKind, voucherForm.paymentAccountCode, t]);
+    return {
+      counterAccounts: [...customerOptions, ...supplierOptions, ...postable],
+      counterAccountGroups: groups,
+    };
+  }, [accounts, vCustomers, vSuppliers, arControlAccount, apControlAccount, voucherForm.voucherKind, voucherForm.paymentAccountCode, t]);
+
+  // تحويل اختيار الطرف (عميل/مورد) إلى حساب الذمم الذي سيُرحّل عليه القيد + اسم الطرف
+  const resolveVoucherCounter = (code: string): { accountCode: string; account?: any; party?: string } => {
+    if (code.startsWith("cust:")) {
+      const c = (vCustomers as any[]).find((x: any) => String(x.id) === code.slice(5));
+      return { accountCode: arControlAccount?.code || "", account: arControlAccount, party: c?.fullName };
+    }
+    if (code.startsWith("supp:")) {
+      const s = (vSuppliers as any[]).find((x: any) => String(x.id) === code.slice(5));
+      return { accountCode: apControlAccount?.code || "", account: apControlAccount, party: s?.name };
+    }
+    return { accountCode: code, account: (accounts as any[]).find((a: any) => a.code === code) };
+  };
 
   const handleRecordInvoice = () => {
     if (!invForm.date) return toast({ title: t("تاريخ الفاتورة مطلوب", "Invoice date required"), variant: "destructive" });
@@ -1509,7 +1569,15 @@ export default function FinanceAccountsPage() {
                 accounts={counterAccounts}
                 groups={counterAccountGroups}
                 value={voucherForm.counterAccountCode}
-                onChange={(code) => setVoucherForm(f => ({ ...f, counterAccountCode: code }))}
+                onChange={(code) => {
+                  const r = resolveVoucherCounter(code);
+                  setVoucherForm(f => {
+                    // امسح اسم الطرف فقط إذا كان معبأً تلقائياً من اختيار طرف سابق (لا تمس ما كتبه المستخدم)
+                    const prevParty = f.counterAccountCode ? resolveVoucherCounter(f.counterAccountCode).party : undefined;
+                    const wasAutofilled = prevParty !== undefined && f.partyName === prevParty;
+                    return { ...f, counterAccountCode: code, partyName: r.party ?? (wasAutofilled ? "" : f.partyName) };
+                  });
+                }}
                 placeholder={voucherForm.voucherKind === "receipt" ? t("اختر الحساب الدائن", "Select credit account") : t("اختر الحساب المدين", "Select debit account")}
                 testId="select-voucher-counter"
               />
@@ -1528,7 +1596,7 @@ export default function FinanceAccountsPage() {
 
             {(() => {
               const pay = (accounts as any[]).find(a => a.code === voucherForm.paymentAccountCode);
-              const counter = (accounts as any[]).find(a => a.code === voucherForm.counterAccountCode);
+              const counter = voucherForm.counterAccountCode ? resolveVoucherCounter(voucherForm.counterAccountCode).account : undefined;
               const amt = parseFloat(voucherForm.amount || "0");
               if (!pay || !counter || !(amt > 0) || pay.code === counter.code) return null;
               const isReceipt = voucherForm.voucherKind === "receipt";

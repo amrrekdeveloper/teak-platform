@@ -16,4 +16,5 @@
 - [Kitchen Designer V2 isolation](kitchen-v2-isolation.md) — experimental V2 track: own routes/storage key/mm model, never touch V1 tool or its key; vitest via `npm test`.
 - [V2 path-tracer layer](v2-pathtracer-layer.md) — live vs baked render modes; tracer runs only on the live PBR scene; frame ownership + invalidation rules (incl. async env loads).
 - [Kitchen door finish system](kitchen-door-finish-system.md) — doorPattern+color override wood-type ids; carcass always off-white; templates place via collision engine; static defs need adeko- ids.
+- [Chart of accounts role lookup](chart-of-accounts-role-lookup.md) — prod chart numbering ≠ dev seed; find cash/bank & control accounts by tree position/name+type, never hardcoded code prefixes.
 - [HR workflow engine invariants](hr-workflow-engine.md) — hr_actions steps advance via conditional UPDATE (409 on race); chained actions deduped by unique (linked_action_id, workflow); final step revalidates required formData.
