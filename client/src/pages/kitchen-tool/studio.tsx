@@ -1,6 +1,6 @@
 import { Component, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation } from "wouter";
-import { ChevronRight, ChevronLeft, ChevronUp, ChevronDown, Home, Loader2, Trash2, Plus, Minus, Map as MapIcon, X, Lightbulb, Play, Pause, Presentation, Maximize, Minimize, PersonStanding, Grid2x2, Box, RotateCcw } from "lucide-react";
+import { ChevronRight, ChevronLeft, ChevronUp, ChevronDown, Home, Loader2, Trash2, Plus, Minus, Map as MapIcon, X, Lightbulb, Play, Pause, Presentation, Maximize, Minimize, PersonStanding, Grid2x2, Box, RotateCcw, Archive, PanelTop, Sofa, Palette, LayoutGrid, Camera } from "lucide-react";
 import { useProgress } from "@react-three/drei";
 import { Button } from "@/components/ui/button";
 import {
@@ -65,6 +65,10 @@ import {
   type KitchenTemplate,
 } from "@/components/kitchen-tool/templates";
 import { useQuery } from "@tanstack/react-query";
+import {
+  CabinetThumbFactory,
+  useCabinetThumb,
+} from "@/components/kitchen-tool/cabinet-thumbs";
 
 interface KitchenToolMaterial {
   id: number;
@@ -230,7 +234,8 @@ function TotalPriceBar({ overlay = false }: { overlay?: boolean }) {
   );
 }
 
-function MaterialBar() {
+/** Side-panel: room materials (floor / walls / ceiling). */
+function MaterialsPanel() {
   const { t } = useLanguage();
   const floorMaterialId = useKitchenToolStore((s) => s.floorMaterialId);
   const wallMaterialId = useKitchenToolStore((s) => s.wallMaterialId);
@@ -238,49 +243,13 @@ function MaterialBar() {
   const setWallMaterial = useKitchenToolStore((s) => s.setWallMaterial);
   const ceilingMaterialId = useKitchenToolStore((s) => s.ceilingMaterialId);
   const setCeilingMaterial = useKitchenToolStore((s) => s.setCeilingMaterial);
-  const environmentId = useKitchenToolStore((s) => s.environmentId);
-  const setEnvironment = useKitchenToolStore((s) => s.setEnvironment);
-  const lightsOn = useKitchenToolStore((s) => s.lightsOn ?? false);
-  const lightTemp = useKitchenToolStore((s) => s.lightTemp ?? "warm");
-  const toggleLights = useKitchenToolStore((s) => s.toggleLights);
-  const setLightTemp = useKitchenToolStore((s) => s.setLightTemp);
-  const showSoffit = useKitchenToolStore((s) => s.showSoffit ?? true);
-  const ledStrips = useKitchenToolStore((s) => s.ledStrips ?? true);
-  const setLedStrips = useKitchenToolStore((s) => s.setLedStrips);
-  const setShowSoffit = useKitchenToolStore((s) => s.setShowSoffit);
-  const [tab, setTab] = useState<"materials" | "ambiance">("materials");
 
   return (
     <div
-      className="rounded-xl border border-border bg-card px-4 py-3"
-      data-testid="bar-studio-materials"
+      className="flex-1 overflow-y-auto p-3 flex flex-col gap-4"
+      data-testid="panel-studio-materials"
     >
-      <div className="flex items-center gap-2 mb-3">
-        {(
-          [
-            { id: "materials", ar: "الخامات والألوان", en: "Materials & Colors" },
-            { id: "ambiance", ar: "الإضاءة والأجواء", en: "Lighting & Ambiance" },
-          ] as const
-        ).map((tb) => (
-          <button
-            key={tb.id}
-            type="button"
-            onClick={() => setTab(tb.id)}
-            className={`px-3 py-1.5 rounded-lg border text-xs font-bold transition-colors ${
-              tab === tb.id
-                ? "border-primary bg-primary/10 text-primary"
-                : "border-border text-muted-foreground hover:border-primary/50 hover:text-foreground"
-            }`}
-            data-testid={`button-materialbar-tab-${tb.id}`}
-          >
-            {t(tb.ar, tb.en)}
-          </button>
-        ))}
-        <TotalPriceBar />
-      </div>
-      {tab === "materials" && (
-      <div className="flex flex-wrap items-start gap-x-8 gap-y-3">
-      <div className="flex items-center gap-3 flex-wrap">
+      <div className="flex flex-col gap-2">
         <span className="text-xs font-bold text-foreground whitespace-nowrap">
           {t("الأرضية:", "Floor:")}
         </span>
@@ -296,7 +265,7 @@ function MaterialBar() {
           ))}
         </div>
       </div>
-      <div className="flex items-center gap-3 flex-wrap">
+      <div className="flex flex-col gap-2">
         <span className="text-xs font-bold text-foreground whitespace-nowrap">
           {t("الجدران:", "Walls:")}
         </span>
@@ -312,7 +281,7 @@ function MaterialBar() {
           ))}
         </div>
       </div>
-      <div className="flex items-center gap-3 flex-wrap">
+      <div className="flex flex-col gap-2">
         <span className="text-xs font-bold text-foreground whitespace-nowrap">
           {t("السقف:", "Ceiling:")}
         </span>
@@ -328,12 +297,31 @@ function MaterialBar() {
           ))}
         </div>
       </div>
-      </div>
-      )}
-      {tab === "ambiance" && (
-      <div className="flex flex-wrap items-start gap-x-8 gap-y-3">
+    </div>
+  );
+}
+
+/** Side-panel: lighting & ambiance controls. */
+function AmbiancePanel() {
+  const { t } = useLanguage();
+  const environmentId = useKitchenToolStore((s) => s.environmentId);
+  const setEnvironment = useKitchenToolStore((s) => s.setEnvironment);
+  const lightsOn = useKitchenToolStore((s) => s.lightsOn ?? false);
+  const lightTemp = useKitchenToolStore((s) => s.lightTemp ?? "warm");
+  const toggleLights = useKitchenToolStore((s) => s.toggleLights);
+  const setLightTemp = useKitchenToolStore((s) => s.setLightTemp);
+  const showSoffit = useKitchenToolStore((s) => s.showSoffit ?? true);
+  const ledStrips = useKitchenToolStore((s) => s.ledStrips ?? true);
+  const setLedStrips = useKitchenToolStore((s) => s.setLedStrips);
+  const setShowSoffit = useKitchenToolStore((s) => s.setShowSoffit);
+
+  return (
+    <div
+      className="flex-1 overflow-y-auto p-3 flex flex-col gap-4"
+      data-testid="panel-studio-ambiance"
+    >
       {ENVIRONMENT_OPTIONS.length > 1 && (
-      <div className="flex items-center gap-3 flex-wrap">
+      <div className="flex flex-col gap-2">
         <span className="text-xs font-bold text-foreground whitespace-nowrap">
           {t("الإضاءة والأجواء:", "Lighting & Ambiance:")}
         </span>
@@ -356,7 +344,7 @@ function MaterialBar() {
         </div>
       </div>
       )}
-      <div className="flex items-center gap-2 flex-wrap">
+      <div className="flex flex-col items-stretch gap-2">
         <button
           type="button"
           onClick={toggleLights}
@@ -425,7 +413,296 @@ function MaterialBar() {
           {t("إضاءة LED أسفل الخزائن العلوية", "Under-cabinet LED strips")}
         </label>
       </div>
+    </div>
+  );
+}
+
+/* ── Right icon rail: studio categories (mockup layout) ──── */
+type StudioCategory =
+  | "base"
+  | "upper"
+  | "decor"
+  | "materials"
+  | "ambiance"
+  | "templates"
+  | "plan";
+
+function StudioRail({
+  active,
+  onSelect,
+}: {
+  active: StudioCategory;
+  onSelect: (c: StudioCategory) => void;
+}) {
+  const { t } = useLanguage();
+  const items: { id: StudioCategory; icon: ReactNode; ar: string; en: string }[] = [
+    { id: "base", icon: <Archive className="w-5 h-5" />, ar: "الخزائن السفلية", en: "Base Cabinets" },
+    { id: "upper", icon: <PanelTop className="w-5 h-5" />, ar: "الخزائن العلوية", en: "Wall Cabinets" },
+    { id: "decor", icon: <Sofa className="w-5 h-5" />, ar: "الديكور", en: "Decor" },
+    { id: "materials", icon: <Palette className="w-5 h-5" />, ar: "الجدران والأرضيات", en: "Walls & Floors" },
+    { id: "ambiance", icon: <Lightbulb className="w-5 h-5" />, ar: "الإضاءة", en: "Lighting" },
+    { id: "templates", icon: <LayoutGrid className="w-5 h-5" />, ar: "القوالب", en: "Templates" },
+    { id: "plan", icon: <MapIcon className="w-5 h-5" />, ar: "المخطط", en: "Plan" },
+  ];
+  return (
+    <div
+      className="w-[76px] shrink-0 rounded-xl border border-border bg-card py-2 px-1.5 flex flex-col items-stretch gap-1.5 overflow-y-auto"
+      data-testid="rail-studio-categories"
+    >
+      {items.map((it) => (
+        <button
+          key={it.id}
+          type="button"
+          onClick={() => onSelect(it.id)}
+          title={t(it.ar, it.en)}
+          className={`flex flex-col items-center gap-1 rounded-lg border px-1 py-2 transition-colors ${
+            active === it.id
+              ? "border-primary bg-primary/5 text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/60"
+          }`}
+          data-testid={`button-rail-${it.id}`}
+        >
+          {it.icon}
+          <span className="text-[9px] font-bold leading-tight text-center">
+            {t(it.ar, it.en)}
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/* ── Bottom quick-finish bar: one-click finishes for the whole kitchen ── */
+function QuickFinishBar() {
+  const { t } = useLanguage();
+  const placedCabinets = useKitchenToolStore((s) => s.placedCabinets ?? []);
+  const updatePlacedCabinet = useKitchenToolStore((s) => s.updatePlacedCabinet);
+  const [tab, setTab] = useState<"base" | "upper" | "tops" | "handles">("base");
+  const [open, setOpen] = useState(true);
+
+  const applyAll = (
+    filter: (def: CabinetDef) => boolean,
+    patch: Parameters<typeof updatePlacedCabinet>[1]
+  ) => {
+    for (const p of placedCabinets) {
+      const def = findCabinetDef(p.catalogId);
+      if (!def) continue;
+      if (!filter(def)) continue;
+      updatePlacedCabinet(p.id, patch);
+    }
+  };
+
+  /** Common value across the filtered cabinets, or undefined when mixed/empty. */
+  const commonValue = <K extends string | undefined>(
+    filter: (def: CabinetDef) => boolean,
+    pick: (p: (typeof placedCabinets)[number]) => K
+  ): K | undefined => {
+    let val: K | undefined;
+    let seen = false;
+    for (const p of placedCabinets) {
+      const def = findCabinetDef(p.catalogId);
+      if (!def || !filter(def)) continue;
+      const v = pick(p);
+      if (!seen) {
+        val = v;
+        seen = true;
+      } else if (v !== val) return undefined;
+    }
+    return seen ? val : undefined;
+  };
+
+  const levelFilter = (level: CabinetLevel) => (def: CabinetDef) => def.level === level;
+  const baseFilter = levelFilter("base");
+  const upperFilter = levelFilter("upper");
+  const allFilter = () => true;
+
+  const tabs = [
+    { id: "base" as const, ar: "الخزائن السفلية", en: "Base cabinets" },
+    { id: "upper" as const, ar: "الخزائن العلوية", en: "Wall cabinets" },
+    { id: "tops" as const, ar: "الأسطح", en: "Countertops" },
+    { id: "handles" as const, ar: "المقابض", en: "Handles" },
+  ];
+
+  const doorTab = tab === "base" || tab === "upper";
+  const doorFilter = tab === "base" ? baseFilter : upperFilter;
+  const activeColor = doorTab
+    ? commonValue(doorFilter, (p) => p.finishColor ?? DEFAULT_DOOR_COLOR.hex)
+    : undefined;
+  const activePattern = doorTab
+    ? commonValue(doorFilter, (p) => p.doorPattern ?? "wood")
+    : undefined;
+  const activeTop = commonValue(baseFilter, (p) => p.topFinishId ?? ADEKO_TOP_FINISHES[0].id);
+  const activeHandle = commonValue(allFilter, (p) => p.handleStyle ?? "bar");
+  const activeHandleColor = commonValue(allFilter, (p) => p.handleColor ?? "gray");
+
+  return (
+    <div
+      className="rounded-xl border border-border bg-card"
+      data-testid="bar-quick-finishes"
+    >
+      <div className="flex items-center gap-1 px-3 pt-2">
+        {tabs.map((tb) => (
+          <button
+            key={tb.id}
+            type="button"
+            onClick={() => {
+              setTab(tb.id);
+              setOpen(true);
+            }}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+              tab === tb.id && open
+                ? "bg-primary/10 text-primary"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+            data-testid={`button-finishbar-tab-${tb.id}`}
+          >
+            {t(tb.ar, tb.en)}
+          </button>
+        ))}
+        <span className="ms-auto text-[10px] text-muted-foreground hidden md:block">
+          {t("يُطبَّق على كل المطبخ بنقرة واحدة", "Applies to the whole kitchen in one click")}
+        </span>
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="ms-1 w-7 h-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/60"
+          title={open ? t("طي الشريط", "Collapse") : t("فتح الشريط", "Expand")}
+          data-testid="button-finishbar-toggle"
+        >
+          {open ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+        </button>
       </div>
+      {open && (
+        <div className="px-3 pb-3 pt-2">
+          {placedCabinets.length === 0 ? (
+            <p className="text-[11px] text-muted-foreground py-1">
+              {t(
+                "أضف خزائن أو ابدأ من قالب جاهز لتغيير التشطيبات من هنا.",
+                "Add cabinets or start from a template to change finishes here."
+              )}
+            </p>
+          ) : doorTab ? (
+            <div className="flex items-center gap-4 flex-wrap">
+              <div className="flex items-center gap-1.5">
+                <Button
+                  size="sm"
+                  variant={activePattern === "wood" ? "default" : "outline"}
+                  className="h-7 px-3 text-[11px] font-bold"
+                  onClick={() => applyAll(doorFilter, { doorPattern: "wood" })}
+                  data-testid="button-finishbar-pattern-wood"
+                >
+                  {t("ملمس خشبي", "Wood grain")}
+                </Button>
+                <Button
+                  size="sm"
+                  variant={activePattern === "solid" ? "default" : "outline"}
+                  className="h-7 px-3 text-[11px] font-bold"
+                  onClick={() => applyAll(doorFilter, { doorPattern: "solid" })}
+                  data-testid="button-finishbar-pattern-solid"
+                >
+                  {t("سادة", "Solid")}
+                </Button>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                {ADEKO_DOOR_COLORS.map((c) => (
+                  <button
+                    key={c.hex}
+                    type="button"
+                    title={t(c.nameAr, c.nameEn)}
+                    onClick={() => applyAll(doorFilter, { finishColor: c.hex })}
+                    className={`flex flex-col items-center gap-0.5 group`}
+                    data-testid={`button-finishbar-color-${c.hex.slice(1)}`}
+                  >
+                    <span
+                      className={`w-9 h-9 rounded-lg border-2 transition-all ${
+                        activeColor === c.hex
+                          ? "border-primary ring-2 ring-primary/30 scale-105"
+                          : "border-border group-hover:border-primary/50"
+                      }`}
+                      style={{ background: c.hex }}
+                    />
+                    <span
+                      className={`text-[9px] font-bold leading-tight max-w-[52px] truncate ${
+                        activeColor === c.hex ? "text-primary" : "text-muted-foreground"
+                      }`}
+                    >
+                      {t(c.nameAr, c.nameEn)}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : tab === "tops" ? (
+            <div className="flex items-center gap-2 flex-wrap">
+              {ADEKO_TOP_FINISHES.map((f) => (
+                <button
+                  key={f.id}
+                  type="button"
+                  title={t(f.nameAr, f.nameEn)}
+                  onClick={() => applyAll(baseFilter, { topFinishId: f.id })}
+                  className="flex flex-col items-center gap-0.5 group"
+                  data-testid={`button-finishbar-top-${f.id}`}
+                >
+                  <span
+                    className={`w-9 h-9 rounded-lg border-2 transition-all ${
+                      activeTop === f.id
+                        ? "border-primary ring-2 ring-primary/30 scale-105"
+                        : "border-border group-hover:border-primary/50"
+                    }`}
+                    style={{ background: f.swatch }}
+                  />
+                  <span
+                    className={`text-[9px] font-bold leading-tight max-w-[56px] truncate ${
+                      activeTop === f.id ? "text-primary" : "text-muted-foreground"
+                    }`}
+                  >
+                    {t(f.nameAr, f.nameEn)}
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="flex items-center gap-3 flex-wrap">
+              <Button
+                size="sm"
+                variant={activeHandle === "bar" ? "default" : "outline"}
+                className="h-7 px-3 text-[11px] font-bold"
+                onClick={() => applyAll(allFilter, { handleStyle: "bar" })}
+                data-testid="button-finishbar-handle-bar"
+              >
+                {t("مقبض", "Bar")}
+              </Button>
+              <Button
+                size="sm"
+                variant={activeHandle === "none" ? "default" : "outline"}
+                className="h-7 px-3 text-[11px] font-bold"
+                onClick={() => applyAll(allFilter, { handleStyle: "none" })}
+                data-testid="button-finishbar-handle-none"
+              >
+                {t("بدون (ضغط للفتح)", "None (push-to-open)")}
+              </Button>
+              <div className="flex items-center gap-1.5">
+                {(["black", "white", "gray"] as const).map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => applyAll(allFilter, { handleColor: c, handleStyle: "bar" })}
+                    className={`w-6 h-6 rounded-full border-2 ${
+                      activeHandleColor === c && activeHandle === "bar"
+                        ? "border-primary scale-110"
+                        : "border-border"
+                    }`}
+                    style={{
+                      background:
+                        c === "black" ? "#232427" : c === "white" ? "#f2f2ef" : "#c9ccd1",
+                    }}
+                    data-testid={`button-finishbar-handle-color-${c}`}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
@@ -448,20 +725,50 @@ interface CabinetFamily {
   defs: CabinetDef[];
 }
 
+/** 3D-rendered wood-finish thumbnail for a catalog family (with fallback). */
+function FamilyThumb({
+  def,
+  fallback,
+}: {
+  def: CabinetDef;
+  fallback?: string | null;
+}) {
+  const thumb = useCabinetThumb(def);
+  const src = thumb ?? fallback ?? undefined;
+  if (!src) {
+    return (
+      <span className="block w-full aspect-square rounded-lg border border-border bg-muted/60 animate-pulse" />
+    );
+  }
+  return (
+    <img
+      src={src}
+      alt=""
+      loading="lazy"
+      className="w-full aspect-square rounded-lg border border-border object-cover bg-[#f6f4f0]"
+    />
+  );
+}
+
 function CabinetCatalog({
   onAdd,
   onAddDecor,
   adekoDefs,
   overlay = false,
+  forcedTab,
 }: {
   onAdd: (def: CabinetDef) => void;
   onAddDecor: (item: DecorItem) => void;
   adekoDefs: CabinetDef[];
   /** Fullscreen overlay variant: transparent bg, fills its wrapper. */
   overlay?: boolean;
+  /** When set (side-rail layout), the category comes from outside and the internal tabs are hidden. */
+  forcedTab?: CabinetLevel | "decor";
 }) {
   const { t } = useLanguage();
-  const [tab, setTab] = useState<CabinetLevel | "decor">("base");
+  const [ownTab, setOwnTab] = useState<CabinetLevel | "decor">("base");
+  const tab = forcedTab ?? ownTab;
+  const setTab = setOwnTab;
   const [search, setSearch] = useState("");
   const [openFamily, setOpenFamily] = useState<string | null>(null);
   const q = search.trim().toLowerCase();
@@ -514,14 +821,12 @@ function CabinetCatalog({
 
   return (
     <div
-      className={`w-56 shrink-0 flex flex-col overflow-hidden ${
-        overlay
-          ? "h-full bg-transparent"
-          : "rounded-xl border border-border bg-card"
+      className={`${overlay ? "w-56" : "w-full"} shrink-0 flex flex-col overflow-hidden ${
+        overlay ? "h-full bg-transparent" : "h-full"
       }`}
       data-testid={overlay ? "panel-cabinet-catalog-overlay" : "panel-cabinet-catalog"}
     >
-      <div className="flex border-b border-border">
+      <div className={`flex border-b border-border ${forcedTab ? "hidden" : ""}`}>
         {(
           [
             { id: "base" as const, ar: "سفلية", en: "Base" },
@@ -593,15 +898,15 @@ function CabinetCatalog({
           )}
         </div>
       ) : (
-      <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-1.5">
+      <div className={`flex-1 overflow-y-auto p-2 grid ${overlay ? "grid-cols-1" : "grid-cols-2"} gap-2 content-start`}>
         {shownFamilies.map((fam) => {
           const isOpen = openFamily === fam.key;
           const single = fam.defs.length === 1;
           return (
             <div
               key={fam.key}
-              className={`rounded-lg border transition-colors ${
-                isOpen ? "border-primary/60 bg-primary/5" : "border-border bg-background"
+              className={`rounded-xl border transition-colors ${
+                isOpen ? "border-primary/60 bg-primary/5" : "border-border bg-background hover:border-primary/50"
               }`}
             >
               <button
@@ -610,34 +915,27 @@ function CabinetCatalog({
                   if (single) onAdd(fam.defs[0]);
                   else setOpenFamily(isOpen ? null : fam.key);
                 }}
-                className="w-full flex items-center gap-2 px-2 py-2 text-start hover:bg-primary/5 rounded-lg transition-colors"
+                className="w-full flex flex-col items-stretch p-1.5 text-start rounded-xl transition-colors"
                 data-testid={`button-family-${fam.key}`}
               >
-                {fam.thumbnail ? (
-                  <img
-                    src={fam.thumbnail}
-                    alt=""
-                    loading="lazy"
-                    className="w-9 h-9 shrink-0 rounded border border-border object-contain bg-white"
-                  />
-                ) : (
-                  <span className="w-9 h-9 shrink-0 rounded border border-border bg-muted" />
-                )}
-                <span className="min-w-0 flex-1">
-                  <span className="block text-xs font-bold leading-tight truncate">
-                    {t(fam.nameAr, fam.nameEn)}
+                <FamilyThumb def={fam.defs[0]} fallback={fam.thumbnail} />
+                <span className="flex items-start gap-1 mt-1.5 px-0.5">
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[11px] font-bold leading-tight truncate">
+                      {t(fam.nameAr, fam.nameEn)}
+                    </span>
+                    <span className="block text-[10px] text-muted-foreground mt-0.5 truncate">
+                      {single
+                        ? `${Math.round(fam.defs[0].width * 100)} ${t("سم", "cm")}`
+                        : t(`${fam.defs.length} مقاسات`, `${fam.defs.length} sizes`)}
+                      {fam.corner ? t(" • ركن", " • corner") : ""}
+                    </span>
                   </span>
-                  <span className="block text-[10px] text-muted-foreground mt-0.5 truncate">
-                    {single
-                      ? `${Math.round(fam.defs[0].width * 100)} ${t("سم", "cm")}`
-                      : t(`${fam.defs.length} مقاسات`, `${fam.defs.length} sizes`)}
-                    {fam.corner ? t(" • ركن", " • corner") : ""}
-                  </span>
+                  <Plus className="w-3.5 h-3.5 shrink-0 text-primary mt-0.5" />
                 </span>
-                <Plus className="w-4 h-4 shrink-0 text-primary" />
               </button>
               {isOpen && !single && (
-                <div className="flex flex-wrap gap-1 px-2 pb-2">
+                <div className="flex flex-wrap gap-1 px-1.5 pb-1.5">
                   {fam.defs.map((def) => (
                     <button
                       key={def.id}
@@ -657,7 +955,7 @@ function CabinetCatalog({
           );
         })}
         {shownFamilies.length === 0 && (
-          <p className="text-[11px] text-muted-foreground text-center py-4">
+          <p className="col-span-2 text-[11px] text-muted-foreground text-center py-4">
             {t("لا توجد نتائج", "No results")}
           </p>
         )}
@@ -977,8 +1275,8 @@ export default function KitchenToolStudioPage() {
   const setPlacedCabinetHeight = useKitchenToolStore((s) => s.setPlacedCabinetHeight);
   const updatePlacedCabinet = useKitchenToolStore((s) => s.updatePlacedCabinet);
   const [selectedCabinetId, setSelectedCabinetId] = useState<string | null>(null);
-  const [showPlan, setShowPlan] = useState(true);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [activeCategory, setActiveCategory] = useState<StudioCategory>("base");
   const placedDecor = useKitchenToolStore((s) => s.placedDecor ?? []);
   const addPlacedDecor = useKitchenToolStore((s) => s.addPlacedDecor);
   const updatePlacedDecor = useKitchenToolStore((s) => s.updatePlacedDecor);
@@ -1280,7 +1578,8 @@ export default function KitchenToolStudioPage() {
                 )}
               </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <TotalPriceBar />
               <Button
                 onClick={() => setPresentationMode(true)}
                 className="font-bold"
@@ -1288,6 +1587,15 @@ export default function KitchenToolStudioPage() {
               >
                 <Presentation className="w-4 h-4 me-1" />
                 {t("عرض للعميل", "Client View")}
+              </Button>
+              <Button
+                variant="outline"
+                className="font-bold"
+                onClick={() => setSnapshotRequest((n) => n + 1)}
+                data-testid="button-snapshot"
+              >
+                <Camera className="w-4 h-4 me-1" />
+                {t("صورة عالية الدقة", "HD Snapshot")}
               </Button>
               {placedCabinets.length > 0 && (
                 <AlertDialog>
@@ -1349,9 +1657,8 @@ export default function KitchenToolStudioPage() {
             </div>
           </div>
 
-          <MaterialBar />
-
-          <div className="flex gap-4 h-[calc(100vh-340px)] min-h-[400px]">
+          <div className="flex gap-3 h-[calc(100vh-300px)] min-h-[440px]">
+            <StudioRail active={activeCategory} onSelect={setActiveCategory} />
             <div
               ref={sceneBoxRef}
               className={`relative flex-1 rounded-xl overflow-hidden border border-border ${
@@ -1423,81 +1730,6 @@ export default function KitchenToolStudioPage() {
                   </button>
                 </>
               )}
-              <div className={`absolute bottom-3 z-10 ${isFullscreen ? "start-[248px]" : "start-3"}`}>
-                {showPlan ? (
-                  <div
-                    className="rounded-lg border border-border bg-card/95 backdrop-blur shadow-md p-2 w-[280px]"
-                    data-testid="panel-studio-plan"
-                  >
-                    <div className="flex items-center justify-between mb-1 px-1">
-                      <span className="text-[11px] font-bold text-muted-foreground">
-                        {t("المخطط ثنائي الأبعاد", "2D Plan")}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setShowPlan(false)}
-                        className="text-muted-foreground hover:text-foreground"
-                        data-testid="button-hide-plan"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setSheetOpen(true)}
-                      title={t("عرض المخطط الهندسي الرسمي", "Open formal engineering drawing")}
-                      className="block w-full cursor-zoom-in rounded hover:ring-2 hover:ring-primary/40 transition-shadow"
-                      data-testid="button-open-engineering-sheet"
-                    >
-                      <KitchenPlanSvg
-                        layout={layout}
-                        walls={walls}
-                        openings={openings}
-                        utilities={utilities}
-                        placedCabinets={placedCabinets}
-                        t={t}
-                        className="w-full max-h-[200px] pointer-events-none"
-                      />
-                      <span className="block text-center text-[10px] font-bold text-muted-foreground pt-1">
-                        {t("اضغط لعرض المخطط الهندسي الرسمي", "Click to open the engineering drawing")}
-                      </span>
-                    </button>
-                  </div>
-                ) : (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="font-bold bg-card/95 backdrop-blur"
-                    onClick={() => setShowPlan(true)}
-                    data-testid="button-show-plan"
-                  >
-                    <MapIcon className="w-4 h-4 me-1" />
-                    {t("المخطط", "2D Plan")}
-                  </Button>
-                )}
-                <div className="mt-2 flex flex-col items-start gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="font-bold bg-card/95 backdrop-blur"
-                    onClick={() => setTemplatesOpen(true)}
-                    data-testid="button-open-templates"
-                  >
-                    <Grid2x2 className="w-4 h-4 me-1" />
-                    {t("قوالب جاهزة", "Templates")}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="font-bold bg-card/95 backdrop-blur"
-                    onClick={() => setSnapshotRequest((n) => n + 1)}
-                    data-testid="button-snapshot"
-                  >
-                    <Presentation className="w-4 h-4 me-1" />
-                    {t("صورة عالية الدقة", "HD Snapshot")}
-                  </Button>
-                </div>
-              </div>
               <FadeOutMount show={!!(selectedCabinetId && selectedDef)} enabled={isFullscreen}>
               {selectedCabinetId && selectedDef && (
                 <div
@@ -1948,11 +2180,114 @@ export default function KitchenToolStudioPage() {
               )}
               </FadeOutMount>
             </div>
-            <CabinetCatalog onAdd={handleAddCabinet} onAddDecor={handleAddDecor} adekoDefs={adekoDefs} />
+            <div
+              className="w-64 shrink-0 rounded-xl border border-border bg-card flex flex-col overflow-hidden"
+              data-testid="panel-studio-side"
+            >
+              <div className="flex items-center justify-between px-3 py-2 border-b border-border">
+                <span className="text-sm font-bold" data-testid="text-panel-title">
+                  {
+                    {
+                      base: t("الخزائن السفلية", "Base Cabinets"),
+                      upper: t("الخزائن العلوية", "Wall Cabinets"),
+                      decor: t("الديكور", "Decor"),
+                      materials: t("الجدران والأرضيات", "Walls & Floors"),
+                      ambiance: t("الإضاءة والأجواء", "Lighting & Ambiance"),
+                      templates: t("قوالب جاهزة", "Templates"),
+                      plan: t("المخطط ثنائي الأبعاد", "2D Plan"),
+                    }[activeCategory]
+                  }
+                </span>
+              </div>
+              {(activeCategory === "base" ||
+                activeCategory === "upper" ||
+                activeCategory === "decor") && (
+                <CabinetCatalog
+                  onAdd={handleAddCabinet}
+                  onAddDecor={handleAddDecor}
+                  adekoDefs={adekoDefs}
+                  forcedTab={activeCategory}
+                />
+              )}
+              {activeCategory === "materials" && <MaterialsPanel />}
+              {activeCategory === "ambiance" && <AmbiancePanel />}
+              {activeCategory === "templates" && (
+                <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-2" data-testid="panel-templates">
+                  <p className="text-[11px] text-muted-foreground leading-relaxed px-1">
+                    {t(
+                      "اختر تصميماً جاهزاً وسنبنيه على مقاسات غرفتك — ثم عدّل عليه بحرية.",
+                      "Pick a ready design and we'll build it for your room — then edit freely."
+                    )}
+                  </p>
+                  {KITCHEN_TEMPLATES.map((tpl) => (
+                    <button
+                      key={tpl.id}
+                      type="button"
+                      onClick={() => applyTemplate(tpl)}
+                      className="flex items-start gap-2.5 rounded-xl border border-border p-2.5 text-start hover:border-primary hover:bg-primary/5 transition-colors"
+                      data-testid={`button-template-${tpl.id}`}
+                    >
+                      <span className="flex shrink-0 mt-0.5">
+                        <span
+                          className="w-5 h-5 rounded-full border border-black/10"
+                          style={{ background: tpl.swatches[0] }}
+                        />
+                        <span
+                          className="w-5 h-5 rounded-full border border-black/10 -ms-1.5"
+                          style={{ background: tpl.swatches[1] }}
+                        />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block text-xs font-bold">
+                          {t(tpl.nameAr, tpl.nameEn)}
+                        </span>
+                        <span className="block text-[10px] text-muted-foreground leading-relaxed mt-0.5">
+                          {t(tpl.descriptionAr, tpl.descriptionEn)}
+                        </span>
+                      </span>
+                    </button>
+                  ))}
+                  {placedCabinets.length > 0 && (
+                    <p className="text-[10px] text-muted-foreground px-1">
+                      {t(
+                        "اختيار قالب سيستبدل التصميم الحالي.",
+                        "Picking a template replaces the current design."
+                      )}
+                    </p>
+                  )}
+                </div>
+              )}
+              {activeCategory === "plan" && (
+                <div className="flex-1 overflow-y-auto p-2" data-testid="panel-studio-plan">
+                  <button
+                    type="button"
+                    onClick={() => setSheetOpen(true)}
+                    title={t("عرض المخطط الهندسي الرسمي", "Open formal engineering drawing")}
+                    className="block w-full cursor-zoom-in rounded hover:ring-2 hover:ring-primary/40 transition-shadow"
+                    data-testid="button-open-engineering-sheet"
+                  >
+                    <KitchenPlanSvg
+                      layout={layout}
+                      walls={walls}
+                      openings={openings}
+                      utilities={utilities}
+                      placedCabinets={placedCabinets}
+                      t={t}
+                      className="w-full pointer-events-none"
+                    />
+                    <span className="block text-center text-[10px] font-bold text-muted-foreground pt-1">
+                      {t("اضغط لعرض المخطط الهندسي الرسمي", "Click to open the engineering drawing")}
+                    </span>
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
+          <QuickFinishBar />
         </div>
         <div className="pb-6" />
       </div>
+      <CabinetThumbFactory defs={adekoDefs} paused={presentationMode || isFullscreen} />
       {templatesOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
