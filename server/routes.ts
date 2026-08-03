@@ -9917,11 +9917,11 @@ export async function registerRoutes(
     try {
       const { pool } = await import("./db");
       const result = await pool.query(
-        `SELECT jel.account_code, jel.account_name_ar, jel.debit, jel.credit
+        `SELECT jel.account_code, jel.account_name_ar, jel.debit, jel.credit, jel.party_type, jel.party_id
          FROM journal_entry_lines jel
          INNER JOIN journal_entries je ON jel.entry_id = je.id
          WHERE je.reference_type = 'opening_balance' AND je.status = 'posted'
-         ORDER BY jel.account_code`
+         ORDER BY jel.account_code, jel.party_type NULLS FIRST, jel.account_name_ar`
       );
       res.json(result.rows);
     } catch (e: any) { res.status(500).json({ message: e.message || "حدث خطأ" }); }
@@ -9930,31 +9930,44 @@ export async function registerRoutes(
   // POST: save opening balances (replaces existing opening-balance entry)
   app.post("/api/accounting/opening-balances", requireRole("owner", "assistant", "accountant"), async (req, res) => {
     try {
-      const { date, lines } = req.body as { date: string; lines: { accountCode: string; accountNameAr: string; debit: string; credit: string }[] };
+      type ObLine = { accountCode: string; accountNameAr: string; debit: string; credit: string; partyType?: string | null; partyId?: number | null };
+      const { date, lines } = req.body as { date: string; lines: ObLine[] };
       if (!date) return res.status(400).json({ message: "التاريخ مطلوب" });
       if (!lines || lines.length === 0) return res.status(400).json({ message: "يجب إدخال سطر واحد على الأقل" });
       const validLines = lines.filter(l => parseNum(l.debit) > 0 || parseNum(l.credit) > 0);
       if (validLines.length === 0) return res.status(400).json({ message: "يجب إدخال مبالغ للأرصدة الافتتاحية" });
 
+      // دفتر مساعد: تطبيع/تحقق حقول الطرف (عميل/مورد) قبل الدمج حتى لا تُخزّن روابط يتيمة
+      for (const l of validLines) {
+        const pt = l.partyType === "customer" || l.partyType === "supplier" ? l.partyType : null;
+        const pid = pt && Number.isInteger(Number(l.partyId)) && Number(l.partyId) > 0 ? Number(l.partyId) : null;
+        if (pt && pid) {
+          const exists = pt === "customer" ? await storage.getCustomer(pid) : await storage.getSupplier(pid);
+          if (!exists) return res.status(400).json({ message: pt === "customer" ? "العميل المحدد غير موجود" : "المورد المحدد غير موجود" });
+          l.partyType = pt; l.partyId = pid;
+        } else {
+          l.partyType = null; l.partyId = null;
+        }
+      }
+
       // Merge with existing opening-balance lines so each save is additive.
-      // New lines override existing ones for the same account code.
+      // New lines override existing ones for the same account code + party, and
+      // party lines replace a legacy aggregate line on the same control account
+      // (and vice versa) to prevent double-counting — see shared/opening-balances.ts.
+      const { mergeOpeningBalanceLines } = await import("@shared/opening-balances");
       const { pool: _pool } = await import("./db");
       const existingResult = await _pool.query(
-        `SELECT jel.account_code, jel.account_name_ar, jel.debit, jel.credit
+        `SELECT jel.account_code, jel.account_name_ar, jel.debit, jel.credit, jel.party_type, jel.party_id
          FROM journal_entry_lines jel
          INNER JOIN journal_entries je ON jel.entry_id = je.id
          WHERE je.reference_type = 'opening_balance' AND je.status = 'posted'
          AND jel.account_code <> '3999'`
       );
-      const existingMap = new Map<string, { accountCode: string; accountNameAr: string; debit: string; credit: string }>();
-      for (const row of existingResult.rows) {
-        existingMap.set(row.account_code, { accountCode: row.account_code, accountNameAr: row.account_name_ar, debit: row.debit, credit: row.credit });
-      }
-      // Override/add with the new lines submitted now
-      for (const l of validLines) {
-        existingMap.set(l.accountCode, l);
-      }
-      const mergedLines = Array.from(existingMap.values());
+      const existingLines: ObLine[] = existingResult.rows.map((row: any) => ({
+        accountCode: row.account_code, accountNameAr: row.account_name_ar, debit: row.debit, credit: row.credit,
+        partyType: row.party_type, partyId: row.party_id,
+      }));
+      const mergedLines = mergeOpeningBalanceLines(existingLines, validLines as any);
 
       // QuickBooks-style auto-balance: any difference is posted to the
       // "Opening Balance Equity" account (3999) instead of rejecting the save.

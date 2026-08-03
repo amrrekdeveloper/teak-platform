@@ -365,9 +365,9 @@ export default function FinanceAccountsPage() {
   const [voucherForm, setVoucherForm] = useState(VOUCHER_EMPTY());
   const [voucherAttachments, setVoucherAttachments] = useState<{ url: string; name: string }[]>([]);
 
-  // العملاء والموردون — تظهر أسماؤهم في قوائم السندات كخيارات بحث تُرحّل على حسابات الذمم
-  const { data: vCustomers = [] } = useQuery<any[]>({ queryKey: ["/api/customers"], enabled: voucherDialog });
-  const { data: vSuppliers = [] } = useQuery<any[]>({ queryKey: ["/api/suppliers"], enabled: voucherDialog });
+  // العملاء والموردون — تظهر أسماؤهم في قوائم السندات والأرصدة الافتتاحية كخيارات بحث تُرحّل على حسابات الذمم
+  const { data: vCustomers = [] } = useQuery<any[]>({ queryKey: ["/api/customers"] });
+  const { data: vSuppliers = [] } = useQuery<any[]>({ queryKey: ["/api/suppliers"] });
 
   const recordVoucherMut = useMutation({
     mutationFn: (data: any) => apiRequest("POST", "/api/accounting/record-voucher", data),
@@ -603,6 +603,22 @@ export default function FinanceAccountsPage() {
     });
   };
 
+  // قائمة حسابات الأرصدة الافتتاحية: الموردون والعملاء كأطراف (تُرحّل على حسابات الذمم بدفتر مساعد) + كل الحسابات
+  const { obAccounts, obAccountGroups } = useMemo(() => {
+    const supplierOptions = apControlAccount
+      ? (vSuppliers as any[]).map((s: any) => ({ code: `supp:${s.id}`, nameAr: s.name || "", nameEn: s.contactPerson || "", codeLabel: t("مورد", "Supplier") }))
+      : [];
+    const customerOptions = arControlAccount
+      ? (vCustomers as any[]).map((c: any) => ({ code: `cust:${c.id}`, nameAr: c.fullName || "", nameEn: c.phone || "", codeLabel: t("عميل", "Customer") }))
+      : [];
+    const groups = [
+      { label: t("الموردون (ذمم الموردين)", "Suppliers (AP)"), accounts: supplierOptions },
+      { label: t("العملاء (ذمم العملاء)", "Customers (AR)"), accounts: customerOptions },
+      { label: t("الحسابات", "Accounts"), accounts: accounts as any[] },
+    ];
+    return { obAccounts: [...supplierOptions, ...customerOptions, ...(accounts as any[])], obAccountGroups: groups };
+  }, [accounts, vSuppliers, vCustomers, arControlAccount, apControlAccount, t]);
+
   const obValidLines = obLines.filter(l => l.accountCode && (parseFloat(l.debit || "0") > 0 || parseFloat(l.credit || "0") > 0));
   const obDiff = +(
     obValidLines.reduce((s, l) => s + parseFloat(l.debit || "0"), 0) -
@@ -611,7 +627,18 @@ export default function FinanceAccountsPage() {
 
   const handleSaveOpeningBalances = () => {
     if (obValidLines.length === 0) return toast({ title: "يجب إدخال أرصدة للحسابات", variant: "destructive" });
-    saveObMut.mutate({ date: obDate, lines: obValidLines });
+    // حل خيارات الأطراف (cust:/supp:) إلى حساب المراقبة الحقيقي + ربط السطر بالطرف (دفتر مساعد)
+    const resolvedLines: any[] = [];
+    for (const l of obValidLines) {
+      if (l.accountCode.startsWith("cust:") || l.accountCode.startsWith("supp:")) {
+        const r = resolveVoucherCounter(l.accountCode);
+        if (!r.accountCode) return toast({ title: t("لم يتم العثور على حساب الذمم المناسب في شجرة الحسابات", "Receivables/payables control account not found in the chart of accounts"), variant: "destructive" });
+        resolvedLines.push({ accountCode: r.accountCode, accountNameAr: l.accountNameAr || r.party || "", debit: l.debit, credit: l.credit, partyType: r.partyType, partyId: r.partyId });
+      } else {
+        resolvedLines.push(l);
+      }
+    }
+    saveObMut.mutate({ date: obDate, lines: resolvedLines });
   };
 
   const groupedAccounts = Object.entries(ACCOUNT_TYPES).map(([type, meta]) => ({
@@ -904,9 +931,13 @@ export default function FinanceAccountsPage() {
                           </thead>
                           <tbody className="divide-y">
                             {pageRows.map((row: any, i: number) => (
-                              <tr key={row.account_code} className={`transition-colors hover:bg-accent/40 ${i % 2 === 0 ? "" : "bg-muted/20"}`}>
+                              <tr key={`${row.account_code}-${row.party_type || ""}-${row.party_id || ""}`} className={`transition-colors hover:bg-accent/40 ${i % 2 === 0 ? "" : "bg-muted/20"}`}>
                                 <td className="px-3 py-2 font-mono text-muted-foreground">{row.account_code}</td>
-                                <td className="px-3 py-2 font-medium">{row.account_name_ar}</td>
+                                <td className="px-3 py-2 font-medium">
+                                  {row.account_name_ar}
+                                  {row.party_type === "supplier" && <span className="ms-1.5 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{t("مورد", "Supplier")}</span>}
+                                  {row.party_type === "customer" && <span className="ms-1.5 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{t("عميل", "Customer")}</span>}
+                                </td>
                                 <td className="px-3 py-2 tabular-nums text-blue-700 dark:text-blue-400 font-medium">
                                   {parseFloat(row.debit) > 0 ? parseFloat(row.debit).toLocaleString("ar-SA", { minimumFractionDigits: 2 }) : <span className="text-muted-foreground/40">—</span>}
                                 </td>
@@ -1002,7 +1033,8 @@ export default function FinanceAccountsPage() {
                           <tr key={i}>
                             <td className="px-1 py-1">
                               <AccountCombobox
-                                accounts={accounts as any[]}
+                                accounts={obAccounts}
+                                groups={obAccountGroups}
                                 value={line.accountCode}
                                 onChange={(code, acc) => setObLines(ls => ls.map((l, j) => j === i ? { ...l, accountCode: code, accountNameAr: acc?.nameAr || "" } : l))}
                                 placeholder={t("اختر", "Select")}
