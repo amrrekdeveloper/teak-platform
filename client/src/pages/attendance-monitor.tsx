@@ -18,7 +18,7 @@ import {
 import { useLanguage } from "@/components/language-provider";
 import AttendanceZonesMap from "@/components/attendance-zones-map";
 import { resolveWorkSchedule, isLateCheckIn } from "@shared/attendance";
-import { setOptions, importLibrary } from "@googlemaps/js-api-loader";
+import { loadMapsLibrary } from "@/lib/maps-loader";
 
 interface AttendanceRecord {
   id: number;
@@ -209,15 +209,14 @@ export default function AttendanceMonitorPage() {
       return;
     }
     container.innerHTML = "";
-    setOptions({ key: mapsKey, v: "weekly" });
-    importLibrary("maps").then((mapsLib: google.maps.MapsLibrary) => {
+    loadMapsLibrary<google.maps.MapsLibrary>("maps").then((mapsLib: google.maps.MapsLibrary) => {
       const map = new mapsLib.Map(container, {
         center: { lat, lng },
         zoom: 16,
         disableDefaultUI: true,
         zoomControl: true,
       });
-      importLibrary("marker").then((markerLib: google.maps.MarkerLibrary) => {
+      loadMapsLibrary<google.maps.MarkerLibrary>("marker").then((markerLib: google.maps.MarkerLibrary) => {
         new markerLib.Marker({ position: { lat, lng }, map });
       }).catch(() => {
         new google.maps.Marker({ position: { lat, lng }, map });

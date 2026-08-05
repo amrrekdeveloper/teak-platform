@@ -1,7 +1,7 @@
 /// <reference types="google.maps" />
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { setOptions, importLibrary } from "@googlemaps/js-api-loader";
+import { loadMapsLibrary, describeMapsError, onMapsAuthFailure, MAPS_KEY as SHARED_MAPS_KEY } from "@/lib/maps-loader";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -36,14 +36,19 @@ const ZONE_TYPE_LABELS: Record<string, string> = {
   other: "أخرى",
 };
 
-const MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_KEY as string;
+const MAPS_KEY = SHARED_MAPS_KEY;
 
 export default function AttendanceZonesMap() {
   const { toast } = useToast();
   const qc = useQueryClient();
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
-  const drawingManagerRef = useRef<google.maps.drawing.DrawingManager | null>(null);
+  // أداة DrawingManager أُزيلت من Maps API (v3.65+) — نرسم يدوياً بنقرات على الخريطة
+  const [drawMode, setDrawMode] = useState<"circle" | "rect" | null>(null);
+  const drawModeRef = useRef<"circle" | "rect" | null>(null);
+  const rectFirstCornerRef = useRef<google.maps.LatLngLiteral | null>(null);
+  const rectCornerMarkerRef = useRef<google.maps.Marker | null>(null);
+  const [rectAwaitingSecond, setRectAwaitingSecond] = useState(false);
   const circleRefs = useRef<Map<number, google.maps.Circle>>(new Map());
   const [mapLoaded, setMapLoaded] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
@@ -118,9 +123,7 @@ export default function AttendanceZonesMap() {
       return;
     }
     try {
-      setOptions({ key: MAPS_KEY, v: "weekly" });
-      const { Map } = await importLibrary("maps") as google.maps.MapsLibrary;
-      const { DrawingManager, OverlayType } = await importLibrary("drawing") as google.maps.DrawingLibrary;
+      const { Map } = await loadMapsLibrary<google.maps.MapsLibrary>("maps");
 
       const map = new Map(mapRef.current, {
         center: { lat: 24.7136, lng: 46.6753 },
@@ -141,57 +144,88 @@ export default function AttendanceZonesMap() {
         editable: true,
         zIndex: 1,
       };
-      const drawingManager = new DrawingManager({
-        drawingMode: null,
-        drawingControl: true,
-        drawingControlOptions: {
-          position: google.maps.ControlPosition.TOP_CENTER,
-          drawingModes: [OverlayType.CIRCLE, OverlayType.RECTANGLE],
-        },
-        circleOptions: shapeOptions,
-        rectangleOptions: shapeOptions,
-      });
-      drawingManager.setMap(map);
-      drawingManagerRef.current = drawingManager;
 
-      google.maps.event.addListener(drawingManager, "circlecomplete", (circle: google.maps.Circle) => {
+      const syncCircle = (circle: google.maps.Circle) => {
         const center = circle.getCenter();
-        const radius = circle.getRadius();
-        if (center && radius) {
-          setPendingCenter({ lat: center.lat(), lng: center.lng() });
-          setPendingRadius(Math.round(radius));
-          setPendingBounds(null);
+        if (!center) return;
+        setPendingCenter({ lat: center.lat(), lng: center.lng() });
+        const r = Math.round(circle.getRadius());
+        setPendingRadius(r);
+        setFormData(prev => ({ ...prev, radiusMeters: r }));
+      };
+      const syncRect = (rect: google.maps.Rectangle) => {
+        const bounds = rect.getBounds();
+        if (!bounds) return;
+        const ne = bounds.getNorthEast();
+        const sw = bounds.getSouthWest();
+        setPendingCenter({ lat: (ne.lat() + sw.lat()) / 2, lng: (ne.lng() + sw.lng()) / 2 });
+        setPendingBounds({ north: ne.lat(), east: ne.lng(), south: sw.lat(), west: sw.lng() });
+      };
+
+      map.addListener("click", (e: google.maps.MapMouseEvent) => {
+        const mode = drawModeRef.current;
+        if (!mode || !e.latLng) return;
+        const pos = { lat: e.latLng.lat(), lng: e.latLng.lng() };
+
+        if (mode === "circle") {
+          const circle = new google.maps.Circle({ ...shapeOptions, map, center: pos, radius: 200 });
           drawingCircleRef.current = circle;
           setDrawingCircle(circle);
-          setFormData(prev => ({ ...prev, radiusMeters: Math.round(radius) }));
+          setPendingBounds(null);
+          syncCircle(circle);
+          circle.addListener("radius_changed", () => syncCircle(circle));
+          circle.addListener("center_changed", () => syncCircle(circle));
+          drawModeRef.current = null;
+          setDrawMode(null);
+          map.setOptions({ draggableCursor: null as any });
           setAddDialog(true);
-          drawingManager.setDrawingMode(null);
+          return;
         }
-      });
 
-      google.maps.event.addListener(drawingManager, "rectanglecomplete", (rect: google.maps.Rectangle) => {
-        const bounds = rect.getBounds();
-        if (bounds) {
-          const ne = bounds.getNorthEast();
-          const sw = bounds.getSouthWest();
-          const centerLat = (ne.lat() + sw.lat()) / 2;
-          const centerLng = (ne.lng() + sw.lng()) / 2;
-          setPendingCenter({ lat: centerLat, lng: centerLng });
-          setPendingBounds({ north: ne.lat(), east: ne.lng(), south: sw.lat(), west: sw.lng() });
-          setPendingRadius(0);
-          drawingRectRef.current = rect;
-          setDrawingRect(rect);
-          setAddDialog(true);
-          drawingManager.setDrawingMode(null);
+        // مستطيل: النقرة الأولى تحدد الزاوية الأولى، والثانية تكمل المستطيل
+        if (!rectFirstCornerRef.current) {
+          rectFirstCornerRef.current = pos;
+          rectCornerMarkerRef.current = new google.maps.Marker({ position: pos, map });
+          setRectAwaitingSecond(true);
+          return;
         }
+        const a = rectFirstCornerRef.current;
+        rectFirstCornerRef.current = null;
+        rectCornerMarkerRef.current?.setMap(null);
+        rectCornerMarkerRef.current = null;
+        setRectAwaitingSecond(false);
+        const rect = new google.maps.Rectangle({
+          ...shapeOptions,
+          map,
+          bounds: {
+            north: Math.max(a.lat, pos.lat),
+            south: Math.min(a.lat, pos.lat),
+            east: Math.max(a.lng, pos.lng),
+            west: Math.min(a.lng, pos.lng),
+          },
+        });
+        drawingRectRef.current = rect;
+        setDrawingRect(rect);
+        setPendingRadius(0);
+        syncRect(rect);
+        rect.addListener("bounds_changed", () => syncRect(rect));
+        drawModeRef.current = null;
+        setDrawMode(null);
+        map.setOptions({ draggableCursor: null as any });
+        setAddDialog(true);
       });
 
       setMapLoaded(true);
-    } catch (err) {
-      setMapError("تعذّر تحميل خريطة Google. تحقق من مفتاح API.");
-      console.error("Map load error:", err);
+    } catch (err: any) {
+      setMapError(describeMapsError(err));
+      console.error("Map load error:", err?.message || err, err);
     }
   }, []);
+
+  // فشل مصادقة المفتاح (مفتاح مقيّد بنطاق آخر / API غير مفعّل) لا يظهر كخطأ عادي
+  useEffect(() => onMapsAuthFailure(() => {
+    setMapError("مفتاح Google Maps مرفوض لهذا النطاق. أضف نطاق التطبيق إلى قيود HTTP referrer للمفتاح في Google Cloud Console وتأكد من تفعيل Maps JavaScript API.");
+  }), []);
 
   useEffect(() => {
     initMap();
@@ -200,10 +234,10 @@ export default function AttendanceZonesMap() {
       circleRefs.current.clear();
       rectRefs.current.forEach(r => r.setMap(null));
       rectRefs.current.clear();
-      if (drawingManagerRef.current) {
-        drawingManagerRef.current.setMap(null);
-        drawingManagerRef.current = null;
-      }
+      rectCornerMarkerRef.current?.setMap(null);
+      rectCornerMarkerRef.current = null;
+      rectFirstCornerRef.current = null;
+      drawModeRef.current = null;
       mapInstanceRef.current = null;
     };
   }, [initMap]);
@@ -276,6 +310,17 @@ export default function AttendanceZonesMap() {
       });
     }
   }, [zones, mapLoaded, isLoading]);
+
+  const toggleDrawMode = (mode: "circle" | "rect") => {
+    const next = drawMode === mode ? null : mode;
+    setDrawMode(next);
+    drawModeRef.current = next;
+    rectFirstCornerRef.current = null;
+    rectCornerMarkerRef.current?.setMap(null);
+    rectCornerMarkerRef.current = null;
+    setRectAwaitingSecond(false);
+    mapInstanceRef.current?.setOptions({ draggableCursor: next ? "crosshair" : (null as any) });
+  };
 
   const handleCancelDraw = () => {
     if (drawingCircleRef.current) {
@@ -377,10 +422,37 @@ export default function AttendanceZonesMap() {
       )}
 
       {mapLoaded && !mapError && (
-        <p className="text-xs text-muted-foreground flex items-center gap-1">
-          <Plus className="w-3 h-3" />
-          استخدم أداة الرسم في أعلى الخريطة لرسم دائرة حول موقع الدوام
-        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            size="sm"
+            variant={drawMode === "circle" ? "default" : "outline"}
+            className="h-8 text-xs"
+            onClick={() => toggleDrawMode("circle")}
+            data-testid="btn-draw-circle"
+          >
+            <Plus className="w-3.5 h-3.5 me-1" />
+            رسم دائرة
+          </Button>
+          <Button
+            size="sm"
+            variant={drawMode === "rect" ? "default" : "outline"}
+            className="h-8 text-xs"
+            onClick={() => toggleDrawMode("rect")}
+            data-testid="btn-draw-rect"
+          >
+            <Plus className="w-3.5 h-3.5 me-1" />
+            رسم مستطيل
+          </Button>
+          <p className="text-xs text-muted-foreground">
+            {drawMode === "circle"
+              ? "انقر على الخريطة في مركز الموقع — تُرسم دائرة نصف قطرها 200م ويمكنك تعديلها بالسحب"
+              : drawMode === "rect"
+                ? rectAwaitingSecond
+                  ? "انقر على الزاوية المقابلة لإكمال المستطيل"
+                  : "انقر على الزاوية الأولى للمستطيل"
+                : "اختر «رسم دائرة» أو «رسم مستطيل» ثم انقر على الخريطة لتحديد موقع الدوام"}
+          </p>
+        </div>
       )}
 
       {zones.length > 0 && (
