@@ -663,6 +663,7 @@ function Walls({
         <Baseboard
           key={`bb-${seg.id}`}
           seg={seg}
+          segments={segments}
           openings={openings.filter((o) => o.wallId === seg.id)}
         />
       ))}
@@ -688,18 +689,38 @@ function Walls({
   );
 }
 
-/** Thin dark skirting strip along the base of a wall segment. */
-const BASEBOARD_H = 0.08;
-const BASEBOARD_T = 0.02;
+/** Skirting integrated flush with the wall plane (per approved reference):
+ *  a thin board sitting in the bottom of the wall face with only a hairline
+ *  projection, finished in the floor material so it reads as one system. */
+const BASEBOARD_H = 0.1;
+const BASEBOARD_T = 0.006;
+
+/** Does this end of the segment meet another wall (shared endpoint)? */
+function segEndShared(seg: WallSegment, segments: WallSegment[], end: "start" | "end") {
+  const px = end === "start" ? seg.x1 : seg.x2;
+  const py = end === "start" ? seg.y1 : seg.y2;
+  return segments.some(
+    (s) =>
+      s.id !== seg.id &&
+      ((Math.hypot(s.x1 - px, s.y1 - py) < 1) || (Math.hypot(s.x2 - px, s.y2 - py) < 1))
+  );
+}
 
 function Baseboard({
   seg,
+  segments,
   openings,
 }: {
   seg: WallSegment;
+  segments: WallSegment[];
   openings: KitchenOpening[];
 }) {
   const { origin, dir, out, theta, lengthM } = useMemo(() => segVectors(seg), [seg]);
+  const floorMaterialId = useKitchenToolStore((s) => s.floorMaterialId);
+  const floorOpt = useMemo(() => findFloorOption(floorMaterialId), [floorMaterialId]);
+  // Extend into the corner so adjacent skirtings meet in a clean closed join.
+  const startShared = useMemo(() => segEndShared(seg, segments, "start"), [seg, segments]);
+  const endShared = useMemo(() => segEndShared(seg, segments, "end"), [seg, segments]);
 
   // Split into runs broken only by DOOR openings (doors reach the floor);
   // windows keep the baseboard continuous underneath.
@@ -732,18 +753,26 @@ function Baseboard({
   return (
     <>
       {runs.map((run, i) => {
-        const len = run.u1 - run.u0;
+        // Close the miter at wall junctions by running into the corner.
+        const u0 = run.u0 - (run.u0 < 0.01 && startShared ? BASEBOARD_T : 0);
+        const u1 = run.u1 + (run.u1 > lengthM - 0.01 && endShared ? BASEBOARD_T : 0);
+        const len = u1 - u0;
         const p = origin.clone();
-        p.addScaledVector(dir, (run.u0 + run.u1) / 2);
-        // Proud of the inner wall face (inner face sits at out*0).
+        p.addScaledVector(dir, (u0 + u1) / 2);
+        // Sits in the wall plane with only a hairline projection — flush look.
         p.addScaledVector(out, -BASEBOARD_T / 2);
         p.y = BASEBOARD_H / 2;
         return (
-          <mesh key={i} position={p} rotation={[0, theta, 0]} receiveShadow>
+          <mesh key={i} position={p} rotation={[0, theta, 0]} castShadow receiveShadow>
             <boxGeometry args={[len, BASEBOARD_H, BASEBOARD_T]} />
-            {/* Skirting in the same beige family as the reference floor —
-                unlit so it matches the baked walls' warm tone. */}
-            <meshBasicMaterial color="#b3a58f" />
+            {/* Finished in the floor material so skirting + floor read as
+                one system (lit standard material, not baked). */}
+            <SurfaceMaterial
+              key={floorOpt.id}
+              opt={floorOpt}
+              repeatX={len / (floorOpt.tileSizeM ?? 1)}
+              repeatY={BASEBOARD_H / (floorOpt.tileSizeM ?? 1)}
+            />
           </mesh>
         );
       })}
@@ -856,6 +885,32 @@ function Ceiling({
             reads gray/blue under the live studio lighting. */}
         <meshBasicMaterial color="#f4efe6" />
       </mesh>
+      {/* Gypsum cap bands over each wall footprint: the interior slab only
+          spans the room's inner rectangle, which used to leave the slab's raw
+          8cm edge exposed above wall tops and open corner squares in L/U
+          rooms. One band per wall (extended into shared corners) makes the
+          ceiling meet every wall cleanly with no visible raw edge. */}
+      {segments.map((seg, i) => {
+        const { origin, dir, out, theta, lengthM } = segVectors(seg);
+        const startShared = segEndShared(seg, segments, "start");
+        const endShared = segEndShared(seg, segments, "end");
+        const u0 = startShared ? -WALL_T : 0;
+        const u1 = lengthM + (endShared ? WALL_T : 0);
+        const p = origin
+          .clone()
+          .addScaledVector(dir, (u0 + u1) / 2)
+          .addScaledVector(out, WALL_T / 2);
+        // Tiny per-wall height offset so overlapping corner extensions never
+        // z-fight on their coplanar top faces (sub-mm, invisible).
+        const h = CEILING_SLAB_T - i * 0.0004;
+        p.y = ceilingM + h / 2;
+        return (
+          <mesh key={`cap-${seg.id}`} position={p} rotation={[0, theta, 0]} receiveShadow>
+            <boxGeometry args={[u1 - u0, h, WALL_T]} />
+            <meshBasicMaterial color="#f4efe6" />
+          </mesh>
+        );
+      })}
       {showSoffit &&
         segments.map((seg) => (
           <WallSoffit
