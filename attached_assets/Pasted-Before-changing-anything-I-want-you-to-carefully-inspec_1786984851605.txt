@@ -1,0 +1,56 @@
+Before changing anything, I want you to carefully inspect the current production Kitchen Designer and understand it first. Do not modify any files yet.
+
+The production tool is /kitchen-designer, mainly under:
+
+client/src/pages/kitchen-tool
+
+and
+
+client/src/components/kitchen-tool
+
+kitchen-tool-v2 / /kitchen-designer-v2 is an abandoned experimental prototype. Do not mix it with the production designer and do not use it as the source of truth.
+
+The current production Kitchen Designer already contains valuable functionality that we must preserve, especially:
+
+cabinet placement and collision handling
+drag and move behavior
+clicking cabinet doors to open them
+smooth door opening animations
+room geometry
+doors and windows
+utilities and service points
+camera interaction
+cabinet dimensions
+the current interactive studio workflow
+
+Some current product assumptions are legacy and should not be treated as Teak’s real manufacturing rules:
+
+Adeko is legacy data from an old kitchen design program we used previously. It is not the future product definition for Teak cabinets.
+Teak currently manufactures kitchens using moisture-resistant chipboard.
+Our current cabinet fronts are modern flat/slab fronts.
+The old framed/Shaker cabinet-front style is discontinued and should not be considered the current Teak standard.
+Cabinet finishes must eventually come from our real approved chipboard samples, not invented generic colors.
+The cabinet carcass/interior normally uses our standard grey chipboard finish.
+The customer-selected finish is mainly applied to the visible cabinet fronts.
+Some front finishes have a real woodgrain texture, while customers can also choose plain/solid finishes.
+
+I attached two real material references only to clarify these product facts:
+
+our typical grey chipboard used for the cabinet carcass/interior
+one actual Saviola MFC woodgrain front sample: Canyon Noce D18
+
+Do not implement these materials yet. Use the attached images only as product-reference context for your analysis.
+
+For now, do not implement, remove, refactor, redesign, rename, or replace anything.
+
+Please inspect the existing production implementation and tell me:
+
+Which parts of the current system are core reusable functionality that should be protected and preserved.
+Which parts are specifically coupled to Adeko or the old Shaker/framed-door assumptions.
+Whether those legacy assumptions can be separated from the current cabinet interaction, animation, placement, collision, and studio systems without rebuilding the designer.
+Which files and components are the most sensitive and should be changed very carefully later.
+What you believe would be the safest first change later, with the smallest possible risk to existing functionality.
+
+Do not propose a rewrite. Do not implement anything yet. I only want your analysis of the existing production implementation first.
+
+Preserving the current working behavior is a priority. Any future modernization must be incremental and must not break the existing cabinet interactions or studio workflow.
