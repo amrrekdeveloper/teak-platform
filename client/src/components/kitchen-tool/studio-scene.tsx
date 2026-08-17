@@ -32,7 +32,8 @@ import {
   type CabinetDef,
 } from "@/components/kitchen-tool/cabinets";
 import type { ThreeEvent } from "@react-three/fiber";
-import AdekoBaseCabinet, { AdekoCornerCabinet } from "@/components/kitchen-tool/adeko-cabinet";
+import AdekoBaseCabinet, { AdekoCornerCabinet, AdekoIsland } from "@/components/kitchen-tool/adeko-cabinet";
+import { computeIslandPlacement } from "@/components/kitchen-tool/island";
 import type { PlacedCabinetState } from "@/components/kitchen-tool/store";
 import {
   findFloorOption,
@@ -1857,6 +1858,7 @@ function PlacedCabinetMesh({
             handleStyle: placed.handleStyle ?? "bar",
             handleColor: placed.handleColor ?? "gray",
             doorHinge: placed.doorHinge,
+            sinkType: placed.sinkType,
           }}
         />
       )}
@@ -1924,8 +1926,57 @@ function PlacedCabinets({
  * uniform-scales to the item's target height, centers on X/Z and rests the
  * bottom at y=0. Handles the wildly different native units of the assets.
  */
+/** Procedural hidden ceiling hood — flush recessed extraction unit matching
+ *  Teak's installed models: thin trim frame + inset grease-filter panel. */
+function CeilingHoodMesh({ item }: { item: DecorItem }) {
+  const color = item.variantColor ?? "#17181a";
+  const mats = useMemo(() => {
+    const trim = new THREE.MeshStandardMaterial({
+      color,
+      metalness: 0.4,
+      roughness: 0.45,
+    });
+    const filter = new THREE.MeshStandardMaterial({
+      color: color === "#f4f4f1" ? "#dcdcd8" : "#2a2b2e",
+      metalness: 0.6,
+      roughness: 0.35,
+    });
+    return { trim, filter };
+  }, [color]);
+  useEffect(() => {
+    return () => {
+      mats.trim.dispose();
+      mats.filter.dispose();
+    };
+  }, [mats]);
+  const { width: w, depth: d, height: h } = item;
+  const inset = 0.045;
+  return (
+    <group>
+      {/* Trim frame flush with the ceiling (group origin = unit bottom) */}
+      <mesh material={mats.trim} position={[0, h - 0.008, 0]}>
+        <boxGeometry args={[w, 0.016, d]} />
+      </mesh>
+      {/* Recessed filter panel */}
+      <mesh material={mats.filter} position={[0, h - 0.016, 0]}>
+        <boxGeometry args={[w - inset * 2, 0.012, d - inset * 2]} />
+      </mesh>
+      {/* Filter slats */}
+      {[-1, 0, 1].map((i) => (
+        <mesh
+          key={i}
+          material={mats.trim}
+          position={[(i * (w - inset * 2)) / 3.2, h - 0.024, 0]}
+        >
+          <boxGeometry args={[0.012, 0.01, d - inset * 2]} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
 function DecorModel({ item, tint }: { item: DecorItem; tint?: string }) {
-  const gltf = useGLTF(item.modelPath);
+  const gltf = useGLTF(item.modelPath!);
 
   const built = useMemo(() => {
     const clonedMats: THREE.Material[] = [];
@@ -2001,6 +2052,7 @@ function PlacedDecorMesh({
   selected: boolean;
   onGrab: (placed: PlacedDecorState, item: DecorItem) => void;
 }) {
+  const ceilingHeight = useKitchenToolStore((s) => s.ceilingHeight);
   const built = useMemo(() => {
     if (item.placement === "wall") {
       const seg = segments.find((s) => s.id === placed.wallId);
@@ -2016,11 +2068,13 @@ function PlacedDecorMesh({
       return { pos, rotY };
     }
     if (placed.x == null || placed.z == null) return null;
+    // Ceiling items hang flush under the ceiling; floor items rest on y=0.
+    const y = item.placement === "ceiling" ? ceilingHeight * CM - item.height : 0;
     return {
-      pos: new THREE.Vector3(placed.x, 0, placed.z),
+      pos: new THREE.Vector3(placed.x, y, placed.z),
       rotY: placed.rotY ?? 0,
     };
-  }, [placed, item, segments]);
+  }, [placed, item, segments, ceilingHeight]);
 
   if (!built) return null;
 
@@ -2039,9 +2093,13 @@ function PlacedDecorMesh({
         if (e.delta <= 4) useKitchenToolStore.getState().toggleLights();
       }}
     >
-      <Suspense fallback={null}>
-        <DecorModel item={item} tint={placed.tint} />
-      </Suspense>
+      {item.procedural === "ceiling-hood" ? (
+        <CeilingHoodMesh item={item} />
+      ) : (
+        <Suspense fallback={null}>
+          <DecorModel item={item} tint={placed.tint} />
+        </Suspense>
+      )}
       {selected && (
         <mesh position={[0, item.height / 2, 0]}>
           <boxGeometry args={[item.width + 0.06, item.height + 0.06, item.depth + 0.06]} />
@@ -2079,6 +2137,53 @@ function PlacedDecorItems({
         );
       })}
     </>
+  );
+}
+
+/* ── Kitchen island (customer-activated, only when it fits) ── */
+function IslandUnit({
+  segments,
+  openings,
+  adekoFinishById,
+}: {
+  segments: WallSegment[];
+  openings: KitchenOpening[];
+  adekoFinishById?: Record<number, AdekoFinish>;
+}) {
+  const islandEnabled = useKitchenToolStore((s) => s.islandEnabled ?? false);
+  const placedCabinets = useKitchenToolStore((s) => s.placedCabinets ?? []);
+
+  const placement = useMemo(() => {
+    if (!islandEnabled) return null;
+    const wallsWithCabinets = new Set(placedCabinets.map((c) => c.wallId));
+    return computeIslandPlacement(segments, openings, wallsWithCabinets);
+  }, [islandEnabled, segments, openings, placedCabinets]);
+
+  // Island inherits the finish of the first placed base cabinet so it
+  // always matches the kitchen (fall back to defaults when empty).
+  const styleSource = placedCabinets[0];
+  const options = useMemo(
+    () =>
+      styleSource
+        ? {
+            finish: resolvePlacedFinish(styleSource, adekoFinishById),
+            topFinish: findAdekoTopFinish(styleSource.topFinishId),
+            handleStyle: styleSource.handleStyle ?? ("bar" as const),
+            handleColor: styleSource.handleColor ?? ("gray" as const),
+          }
+        : undefined,
+    [styleSource, adekoFinishById]
+  );
+
+  if (!placement) return null;
+  return (
+    <group position={[placement.x, 0, placement.z]}>
+      <AdekoIsland
+        width={placement.width}
+        depth={placement.depth}
+        options={options}
+      />
+    </group>
   );
 }
 
@@ -2771,7 +2876,9 @@ function SceneContents({
               ? drag.def.mountY
               : decorDrag!.item.placement === "wall"
                 ? decorDrag!.mountY
-                : 0.001,
+                : decorDrag!.item.placement === "ceiling"
+                  ? ceilingM - decorDrag!.item.height
+                  : 0.001,
             center.z,
           ]}
           rotation={[-Math.PI / 2, 0, 0]}
@@ -2811,6 +2918,13 @@ function SceneContents({
           segments={segments}
           selectedId={selectedDecorId}
           onGrab={handleDecorGrab}
+        />
+      </Suspense>
+      <Suspense fallback={null}>
+        <IslandUnit
+          segments={segments}
+          openings={openings}
+          adekoFinishById={adekoFinishById}
         />
       </Suspense>
       <UtilityMarkers utilities={utilities} segments={segments} />

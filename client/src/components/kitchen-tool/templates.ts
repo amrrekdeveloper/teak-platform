@@ -5,14 +5,92 @@
  * placement, so a template can never produce an illegal design.
  */
 import type { WallSegment } from "@/components/kitchen-tool/plan-svg";
-import type { KitchenOpening, PlacedCabinetState } from "@/components/kitchen-tool/store";
+import type {
+  KitchenOpening,
+  KitchenUtility,
+  PlacedCabinetState,
+} from "@/components/kitchen-tool/store";
 import {
   findSlotForCabinet,
   findCornerSlot,
+  blockedIntervals,
+  verticalSpan,
   EXTRA_CABINET_DEFS,
   type CabinetDef,
   type PlacedCabinet,
 } from "@/components/kitchen-tool/cabinets";
+
+const CM = 0.01;
+
+/** Wall-anchored utility target (meters along a wall). */
+interface UtilityTarget {
+  wallId: string;
+  posM: number;
+}
+
+/** First wall-mounted utility of any of the given kinds. */
+function utilityTarget(
+  utilities: KitchenUtility[],
+  kinds: KitchenUtility["kind"][]
+): UtilityTarget | null {
+  for (const kind of kinds) {
+    const u = utilities.find((x) => x.kind === kind && x.wallId != null);
+    if (u) return { wallId: u.wallId!, posM: (u.positionAlongWall ?? 0) * CM };
+  }
+  return null;
+}
+
+/**
+ * Legal slot closest to a wall-anchored utility (e.g. sink over the water
+ * feed, cooktop by the gas point). Scans the free gaps of the target wall
+ * and centers the cabinet on the utility when possible; falls back to the
+ * generic first-fit scan when the target wall has no room.
+ */
+function findSlotNear(
+  def: CabinetDef,
+  placed: PlacedCabinet[],
+  segments: WallSegment[],
+  openings: KitchenOpening[],
+  target: UtilityTarget | null
+): { wallId: string; offset: number } | null {
+  if (target) {
+    const seg = segments.find((s) => s.id === target.wallId);
+    if (seg) {
+      const len = seg.length * CM;
+      const intervals = blockedIntervals(
+        seg.id,
+        verticalSpan(def),
+        placed,
+        segments,
+        openings
+      );
+      // Build free gaps [a,b) from the sorted blocked intervals.
+      const sorted = [...intervals].sort((p, q) => p.a - q.a);
+      let cursor = 0;
+      let best: number | null = null;
+      let bestDist = Infinity;
+      const gaps: Array<{ a: number; b: number }> = [];
+      for (const iv of sorted) {
+        if (iv.a > cursor) gaps.push({ a: cursor, b: iv.a });
+        cursor = Math.max(cursor, iv.b);
+      }
+      if (cursor < len) gaps.push({ a: cursor, b: len });
+      for (const g of gaps) {
+        if (g.b - g.a < def.width - 1e-6) continue;
+        // Desired: cabinet centered on the utility, clamped into the gap.
+        const desired = target.posM - def.width / 2;
+        const off = Math.min(Math.max(desired, g.a), g.b - def.width);
+        const dist = Math.abs(off + def.width / 2 - target.posM);
+        if (dist < bestDist) {
+          bestDist = dist;
+          best = off;
+        }
+      }
+      if (best !== null) return { wallId: seg.id, offset: best };
+    }
+  }
+  return findSlotForCabinet(def, placed, segments, openings);
+}
 
 export interface KitchenTemplate {
   id: string;
@@ -107,7 +185,8 @@ export function buildTemplateCabinets(
   template: KitchenTemplate,
   segments: WallSegment[],
   openings: KitchenOpening[],
-  adekoDefs: CabinetDef[]
+  adekoDefs: CabinetDef[],
+  utilities: KitchenUtility[] = []
 ): PlacedCabinetState[] {
   const defs = [...adekoDefs, ...EXTRA_CABINET_DEFS.filter(
     (x) => !adekoDefs.some((d) => d.id === x.id)
@@ -118,11 +197,13 @@ export function buildTemplateCabinets(
 
   const totalWallM = segments.reduce((s, seg) => s + seg.length, 0) / 100;
 
-  const add = (def: CabinetDef | undefined) => {
+  const add = (def: CabinetDef | undefined, near?: UtilityTarget | null) => {
     if (!def) return false;
     const slot = def.corner
       ? findCornerSlot(def, placed, segments, openings)
-      : findSlotForCabinet(def, placed, segments, openings);
+      : near !== undefined
+        ? findSlotNear(def, placed, segments, openings, near)
+        : findSlotForCabinet(def, placed, segments, openings);
     if (!slot) return false;
     n += 1;
     const p: PlacedCabinetState = {
@@ -163,10 +244,16 @@ export function buildTemplateCabinets(
   }
 
   // Functional wall: sink (double when roomy), cooktop with built-in oven.
+  // When the customer marked real utility points, the sink snaps to the
+  // water/drain feed and the cooktop to the gas point.
   add(
-    defs.find((d) => d.id === (totalWallM >= 6 ? "adeko-x-sink2-100" : "adeko-x-sink1-80"))
+    defs.find((d) => d.id === (totalWallM >= 6 ? "adeko-x-sink2-100" : "adeko-x-sink1-80")),
+    utilityTarget(utilities, ["water", "drain"])
   );
-  add(defs.find((d) => d.id === (totalWallM >= 7 ? "adeko-x-cooktop-90" : "adeko-x-cooktop-60")));
+  add(
+    defs.find((d) => d.id === (totalWallM >= 7 ? "adeko-x-cooktop-90" : "adeko-x-cooktop-60")),
+    utilityTarget(utilities, ["gas"])
+  );
 
   // Appliance tower for bigger kitchens.
   if (totalWallM >= 5.5) add(defs.find((d) => d.id === "adeko-x-tower-60"));

@@ -76,6 +76,8 @@ export interface AdekoCabinetOptions {
   handleColor?: AdekoHandleColor;
   /** Door opening: hinge side for single-door units, or "top" = lift-up (wall units). */
   doorHinge?: "left" | "right" | "top";
+  /** Sink cabinets: real Teak sink family (marble integrated / steel drop-in). */
+  sinkType?: "marble" | "steel-silver" | "steel-black";
 }
 
 /** One door on a hinge pivot — animates open/close on click. */
@@ -306,7 +308,8 @@ function Faucet({
   );
 }
 
-/** One recessed stainless basin (rim + cavity). */
+/** One drop-in basin (top-mount rim + cavity) — brushed or black stainless,
+ *  matching Teak's real mounted sinks (rectangular bowls, thin proud rim). */
 function Basin({
   x,
   topY,
@@ -350,6 +353,112 @@ function Basin({
       </mesh>
       <mesh material={darkMat} position={[0, -depth + wall, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <circleGeometry args={[0.02, 16]} />
+      </mesh>
+    </group>
+  );
+}
+
+/** Countertop with real rectangular cutouts over sink/laundry bowls.
+ *  Built as an extruded shape with holes so the basin reads as an open
+ *  bowl instead of sitting under a solid slab. Local mapping: the shape
+ *  lives in XY, rotation [-PI/2,0,0] maps shape.y -> -z and extrusion
+ *  z (0..TOP_T) -> +y, so the mesh sits with its bottom at `bottomY`. */
+function SinkCounterTop({
+  W,
+  D,
+  bottomY,
+  bowls,
+  bd,
+  stoneMat,
+}: {
+  W: number;
+  D: number;
+  bottomY: number;
+  bowls: Array<{ x: number; bw: number }>;
+  bd: number;
+  stoneMat: THREE.Material;
+}) {
+  const geom = useMemo(() => {
+    const zMin = -D / 2;
+    const zMax = D / 2 + TOP_OVER;
+    const shape = new THREE.Shape();
+    shape.moveTo(-W / 2, -zMax);
+    shape.lineTo(W / 2, -zMax);
+    shape.lineTo(W / 2, -zMin);
+    shape.lineTo(-W / 2, -zMin);
+    shape.closePath();
+    for (const b of bowls) {
+      // Hole slightly smaller than the bowl so the rim / molded wall tops
+      // always cover the cut edge.
+      const hw = (b.bw - 0.012) / 2;
+      const hd = (bd - 0.012) / 2;
+      const cz = 0.03; // bowls are grouped at local z = 0.03
+      const hole = new THREE.Path();
+      hole.moveTo(b.x - hw, -(cz + hd));
+      hole.lineTo(b.x + hw, -(cz + hd));
+      hole.lineTo(b.x + hw, -(cz - hd));
+      hole.lineTo(b.x - hw, -(cz - hd));
+      hole.closePath();
+      shape.holes.push(hole);
+    }
+    return new THREE.ExtrudeGeometry(shape, { depth: TOP_T, bevelEnabled: false });
+  }, [W, D, bowls, bd]);
+  useEffect(() => () => geom.dispose(), [geom]);
+  return (
+    <mesh
+      geometry={geom}
+      material={stoneMat}
+      rotation={[-Math.PI / 2, 0, 0]}
+      position={[0, bottomY, 0]}
+      castShadow
+      receiveShadow
+    />
+  );
+}
+
+/** Integrated solid-surface (marble) bowl molded into the countertop —
+ *  matches Teak's cast-marble sinks: no rim, soft sloped walls in the same
+ *  stone as the top, dark drain. Walls are tilted boxes for a molded look. */
+function MarbleBasin({
+  x,
+  topY,
+  bw,
+  bd,
+  depth,
+  stoneMat,
+  darkMat,
+}: {
+  x: number;
+  topY: number;
+  bw: number;
+  bd: number;
+  depth: number;
+  stoneMat: THREE.Material;
+  darkMat: THREE.Material;
+}) {
+  const wall = 0.02;
+  const slope = 0.12; // walls lean inward toward the bottom (molded feel)
+  return (
+    <group position={[x, topY + 0.001, 0.03]}>
+      {/* Sloped cavity walls in the countertop stone */}
+      <mesh material={stoneMat} position={[-bw / 2 + wall / 2, -depth / 2, 0]} rotation={[0, 0, -slope]}>
+        <boxGeometry args={[wall, depth, bd]} />
+      </mesh>
+      <mesh material={stoneMat} position={[bw / 2 - wall / 2, -depth / 2, 0]} rotation={[0, 0, slope]}>
+        <boxGeometry args={[wall, depth, bd]} />
+      </mesh>
+      <mesh material={stoneMat} position={[0, -depth / 2, -bd / 2 + wall / 2]} rotation={[slope, 0, 0]}>
+        <boxGeometry args={[bw, depth, wall]} />
+      </mesh>
+      <mesh material={stoneMat} position={[0, -depth / 2, bd / 2 - wall / 2]} rotation={[-slope, 0, 0]}>
+        <boxGeometry args={[bw, depth, wall]} />
+      </mesh>
+      {/* Bottom (slightly smaller because of the slope) with drain */}
+      <mesh material={stoneMat} position={[0, -depth, 0]}>
+        <boxGeometry args={[bw - 2 * depth * slope, wall, bd - 2 * depth * slope]} />
+      </mesh>
+      <mesh material={darkMat} position={[0, -depth + wall, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <circleGeometry args={[0.024, 20]} />
       </mesh>
     </group>
   );
@@ -552,6 +661,12 @@ function useAdekoMaterials(
       metalness: 0.35,
       roughness: 0.35,
     });
+    // Black nano stainless (Teak's black drop-in sinks + matching faucet).
+    const blackSteelMat = new THREE.MeshStandardMaterial({
+      color: "#1a1a1c",
+      metalness: 0.7,
+      roughness: 0.38,
+    });
     const applianceGlassMat = new THREE.MeshStandardMaterial({
       color: "#121316",
       metalness: 0.55,
@@ -574,6 +689,7 @@ function useAdekoMaterials(
       glassMat,
       metalMat,
       steelMat,
+      blackSteelMat,
       applianceDarkMat,
       applianceGlassMat,
       clones,
@@ -622,6 +738,7 @@ export default function AdekoBaseCabinet({
     glassMat,
     metalMat,
     steelMat,
+    blackSteelMat,
     applianceDarkMat,
     applianceGlassMat,
   } = useAdekoMaterials(W, finish, topFinish, handleColorHex);
@@ -718,6 +835,24 @@ export default function AdekoBaseCabinet({
   const { hasKick, hasTop, kickH, carcassTop, bodyH, dw, doorZ, rows, doors, drawerFaces, shelfCount } =
     built;
 
+  // Bowl layout shared by the cut-out countertop and the basin meshes.
+  const sinkBowls = useMemo(() => {
+    if (!hasTop) return null;
+    if (kind.feature === "sink1")
+      return { bowls: [{ x: 0, bw: Math.min(0.44, W * 0.55) }], bd: Math.min(0.42, D * 0.62) };
+    if (kind.feature === "sink2")
+      return {
+        bowls: [
+          { x: -W * 0.22, bw: Math.min(0.36, W * 0.38) },
+          { x: W * 0.22, bw: Math.min(0.36, W * 0.38) },
+        ],
+        bd: Math.min(0.42, D * 0.62),
+      };
+    if (kind.feature === "laundry")
+      return { bowls: [{ x: 0, bw: Math.min(0.5, W * 0.6) }], bd: Math.min(0.46, D * 0.65) };
+    return null;
+  }, [hasTop, kind.feature, W, D]);
+
   /* Interior box (visible when a door is open): sides, back, bottom, top, shelves. */
   const innerBackZ = -D / 2 + PANEL_T / 2 + 0.004;
   const innerDepth = D - DOOR_T - PANEL_T - 0.01; // from back panel to behind doors
@@ -799,17 +934,28 @@ export default function AdekoBaseCabinet({
         );
       })}
 
-      {/* Countertop (stone, front overhang) — base units only */}
-      {hasTop && (
-        <mesh
-          position={[0, carcassTop + TOP_T / 2, TOP_OVER / 2]}
-          material={stoneMat}
-          castShadow
-          receiveShadow
-        >
-          <boxGeometry args={[W, TOP_T, D + TOP_OVER]} />
-        </mesh>
-      )}
+      {/* Countertop (stone, front overhang) — base units only.
+          Sink/laundry tops get real bowl cutouts instead of a solid slab. */}
+      {hasTop &&
+        (sinkBowls ? (
+          <SinkCounterTop
+            W={W}
+            D={D}
+            bottomY={carcassTop}
+            bowls={sinkBowls.bowls}
+            bd={sinkBowls.bd}
+            stoneMat={stoneMat}
+          />
+        ) : (
+          <mesh
+            position={[0, carcassTop + TOP_T / 2, TOP_OVER / 2]}
+            material={stoneMat}
+            castShadow
+            receiveShadow
+          >
+            <boxGeometry args={[W, TOP_T, D + TOP_OVER]} />
+          </mesh>
+        ))}
 
       {/* Open units: light face frame instead of fronts */}
       {!showFronts && (
@@ -881,39 +1027,42 @@ export default function AdekoBaseCabinet({
       {/* ── Functional features: sinks, laundry tub, cooktop+oven, tower ── */}
       {(kind.feature === "sink1" || kind.feature === "sink2") && hasTop && (
         <>
-          {kind.feature === "sink1" ? (
-            <Basin
-              x={0}
-              topY={carcassTop + TOP_T}
-              bw={Math.min(0.44, W * 0.55)}
-              bd={Math.min(0.42, D * 0.62)}
-              depth={0.17}
-              steelMat={steelMat}
-              darkMat={applianceDarkMat}
-            />
-          ) : (
-            <>
-              <Basin
-                x={-W * 0.22}
-                topY={carcassTop + TOP_T}
-                bw={Math.min(0.36, W * 0.38)}
-                bd={Math.min(0.42, D * 0.62)}
-                depth={0.17}
-                steelMat={steelMat}
-                darkMat={applianceDarkMat}
-              />
-              <Basin
-                x={W * 0.22}
-                topY={carcassTop + TOP_T}
-                bw={Math.min(0.36, W * 0.38)}
-                bd={Math.min(0.42, D * 0.62)}
-                depth={0.17}
-                steelMat={steelMat}
-                darkMat={applianceDarkMat}
-              />
-            </>
-          )}
-          <Faucet topY={carcassTop + TOP_T} z={-D / 2 + 0.09} steelMat={steelMat} />
+          {(() => {
+            const sinkType = options?.sinkType ?? "steel-silver";
+            const basinMat = sinkType === "steel-black" ? blackSteelMat : steelMat;
+            const bowls = sinkBowls?.bowls ?? [];
+            const bd = sinkBowls?.bd ?? Math.min(0.42, D * 0.62);
+            return bowls.map((b, i) =>
+              sinkType === "marble" ? (
+                <MarbleBasin
+                  key={i}
+                  x={b.x}
+                  topY={carcassTop + TOP_T}
+                  bw={b.bw}
+                  bd={bd}
+                  depth={0.16}
+                  stoneMat={stoneMat}
+                  darkMat={applianceDarkMat}
+                />
+              ) : (
+                <Basin
+                  key={i}
+                  x={b.x}
+                  topY={carcassTop + TOP_T}
+                  bw={b.bw}
+                  bd={bd}
+                  depth={0.17}
+                  steelMat={basinMat}
+                  darkMat={applianceDarkMat}
+                />
+              )
+            );
+          })()}
+          <Faucet
+            topY={carcassTop + TOP_T}
+            z={-D / 2 + 0.09}
+            steelMat={(options?.sinkType ?? "steel-silver") === "steel-black" ? blackSteelMat : steelMat}
+          />
         </>
       )}
 
@@ -1159,6 +1308,95 @@ export function AdekoCornerCabinet({
         material={interiorMat}
       >
         <boxGeometry args={[PANEL_T, bodyH, PANEL_T]} />
+      </mesh>
+    </group>
+  );
+}
+
+/**
+ * Kitchen island — procedural freestanding unit built from the same real
+ * Teak finish system as base cabinets: grey chipboard carcass, slab fronts
+ * (customer finish) on both long sides + end panels, stone countertop with
+ * an even overhang all around. Origin: island center at floor level.
+ */
+export function AdekoIsland({
+  width,
+  depth,
+  options,
+}: {
+  /** Plan footprint (m). */
+  width: number;
+  depth: number;
+  options?: AdekoCabinetOptions;
+}) {
+  const H = 0.9;
+  const finish = options?.finish ?? DEFAULT_ADEKO_FINISH;
+  const topFinish = options?.topFinish ?? DEFAULT_ADEKO_TOP_FINISH;
+  const handleColorHex = ADEKO_HANDLE_COLORS[options?.handleColor ?? "gray"];
+  const { doorMat, edgeMat, carcassMat, stoneMat, kickMat, metalMat } =
+    useAdekoMaterials(width, finish, topFinish, handleColorHex);
+
+  const bodyH = H - KICK_H - TOP_T;
+  const bodyW = width;
+  const bodyD = depth;
+  const showHandle = (options?.handleStyle ?? "bar") === "bar";
+
+  // Front slab fronts: split the long side into equal doors (~0.55m each).
+  const nDoors = Math.max(2, Math.round(bodyW / 0.55));
+  const dw = (bodyW - GAP * (nDoors + 1)) / nDoors;
+
+  const doors: JSX.Element[] = [];
+  for (let side = 0; side < 2; side++) {
+    const zFace = side === 0 ? bodyD / 2 + DOOR_T / 2 : -bodyD / 2 - DOOR_T / 2;
+    for (let i = 0; i < nDoors; i++) {
+      const x = -bodyW / 2 + GAP + dw / 2 + i * (dw + GAP);
+      doors.push(
+        <group key={`${side}-${i}`} position={[x, KICK_H + bodyH / 2, zFace]}>
+          <mesh material={doorMat}>
+            <boxGeometry args={[dw, bodyH - GAP * 2, DOOR_T]} />
+          </mesh>
+          {/* edge banding hint: thin frame strips top/bottom */}
+          <mesh material={edgeMat} position={[0, (bodyH - GAP * 2) / 2 - 0.004, 0]}>
+            <boxGeometry args={[dw, 0.008, DOOR_T + 0.0005]} />
+          </mesh>
+          {showHandle && (
+            <mesh
+              material={metalMat}
+              position={[0, (bodyH - GAP * 2) / 2 - 0.05, (side === 0 ? 1 : -1) * (DOOR_T / 2 + 0.012)]}
+            >
+              <boxGeometry args={[Math.min(0.18, dw * 0.5), 0.012, 0.012]} />
+            </mesh>
+          )}
+        </group>
+      );
+    }
+  }
+
+  return (
+    <group>
+      {/* Kickplate (recessed) */}
+      <mesh material={kickMat} position={[0, KICK_H / 2, 0]}>
+        <boxGeometry args={[bodyW - KICK_REC * 2, KICK_H, bodyD - KICK_REC * 2]} />
+      </mesh>
+      {/* Carcass body */}
+      <mesh material={carcassMat} position={[0, KICK_H + bodyH / 2, 0]}>
+        <boxGeometry args={[bodyW, bodyH, bodyD]} />
+      </mesh>
+      {/* Finish end panels on the short sides */}
+      <mesh material={doorMat} position={[-bodyW / 2 - DOOR_T / 2, KICK_H + bodyH / 2, 0]}>
+        <boxGeometry args={[DOOR_T, bodyH, bodyD]} />
+      </mesh>
+      <mesh material={doorMat} position={[bodyW / 2 + DOOR_T / 2, KICK_H + bodyH / 2, 0]}>
+        <boxGeometry args={[DOOR_T, bodyH, bodyD]} />
+      </mesh>
+      {doors}
+      {/* Countertop with an even overhang all around */}
+      <mesh material={stoneMat} position={[0, KICK_H + bodyH + TOP_T / 2, 0]}>
+        <boxGeometry args={[
+          bodyW + 2 * (DOOR_T + TOP_OVER),
+          TOP_T,
+          bodyD + 2 * (DOOR_T + TOP_OVER),
+        ]} />
       </mesh>
     </group>
   );

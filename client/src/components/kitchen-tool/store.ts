@@ -64,7 +64,15 @@ export interface PlacedCabinetState {
   doorHinge?: "left" | "right" | "top";
   /** Extra user-applied Y rotation (radians, 90° steps) — GLB cabinets only. */
   rotYOffset?: number;
+  /** Sink cabinets only — real Teak sink family. Defaults to "steel-silver". */
+  sinkType?: SinkType;
 }
+
+/** Real Teak sink families (per approved product photos):
+ *  - "marble": bowl molded into the stone countertop (integrated solid surface)
+ *  - "steel-silver": drop-in brushed stainless, top-mount rim
+ *  - "steel-black": drop-in black nano stainless, top-mount rim */
+export type SinkType = "marble" | "steel-silver" | "steel-black";
 
 /** A placed decor item (appliance / furniture / plant / wall detail). */
 export interface PlacedDecorState {
@@ -243,6 +251,8 @@ interface KitchenToolState {
   placedCabinets: PlacedCabinetState[];
   /** Decor items (appliances/furniture/plants/details) placed in the 3D studio. */
   placedDecor: PlacedDecorState[];
+  /** Kitchen island (customer option — only rendered when it actually fits). */
+  islandEnabled: boolean;
   setAnswer: <K extends keyof KitchenAnswers>(key: K, value: KitchenAnswers[K]) => void;
   setStep: (step: number) => void;
   ensureWalls: (layout: KitchenLayout) => void;
@@ -273,7 +283,7 @@ interface KitchenToolState {
     patch: Partial<
       Pick<
         PlacedCabinetState,
-        "finishWoodTypeId" | "finishColor" | "doorPattern" | "finishId" | "handleStyle" | "handleColor" | "topFinishId" | "doorHinge" | "rotYOffset"
+        "finishWoodTypeId" | "finishColor" | "doorPattern" | "finishId" | "handleStyle" | "handleColor" | "topFinishId" | "doorHinge" | "rotYOffset" | "sinkType"
       >
     >
   ) => void;
@@ -282,6 +292,7 @@ interface KitchenToolState {
   addPlacedDecor: (decor: PlacedDecorState) => void;
   updatePlacedDecor: (id: string, patch: Partial<Omit<PlacedDecorState, "id" | "decorId">>) => void;
   removePlacedDecor: (id: string) => void;
+  setIslandEnabled: (value: boolean) => void;
   reset: () => void;
 }
 
@@ -312,6 +323,7 @@ export const useKitchenToolStore = create<KitchenToolState>()(
       ledStrips: true,
       placedCabinets: [],
       placedDecor: [],
+      islandEnabled: false,
       setAnswer: (key, value) =>
         set((state) => ({ answers: { ...state.answers, [key]: value } })),
       setStep: (step) => set({ step }),
@@ -449,6 +461,7 @@ export const useKitchenToolStore = create<KitchenToolState>()(
         set((state) => ({
           placedDecor: (state.placedDecor ?? []).filter((d) => d.id !== id),
         })),
+      setIslandEnabled: (value) => set({ islandEnabled: value }),
       reset: () =>
         set({
           answers: initialAnswers,
@@ -471,6 +484,7 @@ export const useKitchenToolStore = create<KitchenToolState>()(
           ledStrips: true,
           placedCabinets: [],
           placedDecor: [],
+          islandEnabled: false,
         }),
     }),
     { name: "teak-kitchen-tool" }

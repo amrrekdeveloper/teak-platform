@@ -18,4 +18,5 @@
 - [Kitchen door finish system](kitchen-door-finish-system.md) — doorPattern+color override wood-type ids; carcass always off-white; templates place via collision engine; static defs need adeko- ids.
 - [Chart of accounts role lookup](chart-of-accounts-role-lookup.md) — prod chart numbering ≠ dev seed; find cash/bank & control accounts by tree position/name+type, never hardcoded code prefixes.
 - [Google Maps loader & drawing](google-maps-loader.md) — DrawingManager removed in v3.65+; use shared maps-loader.ts + gm_authFailure hook; key referrer restrictions block dev preview.
+- [Recessed fixtures & drag planes](kitchen-recessed-fixtures.md) — countertop fixtures need shape-with-holes cutouts; drag planes at item elevation; island fit = max obstruction + clearance, reject I rooms.
 - [HR workflow engine invariants](hr-workflow-engine.md) — hr_actions steps advance via conditional UPDATE (409 on race); chained actions deduped by unique (linked_action_id, workflow); final step revalidates required formData.

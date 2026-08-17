@@ -36,6 +36,7 @@ import {
   type AdekoFinish,
 } from "@/components/kitchen-tool/materials";
 import KitchenPlanSvg, { getWallSegments, getFloorBounds } from "@/components/kitchen-tool/plan-svg";
+import { computeIslandPlacement } from "@/components/kitchen-tool/island";
 import EngineeringSheetDialog from "@/components/kitchen-tool/engineering-sheet";
 import {
   DECOR_ITEMS,
@@ -316,6 +317,21 @@ function AmbiancePanel() {
   const ledStrips = useKitchenToolStore((s) => s.ledStrips ?? true);
   const setLedStrips = useKitchenToolStore((s) => s.setLedStrips);
   const setShowSoffit = useKitchenToolStore((s) => s.setShowSoffit);
+  const islandEnabled = useKitchenToolStore((s) => s.islandEnabled ?? false);
+  const setIslandEnabled = useKitchenToolStore((s) => s.setIslandEnabled);
+  const answers = useKitchenToolStore((s) => s.answers);
+  const walls = useKitchenToolStore((s) => s.walls);
+  const openings = useKitchenToolStore((s) => s.openings);
+  const placedCabinets = useKitchenToolStore((s) => s.placedCabinets ?? []);
+  const { toast } = useToast();
+
+  // Live fit test: the island toggle only works when the room has space.
+  const islandFits = useMemo(() => {
+    if (!answers.layout) return false;
+    const segments = getWallSegments(answers.layout, walls);
+    const wallsWithCabinets = new Set(placedCabinets.map((c) => c.wallId));
+    return computeIslandPlacement(segments, openings, wallsWithCabinets) !== null;
+  }, [answers.layout, walls, openings, placedCabinets]);
 
   return (
     <div
@@ -440,6 +456,39 @@ function AmbiancePanel() {
           />
           {t("إضاءة LED أسفل الخزائن العلوية", "Under-cabinet LED strips")}
         </label>
+        <label
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs font-bold text-muted-foreground hover:border-primary/50 hover:text-foreground transition-colors cursor-pointer select-none"
+          data-testid="label-toggle-island"
+        >
+          <input
+            type="checkbox"
+            checked={islandEnabled && islandFits}
+            onChange={(e) => {
+              if (e.target.checked && !islandFits) {
+                toast({
+                  title: t("المساحة لا تكفي", "Not enough space"),
+                  description: t(
+                    "الجزيرة تحتاج ممرات ٩٠ سم حولها — المطبخ الحالي أصغر من اللازم.",
+                    "An island needs 90cm walkways around it — this kitchen is too tight."
+                  ),
+                });
+                return;
+              }
+              setIslandEnabled(e.target.checked);
+            }}
+            className="accent-primary w-3.5 h-3.5"
+            data-testid="checkbox-toggle-island"
+          />
+          {t("جزيرة وسط المطبخ (حسب المساحة)", "Kitchen island (space permitting)")}
+        </label>
+        {islandEnabled && !islandFits && (
+          <p className="text-[11px] text-muted-foreground px-1">
+            {t(
+              "الجزيرة مفعّلة لكنها مخفية — المساحة الحالية لا تسمح بها.",
+              "Island is on but hidden — the current room can't fit it."
+            )}
+          </p>
+        )}
       </div>
     </div>
   );
@@ -1455,7 +1504,7 @@ export default function KitchenToolStudioPage() {
   };
 
   const applyTemplate = (template: KitchenTemplate) => {
-    const cabs = buildTemplateCabinets(template, segments, openings, adekoDefs);
+    const cabs = buildTemplateCabinets(template, segments, openings, adekoDefs, utilities);
     if (cabs.length === 0) {
       toast({
         title: t("تعذّر بناء القالب", "Could not build the template"),
@@ -2081,6 +2130,40 @@ export default function KitchenToolStudioPage() {
                       })}
                     </div>
                   </div>
+                  )}
+                  {(selectedDef.adeko?.kind.feature === "sink1" ||
+                    selectedDef.adeko?.kind.feature === "sink2") && (
+                    <div>
+                      <p className="text-[11px] font-bold text-muted-foreground mb-1.5">
+                        {t("نوع المجلى", "Sink type")}
+                      </p>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {(
+                          [
+                            { id: "marble" as const, ar: "رخام مدمج", en: "Marble" },
+                            { id: "steel-silver" as const, ar: "ستانلس فضي", en: "Steel Silver" },
+                            { id: "steel-black" as const, ar: "ستانلس أسود", en: "Steel Black" },
+                          ]
+                        ).map((s) => (
+                          <Button
+                            key={s.id}
+                            size="sm"
+                            variant={
+                              (selectedPlaced.sinkType ?? "steel-silver") === s.id
+                                ? "default"
+                                : "outline"
+                            }
+                            className="h-7 px-2 text-[11px] font-bold"
+                            onClick={() =>
+                              updatePlacedCabinet(selectedPlaced.id, { sinkType: s.id })
+                            }
+                            data-testid={`button-sink-type-${s.id}`}
+                          >
+                            {t(s.ar, s.en)}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
                   )}
                   <div>
                     <p className="text-[11px] font-bold text-muted-foreground mb-1.5">

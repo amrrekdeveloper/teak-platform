@@ -9,15 +9,19 @@
  */
 
 export type DecorCategory = "appliance" | "furniture" | "plant" | "detail";
-export type DecorPlacement = "wall" | "floor";
+export type DecorPlacement = "wall" | "floor" | "ceiling";
 
 export interface DecorItem {
   id: string;
   nameAr: string;
   nameEn: string;
   category: DecorCategory;
-  /** Path (public URL) to the .gltf file. */
-  modelPath: string;
+  /** Path (public URL) to the .gltf file. Omitted for procedural items. */
+  modelPath?: string;
+  /** Procedurally rendered item (no glTF asset). */
+  procedural?: "ceiling-hood";
+  /** Procedural color variant. */
+  variantColor?: string;
   /** Target footprint/height in meters (after normalization). */
   width: number;
   depth: number;
@@ -94,6 +98,30 @@ export const DECOR_ITEMS: DecorItem[] = [
     placement: "wall",
     defaultMountY: 1.45,
     soffit: true,
+  },
+  {
+    id: "decor-hood-ceiling-black",
+    nameAr: "شفاط سقف مخفي أسود",
+    nameEn: "Hidden Ceiling Hood (Black)",
+    category: "appliance",
+    procedural: "ceiling-hood",
+    variantColor: "#17181a",
+    width: 0.72,
+    depth: 0.4,
+    height: 0.05,
+    placement: "ceiling",
+  },
+  {
+    id: "decor-hood-ceiling-white",
+    nameAr: "شفاط سقف مخفي أبيض",
+    nameEn: "Hidden Ceiling Hood (White)",
+    category: "appliance",
+    procedural: "ceiling-hood",
+    variantColor: "#f4f4f1",
+    width: 0.72,
+    depth: 0.4,
+    height: 0.05,
+    placement: "ceiling",
   },
   // ── Furniture ────────────────────────────────────────────
   {
