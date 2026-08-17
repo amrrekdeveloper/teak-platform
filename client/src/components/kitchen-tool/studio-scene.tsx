@@ -685,7 +685,293 @@ function Walls({
           />
         ));
       })}
+      {openings.map((o) => {
+        const seg = segments.find((s) => s.id === o.wallId);
+        if (!seg) return null;
+        return o.type === "window" ? (
+          <WindowAssembly key={`win-${o.id}`} seg={seg} opening={o} ceilingM={ceilingM} fadeMap={fadeMap} />
+        ) : (
+          <RoomDoor key={`door-${o.id}`} seg={seg} opening={o} ceilingM={ceilingM} fadeMap={fadeMap} />
+        );
+      })}
+      <WindowBackdrops segments={segments} openings={openings} ceilingM={ceilingM} />
     </>
+  );
+}
+
+/* ── Architectural openings: real windows & room doors ───── */
+
+/** Horizontal placement of an opening along its wall (m), clamped like wallPieces. */
+function openingSpan(seg: WallSegment, o: KitchenOpening) {
+  const wallLenM = seg.length * CM;
+  const w = Math.min(o.width * CM, wallLenM);
+  const u0 = Math.min(Math.max(o.distanceFromWallStart * CM, 0), Math.max(wallLenM - w, 0));
+  return { u0, u1: u0 + w, w };
+}
+
+/** Hide an opening assembly together with its faded wall so the camera can
+ *  still look into the room from outside. */
+function useOpeningFade(fadeMap: React.MutableRefObject<WallFadeMap>, segId: string) {
+  const groupRef = useRef<THREE.Group>(null);
+  useFrame(() => {
+    const g = groupRef.current;
+    if (!g) return;
+    const entry = fadeMap.current[segId];
+    g.visible = !entry || entry.value > 0.55;
+  });
+  return groupRef;
+}
+
+const FRAME_T = 0.06; // aluminum window frame profile width
+const FRAME_D = 0.05; // frame depth within the wall
+
+/** Real window: reveal lining + marble sill + black aluminum frame with a
+ *  center mullion + glass panes (reflection via scene environment). */
+function WindowAssembly({
+  seg,
+  opening,
+  ceilingM,
+  fadeMap,
+}: {
+  seg: WallSegment;
+  opening: KitchenOpening;
+  ceilingM: number;
+  fadeMap: React.MutableRefObject<WallFadeMap>;
+}) {
+  const groupRef = useOpeningFade(fadeMap, seg.id);
+  const { origin, dir, out, theta } = useMemo(() => segVectors(seg), [seg]);
+  const { u0, w } = useMemo(() => openingSpan(seg, opening), [seg, opening]);
+  const sill = Math.min((opening.sillHeight ?? WINDOW_SILL_CM) * CM, ceilingM - 0.2);
+  const top = Math.min(sill + (opening.height ?? WINDOW_HEIGHT_CM) * CM, ceilingM - 0.1);
+  const h = Math.max(top - sill, 0.2);
+
+  // Local frame: x along wall (centered on the opening), y up (centered
+  // vertically), z across the wall thickness (0 = wall center plane).
+  // INVARIANT: local +z points INWARD (toward the room, = -out); segVectors'
+  // theta maps local +z to the inward normal for every wall direction.
+  const center = useMemo(() => {
+    const p = origin.clone();
+    p.addScaledVector(dir, u0 + w / 2);
+    p.addScaledVector(out, WALL_T / 2);
+    p.y = (sill + top) / 2;
+    return p;
+  }, [origin, dir, out, u0, w, sill, top]);
+
+  const frameMat = useMemo(
+    () => new THREE.MeshStandardMaterial({ color: "#26262a", roughness: 0.4, metalness: 0.55 }),
+    []
+  );
+  const revealMat = useMemo(
+    () => new THREE.MeshStandardMaterial({ color: "#e8e2d6", roughness: 0.85 }),
+    []
+  );
+  const glassMat = useMemo(
+    () =>
+      new THREE.MeshPhysicalMaterial({
+        color: "#dce8ea",
+        roughness: 0.04,
+        metalness: 0,
+        transparent: true,
+        opacity: 0.14,
+        envMapIntensity: 1.3,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      }),
+    []
+  );
+  useEffect(() => {
+    return () => {
+      frameMat.dispose();
+      revealMat.dispose();
+      glassMat.dispose();
+    };
+  }, [frameMat, revealMat, glassMat]);
+
+  const twoPanes = w > 1.0;
+  const innerW = w - 2 * FRAME_T;
+  const innerH = h - 2 * FRAME_T;
+  const REVEAL_T = 0.012;
+
+  return (
+    <group ref={groupRef} position={center} rotation={[0, theta, 0]}>
+      {/* reveal lining: head + jambs across the wall thickness */}
+      <mesh position={[0, h / 2 + REVEAL_T / 2, 0]} material={revealMat}>
+        <boxGeometry args={[w + 2 * REVEAL_T, REVEAL_T, WALL_T]} />
+      </mesh>
+      <mesh position={[-w / 2 - REVEAL_T / 2, 0, 0]} material={revealMat}>
+        <boxGeometry args={[REVEAL_T, h + 2 * REVEAL_T, WALL_T]} />
+      </mesh>
+      <mesh position={[w / 2 + REVEAL_T / 2, 0, 0]} material={revealMat}>
+        <boxGeometry args={[REVEAL_T, h + 2 * REVEAL_T, WALL_T]} />
+      </mesh>
+      {/* marble sill: fills the bottom and projects slightly into the room
+          (local +z = inward) */}
+      <mesh position={[0, -h / 2 - 0.015, 0.02]} receiveShadow>
+        <boxGeometry args={[w + 0.08, 0.03, WALL_T + 0.06]} />
+        <meshStandardMaterial color="#efe9dd" roughness={0.35} />
+      </mesh>
+      {/* aluminum frame perimeter */}
+      <mesh position={[0, h / 2 - FRAME_T / 2, 0]} material={frameMat} castShadow>
+        <boxGeometry args={[w, FRAME_T, FRAME_D]} />
+      </mesh>
+      <mesh position={[0, -h / 2 + FRAME_T / 2, 0]} material={frameMat} castShadow>
+        <boxGeometry args={[w, FRAME_T, FRAME_D]} />
+      </mesh>
+      <mesh position={[-w / 2 + FRAME_T / 2, 0, 0]} material={frameMat} castShadow>
+        <boxGeometry args={[FRAME_T, innerH, FRAME_D]} />
+      </mesh>
+      <mesh position={[w / 2 - FRAME_T / 2, 0, 0]} material={frameMat} castShadow>
+        <boxGeometry args={[FRAME_T, innerH, FRAME_D]} />
+      </mesh>
+      {/* center mullion for wider windows (matches the sliding-sash reference) */}
+      {twoPanes && (
+        <mesh position={[0, 0, 0]} material={frameMat} castShadow>
+          <boxGeometry args={[0.045, innerH, FRAME_D]} />
+        </mesh>
+      )}
+      {/* glass pane(s) */}
+      <mesh position={[0, 0, 0.004]} material={glassMat} renderOrder={2}>
+        <planeGeometry args={[Math.max(innerW, 0.1), Math.max(innerH, 0.1)]} />
+      </mesh>
+    </group>
+  );
+}
+
+/** One exterior backdrop plate per wall that has at least one window —
+ *  a large daylight garden image standing outside, visible through the
+ *  glass with believable depth (classic archviz backdrop technique). */
+function WindowBackdrops({
+  segments,
+  openings,
+  ceilingM,
+}: {
+  segments: WallSegment[];
+  openings: KitchenOpening[];
+  ceilingM: number;
+}) {
+  const tex = useTexture("/textures/exterior-garden.jpg");
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const walls = useMemo(() => {
+    const ids = new Set(
+      openings.filter((o) => o.type === "window").map((o) => o.wallId)
+    );
+    return segments.filter((s) => ids.has(s.id));
+  }, [segments, openings]);
+  return (
+    <>
+      {walls.map((seg) => {
+        const { origin, dir, out, theta, lengthM } = segVectors(seg);
+        const W = Math.max(lengthM + 8, 12);
+        const H = Math.max(ceilingM + 3.5, 6);
+        const p = origin
+          .clone()
+          .addScaledVector(dir, lengthM / 2)
+          .addScaledVector(out, 3.2);
+        p.y = H / 2 - 0.8; // horizon slightly below sill lines
+        return (
+          <mesh key={`bk-${seg.id}`} position={p} rotation={[0, theta, 0]}>
+            {/* rotation theta = local +z faces inward, toward the window */}
+            <planeGeometry args={[W, H]} />
+            <meshBasicMaterial map={tex} toneMapped={false} />
+          </mesh>
+        );
+      })}
+    </>
+  );
+}
+
+/** Room door: timber frame + slightly-ajar leaf + lever handle, driven by
+ *  the stored swing (in/out) and hinge (start/end) data. */
+function RoomDoor({
+  seg,
+  opening,
+  ceilingM,
+  fadeMap,
+}: {
+  seg: WallSegment;
+  opening: KitchenOpening;
+  ceilingM: number;
+  fadeMap: React.MutableRefObject<WallFadeMap>;
+}) {
+  const groupRef = useOpeningFade(fadeMap, seg.id);
+  const { origin, dir, out, theta } = useMemo(() => segVectors(seg), [seg]);
+  const { u0, w } = useMemo(() => openingSpan(seg, opening), [seg, opening]);
+  const doorH = Math.min(DOOR_HEIGHT_CM * CM, ceilingM - 0.1);
+  const hinge = opening.hinge ?? "start";
+  const swing = opening.swing ?? "in";
+
+  const base = useMemo(() => {
+    const p = origin.clone();
+    p.addScaledVector(dir, u0 + w / 2);
+    p.addScaledVector(out, WALL_T / 2);
+    p.y = 0;
+    return p;
+  }, [origin, dir, out, u0, w]);
+
+  const woodMat = useMemo(
+    () => new THREE.MeshStandardMaterial({ color: "#6d4e35", roughness: 0.55 }),
+    []
+  );
+  const leafMat = useMemo(
+    () => new THREE.MeshStandardMaterial({ color: "#7a593c", roughness: 0.5 }),
+    []
+  );
+  useEffect(() => {
+    return () => {
+      woodMat.dispose();
+      leafMat.dispose();
+    };
+  }, [woodMat, leafMat]);
+
+  const JAMB_T = 0.05;
+  const LEAF_T = 0.045;
+  const leafW = Math.max(w - 2 * JAMB_T, 0.4);
+  const leafH = doorH - JAMB_T - 0.01;
+  // Local x of the hinge edge; the leaf pivots around it, slightly ajar.
+  const hingeX = hinge === "start" ? -leafW / 2 : leafW / 2;
+  // Local +z points INWARD (toward the room). Rotating a point (d,0,0) by a
+  // positive Y angle moves it toward -z, so "in" needs a NEGATIVE angle when
+  // hinged at start (leaf extends toward +x) and positive when hinged at end.
+  const ajar = (14 * Math.PI) / 180;
+  const openAngle = (hinge === "start" ? -1 : 1) * (swing === "in" ? ajar : -ajar);
+
+  return (
+    <group ref={groupRef} position={base} rotation={[0, theta, 0]}>
+      {/* timber frame: head + jambs across the wall thickness */}
+      <mesh position={[0, doorH - JAMB_T / 2, 0]} material={woodMat} castShadow>
+        <boxGeometry args={[w, JAMB_T, WALL_T + 0.02]} />
+      </mesh>
+      <mesh position={[-w / 2 + JAMB_T / 2, doorH / 2, 0]} material={woodMat} castShadow>
+        <boxGeometry args={[JAMB_T, doorH, WALL_T + 0.02]} />
+      </mesh>
+      <mesh position={[w / 2 - JAMB_T / 2, doorH / 2, 0]} material={woodMat} castShadow>
+        <boxGeometry args={[JAMB_T, doorH, WALL_T + 0.02]} />
+      </mesh>
+      {/* leaf pivoting on the hinge edge */}
+      <group position={[hingeX, 0, 0]} rotation={[0, openAngle, 0]}>
+        <group position={[-hingeX, 0, 0]}>
+          <mesh position={[0, leafH / 2, 0]} material={leafMat} castShadow receiveShadow>
+            <boxGeometry args={[leafW, leafH, LEAF_T]} />
+          </mesh>
+          {/* lever handles on both faces, lock side */}
+          {[LEAF_T / 2 + 0.015, -LEAF_T / 2 - 0.015].map((z, i) => (
+            <group
+              key={i}
+              position={[hinge === "start" ? leafW / 2 - 0.07 : -leafW / 2 + 0.07, 1.02, z]}
+            >
+              <mesh rotation={[Math.PI / 2, 0, 0]}>
+                <cylinderGeometry args={[0.012, 0.012, 0.03, 16]} />
+                <meshStandardMaterial color="#2e2e30" roughness={0.35} metalness={0.7} />
+              </mesh>
+              <mesh position={[hinge === "start" ? -0.055 : 0.055, 0, 0]}>
+                <boxGeometry args={[0.11, 0.016, 0.016]} />
+                <meshStandardMaterial color="#2e2e30" roughness={0.35} metalness={0.7} />
+              </mesh>
+            </group>
+          ))}
+        </group>
+      </group>
+    </group>
   );
 }
 
