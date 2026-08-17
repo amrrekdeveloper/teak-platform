@@ -50,6 +50,9 @@ export interface PlacedCabinetState {
   finishColor?: string;
   /** Door surface pattern: wood grain or solid color (MR chipboard). */
   doorPattern?: "wood" | "solid";
+  /** Teak real-finish id (see teak-finishes.ts). When set and valid it
+   * overrides the legacy doorPattern/finishColor pair. */
+  finishId?: string;
   /** Adeko parametric cabinets only — handle style ("bar" | "none"). */
   handleStyle?: "bar" | "none";
   /** Adeko parametric cabinets only — handle color. */
@@ -267,7 +270,7 @@ interface KitchenToolState {
     patch: Partial<
       Pick<
         PlacedCabinetState,
-        "finishWoodTypeId" | "finishColor" | "doorPattern" | "handleStyle" | "handleColor" | "topFinishId" | "doorHinge" | "rotYOffset"
+        "finishWoodTypeId" | "finishColor" | "doorPattern" | "finishId" | "handleStyle" | "handleColor" | "topFinishId" | "doorHinge" | "rotYOffset"
       >
     >
   ) => void;

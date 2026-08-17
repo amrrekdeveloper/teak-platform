@@ -44,6 +44,7 @@ import {
   type MaterialOption,
   type AdekoFinish,
 } from "@/components/kitchen-tool/materials";
+import { getTeakFinish, teakToRenderFinish } from "@/components/kitchen-tool/teak-finishes";
 import { useKitchenToolStore, type PlacedDecorState } from "@/components/kitchen-tool/store";
 import { findDecorItem, type DecorItem } from "@/components/kitchen-tool/decor-items";
 
@@ -1190,6 +1191,9 @@ function resolvePlacedFinish(
   placed: PlacedCabinetState,
   adekoFinishById?: Record<number, AdekoFinish>
 ): AdekoFinish | undefined {
+  // Teak real-finish id wins when present and valid (Phase 1A resolution rule).
+  const teak = getTeakFinish(placed.finishId);
+  if (teak) return teakToRenderFinish(teak);
   const base =
     placed.finishWoodTypeId != null
       ? adekoFinishById?.[placed.finishWoodTypeId]

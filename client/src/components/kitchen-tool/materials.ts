@@ -221,8 +221,11 @@ export const DEFAULT_ADEKO_FINISH: AdekoFinish = ADEKO_FINISHES.oak;
 
 /* ── Real-world door system: one material (MR chipboard), two patterns ── */
 
-/** Cabinet carcass is ALWAYS matte off-white melamine — not customer-selectable. */
-export const CARCASS_OFFWHITE = "#f0ece2";
+/** Cabinet carcass is ALWAYS standard grey chipboard melamine (Teak factory
+ * standard, per the real grey linen-textured sample) — not customer-selectable. */
+export const CARCASS_GREY = "#b7b2aa";
+/** @deprecated legacy alias — carcass is grey chipboard, not off-white. */
+export const CARCASS_OFFWHITE = CARCASS_GREY;
 
 /** Door surface pattern: wood grain texture or solid painted color. */
 export type AdekoDoorPattern = "wood" | "solid";

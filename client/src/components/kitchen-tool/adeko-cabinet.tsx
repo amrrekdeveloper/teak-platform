@@ -457,15 +457,16 @@ function useAdekoMaterials(
           color: new THREE.Color(finish.tint).multiplyScalar(1.04),
         })
       : mkFlat(finish.tint, 1.04);
-    // Carcass is ALWAYS matte off-white melamine (factory standard) — only
-    // doors, panels and tops follow the customer's chosen finish.
+    // Carcass is ALWAYS standard grey chipboard melamine (Teak factory
+    // standard) — only doors, panels and tops follow the customer's finish.
     const carcassMat = new THREE.MeshStandardMaterial({
       color: CARCASS_OFFWHITE,
       roughness: 0.85,
     });
-    // Interior always a light melamine look — reads clearly when open.
+    // Interior matches the grey chipboard carcass, slightly lighter so the
+    // inside still reads clearly when doors are open.
     const interiorMat = new THREE.MeshStandardMaterial({
-      color: "#efe9dd",
+      color: "#c2bdb5",
       roughness: 0.75,
     });
     // Glass center panels for glass-door units.
