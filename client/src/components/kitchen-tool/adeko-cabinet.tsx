@@ -42,8 +42,7 @@ const TOP_T = 0.03; // countertop thickness
 const TOP_OVER = 0.025; // countertop front overhang
 const DOOR_T = 0.019; // door slab thickness
 const GAP = 0.003; // reveal gap around doors
-const STILE_W = 0.068; // shaker frame stile/rail width
-const PANEL_REC = 0.007; // center panel recess depth
+const GLASS_FRAME_W = 0.055; // slab glass-door frame width around the pane
 const PANEL_T = 0.018; // carcass panel thickness
 /** Door swing animation: lerp rate constant (~250ms settle). */
 const DOOR_LERP_RATE = 10;
@@ -89,7 +88,9 @@ function AdekoDoor({
   doorY,
   doorZ,
   doorMat,
+  edgeMat,
   panelMat,
+  glass,
   handleMat,
   showHandle,
   open,
@@ -104,7 +105,12 @@ function AdekoDoor({
   doorY: number;
   doorZ: number;
   doorMat: THREE.Material;
+  /** Edge-banding material for the visible 18mm slab edges. */
+  edgeMat: THREE.Material;
+  /** Glass pane material (used only when `glass` is true). */
   panelMat: THREE.Material;
+  /** Glass-door variant: slim slab frame around a glass pane. */
+  glass?: boolean;
   handleMat: THREE.Material;
   showHandle: boolean;
   open: boolean;
@@ -134,11 +140,11 @@ function AdekoDoor({
     if (Math.abs(target - g.rotation[axis]) < 0.002) g.rotation[axis] = target;
   });
 
-  // Narrow/short doors degrade the shaker frame gracefully.
-  const stile = Math.min(STILE_W, dw / 3.2, dh / 3.2);
-  const railW = Math.max(dw - 2 * stile, 0.02);
-  const panelW = Math.max(dw - 2 * stile + 0.02, 0.03);
-  const panelH = Math.max(dh - 2 * stile + 0.02, 0.03);
+  // Glass door: slim slab frame around the pane (degrades on narrow doors).
+  const frameW = Math.min(GLASS_FRAME_W, dw / 3.2, dh / 3.2);
+  const glassRailW = Math.max(dw - 2 * frameW, 0.02);
+  const paneW = Math.max(dw - 2 * frameW + 0.01, 0.03);
+  const paneH = Math.max(dh - 2 * frameW + 0.01, 0.03);
   // Relative to the inner content group (already offset by contentX):
   // near the opening edge, 5cm from the door edge.
   const handleX = topHinge ? 0 : hingeLeft ? dw / 2 - 0.05 : -dw / 2 + 0.05;
@@ -154,24 +160,50 @@ function AdekoDoor({
   return (
     <group ref={pivotRef} position={[hingeX, hingeY, doorZ]} onClick={handleClick}>
       <group position={[contentX, contentY, 0]}>
-        {/* Stiles (full height, left + right) */}
-        <mesh position={[-dw / 2 + stile / 2, 0, 0]} material={doorMat} castShadow>
-          <boxGeometry args={[stile, dh, DOOR_T]} />
-        </mesh>
-        <mesh position={[dw / 2 - stile / 2, 0, 0]} material={doorMat} castShadow>
-          <boxGeometry args={[stile, dh, DOOR_T]} />
-        </mesh>
-        {/* Rails (top + bottom, between stiles) */}
-        <mesh position={[0, dh / 2 - stile / 2, 0]} material={doorMat} castShadow>
-          <boxGeometry args={[railW, stile, DOOR_T]} />
-        </mesh>
-        <mesh position={[0, -dh / 2 + stile / 2, 0]} material={doorMat} castShadow>
-          <boxGeometry args={[railW, stile, DOOR_T]} />
-        </mesh>
-        {/* Recessed center panel (wood or glass) */}
-        <mesh position={[0, 0, -PANEL_REC]} material={panelMat}>
-          <boxGeometry args={[panelW, panelH, DOOR_T - PANEL_REC]} />
-        </mesh>
+        {glass ? (
+          <>
+            {/* Glass door: slim slab frame (banded edges) + glass pane */}
+            <mesh
+              position={[-dw / 2 + frameW / 2, 0, 0]}
+              material={[edgeMat, edgeMat, edgeMat, edgeMat, doorMat, doorMat]}
+              castShadow
+            >
+              <boxGeometry args={[frameW, dh, DOOR_T]} />
+            </mesh>
+            <mesh
+              position={[dw / 2 - frameW / 2, 0, 0]}
+              material={[edgeMat, edgeMat, edgeMat, edgeMat, doorMat, doorMat]}
+              castShadow
+            >
+              <boxGeometry args={[frameW, dh, DOOR_T]} />
+            </mesh>
+            <mesh
+              position={[0, dh / 2 - frameW / 2, 0]}
+              material={[edgeMat, edgeMat, edgeMat, edgeMat, doorMat, doorMat]}
+              castShadow
+            >
+              <boxGeometry args={[glassRailW, frameW, DOOR_T]} />
+            </mesh>
+            <mesh
+              position={[0, -dh / 2 + frameW / 2, 0]}
+              material={[edgeMat, edgeMat, edgeMat, edgeMat, doorMat, doorMat]}
+              castShadow
+            >
+              <boxGeometry args={[glassRailW, frameW, DOOR_T]} />
+            </mesh>
+            <mesh position={[0, 0, 0]} material={panelMat}>
+              <boxGeometry args={[paneW, paneH, 0.006]} />
+            </mesh>
+          </>
+        ) : (
+          /* Flat slab front — faces in the decor finish, 18mm banded edges */
+          <mesh
+            material={[edgeMat, edgeMat, edgeMat, edgeMat, doorMat, doorMat]}
+            castShadow
+          >
+            <boxGeometry args={[dw, dh, DOOR_T]} />
+          </mesh>
+        )}
         {/* Bar handle — vertical near the opening edge, or horizontal at the
             bottom edge for lift-up doors */}
         {showHandle && (
@@ -203,13 +235,14 @@ function AdekoDoor({
   );
 }
 
-/** Static drawer face — shaker-lite slab with a horizontal bar handle. */
+/** Static drawer face — flat slab with banded edges and a bar handle. */
 function AdekoDrawerFace({
   y,
   h,
   W,
   doorZ,
   doorMat,
+  edgeMat,
   handleMat,
   showHandle,
 }: {
@@ -218,6 +251,7 @@ function AdekoDrawerFace({
   W: number;
   doorZ: number;
   doorMat: THREE.Material;
+  edgeMat: THREE.Material;
   handleMat: THREE.Material;
   showHandle: boolean;
 }) {
@@ -225,7 +259,7 @@ function AdekoDrawerFace({
   const handleLen = Math.min(0.16, fw * 0.4);
   return (
     <group position={[0, y, doorZ]}>
-      <mesh material={doorMat} castShadow>
+      <mesh material={[edgeMat, edgeMat, edgeMat, edgeMat, doorMat, doorMat]} castShadow>
         <boxGeometry args={[fw, h, DOOR_T]} />
       </mesh>
       {showHandle && (
@@ -457,6 +491,12 @@ function useAdekoMaterials(
           color: new THREE.Color(finish.tint).multiplyScalar(1.04),
         })
       : mkFlat(finish.tint, 1.04);
+    // Edge banding on slab fronts — same decor, slightly darker and more
+    // matte so the 18mm edges read as banded chipboard edges.
+    const edgeMat = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(finish.tint).multiplyScalar(0.82),
+      roughness: 0.62,
+    });
     // Carcass is ALWAYS standard grey chipboard melamine (Teak factory
     // standard) — only doors, panels and tops follow the customer's finish.
     const carcassMat = new THREE.MeshStandardMaterial({
@@ -525,6 +565,7 @@ function useAdekoMaterials(
     });
     return {
       doorMat,
+      edgeMat,
       carcassMat,
       interiorMat,
       stoneMat,
@@ -572,6 +613,7 @@ export default function AdekoBaseCabinet({
 
   const {
     doorMat,
+    edgeMat,
     carcassMat,
     interiorMat,
     stoneMat,
@@ -789,7 +831,7 @@ export default function AdekoBaseCabinet({
         </>
       )}
 
-      {/* Shaker doors — click to open/close (90° swing from the hinge) */}
+      {/* Slab doors — click to open/close (90° swing from the hinge) */}
       {doors.map((d, i) => (
         <AdekoDoor
           key={`door-${i}`}
@@ -805,7 +847,9 @@ export default function AdekoBaseCabinet({
           doorY={rows[d.row].y}
           doorZ={doorZ}
           doorMat={doorMat}
+          edgeMat={edgeMat}
           panelMat={kind.glass ? glassMat : panelMat}
+          glass={!!kind.glass}
           handleMat={metalMat}
           showHandle={handleStyle !== "none"}
           open={openDoors[i] ?? false}
@@ -828,6 +872,7 @@ export default function AdekoBaseCabinet({
           W={W}
           doorZ={doorZ}
           doorMat={doorMat}
+          edgeMat={edgeMat}
           handleMat={metalMat}
           showHandle={handleStyle !== "none"}
         />
@@ -953,7 +998,7 @@ export default function AdekoBaseCabinet({
  * Arm A runs along +X (against the wall at z=0), arm B along +Z (against the
  * wall at x=0). Both arms are `def.width` long and `armDepth` deep, leaving an
  * L footprint with a notch at the inner front corner. Each notch face gets a
- * clickable shaker door hinged at its outer edge (swings away from the corner).
+ * clickable slab door hinged at its outer edge (swings away from the corner).
  */
 export function AdekoCornerCabinet({
   def,
@@ -982,7 +1027,7 @@ export function AdekoCornerCabinet({
   const [openA, setOpenA] = useState(false);
   const [openB, setOpenB] = useState(false);
 
-  const { doorMat, carcassMat, interiorMat, stoneMat, kickMat, panelMat, glassMat, metalMat } =
+  const { doorMat, edgeMat, carcassMat, interiorMat, stoneMat, kickMat, panelMat, glassMat, metalMat } =
     useAdekoMaterials(W, finish, topFinish, handleColorHex);
 
   const hasKick = !isWallUnit;
@@ -1079,7 +1124,9 @@ export function AdekoCornerCabinet({
         doorY={doorY}
         doorZ={doorZ}
         doorMat={doorMat}
+        edgeMat={edgeMat}
         panelMat={panelForDoors}
+        glass={!!kind.glass}
         handleMat={metalMat}
         showHandle={handleStyle !== "none"}
         open={openA}
@@ -1096,7 +1143,9 @@ export function AdekoCornerCabinet({
           doorY={doorY}
           doorZ={doorZ}
           doorMat={doorMat}
+          edgeMat={edgeMat}
           panelMat={panelForDoors}
+          glass={!!kind.glass}
           handleMat={metalMat}
           showHandle={handleStyle !== "none"}
           open={openB}

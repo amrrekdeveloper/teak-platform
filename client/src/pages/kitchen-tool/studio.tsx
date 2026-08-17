@@ -1936,8 +1936,8 @@ export default function KitchenToolStudioPage() {
                     </p>
                     <p className="text-[10px] text-muted-foreground leading-relaxed mb-1.5">
                       {t(
-                        "الخامة: شيبورد مقاوم للرطوبة — جسم الخزانة دائماً أوف-وايت مطفي.",
-                        "Material: moisture-resistant chipboard — the carcass is always matte off-white."
+                        "الخامة: شيبورد مقاوم للرطوبة بواجهات مسطحة — جسم الخزانة دائماً شيبورد رمادي.",
+                        "Material: moisture-resistant chipboard with flat slab fronts — the carcass is always grey chipboard."
                       )}
                     </p>
                     <div className="flex items-center gap-1.5 mb-2">
