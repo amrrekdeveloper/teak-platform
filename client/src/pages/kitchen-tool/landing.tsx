@@ -117,7 +117,7 @@ export default function KitchenToolLandingPage() {
                     className="text-lg font-bold px-8 h-14 border-primary/40 text-primary hover:bg-primary/10"
                   >
                     <Sparkles className="w-5 h-5 me-2" />
-                    {t("الأداة المطورة — تصميم بالذكاء الاصطناعي", "Advanced Tool — AI Design")}
+                    {t("الأداة المطورة", "Advanced Tool")}
                   </Button>
                 </a>
               </div>

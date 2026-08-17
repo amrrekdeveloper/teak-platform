@@ -7,14 +7,14 @@
  * manual placement, so an AI plan can never produce an illegal design:
  * every unit is snapped to the nearest legal offset or dropped.
  */
-import type { WallSegment } from "@/components/kitchen-tool/plan-svg";
+import type { WallSegment } from "@/components/kitchen-designer-v2/plan-svg";
 import type {
   KitchenOpening,
   KitchenUtility,
   KitchenWall,
   KitchenLayout,
   PlacedCabinetState,
-} from "@/components/kitchen-tool/store";
+} from "@/components/kitchen-designer-v2/store";
 import {
   blockedIntervals,
   resolveDragOffset,
@@ -25,8 +25,8 @@ import {
   EXTRA_CABINET_DEFS,
   type CabinetDef,
   type PlacedCabinet,
-} from "@/components/kitchen-tool/cabinets";
-import type { KitchenTemplate } from "@/components/kitchen-tool/templates";
+} from "@/components/kitchen-designer-v2/cabinets";
+import type { KitchenTemplate } from "@/components/kitchen-designer-v2/templates";
 
 const CM = 0.01;
 

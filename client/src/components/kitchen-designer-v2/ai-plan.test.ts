@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { getWallSegments } from "@/components/kitchen-tool/plan-svg";
-import { parseAiPlan, compileAiPlan, buildRoomSummary } from "@/components/kitchen-tool/ai-plan";
-import { findCabinetDef, verticalSpan, type CabinetDef } from "@/components/kitchen-tool/cabinets";
-import { KITCHEN_TEMPLATES } from "@/components/kitchen-tool/templates";
-import type { KitchenOpening, KitchenWall } from "@/components/kitchen-tool/store";
+import { getWallSegments } from "@/components/kitchen-designer-v2/plan-svg";
+import { parseAiPlan, compileAiPlan, buildRoomSummary } from "@/components/kitchen-designer-v2/ai-plan";
+import { findCabinetDef, verticalSpan, type CabinetDef } from "@/components/kitchen-designer-v2/cabinets";
+import { KITCHEN_TEMPLATES } from "@/components/kitchen-designer-v2/templates";
+import type { KitchenOpening, KitchenWall } from "@/components/kitchen-designer-v2/store";
 
 const template = KITCHEN_TEMPLATES[0];
 const CM = 0.01;

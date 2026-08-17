@@ -1378,7 +1378,7 @@ export async function registerRoutes(
   // structured layout plan (unit type + wall + position + width). The AI
   // never draws anything: the client compiles the plan through the same
   // deterministic collision engine as manual placement.
-  app.post("/api/kitchen-tool/ai-plan", async (req, res) => {
+  app.post("/api/kitchen-v2/ai-plan", async (req, res) => {
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
       res.status(503).json({ error: "ai_unavailable" });

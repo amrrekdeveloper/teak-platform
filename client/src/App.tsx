@@ -83,7 +83,10 @@ const KitchenToolLandingLazy = lazy(() => import("@/pages/kitchen-tool/landing")
 const KitchenToolSpaceLazy = lazy(() => import("@/pages/kitchen-tool/space"));
 const KitchenToolDetailsLazy = lazy(() => import("@/pages/kitchen-tool/details"));
 const KitchenToolStudioLazy = lazy(() => import("@/pages/kitchen-tool/studio"));
-const KitchenToolAiComposeLazy = lazy(() => import("@/pages/kitchen-tool/ai-compose"));
+const KitchenV2SpaceLazy = lazy(() => import("@/pages/kitchen-designer-v2/space"));
+const KitchenV2DetailsLazy = lazy(() => import("@/pages/kitchen-designer-v2/details"));
+const KitchenV2ComposeLazy = lazy(() => import("@/pages/kitchen-designer-v2/ai-compose"));
+const KitchenV2StudioLazy = lazy(() => import("@/pages/kitchen-designer-v2/studio"));
 
 function KitchenToolFallback() {
   return (
@@ -125,11 +128,11 @@ function KitchenToolStudio() {
   );
 }
 
-/* «الأداة المطورة» (V2) — same space/details screens, then the AI compose step. */
+/* «الأداة المطورة» (V2) — a fully isolated fork of the kitchen designer. */
 function KitchenToolV2Space() {
   return (
     <Suspense fallback={<KitchenToolFallback />}>
-      <KitchenToolSpaceLazy v2 />
+      <KitchenV2SpaceLazy />
     </Suspense>
   );
 }
@@ -137,7 +140,7 @@ function KitchenToolV2Space() {
 function KitchenToolV2Details() {
   return (
     <Suspense fallback={<KitchenToolFallback />}>
-      <KitchenToolDetailsLazy v2 />
+      <KitchenV2DetailsLazy />
     </Suspense>
   );
 }
@@ -145,7 +148,15 @@ function KitchenToolV2Details() {
 function KitchenToolV2Compose() {
   return (
     <Suspense fallback={<KitchenToolFallback />}>
-      <KitchenToolAiComposeLazy />
+      <KitchenV2ComposeLazy />
+    </Suspense>
+  );
+}
+
+function KitchenToolV2Studio() {
+  return (
+    <Suspense fallback={<KitchenToolFallback />}>
+      <KitchenV2StudioLazy />
     </Suspense>
   );
 }
@@ -373,6 +384,7 @@ function Router() {
       <Route path="/kitchen-designer-v2/space" component={KitchenToolV2Space} />
       <Route path="/kitchen-designer-v2/details" component={KitchenToolV2Details} />
       <Route path="/kitchen-designer-v2/compose" component={KitchenToolV2Compose} />
+      <Route path="/kitchen-designer-v2/studio" component={KitchenToolV2Studio} />
       <Route path="/kitchen-designer-v2" component={KitchenToolV2Space} />
       <Route path="/view-3d" component={Scene3DPage} />
       <Route path="/scene-3d" component={Scene3DPage} />

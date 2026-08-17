@@ -14,27 +14,27 @@ import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { useLanguage } from "@/components/language-provider";
-import DesktopGate from "@/components/kitchen-tool/desktop-gate";
-import { ToolStages, ToolNav } from "@/components/kitchen-tool/tool-stages";
-import { useKitchenToolStore, type KitchenLayout } from "@/components/kitchen-tool/store";
-import { getWallSegments } from "@/components/kitchen-tool/plan-svg";
-import { computeIslandPlacement } from "@/components/kitchen-tool/island";
+import DesktopGate from "@/components/kitchen-designer-v2/desktop-gate";
+import { ToolStages, ToolNav } from "@/components/kitchen-designer-v2/tool-stages";
+import { useKitchenToolStore, type KitchenLayout } from "@/components/kitchen-designer-v2/store";
+import { getWallSegments } from "@/components/kitchen-designer-v2/plan-svg";
+import { computeIslandPlacement } from "@/components/kitchen-designer-v2/island";
 import {
   adekoDefFromProduct,
   registerAdekoDef,
   EXTRA_CABINET_DEFS,
   type AdekoProductRow,
   type CabinetDef,
-} from "@/components/kitchen-tool/cabinets";
+} from "@/components/kitchen-designer-v2/cabinets";
 import {
   KITCHEN_TEMPLATES,
   buildTemplateCabinets,
-} from "@/components/kitchen-tool/templates";
+} from "@/components/kitchen-designer-v2/templates";
 import {
   buildRoomSummary,
   parseAiPlan,
   compileAiPlan,
-} from "@/components/kitchen-tool/ai-plan";
+} from "@/components/kitchen-designer-v2/ai-plan";
 import { apiRequest } from "@/lib/queryClient";
 import teakLogo from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
 
@@ -161,7 +161,7 @@ export default function KitchenToolAiComposePage() {
         template.nameAr,
         island
       );
-      const res = await apiRequest("POST", "/api/kitchen-tool/ai-plan", { room });
+      const res = await apiRequest("POST", "/api/kitchen-v2/ai-plan", { room });
       const data = (await res.json()) as { plan?: unknown };
       const plan = parseAiPlan(data.plan);
       if (plan) {
@@ -209,7 +209,7 @@ export default function KitchenToolAiComposePage() {
       // Design still opens — sourced from the smart templates instead of AI.
       console.info("ai-compose: fell back to smart templates");
     }
-    setLocation("/kitchen-designer/studio");
+    setLocation("/kitchen-designer-v2/studio");
   };
 
   const BackIcon = isRTL ? ChevronRight : ChevronLeft;
@@ -220,7 +220,7 @@ export default function KitchenToolAiComposePage() {
       <div className="min-h-screen bg-background flex flex-col">
         <ToolNav homeTestId="link-compose-home" />
         <div className="max-w-6xl mx-auto w-full px-6 pt-6">
-          <ToolStages current="compose" v2 />
+          <ToolStages current="compose" />
         </div>
 
         <div className="flex-1 max-w-3xl mx-auto w-full px-6 py-8 space-y-8">

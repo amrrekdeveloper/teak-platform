@@ -3,25 +3,16 @@ import { Button } from "@/components/ui/button";
 import { useLanguage } from "@/components/language-provider";
 import teakLogo from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
 
-export type ToolStage = "space" | "details" | "compose" | "studio";
+export type ToolStage = "space" | "details" | "studio";
 
-const STAGES_V1: { key: ToolStage; ar: string; en: string }[] = [
+const STAGES: { key: ToolStage; ar: string; en: string }[] = [
   { key: "space", ar: "المساحة", en: "Space" },
   { key: "details", ar: "تفاصيل المكان", en: "Place Details" },
   { key: "studio", ar: "صمّم مطبخك", en: "Design Your Kitchen" },
 ];
 
-/** V2 "الأداة المطورة" flow — an AI compose step before the studio. */
-const STAGES_V2: { key: ToolStage; ar: string; en: string }[] = [
-  { key: "space", ar: "المساحة", en: "Space" },
-  { key: "details", ar: "تفاصيل المكان", en: "Place Details" },
-  { key: "compose", ar: "كوّن مطبخي", en: "Compose My Kitchen" },
-  { key: "studio", ar: "صمّم مطبخك", en: "Design Your Kitchen" },
-];
-
-export function ToolStages({ current, v2 = false }: { current: ToolStage; v2?: boolean }) {
+export function ToolStages({ current }: { current: ToolStage }) {
   const { t, isRTL } = useLanguage();
-  const STAGES = v2 ? STAGES_V2 : STAGES_V1;
   const currentIndex = STAGES.findIndex((s) => s.key === current);
   return (
     <div className="flex items-center justify-center gap-2 flex-wrap" data-testid="tool-stages">

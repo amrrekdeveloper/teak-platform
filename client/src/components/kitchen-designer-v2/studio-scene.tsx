@@ -1,0 +1,3068 @@
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import * as THREE from "three";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import {
+  OrbitControls,
+  Environment,
+  useTexture,
+  useGLTF,
+  Html,
+  GizmoHelper,
+  GizmoViewport,
+} from "@react-three/drei";
+import {
+  type KitchenLayout,
+  type KitchenWall,
+  type KitchenOpening,
+  type KitchenUtility,
+} from "@/components/kitchen-designer-v2/store";
+import {
+  getWallSegments,
+  getFloorBounds,
+  planPointAt,
+  type WallSegment,
+} from "@/components/kitchen-designer-v2/plan-svg";
+import {
+  findCabinetDef,
+  junctionOfPlaced,
+  blockedIntervals,
+  verticalSpan,
+  resolveDragOffset,
+  isLCorner,
+  type CabinetDef,
+} from "@/components/kitchen-designer-v2/cabinets";
+import type { ThreeEvent } from "@react-three/fiber";
+import AdekoBaseCabinet, { AdekoCornerCabinet, AdekoIsland } from "@/components/kitchen-designer-v2/adeko-cabinet";
+import { computeIslandPlacement } from "@/components/kitchen-designer-v2/island";
+import type { PlacedCabinetState } from "@/components/kitchen-designer-v2/store";
+import {
+  findFloorOption,
+  findWallOption,
+  findCeilingOption,
+  findAdekoTopFinish,
+  findEnvironmentOption,
+  DEFAULT_ADEKO_FINISH,
+  type MaterialOption,
+  type AdekoFinish,
+} from "@/components/kitchen-designer-v2/materials";
+import { getTeakFinish, teakToRenderFinish } from "@/components/kitchen-designer-v2/teak-finishes";
+import { useKitchenToolStore, type PlacedDecorState } from "@/components/kitchen-designer-v2/store";
+import { findDecorItem, type DecorItem } from "@/components/kitchen-designer-v2/decor-items";
+
+/* ── Constants (meters unless noted) ─────────────────────── */
+const WALL_T = 0.12;
+const DOOR_HEIGHT_CM = 210;
+const WINDOW_SILL_CM = 90;
+const WINDOW_HEIGHT_CM = 120;
+const CM = 1 / 100;
+
+const ASSETS = "/kitchen-tool-assets";
+
+/** Oak veneer countertop maps — prepared for later phases (cabinet runs). */
+export const COUNTERTOP_TEX = {
+  map: `${ASSETS}/countertop/textures/oak_veneer_01_diff_2k.jpg`,
+  armMap: `${ASSETS}/countertop/textures/oak_veneer_01_arm_2k.jpg`,
+};
+
+/* ── Texture helpers ─────────────────────────────────────── */
+function prepTexture(tex: THREE.Texture, repeatX: number, repeatY: number, srgb: boolean) {
+  const t = tex.clone();
+  t.wrapS = THREE.RepeatWrapping;
+  t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(repeatX, repeatY);
+  t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
+  t.anisotropy = 8;
+  t.needsUpdate = true;
+  return t;
+}
+
+/* ── Material rendering (paint or PBR) ───────────────────── */
+function PbrSurfaceMaterial({
+  opt,
+  repeatX,
+  repeatY,
+  opacity = 1,
+}: {
+  opt: MaterialOption;
+  repeatX: number;
+  repeatY: number;
+  opacity?: number;
+}) {
+  const maps = opt.maps!;
+  const urls = useMemo(() => {
+    const u: Record<string, string> = { map: maps.map };
+    if (maps.normalMap) u.normalMap = maps.normalMap;
+    if (maps.roughnessMap) u.roughnessMap = maps.roughnessMap;
+    if (maps.armMap) u.armMap = maps.armMap;
+    return u;
+  }, [maps]);
+  const tex = useTexture(urls) as Record<string, THREE.Texture>;
+
+  const prepped = useMemo(() => {
+    const out: Record<string, THREE.Texture> = {};
+    for (const [key, t] of Object.entries(tex)) {
+      out[key] = prepTexture(t, repeatX, repeatY, key === "map");
+    }
+    return out;
+  }, [tex, repeatX, repeatY]);
+
+  // Dispose cloned GPU textures when the material changes or unmounts
+  useEffect(() => {
+    const clones = Object.values(prepped);
+    return () => {
+      for (const t of clones) t.dispose();
+    };
+  }, [prepped]);
+
+  return (
+    <meshStandardMaterial
+      map={prepped.map}
+      normalMap={prepped.normalMap}
+      roughnessMap={prepped.roughnessMap ?? prepped.armMap}
+      aoMap={prepped.armMap}
+      metalnessMap={prepped.armMap}
+      color={opt.color ?? "#ffffff"}
+      envMapIntensity={opt.envMapIntensity ?? 1}
+      roughness={opt.roughnessMult ?? 1}
+      metalness={opt.metalnessMult ?? 0}
+      transparent={opacity < 1}
+      opacity={opacity}
+    />
+  );
+}
+
+function SurfaceMaterial({
+  opt,
+  repeatX,
+  repeatY,
+  opacity = 1,
+}: {
+  opt: MaterialOption;
+  repeatX: number;
+  repeatY: number;
+  opacity?: number;
+}) {
+  if (!opt.maps) {
+    return (
+      <meshStandardMaterial
+        color={opt.color ?? "#eeeeee"}
+        roughness={opt.roughness ?? 0.85}
+        transparent={opacity < 1}
+        opacity={opacity}
+      />
+    );
+  }
+  return (
+    <PbrSurfaceMaterial opt={opt} repeatX={repeatX} repeatY={repeatY} opacity={opacity} />
+  );
+}
+
+/* ── Wall geometry: real cut openings ────────────────────── */
+interface WallPiece {
+  /** start/end along the wall (m) */
+  u0: number;
+  u1: number;
+  /** bottom/top height (m) */
+  h0: number;
+  h1: number;
+}
+
+function wallPieces(
+  wallLengthM: number,
+  ceilingM: number,
+  openings: KitchenOpening[]
+): WallPiece[] {
+  const doorH = Math.min(DOOR_HEIGHT_CM * CM, ceilingM - 0.1);
+
+  const sorted = [...openings]
+    .map((o) => {
+      const w = o.width * CM;
+      const start = Math.min(
+        Math.max(o.distanceFromWallStart * CM, 0),
+        Math.max(wallLengthM - w, 0)
+      );
+      return { ...o, startM: start, endM: Math.min(start + w, wallLengthM) };
+    })
+    .filter((o) => o.endM - o.startM > 0.01)
+    .sort((a, b) => a.startM - b.startM);
+
+  const pieces: WallPiece[] = [];
+  let cursor = 0;
+  for (const o of sorted) {
+    const s = Math.max(o.startM, cursor);
+    const e = Math.max(o.endM, s);
+    if (s - cursor > 0.005) {
+      pieces.push({ u0: cursor, u1: s, h0: 0, h1: ceilingM });
+    }
+    if (o.type === "door") {
+      if (ceilingM - doorH > 0.005) pieces.push({ u0: s, u1: e, h0: doorH, h1: ceilingM });
+    } else {
+      const sill = Math.min((o.sillHeight ?? WINDOW_SILL_CM) * CM, ceilingM - 0.2);
+      const winTop = Math.min(sill + (o.height ?? WINDOW_HEIGHT_CM) * CM, ceilingM - 0.1);
+      if (sill > 0.005) pieces.push({ u0: s, u1: e, h0: 0, h1: sill });
+      if (ceilingM - winTop > 0.005) pieces.push({ u0: s, u1: e, h0: winTop, h1: ceilingM });
+    }
+    cursor = e;
+  }
+  if (wallLengthM - cursor > 0.005) {
+    pieces.push({ u0: cursor, u1: wallLengthM, h0: 0, h1: ceilingM });
+  }
+  return pieces;
+}
+
+function segVectors(seg: WallSegment) {
+  const dx = (seg.x2 - seg.x1) * CM;
+  const dz = (seg.y2 - seg.y1) * CM;
+  const len = Math.hypot(dx, dz) || 1;
+  return {
+    origin: new THREE.Vector3(seg.x1 * CM, 0, seg.y1 * CM),
+    dir: new THREE.Vector3(dx / len, 0, dz / len),
+    out: new THREE.Vector3(seg.nx, 0, seg.ny),
+    theta: Math.atan2(-dz / len, dx / len),
+    lengthM: seg.length * CM,
+  };
+}
+
+/* ── Window sunlight ─────────────────────────────────────── */
+interface WindowSun {
+  /** Window rect corners (world, meters). */
+  corners: THREE.Vector3[];
+  /** Normalized direction the sun rays travel (from sun into the room). */
+  rayDir: THREE.Vector3;
+  /** Sun light position (outside, behind the window). */
+  sunPos: THREE.Vector3;
+  /** Light target (inside the room, on the floor). */
+  targetPos: THREE.Vector3;
+  /** Window size (m). */
+  width: number;
+  height: number;
+}
+
+/** Derive a sun beam from the largest window: rays enter through the
+    opening at ~38° elevation, slightly angled along the wall. */
+function computeWindowSun(
+  segments: WallSegment[],
+  openings: KitchenOpening[],
+  ceilingM: number
+): WindowSun | null {
+  const windows = openings.filter((o) => o.type === "window");
+  if (windows.length === 0) return null;
+  const win = windows.reduce((a, b) => (b.width > a.width ? b : a));
+  const seg = segments.find((s) => s.id === win.wallId);
+  if (!seg) return null;
+
+  const { origin, dir, out } = segVectors(seg);
+  const wallLenM = seg.length * CM;
+  const w = Math.min(win.width * CM, wallLenM);
+  const u0 = Math.min(Math.max(win.distanceFromWallStart * CM, 0), Math.max(wallLenM - w, 0));
+  const u1 = u0 + w;
+  const sill = Math.min((win.sillHeight ?? WINDOW_SILL_CM) * CM, ceilingM - 0.2);
+  const top = Math.min(sill + (win.height ?? WINDOW_HEIGHT_CM) * CM, ceilingM - 0.1);
+  const height = Math.max(top - sill, 0.2);
+
+  const at = (u: number, y: number) => {
+    const p = origin.clone();
+    p.addScaledVector(dir, u);
+    p.y = y;
+    return p;
+  };
+  const corners = [at(u0, sill), at(u1, sill), at(u1, top), at(u0, top)];
+  const center = at((u0 + u1) / 2, (sill + top) / 2);
+
+  // Ray direction: inward (opposite the wall's outward normal), tilted
+  // 38° down and skewed a little along the wall for a natural angle.
+  const elevation = (38 * Math.PI) / 180;
+  const inward = out.clone().multiplyScalar(-1);
+  const rayDir = inward
+    .clone()
+    .addScaledVector(dir, 0.28)
+    .normalize()
+    .multiplyScalar(Math.cos(elevation));
+  rayDir.y = -Math.sin(elevation);
+  rayDir.normalize();
+
+  const sunPos = center.clone().addScaledVector(rayDir, -6);
+  const targetPos = center.clone().addScaledVector(rayDir, (sill + top) / 2 / Math.sin(elevation));
+  return { corners, rayDir, sunPos, targetPos, width: w, height };
+}
+
+/** Sun tint/strength per ambiance (HDRI) option. */
+function sunParamsForEnv(envId: string): { color: string; intensity: number } {
+  switch (envId) {
+    case "brown_photostudio_02":
+      return { color: "#ffb877", intensity: 2.6 }; // warm sunset
+    case "studio_small_03":
+      return { color: "#ffdfa3", intensity: 2.8 }; // high contrast
+    case "photo_studio_01":
+      return { color: "#fff0d4", intensity: 2.0 }; // neutral day
+    default:
+      return { color: "#ffe3ae", intensity: 2.3 }; // soft golden daylight
+  }
+}
+
+/** Soft radial-gradient texture for the warm light pool on the floor. */
+let poolTexCache: THREE.Texture | null = null;
+function getPoolTexture(): THREE.Texture {
+  if (poolTexCache) return poolTexCache;
+  const size = 256;
+  const cnv = document.createElement("canvas");
+  cnv.width = size;
+  cnv.height = size;
+  const ctx = cnv.getContext("2d")!;
+  const grad = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  grad.addColorStop(0, "rgba(255,255,255,0.9)");
+  grad.addColorStop(0.55, "rgba(255,255,255,0.35)");
+  grad.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, size, size);
+  poolTexCache = new THREE.CanvasTexture(cnv);
+  return poolTexCache;
+}
+
+/** Directional sun shining through the window + soft warm pool on the floor. */
+function WindowSunlight({ sun, envId }: { sun: WindowSun; envId: string }) {
+  const target = useMemo(() => new THREE.Object3D(), []);
+  const { color, intensity } = sunParamsForEnv(envId);
+
+  useEffect(() => {
+    target.position.copy(sun.targetPos);
+    target.updateMatrixWorld();
+  }, [sun, target]);
+
+  // Where the sun rays land on the floor — a soft warm pool of light.
+  const { poolCenter, poolRadius } = useMemo(() => {
+    const floorPt = (c: THREE.Vector3) => {
+      const t = sun.rayDir.y < -1e-4 ? c.y / -sun.rayDir.y : 0;
+      return c.clone().addScaledVector(sun.rayDir, t);
+    };
+    const far = sun.corners.map(floorPt);
+    const center = far
+      .reduce((acc, p) => acc.add(p), new THREE.Vector3())
+      .multiplyScalar(1 / far.length);
+    let radius = 0.6;
+    for (const p of far) radius = Math.max(radius, p.distanceTo(center));
+    return { poolCenter: center, poolRadius: radius * 1.15 };
+  }, [sun]);
+
+  const shadowW = Math.max(sun.width * 1.4, 1.2);
+  const shadowH = Math.max(sun.height * 1.8, 1.6);
+
+  return (
+    <>
+      <directionalLight
+        position={sun.sunPos.toArray()}
+        target={target}
+        color={color}
+        intensity={intensity}
+        castShadow
+        shadow-mapSize={[1024, 1024]}
+        shadow-bias={-0.0004}
+        shadow-normalBias={0.02}
+        shadow-camera-left={-shadowW}
+        shadow-camera-right={shadowW}
+        shadow-camera-top={shadowH}
+        shadow-camera-bottom={-shadowH}
+        shadow-camera-near={0.5}
+        shadow-camera-far={25}
+      />
+      <primitive object={target} />
+      <mesh
+        position={[poolCenter.x, 0.012, poolCenter.z]}
+        rotation={[-Math.PI / 2, 0, 0]}
+        renderOrder={1}
+      >
+        <circleGeometry args={[poolRadius, 40]} />
+        <meshBasicMaterial
+          color={color}
+          map={getPoolTexture()}
+          transparent
+          opacity={0.32}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+        />
+      </mesh>
+    </>
+  );
+}
+
+/* ── Camera-relative wall fading (IKEA-style cutaway) ────── */
+const WALL_FADE_MIN = 0.08;
+/** Hysteresis deadzone around the dot-product threshold to avoid jitter. */
+const WALL_FADE_DEADZONE = 0.04;
+/** Lerp rate constant — settles in roughly 250ms. */
+const WALL_FADE_RATE = 14;
+
+interface WallFadeEntry {
+  value: number;
+  target: number;
+}
+type WallFadeMap = Record<string, WallFadeEntry>;
+
+/* ── Baked plaster walls (reference-render look) ──────────
+ * The customer's approved AI render has warm, uniform walls with soft light
+ * scallops under each downlight — real-time PBR walls read gray/cold and the
+ * old overlay planes produced a two-tone (white + yellow) mess. Like the
+ * approved V2 empty-room preview, we BAKE the lighting into an UNLIT canvas
+ * texture per wall piece: one warm tone everywhere, scallops inside the
+ * texture itself, GI-style corner shading, plaster grain. */
+const WALL_BAKE_PX_PER_M = 150;
+
+function useBakedWallTexture(
+  seg: WallSegment,
+  piece: WallPiece,
+  ceilingM: number,
+  scallops: number[],
+  lightsOn: boolean
+) {
+  const plaster = useTexture("/textures/v2/plaster_detail.webp");
+  const key = `${piece.u0.toFixed(3)},${piece.u1.toFixed(3)},${piece.h0.toFixed(3)},${piece.h1.toFixed(3)},${ceilingM},${scallops.map((s) => s.toFixed(2)).join("|")},${lightsOn}`;
+  const tex = useMemo(() => {
+    const wM = piece.u1 - piece.u0;
+    const hM = piece.h1 - piece.h0;
+    const W = Math.min(2048, Math.max(64, Math.round(wM * WALL_BAKE_PX_PER_M)));
+    const H = Math.min(1024, Math.max(64, Math.round(hM * WALL_BAKE_PX_PER_M)));
+    const canvas = document.createElement("canvas");
+    canvas.width = W;
+    canvas.height = H;
+    const ctx = canvas.getContext("2d")!;
+    // Segment-space mapping: xSeg (m from wall start) → px, ySeg (m below
+    // ceiling) → px. This piece covers u0..u1 × (ceilingM-h1)..(ceilingM-h0).
+    const pxPerMx = W / wM;
+    const pxPerMy = H / hM;
+    const toX = (uM: number) => (uM - piece.u0) * pxPerMx;
+    const toY = (yDownM: number) => (yDownM - (ceilingM - piece.h1)) * pxPerMy;
+
+    // 1) Warm base gradient (deliberately below white so tonemapping cannot
+    // clip it — scallops must stay clearly brighter than the base).
+    const base = ctx.createLinearGradient(0, toY(0), 0, toY(ceilingM));
+    base.addColorStop(0, "#e1d6c2");
+    base.addColorStop(0.55, "#d9cdb7");
+    base.addColorStop(1, "#d2c5ad");
+    ctx.fillStyle = base;
+    ctx.fillRect(0, 0, W, H);
+
+    // 1b) Real plaster grain (Poly Haven, CC0), subtle overlay.
+    const img = plaster.image as CanvasImageSource | undefined;
+    if (img) {
+      const pat = ctx.createPattern(img, "repeat");
+      if (pat) {
+        ctx.save();
+        ctx.globalAlpha = 0.16;
+        ctx.globalCompositeOperation = "overlay";
+        ctx.fillStyle = pat;
+        ctx.fillRect(0, 0, W, H);
+        ctx.restore();
+      }
+    }
+
+    if (lightsOn) {
+      // 2) Broad soft spill across the upper wall from the downlight row.
+      const spillEnd = toY(ceilingM * 0.55);
+      const spill = ctx.createLinearGradient(0, toY(0), 0, spillEnd);
+      spill.addColorStop(0, "rgba(255,246,228,0.26)");
+      spill.addColorStop(1, "rgba(255,246,228,0)");
+      ctx.fillStyle = spill;
+      ctx.fillRect(0, 0, W, Math.max(spillEnd, 0));
+
+      // 3) Ceiling-hugging warm scallops above each downlight of this wall.
+      for (const along of scallops) {
+        const cxPx = toX(along);
+        if (cxPx < -0.8 * pxPerMx || cxPx > W + 0.8 * pxPerMx) continue;
+        const rx = 0.62 * pxPerMx;
+        const ry = 1.05 * pxPerMy;
+        ctx.save();
+        ctx.translate(cxPx, toY(0));
+        ctx.scale(1, ry / rx);
+        const g = ctx.createRadialGradient(0, 0, 0, 0, 0, rx);
+        g.addColorStop(0, "rgba(255,243,219,0.85)");
+        g.addColorStop(0.45, "rgba(255,244,224,0.42)");
+        g.addColorStop(1, "rgba(255,244,224,0)");
+        ctx.fillStyle = g;
+        ctx.fillRect(-rx, 0, rx * 2, rx * 1.15);
+        ctx.restore();
+      }
+    }
+
+    // 4) GI-style corner shading at both SEGMENT ends (not piece ends).
+    const cwM = 0.6;
+    const leftEnd = toX(cwM);
+    if (leftEnd > 0) {
+      const gL = ctx.createLinearGradient(toX(0), 0, leftEnd, 0);
+      gL.addColorStop(0, "rgba(78,68,54,0.20)");
+      gL.addColorStop(1, "rgba(78,68,54,0)");
+      ctx.fillStyle = gL;
+      ctx.fillRect(Math.max(toX(0), 0), 0, Math.min(leftEnd, W), H);
+    }
+    const segLen = seg.length * CM;
+    const rightStart = toX(segLen - cwM);
+    if (rightStart < W) {
+      const gR = ctx.createLinearGradient(toX(segLen), 0, rightStart, 0);
+      gR.addColorStop(0, "rgba(78,68,54,0.20)");
+      gR.addColorStop(1, "rgba(78,68,54,0)");
+      ctx.fillStyle = gR;
+      ctx.fillRect(Math.max(rightStart, 0), 0, W - Math.max(rightStart, 0), H);
+    }
+
+    // 5) Thin contact shadow at the ceiling line + near the skirting.
+    const topEnd = toY(0.09);
+    if (topEnd > 0) {
+      const gT = ctx.createLinearGradient(0, toY(0), 0, topEnd);
+      gT.addColorStop(0, "rgba(70,62,50,0.16)");
+      gT.addColorStop(1, "rgba(70,62,50,0)");
+      ctx.fillStyle = gT;
+      ctx.fillRect(0, Math.max(toY(0), 0), W, Math.min(topEnd, H));
+    }
+    const botStart = toY(ceilingM - 0.15);
+    if (botStart < H) {
+      const gB = ctx.createLinearGradient(0, toY(ceilingM), 0, botStart);
+      gB.addColorStop(0, "rgba(70,62,50,0.10)");
+      gB.addColorStop(1, "rgba(70,62,50,0)");
+      ctx.fillStyle = gB;
+      ctx.fillRect(0, Math.max(botStart, 0), W, H - Math.max(botStart, 0));
+    }
+
+    const t = new THREE.CanvasTexture(canvas);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.anisotropy = 8;
+    return t;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, plaster]);
+  useEffect(() => () => tex.dispose(), [tex]);
+  return tex;
+}
+
+function BakedWallMaterial({
+  seg,
+  piece,
+  ceilingM,
+  scallops,
+}: {
+  seg: WallSegment;
+  piece: WallPiece;
+  ceilingM: number;
+  scallops: number[];
+}) {
+  const lightsOn = useKitchenToolStore((s) => s.lightsOn ?? false);
+  const tex = useBakedWallTexture(seg, piece, ceilingM, scallops, lightsOn);
+  // Unlit: every wall reads the same warm tone regardless of orientation.
+  return <meshBasicMaterial map={tex} toneMapped />;
+}
+
+function WallPieceMesh({
+  seg,
+  piece,
+  option,
+  fadeMap,
+  ceilingM,
+  scallops,
+}: {
+  seg: WallSegment;
+  piece: WallPiece;
+  option: MaterialOption;
+  fadeMap: React.MutableRefObject<WallFadeMap>;
+  ceilingM: number;
+  scallops: number[];
+}) {
+  const meshRef = useRef<THREE.Mesh>(null);
+  const { origin, dir, out, theta } = useMemo(() => segVectors(seg), [seg]);
+  const w = piece.u1 - piece.u0;
+  const h = piece.h1 - piece.h0;
+
+  const position = useMemo(() => {
+    const p = origin.clone();
+    p.addScaledVector(dir, (piece.u0 + piece.u1) / 2);
+    p.addScaledVector(out, WALL_T / 2);
+    p.y = (piece.h0 + piece.h1) / 2;
+    return p;
+  }, [origin, dir, out, piece]);
+
+  // Drive material opacity imperatively each frame — no React re-render.
+  useFrame(() => {
+    const mesh = meshRef.current;
+    if (!mesh) return;
+    const entry = fadeMap.current[seg.id];
+    const opacity = entry ? entry.value : 1;
+    const mat = mesh.material as THREE.MeshStandardMaterial;
+    if (!mat) return;
+    const solid = opacity > 0.995;
+    if (mat.transparent !== !solid) {
+      // Toggling `transparent` swaps the compiled shader variant (OPAQUE
+      // define), so the material must be recompiled or opacity is ignored.
+      mat.transparent = !solid;
+      mat.depthWrite = solid;
+      mat.needsUpdate = true;
+    }
+    mat.opacity = opacity;
+    mesh.castShadow = opacity > 0.5;
+  });
+
+  return (
+    <mesh ref={meshRef} position={position} rotation={[0, theta, 0]} castShadow receiveShadow>
+      <boxGeometry args={[w, h, WALL_T]} />
+      {option.maps ? (
+        <SurfaceMaterial key={option.id} opt={option} repeatX={w / (option.tileSizeM ?? 1)} repeatY={h / (option.tileSizeM ?? 1)} />
+      ) : (
+        <BakedWallMaterial seg={seg} piece={piece} ceilingM={ceilingM} scallops={scallops} />
+      )}
+    </mesh>
+  );
+}
+
+function Walls({
+  segments,
+  ceilingM,
+  openings,
+  option,
+}: {
+  segments: WallSegment[];
+  ceilingM: number;
+  openings: KitchenOpening[];
+  option: MaterialOption;
+}) {
+  const fadeMap = useRef<WallFadeMap>({});
+
+  // Downlight positions along each wall drive the baked wall scallops so
+  // they always line up with the physical ceiling fixtures.
+  const scallopsBySeg = useMemo(() => {
+    const map: Record<string, number[]> = {};
+    for (const l of downlightLayout(segments)) {
+      (map[l.segId] ??= []).push(l.along);
+    }
+    return map;
+  }, [segments]);
+
+  // Per-segment fade: if the camera sits on the outward side of a wall
+  // (it would occlude the interior), fade that whole segment down.
+  useFrame((state, delta) => {
+    const cam = state.camera.position;
+    const alpha = 1 - Math.exp(-WALL_FADE_RATE * Math.min(delta, 0.1));
+    for (const seg of segments) {
+      const midX = ((seg.x1 + seg.x2) / 2) * CM;
+      const midZ = ((seg.y1 + seg.y2) / 2) * CM;
+      let vx = cam.x - midX;
+      let vz = cam.z - midZ;
+      const len = Math.hypot(vx, vz) || 1;
+      vx /= len;
+      vz /= len;
+      const dot = vx * seg.nx + vz * seg.ny;
+      let entry = fadeMap.current[seg.id];
+      if (!entry) {
+        entry = { value: 1, target: 1 };
+        fadeMap.current[seg.id] = entry;
+      }
+      // Hysteresis: only flip the target outside the deadzone.
+      if (dot > WALL_FADE_DEADZONE) entry.target = WALL_FADE_MIN;
+      else if (dot < -WALL_FADE_DEADZONE) entry.target = 1;
+      entry.value += (entry.target - entry.value) * alpha;
+      if (Math.abs(entry.target - entry.value) < 0.002) entry.value = entry.target;
+    }
+  });
+
+  return (
+    <>
+      {segments.map((seg) => (
+        <Baseboard
+          key={`bb-${seg.id}`}
+          seg={seg}
+          segments={segments}
+          openings={openings.filter((o) => o.wallId === seg.id)}
+        />
+      ))}
+      {segments.map((seg) => {
+        const pieces = wallPieces(
+          seg.length * CM,
+          ceilingM,
+          openings.filter((o) => o.wallId === seg.id)
+        );
+        return pieces.map((p, i) => (
+          <WallPieceMesh
+            key={`${seg.id}-${i}`}
+            seg={seg}
+            piece={p}
+            option={option}
+            fadeMap={fadeMap}
+            ceilingM={ceilingM}
+            scallops={scallopsBySeg[seg.id] ?? []}
+          />
+        ));
+      })}
+      {openings.map((o) => {
+        const seg = segments.find((s) => s.id === o.wallId);
+        if (!seg) return null;
+        return o.type === "window" ? (
+          <WindowAssembly key={`win-${o.id}`} seg={seg} opening={o} ceilingM={ceilingM} fadeMap={fadeMap} />
+        ) : (
+          <RoomDoor key={`door-${o.id}`} seg={seg} opening={o} ceilingM={ceilingM} fadeMap={fadeMap} />
+        );
+      })}
+      <WindowBackdrops segments={segments} openings={openings} ceilingM={ceilingM} />
+    </>
+  );
+}
+
+/* ── Architectural openings: real windows & room doors ───── */
+
+/** Horizontal placement of an opening along its wall (m), clamped like wallPieces. */
+function openingSpan(seg: WallSegment, o: KitchenOpening) {
+  const wallLenM = seg.length * CM;
+  const w = Math.min(o.width * CM, wallLenM);
+  const u0 = Math.min(Math.max(o.distanceFromWallStart * CM, 0), Math.max(wallLenM - w, 0));
+  return { u0, u1: u0 + w, w };
+}
+
+/** Hide an opening assembly together with its faded wall so the camera can
+ *  still look into the room from outside. */
+function useOpeningFade(fadeMap: React.MutableRefObject<WallFadeMap>, segId: string) {
+  const groupRef = useRef<THREE.Group>(null);
+  useFrame(() => {
+    const g = groupRef.current;
+    if (!g) return;
+    const entry = fadeMap.current[segId];
+    g.visible = !entry || entry.value > 0.55;
+  });
+  return groupRef;
+}
+
+const FRAME_T = 0.06; // aluminum window frame profile width
+const FRAME_D = 0.05; // frame depth within the wall
+
+/** Real window: reveal lining + marble sill + black aluminum frame with a
+ *  center mullion + glass panes (reflection via scene environment). */
+function WindowAssembly({
+  seg,
+  opening,
+  ceilingM,
+  fadeMap,
+}: {
+  seg: WallSegment;
+  opening: KitchenOpening;
+  ceilingM: number;
+  fadeMap: React.MutableRefObject<WallFadeMap>;
+}) {
+  const groupRef = useOpeningFade(fadeMap, seg.id);
+  const { origin, dir, out, theta } = useMemo(() => segVectors(seg), [seg]);
+  const { u0, w } = useMemo(() => openingSpan(seg, opening), [seg, opening]);
+  const sill = Math.min((opening.sillHeight ?? WINDOW_SILL_CM) * CM, ceilingM - 0.2);
+  const top = Math.min(sill + (opening.height ?? WINDOW_HEIGHT_CM) * CM, ceilingM - 0.1);
+  const h = Math.max(top - sill, 0.2);
+
+  // Local frame: x along wall (centered on the opening), y up (centered
+  // vertically), z across the wall thickness (0 = wall center plane).
+  // INVARIANT: local +z points INWARD (toward the room, = -out); segVectors'
+  // theta maps local +z to the inward normal for every wall direction.
+  const center = useMemo(() => {
+    const p = origin.clone();
+    p.addScaledVector(dir, u0 + w / 2);
+    p.addScaledVector(out, WALL_T / 2);
+    p.y = (sill + top) / 2;
+    return p;
+  }, [origin, dir, out, u0, w, sill, top]);
+
+  const frameMat = useMemo(
+    () => new THREE.MeshStandardMaterial({ color: "#26262a", roughness: 0.4, metalness: 0.55 }),
+    []
+  );
+  const revealMat = useMemo(
+    () => new THREE.MeshStandardMaterial({ color: "#e8e2d6", roughness: 0.85 }),
+    []
+  );
+  const glassMat = useMemo(
+    () =>
+      new THREE.MeshPhysicalMaterial({
+        color: "#dce8ea",
+        roughness: 0.04,
+        metalness: 0,
+        transparent: true,
+        opacity: 0.14,
+        envMapIntensity: 1.3,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      }),
+    []
+  );
+  useEffect(() => {
+    return () => {
+      frameMat.dispose();
+      revealMat.dispose();
+      glassMat.dispose();
+    };
+  }, [frameMat, revealMat, glassMat]);
+
+  const twoPanes = w > 1.0;
+  const innerW = w - 2 * FRAME_T;
+  const innerH = h - 2 * FRAME_T;
+  const REVEAL_T = 0.012;
+
+  return (
+    <group ref={groupRef} position={center} rotation={[0, theta, 0]}>
+      {/* reveal lining: head + jambs across the wall thickness */}
+      <mesh position={[0, h / 2 + REVEAL_T / 2, 0]} material={revealMat}>
+        <boxGeometry args={[w + 2 * REVEAL_T, REVEAL_T, WALL_T]} />
+      </mesh>
+      <mesh position={[-w / 2 - REVEAL_T / 2, 0, 0]} material={revealMat}>
+        <boxGeometry args={[REVEAL_T, h + 2 * REVEAL_T, WALL_T]} />
+      </mesh>
+      <mesh position={[w / 2 + REVEAL_T / 2, 0, 0]} material={revealMat}>
+        <boxGeometry args={[REVEAL_T, h + 2 * REVEAL_T, WALL_T]} />
+      </mesh>
+      {/* marble sill: fills the bottom and projects slightly into the room
+          (local +z = inward) */}
+      <mesh position={[0, -h / 2 - 0.015, 0.02]} receiveShadow>
+        <boxGeometry args={[w + 0.08, 0.03, WALL_T + 0.06]} />
+        <meshStandardMaterial color="#efe9dd" roughness={0.35} />
+      </mesh>
+      {/* aluminum frame perimeter */}
+      <mesh position={[0, h / 2 - FRAME_T / 2, 0]} material={frameMat} castShadow>
+        <boxGeometry args={[w, FRAME_T, FRAME_D]} />
+      </mesh>
+      <mesh position={[0, -h / 2 + FRAME_T / 2, 0]} material={frameMat} castShadow>
+        <boxGeometry args={[w, FRAME_T, FRAME_D]} />
+      </mesh>
+      <mesh position={[-w / 2 + FRAME_T / 2, 0, 0]} material={frameMat} castShadow>
+        <boxGeometry args={[FRAME_T, innerH, FRAME_D]} />
+      </mesh>
+      <mesh position={[w / 2 - FRAME_T / 2, 0, 0]} material={frameMat} castShadow>
+        <boxGeometry args={[FRAME_T, innerH, FRAME_D]} />
+      </mesh>
+      {/* center mullion for wider windows (matches the sliding-sash reference) */}
+      {twoPanes && (
+        <mesh position={[0, 0, 0]} material={frameMat} castShadow>
+          <boxGeometry args={[0.045, innerH, FRAME_D]} />
+        </mesh>
+      )}
+      {/* glass pane(s) */}
+      <mesh position={[0, 0, 0.004]} material={glassMat} renderOrder={2}>
+        <planeGeometry args={[Math.max(innerW, 0.1), Math.max(innerH, 0.1)]} />
+      </mesh>
+    </group>
+  );
+}
+
+/** One exterior backdrop plate per wall that has at least one window —
+ *  a large daylight garden image standing outside, visible through the
+ *  glass with believable depth (classic archviz backdrop technique). */
+function WindowBackdrops({
+  segments,
+  openings,
+  ceilingM,
+}: {
+  segments: WallSegment[];
+  openings: KitchenOpening[];
+  ceilingM: number;
+}) {
+  const tex = useTexture("/textures/exterior-garden.jpg");
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const walls = useMemo(() => {
+    const ids = new Set(
+      openings.filter((o) => o.type === "window").map((o) => o.wallId)
+    );
+    return segments.filter((s) => ids.has(s.id));
+  }, [segments, openings]);
+  return (
+    <>
+      {walls.map((seg) => {
+        const { origin, dir, out, theta, lengthM } = segVectors(seg);
+        const W = Math.max(lengthM + 8, 12);
+        const H = Math.max(ceilingM + 3.5, 6);
+        const p = origin
+          .clone()
+          .addScaledVector(dir, lengthM / 2)
+          .addScaledVector(out, 3.2);
+        p.y = H / 2 - 0.8; // horizon slightly below sill lines
+        return (
+          <mesh key={`bk-${seg.id}`} position={p} rotation={[0, theta, 0]}>
+            {/* rotation theta = local +z faces inward, toward the window */}
+            <planeGeometry args={[W, H]} />
+            <meshBasicMaterial map={tex} toneMapped={false} />
+          </mesh>
+        );
+      })}
+    </>
+  );
+}
+
+/** Room door: timber frame + slightly-ajar leaf + lever handle, driven by
+ *  the stored swing (in/out) and hinge (start/end) data. */
+function RoomDoor({
+  seg,
+  opening,
+  ceilingM,
+  fadeMap,
+}: {
+  seg: WallSegment;
+  opening: KitchenOpening;
+  ceilingM: number;
+  fadeMap: React.MutableRefObject<WallFadeMap>;
+}) {
+  const groupRef = useOpeningFade(fadeMap, seg.id);
+  const { origin, dir, out, theta } = useMemo(() => segVectors(seg), [seg]);
+  const { u0, w } = useMemo(() => openingSpan(seg, opening), [seg, opening]);
+  const doorH = Math.min(DOOR_HEIGHT_CM * CM, ceilingM - 0.1);
+  const hinge = opening.hinge ?? "start";
+  const swing = opening.swing ?? "in";
+
+  const base = useMemo(() => {
+    const p = origin.clone();
+    p.addScaledVector(dir, u0 + w / 2);
+    p.addScaledVector(out, WALL_T / 2);
+    p.y = 0;
+    return p;
+  }, [origin, dir, out, u0, w]);
+
+  const woodMat = useMemo(
+    () => new THREE.MeshStandardMaterial({ color: "#6d4e35", roughness: 0.55 }),
+    []
+  );
+  const leafMat = useMemo(
+    () => new THREE.MeshStandardMaterial({ color: "#7a593c", roughness: 0.5 }),
+    []
+  );
+  useEffect(() => {
+    return () => {
+      woodMat.dispose();
+      leafMat.dispose();
+    };
+  }, [woodMat, leafMat]);
+
+  const JAMB_T = 0.05;
+  const LEAF_T = 0.045;
+  const leafW = Math.max(w - 2 * JAMB_T, 0.4);
+  const leafH = doorH - JAMB_T - 0.01;
+  // Local x of the hinge edge; the leaf pivots around it, slightly ajar.
+  const hingeX = hinge === "start" ? -leafW / 2 : leafW / 2;
+  // Local +z points INWARD (toward the room). Rotating a point (d,0,0) by a
+  // positive Y angle moves it toward -z, so "in" needs a NEGATIVE angle when
+  // hinged at start (leaf extends toward +x) and positive when hinged at end.
+  const ajar = (14 * Math.PI) / 180;
+  const openAngle = (hinge === "start" ? -1 : 1) * (swing === "in" ? ajar : -ajar);
+
+  return (
+    <group ref={groupRef} position={base} rotation={[0, theta, 0]}>
+      {/* timber frame: head + jambs across the wall thickness */}
+      <mesh position={[0, doorH - JAMB_T / 2, 0]} material={woodMat} castShadow>
+        <boxGeometry args={[w, JAMB_T, WALL_T + 0.02]} />
+      </mesh>
+      <mesh position={[-w / 2 + JAMB_T / 2, doorH / 2, 0]} material={woodMat} castShadow>
+        <boxGeometry args={[JAMB_T, doorH, WALL_T + 0.02]} />
+      </mesh>
+      <mesh position={[w / 2 - JAMB_T / 2, doorH / 2, 0]} material={woodMat} castShadow>
+        <boxGeometry args={[JAMB_T, doorH, WALL_T + 0.02]} />
+      </mesh>
+      {/* leaf pivoting on the hinge edge */}
+      <group position={[hingeX, 0, 0]} rotation={[0, openAngle, 0]}>
+        <group position={[-hingeX, 0, 0]}>
+          <mesh position={[0, leafH / 2, 0]} material={leafMat} castShadow receiveShadow>
+            <boxGeometry args={[leafW, leafH, LEAF_T]} />
+          </mesh>
+          {/* lever handles on both faces, lock side */}
+          {[LEAF_T / 2 + 0.015, -LEAF_T / 2 - 0.015].map((z, i) => (
+            <group
+              key={i}
+              position={[hinge === "start" ? leafW / 2 - 0.07 : -leafW / 2 + 0.07, 1.02, z]}
+            >
+              <mesh rotation={[Math.PI / 2, 0, 0]}>
+                <cylinderGeometry args={[0.012, 0.012, 0.03, 16]} />
+                <meshStandardMaterial color="#2e2e30" roughness={0.35} metalness={0.7} />
+              </mesh>
+              <mesh position={[hinge === "start" ? -0.055 : 0.055, 0, 0]}>
+                <boxGeometry args={[0.11, 0.016, 0.016]} />
+                <meshStandardMaterial color="#2e2e30" roughness={0.35} metalness={0.7} />
+              </mesh>
+            </group>
+          ))}
+        </group>
+      </group>
+    </group>
+  );
+}
+
+/** Skirting integrated flush with the wall plane (per approved reference):
+ *  a thin board sitting in the bottom of the wall face with only a hairline
+ *  projection, finished in the floor material so it reads as one system. */
+const BASEBOARD_H = 0.1;
+const BASEBOARD_T = 0.006;
+
+/** Does this end of the segment meet another wall (shared endpoint)? */
+function segEndShared(seg: WallSegment, segments: WallSegment[], end: "start" | "end") {
+  const px = end === "start" ? seg.x1 : seg.x2;
+  const py = end === "start" ? seg.y1 : seg.y2;
+  return segments.some(
+    (s) =>
+      s.id !== seg.id &&
+      ((Math.hypot(s.x1 - px, s.y1 - py) < 1) || (Math.hypot(s.x2 - px, s.y2 - py) < 1))
+  );
+}
+
+function Baseboard({
+  seg,
+  segments,
+  openings,
+}: {
+  seg: WallSegment;
+  segments: WallSegment[];
+  openings: KitchenOpening[];
+}) {
+  const { origin, dir, out, theta, lengthM } = useMemo(() => segVectors(seg), [seg]);
+  const floorMaterialId = useKitchenToolStore((s) => s.floorMaterialId);
+  const floorOpt = useMemo(() => findFloorOption(floorMaterialId), [floorMaterialId]);
+  // Extend into the corner so adjacent skirtings meet in a clean closed join.
+  const startShared = useMemo(() => segEndShared(seg, segments, "start"), [seg, segments]);
+  const endShared = useMemo(() => segEndShared(seg, segments, "end"), [seg, segments]);
+
+  // Split into runs broken only by DOOR openings (doors reach the floor);
+  // windows keep the baseboard continuous underneath.
+  const runs = useMemo(() => {
+    const doors = openings
+      .filter((o) => o.type === "door")
+      .map((o) => {
+        const w = o.width * CM;
+        const start = Math.min(
+          Math.max(o.distanceFromWallStart * CM, 0),
+          Math.max(lengthM - w, 0)
+        );
+        return { startM: start, endM: Math.min(start + w, lengthM) };
+      })
+      .filter((d) => d.endM - d.startM > 0.01)
+      .sort((a, b) => a.startM - b.startM);
+
+    const out: Array<{ u0: number; u1: number }> = [];
+    let cursor = 0;
+    for (const d of doors) {
+      const s = Math.max(d.startM, cursor);
+      const e = Math.max(d.endM, s);
+      if (s - cursor > 0.005) out.push({ u0: cursor, u1: s });
+      cursor = e;
+    }
+    if (lengthM - cursor > 0.005) out.push({ u0: cursor, u1: lengthM });
+    return out;
+  }, [openings, lengthM]);
+
+  return (
+    <>
+      {runs.map((run, i) => {
+        // Close the miter at wall junctions by running into the corner.
+        const u0 = run.u0 - (run.u0 < 0.01 && startShared ? BASEBOARD_T : 0);
+        const u1 = run.u1 + (run.u1 > lengthM - 0.01 && endShared ? BASEBOARD_T : 0);
+        const len = u1 - u0;
+        const p = origin.clone();
+        p.addScaledVector(dir, (u0 + u1) / 2);
+        // Sits in the wall plane with only a hairline projection — flush look.
+        p.addScaledVector(out, -BASEBOARD_T / 2);
+        p.y = BASEBOARD_H / 2;
+        return (
+          <mesh key={i} position={p} rotation={[0, theta, 0]} castShadow receiveShadow>
+            <boxGeometry args={[len, BASEBOARD_H, BASEBOARD_T]} />
+            {/* Finished in the floor material so skirting + floor read as
+                one system (lit standard material, not baked). */}
+            <SurfaceMaterial
+              key={floorOpt.id}
+              opt={floorOpt}
+              repeatX={len / (floorOpt.tileSizeM ?? 1)}
+              repeatY={BASEBOARD_H / (floorOpt.tileSizeM ?? 1)}
+            />
+          </mesh>
+        );
+      })}
+    </>
+  );
+}
+
+/* ── Floor & ceiling ─────────────────────────────────────── */
+function Floor({
+  bounds,
+  option,
+  onPointerMove,
+  onPointerDown,
+}: {
+  bounds: { minX: number; minY: number; maxX: number; maxY: number };
+  option: MaterialOption;
+  onPointerMove?: (e: ThreeEvent<PointerEvent>) => void;
+  onPointerDown?: (e: ThreeEvent<PointerEvent>) => void;
+}) {
+  const w = (bounds.maxX - bounds.minX) * CM;
+  const d = (bounds.maxY - bounds.minY) * CM;
+  const cx = ((bounds.minX + bounds.maxX) / 2) * CM;
+  const cz = ((bounds.minY + bounds.maxY) / 2) * CM;
+
+  return (
+    <mesh
+      position={[cx, 0, cz]}
+      rotation={[-Math.PI / 2, 0, 0]}
+      receiveShadow
+      onPointerMove={onPointerMove}
+      onPointerDown={onPointerDown}
+    >
+      <planeGeometry args={[w, d]} />
+      <SurfaceMaterial
+        key={option.id}
+        opt={option}
+        repeatX={w / (option.tileSizeM ?? 1)}
+        repeatY={d / (option.tileSizeM ?? 1)}
+      />
+    </mesh>
+  );
+}
+
+/** Flat gypsum ceiling (customer-approved reference look) — the old two-tier
+ *  cove/cornice was removed; COVE_DROP stays exported (now 0) because cabinet
+ *  mount-height limits in studio.tsx reference it. */
+export const COVE_DROP = 0;
+/** Gypsum slab thickness — deep enough to fully enclose the recessed
+ *  downlight cavities (0.055 m) so nothing protrudes above the ceiling. */
+const CEILING_SLAB_T = 0.08;
+
+/* Artificial lighting colors */
+const WARM_LIGHT = "#ffcc80";
+const COOL_LIGHT = "#eaf2ff";
+function useLighting() {
+  const lightsOn = useKitchenToolStore((s) => s.lightsOn ?? false);
+  const lightTemp = useKitchenToolStore((s) => s.lightTemp ?? "warm");
+  return { lightsOn, lightColor: lightTemp === "cool" ? COOL_LIGHT : WARM_LIGHT };
+}
+
+function Ceiling({
+  bounds,
+  ceilingM,
+  segments,
+}: {
+  bounds: { minX: number; minY: number; maxX: number; maxY: number };
+  ceilingM: number;
+  segments: WallSegment[];
+}) {
+  const ceilingMaterialId = useKitchenToolStore((s) => s.ceilingMaterialId);
+  const showSoffit = useKitchenToolStore((s) => s.showSoffit ?? true);
+  const plaster = useMemo(
+    () => findCeilingOption(ceilingMaterialId),
+    [ceilingMaterialId]
+  );
+  const lights = useMemo(() => downlightLayout(segments), [segments]);
+
+  // Flat gypsum ceiling with REAL circular cutouts at each downlight
+  // (shapeGeometry holes) so fixtures are genuinely recessed.
+  const shape = useMemo(() => {
+    const s = new THREE.Shape();
+    s.moveTo(bounds.minX * CM, bounds.minY * CM);
+    s.lineTo(bounds.maxX * CM, bounds.minY * CM);
+    s.lineTo(bounds.maxX * CM, bounds.maxY * CM);
+    s.lineTo(bounds.minX * CM, bounds.maxY * CM);
+    s.closePath();
+    for (const l of lights) {
+      const hole = new THREE.Path();
+      hole.absarc(l.x, l.z, DOWNLIGHT_RADIUS, 0, Math.PI * 2, true);
+      s.holes.push(hole);
+    }
+    return s;
+  }, [bounds, lights]);
+
+  return (
+    <>
+      {/* Real gypsum slab (8 cm thick, extruded upward) so the recessed
+          fixtures are fully enclosed inside the ceiling — nothing pokes out
+          when viewed from outside/above. Local +Z extrusion maps to -Y after
+          the PI/2 X-rotation, so position at ceilingM + thickness. */}
+      <mesh
+        position={[0, ceilingM + CEILING_SLAB_T, 0]}
+        rotation={[Math.PI / 2, 0, 0]}
+        receiveShadow
+      >
+        <extrudeGeometry
+          args={[shape, { depth: CEILING_SLAB_T, bevelEnabled: false, curveSegments: 24 }]}
+        />
+        {/* Unlit warm white — matches the baked walls so the ceiling never
+            reads gray/blue under the live studio lighting. */}
+        <meshBasicMaterial color="#f4efe6" />
+      </mesh>
+      {/* Gypsum cap bands over each wall footprint: the interior slab only
+          spans the room's inner rectangle, which used to leave the slab's raw
+          8cm edge exposed above wall tops and open corner squares in L/U
+          rooms. One band per wall (extended into shared corners) makes the
+          ceiling meet every wall cleanly with no visible raw edge. */}
+      {segments.map((seg, i) => {
+        const { origin, dir, out, theta, lengthM } = segVectors(seg);
+        const startShared = segEndShared(seg, segments, "start");
+        const endShared = segEndShared(seg, segments, "end");
+        const u0 = startShared ? -WALL_T : 0;
+        const u1 = lengthM + (endShared ? WALL_T : 0);
+        const p = origin
+          .clone()
+          .addScaledVector(dir, (u0 + u1) / 2)
+          .addScaledVector(out, WALL_T / 2);
+        // Tiny per-wall height offset so overlapping corner extensions never
+        // z-fight on their coplanar top faces (sub-mm, invisible).
+        const h = CEILING_SLAB_T - i * 0.0004;
+        p.y = ceilingM + h / 2;
+        return (
+          <mesh key={`cap-${seg.id}`} position={p} rotation={[0, theta, 0]} receiveShadow>
+            <boxGeometry args={[u1 - u0, h, WALL_T]} />
+            <meshBasicMaterial color="#f4efe6" />
+          </mesh>
+        );
+      })}
+      {showSoffit &&
+        segments.map((seg) => (
+          <WallSoffit
+            key={`sf-${seg.id}`}
+            seg={seg}
+            segments={segments}
+            ceilingM={ceilingM}
+            opt={plaster}
+          />
+        ))}
+    </>
+  );
+}
+
+/** Gypsum soffit boxes: one per upper cabinet, dropping from the perimeter
+ *  cove's underside down to just above that cabinet (Gulf-kitchen style).
+ *  Cabinets at different heights produce a natural stepped look. */
+const SOFFIT_DEPTH = 0.42;
+const SOFFIT_MARGIN = 0.04;
+
+function WallSoffit({
+  seg,
+  segments,
+  ceilingM,
+  opt,
+}: {
+  seg: WallSegment;
+  segments: WallSegment[];
+  ceilingM: number;
+  opt: MaterialOption;
+}) {
+  const placed = useKitchenToolStore((s) => s.placedCabinets ?? []);
+  const placedDecor = useKitchenToolStore((s) => s.placedDecor ?? []);
+
+  const boxes = useMemo(() => {
+    const uppers = placed
+      .map((p) => ({ p, def: findCabinetDef(p.catalogId) }))
+      .filter(
+        (x): x is { p: PlacedCabinetState; def: CabinetDef } =>
+          !!x.def &&
+          x.p.wallId === seg.id &&
+          x.def.level === "upper" &&
+          !x.def.corner
+      );
+    const soffitDecor = placedDecor
+      .map((p) => ({ p, item: findDecorItem(p.decorId) }))
+      .filter(
+        (x): x is { p: PlacedDecorState; item: DecorItem } =>
+          !!x.item &&
+          !!x.item.soffit &&
+          x.item.placement === "wall" &&
+          x.p.wallId === seg.id
+      );
+    if (uppers.length === 0 && soffitDecor.length === 0) return [];
+
+    const { origin, dir, out, theta, lengthM } = segVectors(seg);
+    const inward = out.clone().negate();
+    const topY = ceilingM; // flat ceiling — soffits drop from the gypsum plane
+
+    const result: {
+      id: string;
+      pos: THREE.Vector3;
+      theta: number;
+      len: number;
+      h: number;
+    }[] = [];
+    const pushBox = (
+      id: string,
+      offset: number,
+      width: number,
+      bottomY: number
+    ) => {
+      if (topY - bottomY <= 0.02) return;
+      const uMin = Math.max(offset - SOFFIT_MARGIN, 0);
+      const uMax = Math.min(offset + width + SOFFIT_MARGIN, lengthM);
+      if (uMax - uMin <= 0.01) return;
+      const pos = origin
+        .clone()
+        .addScaledVector(dir, (uMin + uMax) / 2)
+        .addScaledVector(inward, SOFFIT_DEPTH / 2);
+      pos.y = (bottomY + topY) / 2;
+      result.push({ id, pos, theta, len: uMax - uMin, h: topY - bottomY });
+    };
+    for (const { p, def } of uppers) {
+      pushBox(p.id, p.offset, def.width, (p.mountY ?? def.mountY) + def.height + 0.03);
+    }
+    for (const { p, item } of soffitDecor) {
+      pushBox(
+        p.id,
+        p.offset ?? 0,
+        item.width,
+        (p.mountY ?? item.defaultMountY ?? 0) + item.height + 0.03
+      );
+    }
+    return result;
+  }, [placed, placedDecor, seg, ceilingM]);
+
+  if (boxes.length === 0) return null;
+
+  return (
+    <>
+      {boxes.map((b) => (
+        <mesh
+          key={b.id}
+          position={b.pos}
+          rotation={[0, b.theta, 0]}
+          castShadow
+          receiveShadow
+        >
+          <boxGeometry args={[b.len, b.h, SOFFIT_DEPTH]} />
+          <SurfaceMaterial key={opt.id} opt={opt} repeatX={b.len} repeatY={b.h} />
+        </mesh>
+      ))}
+    </>
+  );
+}
+
+/* ── Architectural recessed downlights (reference-image look) ──
+ * Perimeter rows of TRULY recessed fixtures: the ceiling has real circular
+ * cutouts (see Ceiling), the cavity sits above the gypsum plane with a flush
+ * trim ring and a glowing diffuser lens deep inside. Light scallops on the
+ * walls below each fixture are BAKED overlays (like professional renders) —
+ * real per-fixture lights would tank mobile performance and look harsher. */
+const DOWNLIGHT_RADIUS = 0.045; // 90 mm diameter
+const DOWNLIGHT_DEPTH = 0.055; // real 55 mm gypsum recess depth
+const DOWNLIGHT_WALL_OFFSET = 0.6; // fixture row distance from the wall (m)
+const DOWNLIGHT_SPACING = 1.5; // target spacing along a wall (m)
+
+interface DownlightPoint {
+  x: number;
+  z: number;
+  segId: string;
+  /** Distance along the wall from its start (m). */
+  along: number;
+}
+
+/** Perimeter downlight rows parallel to each wall — auto-fit to room size.
+ *  Positions drive the ceiling cutouts, fixtures AND wall scallops. */
+function downlightLayout(segments: WallSegment[]): DownlightPoint[] {
+  const pts: DownlightPoint[] = [];
+  for (const seg of segments) {
+    const { origin, dir, lengthM } = segVectors(seg);
+    const inward = inwardOf(seg);
+    const usable = lengthM - 2 * DOWNLIGHT_WALL_OFFSET;
+    if (usable < 0.4) continue;
+    const n = Math.min(4, Math.max(2, Math.round(usable / DOWNLIGHT_SPACING)));
+    for (let i = 0; i < n; i++) {
+      const along = DOWNLIGHT_WALL_OFFSET + (usable * (i + 0.5)) / n;
+      const p = origin
+        .clone()
+        .addScaledVector(dir, along)
+        .addScaledVector(inward, DOWNLIGHT_WALL_OFFSET);
+      pts.push({ x: p.x, z: p.z, segId: seg.id, along });
+    }
+  }
+  // Deduplicate fixtures that ended up close together at corners.
+  const dedup: DownlightPoint[] = [];
+  for (const p of pts) {
+    if (!dedup.some((q) => Math.hypot(q.x - p.x, q.z - p.z) < 0.7)) dedup.push(p);
+  }
+  return dedup.slice(0, 16);
+}
+
+/** One real recessed fixture matching Teak's installed spots (reference
+ *  photos): flush trim ring (black anodized or gypsum-white), an anti-glare
+ *  cone rising into the recess, and the LED lens deep at the top — visibly
+ *  glowing when lit, a dark glass disc when off. */
+function RecessedDownlight({
+  x,
+  z,
+  ceilingM,
+  lit,
+  lightColor,
+  trim,
+}: {
+  x: number;
+  z: number;
+  ceilingM: number;
+  lit: boolean;
+  lightColor: string;
+  trim: "black" | "white";
+}) {
+  const black = trim === "black";
+  const trimColor = black ? "#17171a" : "#f2f0ec";
+  const coneColor = black ? "#101013" : "#b9b5ae";
+  return (
+    <group position={[x, ceilingM, z]}>
+      {/* thin trim ring flush with the gypsum surface */}
+      <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, -0.001, 0]}>
+        <ringGeometry args={[DOWNLIGHT_RADIUS * 0.86, DOWNLIGHT_RADIUS + 0.011, 40]} />
+        <meshStandardMaterial
+          color={trimColor}
+          roughness={black ? 0.35 : 0.4}
+          metalness={black ? 0.45 : 0.05}
+          side={THREE.DoubleSide}
+        />
+      </mesh>
+      {/* anti-glare cone: narrows from the trim opening up to the lens */}
+      <mesh position={[0, DOWNLIGHT_DEPTH / 2, 0]}>
+        <cylinderGeometry
+          args={[DOWNLIGHT_RADIUS * 0.62, DOWNLIGHT_RADIUS, DOWNLIGHT_DEPTH, 40, 1, true]}
+        />
+        <meshStandardMaterial
+          color={coneColor}
+          roughness={black ? 0.5 : 0.75}
+          metalness={black ? 0.3 : 0}
+          side={THREE.BackSide}
+        />
+      </mesh>
+      {/* LED lens deep at the top of the cone */}
+      <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, DOWNLIGHT_DEPTH * 0.86, 0]}>
+        <circleGeometry args={[DOWNLIGHT_RADIUS * 0.6, 36]} />
+        <meshStandardMaterial
+          color={lit ? "#fffdf6" : black ? "#3a3f45" : "#dedbd4"}
+          emissive={lit ? lightColor : "#000000"}
+          emissiveIntensity={lit ? 3 : 0}
+          toneMapped={!lit}
+          roughness={lit ? 0.5 : 0.25}
+          metalness={lit ? 0 : 0.2}
+          side={THREE.DoubleSide}
+        />
+      </mesh>
+      {/* opaque cap sealing the cavity from above */}
+      <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, DOWNLIGHT_DEPTH + 0.001, 0]}>
+        <circleGeometry args={[DOWNLIGHT_RADIUS + 0.012, 36]} />
+        <meshStandardMaterial color={black ? "#17171a" : "#c9c5be"} roughness={0.8} metalness={0} side={THREE.DoubleSide} />
+      </mesh>
+    </group>
+  );
+}
+
+/** Soft radial glow decal (warm halo on the gypsum around each fixture). */
+let glowTexCache: THREE.Texture | null = null;
+function getGlowTexture(): THREE.Texture {
+  if (glowTexCache) return glowTexCache;
+  const S = 128;
+  const canvas = document.createElement("canvas");
+  canvas.width = S;
+  canvas.height = S;
+  const ctx = canvas.getContext("2d")!;
+  const g = ctx.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
+  g.addColorStop(0, "rgba(255,241,214,0.55)");
+  g.addColorStop(0.4, "rgba(255,244,222,0.22)");
+  g.addColorStop(1, "rgba(255,244,222,0)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, S, S);
+  glowTexCache = new THREE.CanvasTexture(canvas);
+  glowTexCache.colorSpace = THREE.SRGBColorSpace;
+  return glowTexCache;
+}
+
+/** Soft baked warm light pools on the floor under each downlight —
+ *  replaces the harsh real spotlights (which produced strong two-tone
+ *  yellow blobs and heavy reflections). */
+function FloorLightPools({
+  bounds,
+  lights,
+}: {
+  bounds: { minX: number; minY: number; maxX: number; maxY: number };
+  lights: DownlightPoint[];
+}) {
+  const w = Math.max((bounds.maxX - bounds.minX) * CM, 0.1);
+  const d = Math.max((bounds.maxY - bounds.minY) * CM, 0.1);
+  const cx = ((bounds.minX + bounds.maxX) / 2) * CM;
+  const cz = ((bounds.minY + bounds.maxY) / 2) * CM;
+  const key = lights.map((l) => `${l.x.toFixed(2)},${l.z.toFixed(2)}`).join(";");
+  const tex = useMemo(() => {
+    const W = 512;
+    const H = Math.max(64, Math.round((512 * d) / w));
+    const canvas = document.createElement("canvas");
+    canvas.width = W;
+    canvas.height = H;
+    const ctx = canvas.getContext("2d")!;
+    ctx.clearRect(0, 0, W, H);
+    for (const l of lights) {
+      const px = ((l.x - bounds.minX * CM) / w) * W;
+      const py = ((l.z - bounds.minY * CM) / d) * H;
+      const r = (0.85 / w) * W;
+      const g = ctx.createRadialGradient(px, py, 0, px, py, r);
+      g.addColorStop(0, "rgba(255,243,219,0.18)");
+      g.addColorStop(0.6, "rgba(255,243,219,0.07)");
+      g.addColorStop(1, "rgba(255,243,219,0)");
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, H);
+    }
+    const t = new THREE.CanvasTexture(canvas);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, w, d]);
+  useEffect(() => () => tex.dispose(), [tex]);
+  return (
+    <mesh position={[cx, 0.002, cz]} rotation={[-Math.PI / 2, 0, 0]}>
+      <planeGeometry args={[w, d]} />
+      <meshBasicMaterial map={tex} transparent depthWrite={false} />
+    </mesh>
+  );
+}
+
+/** All ceiling fixtures + halos + wall scallops + a few REAL spotlights
+ *  (kept to 4 so floor gloss picks up genuine reflections without
+ *  killing mobile performance). */
+function Downlights({
+  bounds,
+  ceilingM,
+  segments,
+}: {
+  bounds: { minX: number; minY: number; maxX: number; maxY: number };
+  ceilingM: number;
+  segments: WallSegment[];
+}) {
+  // Single warm tone everywhere — the customer explicitly rejected any
+  // white/cool light mixing with the warm scallops. Real spotlights were
+  // removed: ALL light effects are now baked (walls, ceiling halos, floor
+  // pools) so they share the exact same color temperature.
+  const lightsOn = useKitchenToolStore((s) => s.lightsOn ?? false);
+  const spotTrim = useKitchenToolStore((s) => s.spotTrim ?? "black");
+  const lights = useMemo(() => downlightLayout(segments), [segments]);
+  const glow = getGlowTexture();
+
+  return (
+    <>
+      {lights.map((l, i) => (
+        <group key={`dl-${i}`}>
+          <RecessedDownlight
+            x={l.x}
+            z={l.z}
+            ceilingM={ceilingM}
+            lit={lightsOn}
+            lightColor={WARM_LIGHT}
+            trim={spotTrim}
+          />
+          {lightsOn && (
+            /* warm halo on the gypsum around the fixture */
+            <mesh
+              rotation={[Math.PI / 2, 0, 0]}
+              position={[l.x, ceilingM - 0.002, l.z]}
+            >
+              <planeGeometry args={[0.55, 0.55]} />
+              <meshBasicMaterial map={glow} transparent depthWrite={false} side={THREE.DoubleSide} />
+            </mesh>
+          )}
+        </group>
+      ))}
+      {lightsOn && <FloorLightPools bounds={bounds} lights={lights} />}
+    </>
+  );
+}
+
+/* ── Under-cabinet LED lighting ──────────────────────────────
+ * Slim recessed aluminum profile under each upper cabinet's front edge with
+ * an emissive diffuser, plus BAKED light output (same approach as the
+ * downlights): a warm wash on the backsplash falling off downward and a
+ * soft pool on the countertop — no real lights, so performance stays flat. */
+const ledWashCache = new Map<string, THREE.Texture>();
+
+/** Vertical wash: bright at the top (LED), fading to nothing below. */
+function getLedWashTexture(color: string): THREE.Texture {
+  const key = `wash-${color}`;
+  const hit = ledWashCache.get(key);
+  if (hit) return hit;
+  const c = new THREE.Color(color);
+  const rgb = `${Math.round(c.r * 255)},${Math.round(c.g * 255)},${Math.round(c.b * 255)}`;
+  const canvas = document.createElement("canvas");
+  canvas.width = 8;
+  canvas.height = 128;
+  const ctx = canvas.getContext("2d")!;
+  const g = ctx.createLinearGradient(0, 0, 0, 128);
+  g.addColorStop(0, `rgba(${rgb},0.5)`);
+  g.addColorStop(0.35, `rgba(${rgb},0.22)`);
+  g.addColorStop(1, `rgba(${rgb},0)`);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 8, 128);
+  const t = new THREE.CanvasTexture(canvas);
+  t.colorSpace = THREE.SRGBColorSpace;
+  ledWashCache.set(key, t);
+  return t;
+}
+
+/** Countertop pool: brightest along the back (under the LED), fading forward. */
+function getLedPoolTexture(color: string): THREE.Texture {
+  const key = `pool-${color}`;
+  const hit = ledWashCache.get(key);
+  if (hit) return hit;
+  const c = new THREE.Color(color);
+  const rgb = `${Math.round(c.r * 255)},${Math.round(c.g * 255)},${Math.round(c.b * 255)}`;
+  const canvas = document.createElement("canvas");
+  canvas.width = 64;
+  canvas.height = 128;
+  const ctx = canvas.getContext("2d")!;
+  const g = ctx.createLinearGradient(0, 0, 0, 128);
+  g.addColorStop(0, `rgba(${rgb},0.34)`);
+  g.addColorStop(0.5, `rgba(${rgb},0.12)`);
+  g.addColorStop(1, `rgba(${rgb},0)`);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 64, 128);
+  // Soft side falloff so adjacent cabinets' pools blend instead of banding.
+  const side = ctx.createLinearGradient(0, 0, 64, 0);
+  side.addColorStop(0, "rgba(0,0,0,1)");
+  side.addColorStop(0.12, "rgba(0,0,0,0)");
+  side.addColorStop(0.88, "rgba(0,0,0,0)");
+  side.addColorStop(1, "rgba(0,0,0,1)");
+  ctx.globalCompositeOperation = "destination-out";
+  ctx.fillStyle = side;
+  ctx.fillRect(0, 0, 64, 128);
+  const t = new THREE.CanvasTexture(canvas);
+  t.colorSpace = THREE.SRGBColorSpace;
+  ledWashCache.set(key, t);
+  return t;
+}
+
+/** Countertop slab thickness above a base carcass (matches adeko-cabinet TOP_T). */
+const LED_COUNTER_TOP_T = 0.03;
+
+/** World Y of the counter surface directly under an upper cabinet, or null
+ *  when no base cabinet overlaps its span on the same wall. */
+function counterSurfaceUnder(
+  placed: PlacedCabinetState,
+  def: CabinetDef,
+  all: PlacedCabinetState[]
+): number | null {
+  const u0 = placed.offset;
+  const u1 = placed.offset + def.width;
+  let best: number | null = null;
+  for (const p of all) {
+    if (p.wallId !== placed.wallId || p.id === placed.id) continue;
+    const d = findCabinetDef(p.catalogId);
+    if (!d || d.level !== "base") continue;
+    const b0 = p.offset;
+    const b1 = p.offset + d.width;
+    if (b1 <= u0 || b0 >= u1) continue; // no horizontal overlap
+    const topY = (p.mountY ?? d.mountY) + d.height + LED_COUNTER_TOP_T;
+    if (best === null || topY > best) best = topY;
+  }
+  return best;
+}
+
+function UnderCabinetLed({
+  def,
+  lit,
+  lightColor,
+  dropM,
+}: {
+  def: CabinetDef;
+  lit: boolean;
+  lightColor: string;
+  /** Distance from the cabinet bottom down to the counter surface (m), or
+   *  null when there is no counter below — then only the wall wash renders. */
+  dropM: number | null;
+}) {
+  const stripW = Math.max(def.width - 0.04, 0.1);
+  // Wash length: down to the counter when present, else a bounded fade.
+  const washM = Math.max(0.15, Math.min(dropM ?? 0.7, 1.2));
+  return (
+    <group>
+      {/* recessed aluminum profile housing */}
+      <mesh position={[0, -0.006, def.depth / 2 - 0.035]}>
+        <boxGeometry args={[stripW, 0.012, 0.03]} />
+        <meshStandardMaterial color="#2a2a2e" roughness={0.5} metalness={0.6} />
+      </mesh>
+      {/* diffuser lens — glows when lit, milky when off */}
+      <mesh position={[0, -0.0125, def.depth / 2 - 0.035]} rotation={[Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[stripW, 0.018]} />
+        <meshStandardMaterial
+          color={lit ? lightColor : "#d8d5cf"}
+          emissive={lit ? lightColor : "#000000"}
+          emissiveIntensity={lit ? 2.4 : 0}
+          toneMapped={!lit}
+          roughness={0.6}
+        />
+      </mesh>
+      {lit && (
+        <>
+          {/* warm wash on the backsplash below the cabinet */}
+          <mesh position={[0, -washM / 2, -def.depth / 2 - 0.001]}>
+            <planeGeometry args={[def.width, washM]} />
+            <meshBasicMaterial
+              map={getLedWashTexture(lightColor)}
+              transparent
+              depthWrite={false}
+              toneMapped={false}
+            />
+          </mesh>
+          {/* soft pool on the countertop under the cabinet (only when a
+              base cabinet actually provides a counter surface below) */}
+          {dropM !== null && (
+            <mesh
+              position={[0, -dropM + 0.006, 0.32 / 2 - 0.005]}
+              rotation={[-Math.PI / 2, 0, 0]}
+            >
+              <planeGeometry args={[def.width + 0.1, def.depth + 0.32]} />
+              <meshBasicMaterial
+                map={getLedPoolTexture(lightColor)}
+                transparent
+                depthWrite={false}
+                toneMapped={false}
+              />
+            </mesh>
+          )}
+        </>
+      )}
+    </group>
+  );
+}
+
+/* ── Placed cabinets (catalog items on walls) ────────────── */
+function inwardOf(seg: WallSegment): THREE.Vector3 {
+  return new THREE.Vector3(-seg.nx, 0, -seg.ny);
+}
+
+/** Wood-type finish for a placed cabinet, with optional custom color override. */
+function resolvePlacedFinish(
+  placed: PlacedCabinetState,
+  adekoFinishById?: Record<number, AdekoFinish>
+): AdekoFinish | undefined {
+  // Teak real-finish id wins when present and valid (Phase 1A resolution rule).
+  const teak = getTeakFinish(placed.finishId);
+  if (teak) return teakToRenderFinish(teak);
+  const base =
+    placed.finishWoodTypeId != null
+      ? adekoFinishById?.[placed.finishWoodTypeId]
+      : undefined;
+  // New door system: explicit pattern (wood grain / solid) + color override
+  // the wood-type mapping — the material is always MR chipboard.
+  if (placed.doorPattern) {
+    const b = base ?? DEFAULT_ADEKO_FINISH;
+    const tint = placed.finishColor ?? b.tint;
+    return {
+      id: `${placed.doorPattern}-${tint}`,
+      tint,
+      wood: placed.doorPattern === "wood",
+      roughness: 0.5,
+    };
+  }
+  if (!placed.finishColor) return base;
+  const b = base ?? DEFAULT_ADEKO_FINISH;
+  return { ...b, id: `${b.id}-custom-${placed.finishColor}`, tint: placed.finishColor };
+}
+
+function PlacedCabinetMesh({
+  placed,
+  def,
+  segments,
+  selected,
+  onGrab,
+  adekoFinishById,
+}: {
+  placed: PlacedCabinetState;
+  def: CabinetDef;
+  segments: WallSegment[];
+  selected: boolean;
+  onGrab: (id: string, def: CabinetDef) => void;
+  adekoFinishById?: Record<number, AdekoFinish>;
+}) {
+  const { lightsOn, lightColor } = useLighting();
+  const ledStrips = useKitchenToolStore((s) => s.ledStrips ?? true);
+  const allPlaced = useKitchenToolStore((s) => s.placedCabinets ?? []);
+  const seg = segments.find((s) => s.id === placed.wallId);
+
+  // Under-cabinet LED: distance from THIS cabinet's actual bottom down to
+  // the real counter surface below (null when no base cabinet underneath).
+  const ledDropM = useMemo(() => {
+    if (def.level !== "upper" || def.corner) return null;
+    const counterY = counterSurfaceUnder(placed, def, allPlaced);
+    if (counterY === null) return null;
+    const bottomY = placed.mountY ?? def.mountY;
+    const drop = bottomY - counterY;
+    return drop > 0.05 ? drop : null;
+  }, [placed, def, allPlaced]);
+
+  const lCorner = isLCorner(def);
+
+  const built = useMemo(() => {
+    if (!seg) return null;
+    const { origin, dir } = segVectors(seg);
+    const inward = inwardOf(seg);
+    let rotY = Math.atan2(inward.x, inward.z);
+    let pos: THREE.Vector3 | null = null;
+    let corner = false;
+    let swapArms = false;
+
+    if (def.corner) {
+      const jn = junctionOfPlaced(placed, def, segments);
+      if (jn) {
+        const segA = segments.find((s) => s.id === jn.aId)!;
+        const segB = segments.find((s) => s.id === jn.bId)!;
+        const inA = inwardOf(segA);
+        const inB = inwardOf(segB);
+        if (lCorner) {
+          // L-shaped corner: local origin at the junction, +X along one wall,
+          // +Z along the other. Try each wall's frame; the geometry is
+          // diagonal-symmetric so one of the two is always right-handed.
+          const frames = [
+            { seg: segA, end: jn.aEnd, inw: inA },
+            { seg: segB, end: jn.bEnd, inw: inB },
+          ];
+          let chosen = frames[0];
+          for (const f of frames) {
+            const v = segVectors(f.seg);
+            const d = f.end === "start" ? v.dir.clone() : v.dir.clone().negate();
+            const xAxis = new THREE.Vector3(f.inw.z, 0, -f.inw.x);
+            if (xAxis.dot(d) > 0) {
+              chosen = f;
+              break;
+            }
+          }
+          rotY = Math.atan2(chosen.inw.x, chosen.inw.z);
+          const xAxis = new THREE.Vector3(chosen.inw.z, 0, -chosen.inw.x);
+          pos = new THREE.Vector3(jn.x * CM, 0, jn.y * CM)
+            .addScaledVector(chosen.inw, 0.005)
+            .addScaledVector(xAxis, 0.005);
+          corner = true;
+          // Arm A (def.width) belongs on the placed wall; when the chosen
+          // frame is the OTHER wall's, the arms must be swapped so each arm
+          // length matches the wall it was reserved on.
+          swapArms = chosen.seg.id !== placed.wallId;
+        }
+      }
+    }
+    if (!pos) {
+      pos = origin
+        .clone()
+        .addScaledVector(dir, placed.offset + def.width / 2)
+        .addScaledVector(inward, def.depth / 2 + 0.005);
+    }
+    pos.y = placed.mountY ?? def.mountY;
+    return { pos, rotY: rotY + (placed.rotYOffset ?? 0), corner, swapArms };
+  }, [seg, placed, def, segments, lCorner]);
+
+  if (!built) return null;
+
+  return (
+    <group
+      position={built.pos}
+      rotation={[0, built.rotY, 0]}
+      onPointerDown={(e) => {
+        e.stopPropagation();
+        onGrab(placed.id, def);
+      }}
+    >
+      {built.corner ? (
+        <AdekoCornerCabinet
+          def={def}
+          swapArms={built.swapArms}
+          options={{
+            finish: resolvePlacedFinish(placed, adekoFinishById),
+            topFinish: findAdekoTopFinish(placed.topFinishId),
+            handleStyle: placed.handleStyle ?? "bar",
+            handleColor: placed.handleColor ?? "gray",
+          }}
+        />
+      ) : (
+        <AdekoBaseCabinet
+          def={def}
+          options={{
+            finish: resolvePlacedFinish(placed, adekoFinishById),
+            topFinish: findAdekoTopFinish(placed.topFinishId),
+            handleStyle: placed.handleStyle ?? "bar",
+            handleColor: placed.handleColor ?? "gray",
+            doorHinge: placed.doorHinge,
+            sinkType: placed.sinkType,
+          }}
+        />
+      )}
+      {def.level === "upper" && ledStrips && !built.corner && (
+        <UnderCabinetLed
+          def={def}
+          lit={lightsOn}
+          lightColor={lightColor}
+          dropM={ledDropM}
+        />
+      )}
+      {selected &&
+        (built.corner ? (
+          <mesh position={[def.width / 2, def.height / 2, def.width / 2]}>
+            <boxGeometry args={[def.width + 0.05, def.height + 0.05, def.width + 0.05]} />
+            <meshBasicMaterial color="#d92626" transparent opacity={0.16} depthWrite={false} />
+          </mesh>
+        ) : (
+          <mesh position={[0, def.height / 2, 0]}>
+            <boxGeometry args={[def.width + 0.05, def.height + 0.05, def.depth + 0.05]} />
+            <meshBasicMaterial color="#d92626" transparent opacity={0.16} depthWrite={false} />
+          </mesh>
+        ))}
+    </group>
+  );
+}
+
+function PlacedCabinets({
+  segments,
+  selectedId,
+  onGrab,
+  adekoFinishById,
+}: {
+  segments: WallSegment[];
+  selectedId: string | null;
+  onGrab: (id: string, def: CabinetDef) => void;
+  adekoFinishById?: Record<number, AdekoFinish>;
+}) {
+  const placed = useKitchenToolStore((s) => s.placedCabinets ?? []);
+  return (
+    <>
+      {placed.map((p) => {
+        const def = findCabinetDef(p.catalogId);
+        if (!def) return null;
+        return (
+          <PlacedCabinetMesh
+            key={p.id}
+            placed={p}
+            def={def}
+            segments={segments}
+            selected={p.id === selectedId}
+            onGrab={onGrab}
+            adekoFinishById={adekoFinishById}
+          />
+        );
+      })}
+    </>
+  );
+}
+
+/* ── Decor items (appliances / furniture / plants / details) ── */
+
+/**
+ * Loads a glTF model and normalizes it: optionally isolates a named node,
+ * uniform-scales to the item's target height, centers on X/Z and rests the
+ * bottom at y=0. Handles the wildly different native units of the assets.
+ */
+/** Procedural hidden ceiling hood — flush recessed extraction unit matching
+ *  Teak's installed models: thin trim frame + inset grease-filter panel. */
+function CeilingHoodMesh({ item }: { item: DecorItem }) {
+  const color = item.variantColor ?? "#17181a";
+  const mats = useMemo(() => {
+    const trim = new THREE.MeshStandardMaterial({
+      color,
+      metalness: 0.4,
+      roughness: 0.45,
+    });
+    const filter = new THREE.MeshStandardMaterial({
+      color: color === "#f4f4f1" ? "#dcdcd8" : "#2a2b2e",
+      metalness: 0.6,
+      roughness: 0.35,
+    });
+    return { trim, filter };
+  }, [color]);
+  useEffect(() => {
+    return () => {
+      mats.trim.dispose();
+      mats.filter.dispose();
+    };
+  }, [mats]);
+  const { width: w, depth: d, height: h } = item;
+  const inset = 0.045;
+  return (
+    <group>
+      {/* Trim frame flush with the ceiling (group origin = unit bottom) */}
+      <mesh material={mats.trim} position={[0, h - 0.008, 0]}>
+        <boxGeometry args={[w, 0.016, d]} />
+      </mesh>
+      {/* Recessed filter panel */}
+      <mesh material={mats.filter} position={[0, h - 0.016, 0]}>
+        <boxGeometry args={[w - inset * 2, 0.012, d - inset * 2]} />
+      </mesh>
+      {/* Filter slats */}
+      {[-1, 0, 1].map((i) => (
+        <mesh
+          key={i}
+          material={mats.trim}
+          position={[(i * (w - inset * 2)) / 3.2, h - 0.024, 0]}
+        >
+          <boxGeometry args={[0.012, 0.01, d - inset * 2]} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+function DecorModel({ item, tint }: { item: DecorItem; tint?: string }) {
+  const gltf = useGLTF(item.modelPath!);
+
+  const built = useMemo(() => {
+    const clonedMats: THREE.Material[] = [];
+    let source: THREE.Object3D = gltf.scene;
+    if (item.nodeName) {
+      const node = gltf.scene.getObjectByName(item.nodeName);
+      if (node) source = node;
+    }
+    const clone = source.clone(true);
+    const holder = new THREE.Group();
+    holder.add(clone);
+    // Neutralize inherited world transform when isolating a nested node.
+    if (item.nodeName && source !== gltf.scene) {
+      source.updateWorldMatrix(true, false);
+      clone.matrix.copy(source.matrixWorld);
+      clone.matrix.decompose(clone.position, clone.quaternion, clone.scale);
+    }
+    holder.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(holder);
+    const size = new THREE.Vector3();
+    const center = new THREE.Vector3();
+    box.getSize(size);
+    box.getCenter(center);
+    const s = size.y > 1e-6 ? item.height / size.y : 1;
+    holder.scale.setScalar(s);
+    holder.position.set(-center.x * s, -box.min.y * s, -center.z * s);
+    holder.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (mesh.isMesh) {
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        if (tint) {
+          const applyTint = (m: THREE.Material) => {
+            const c = m.clone();
+            if ("color" in c) (c as THREE.MeshStandardMaterial).color.set(tint);
+            clonedMats.push(c);
+            return c;
+          };
+          mesh.material = Array.isArray(mesh.material)
+            ? mesh.material.map(applyTint)
+            : applyTint(mesh.material);
+        }
+      }
+    });
+    const wrapper = new THREE.Group();
+    wrapper.add(holder);
+    wrapper.rotation.y = item.rotYOffset ?? 0;
+    return { wrapper, clonedMats };
+  }, [gltf.scene, item, tint]);
+
+  // Dispose cloned tint materials when tint changes or the item unmounts.
+  // Textures are shared with the source materials and must NOT be disposed.
+  useEffect(() => {
+    const mats = built.clonedMats;
+    return () => {
+      for (const m of mats) m.dispose();
+    };
+  }, [built]);
+
+  return <primitive object={built.wrapper} />;
+}
+
+function PlacedDecorMesh({
+  placed,
+  item,
+  segments,
+  selected,
+  onGrab,
+}: {
+  placed: PlacedDecorState;
+  item: DecorItem;
+  segments: WallSegment[];
+  selected: boolean;
+  onGrab: (placed: PlacedDecorState, item: DecorItem) => void;
+}) {
+  const ceilingHeight = useKitchenToolStore((s) => s.ceilingHeight);
+  const built = useMemo(() => {
+    if (item.placement === "wall") {
+      const seg = segments.find((s) => s.id === placed.wallId);
+      if (!seg) return null;
+      const { origin, dir } = segVectors(seg);
+      const inward = inwardOf(seg);
+      const rotY = Math.atan2(inward.x, inward.z) + (placed.rotY ?? 0);
+      const pos = origin
+        .clone()
+        .addScaledVector(dir, (placed.offset ?? 0) + item.width / 2)
+        .addScaledVector(inward, item.depth / 2 + 0.005);
+      pos.y = placed.mountY ?? item.defaultMountY ?? 0;
+      return { pos, rotY };
+    }
+    if (placed.x == null || placed.z == null) return null;
+    // Ceiling items hang flush under the ceiling; floor items rest on y=0.
+    const y = item.placement === "ceiling" ? ceilingHeight * CM - item.height : 0;
+    return {
+      pos: new THREE.Vector3(placed.x, y, placed.z),
+      rotY: placed.rotY ?? 0,
+    };
+  }, [placed, item, segments, ceilingHeight]);
+
+  if (!built) return null;
+
+  return (
+    <group
+      position={built.pos}
+      rotation={[0, built.rotY, 0]}
+      onPointerDown={(e) => {
+        e.stopPropagation();
+        onGrab(placed, item);
+      }}
+      onClick={(e) => {
+        if (!item.togglesLights) return;
+        e.stopPropagation();
+        // Only a real click (no drag movement) flips the switch.
+        if (e.delta <= 4) useKitchenToolStore.getState().toggleLights();
+      }}
+    >
+      {item.procedural === "ceiling-hood" ? (
+        <CeilingHoodMesh item={item} />
+      ) : (
+        <Suspense fallback={null}>
+          <DecorModel item={item} tint={placed.tint} />
+        </Suspense>
+      )}
+      {selected && (
+        <mesh position={[0, item.height / 2, 0]}>
+          <boxGeometry args={[item.width + 0.06, item.height + 0.06, item.depth + 0.06]} />
+          <meshBasicMaterial color="#d92626" transparent opacity={0.16} depthWrite={false} />
+        </mesh>
+      )}
+    </group>
+  );
+}
+
+function PlacedDecorItems({
+  segments,
+  selectedId,
+  onGrab,
+}: {
+  segments: WallSegment[];
+  selectedId: string | null;
+  onGrab: (placed: PlacedDecorState, item: DecorItem) => void;
+}) {
+  const placed = useKitchenToolStore((s) => s.placedDecor ?? []);
+  return (
+    <>
+      {placed.map((p) => {
+        const item = findDecorItem(p.decorId);
+        if (!item) return null;
+        return (
+          <PlacedDecorMesh
+            key={p.id}
+            placed={p}
+            item={item}
+            segments={segments}
+            selected={p.id === selectedId}
+            onGrab={onGrab}
+          />
+        );
+      })}
+    </>
+  );
+}
+
+/* ── Kitchen island (customer-activated, only when it fits) ── */
+function IslandUnit({
+  segments,
+  openings,
+  adekoFinishById,
+}: {
+  segments: WallSegment[];
+  openings: KitchenOpening[];
+  adekoFinishById?: Record<number, AdekoFinish>;
+}) {
+  const islandEnabled = useKitchenToolStore((s) => s.islandEnabled ?? false);
+  const placedCabinets = useKitchenToolStore((s) => s.placedCabinets ?? []);
+
+  const placement = useMemo(() => {
+    if (!islandEnabled) return null;
+    const wallsWithCabinets = new Set(placedCabinets.map((c) => c.wallId));
+    return computeIslandPlacement(segments, openings, wallsWithCabinets);
+  }, [islandEnabled, segments, openings, placedCabinets]);
+
+  // Island inherits the finish of the first placed base cabinet so it
+  // always matches the kitchen (fall back to defaults when empty).
+  const styleSource = placedCabinets[0];
+  const options = useMemo(
+    () =>
+      styleSource
+        ? {
+            finish: resolvePlacedFinish(styleSource, adekoFinishById),
+            topFinish: findAdekoTopFinish(styleSource.topFinishId),
+            handleStyle: styleSource.handleStyle ?? ("bar" as const),
+            handleColor: styleSource.handleColor ?? ("gray" as const),
+          }
+        : undefined,
+    [styleSource, adekoFinishById]
+  );
+
+  if (!placement) return null;
+  return (
+    <group position={[placement.x, 0, placement.z]}>
+      <AdekoIsland
+        width={placement.width}
+        depth={placement.depth}
+        options={options}
+      />
+    </group>
+  );
+}
+
+/* ── Utility markers ─────────────────────────────────────── */
+function WallMarker({
+  seg,
+  positionAlongWall,
+  heightM,
+  children,
+}: {
+  seg: WallSegment;
+  positionAlongWall: number;
+  heightM: number;
+  children: React.ReactNode;
+}) {
+  const { pos, faceTheta } = useMemo(() => {
+    const { origin, dir, out, lengthM } = segVectors(seg);
+    const inward = out.clone().negate();
+    const d = Math.min(Math.max(positionAlongWall * CM, 0.05), Math.max(lengthM - 0.05, 0));
+    const p = origin.clone().addScaledVector(dir, d);
+    p.addScaledVector(inward, 0.012);
+    p.y = heightM;
+    return { pos: p, faceTheta: Math.atan2(inward.x, inward.z) };
+  }, [seg, positionAlongWall, heightM]);
+
+  return (
+    <group position={pos} rotation={[0, faceTheta, 0]}>
+      {children}
+    </group>
+  );
+}
+
+function UtilityMarkers({
+  utilities,
+  segments,
+}: {
+  utilities: KitchenUtility[];
+  segments: WallSegment[];
+}) {
+  const segById = useMemo(() => new Map(segments.map((s) => [s.id, s])), [segments]);
+
+  return (
+    <>
+      {utilities.map((u) => {
+        if (u.wallId) {
+          const seg = segById.get(u.wallId);
+          if (!seg) return null;
+          const h = Math.max(u.heightFromFloor * CM, 0.05);
+          return (
+            <WallMarker
+              key={u.id}
+              seg={seg}
+              positionAlongWall={u.positionAlongWall ?? 0}
+              heightM={h}
+            >
+              {u.kind === "water" && (
+                <group>
+                  <mesh rotation={[Math.PI / 2, 0, 0]}>
+                    <cylinderGeometry args={[0.045, 0.045, 0.02, 24]} />
+                    <meshStandardMaterial color="#2f86c9" roughness={0.4} />
+                  </mesh>
+                  <mesh position={[0, 0, 0.025]} rotation={[Math.PI / 2, 0, 0]}>
+                    <cylinderGeometry args={[0.012, 0.012, 0.04, 16]} />
+                    <meshStandardMaterial color="#c8cdd2" metalness={0.7} roughness={0.3} />
+                  </mesh>
+                </group>
+              )}
+              {u.kind === "outlet" && (
+                <group>
+                  <mesh>
+                    <boxGeometry args={[0.085, 0.085, 0.014]} />
+                    <meshStandardMaterial color="#f6f6f4" roughness={0.5} />
+                  </mesh>
+                  <mesh position={[-0.016, 0, 0.009]} rotation={[Math.PI / 2, 0, 0]}>
+                    <cylinderGeometry args={[0.006, 0.006, 0.006, 12]} />
+                    <meshStandardMaterial color="#3a3f45" />
+                  </mesh>
+                  <mesh position={[0.016, 0, 0.009]} rotation={[Math.PI / 2, 0, 0]}>
+                    <cylinderGeometry args={[0.006, 0.006, 0.006, 12]} />
+                    <meshStandardMaterial color="#3a3f45" />
+                  </mesh>
+                </group>
+              )}
+              {u.kind === "switch" && (
+                <group>
+                  <mesh>
+                    <boxGeometry args={[0.085, 0.085, 0.012]} />
+                    <meshStandardMaterial color="#f6f6f4" roughness={0.5} />
+                  </mesh>
+                  <mesh position={[0, 0, 0.011]}>
+                    <boxGeometry args={[0.032, 0.052, 0.01]} />
+                    <meshStandardMaterial color="#e7e6e2" roughness={0.45} />
+                  </mesh>
+                </group>
+              )}
+              {u.kind === "drain" && (
+                <mesh rotation={[Math.PI / 2, 0, 0]}>
+                  <cylinderGeometry args={[0.05, 0.05, 0.014, 24]} />
+                  <meshStandardMaterial color="#3c4046" roughness={0.6} metalness={0.35} />
+                </mesh>
+              )}
+              {u.kind === "gas" && (
+                <group>
+                  <mesh rotation={[Math.PI / 2, 0, 0]}>
+                    <cylinderGeometry args={[0.045, 0.045, 0.018, 24]} />
+                    <meshStandardMaterial color="#e8842c" roughness={0.45} />
+                  </mesh>
+                  <mesh position={[0, 0, 0.028]} rotation={[Math.PI / 2, 0, 0]}>
+                    <cylinderGeometry args={[0.014, 0.014, 0.045, 16]} />
+                    <meshStandardMaterial color="#c9a227" metalness={0.75} roughness={0.3} />
+                  </mesh>
+                  <mesh position={[0, 0.026, 0.045]}>
+                    <boxGeometry args={[0.012, 0.038, 0.012]} />
+                    <meshStandardMaterial color="#b3261e" roughness={0.4} />
+                  </mesh>
+                </group>
+              )}
+            </WallMarker>
+          );
+        }
+        // Floor drain
+        if (u.kind === "drain" && u.x != null && u.y != null) {
+          return (
+            <mesh key={u.id} position={[u.x * CM, 0.006, u.y * CM]}>
+              <cylinderGeometry args={[0.06, 0.06, 0.01, 28]} />
+              <meshStandardMaterial color="#33373c" roughness={0.55} metalness={0.4} />
+            </mesh>
+          );
+        }
+        return null;
+      })}
+    </>
+  );
+}
+
+/* ── Live drag measurements ──────────────────────────────── */
+interface DragMeasureInfo {
+  wallId: string;
+  offset: number;
+  width: number;
+  mountY: number;
+  height: number;
+  depth: number;
+  leftEdge: number;
+  rightEdge: number;
+  leftIsWall: boolean;
+  rightIsWall: boolean;
+}
+
+function MeasureLabel({
+  position,
+  text,
+  sub,
+  testId,
+}: {
+  position: THREE.Vector3;
+  text: string;
+  sub?: string;
+  testId: string;
+}) {
+  return (
+    <Html position={position} center zIndexRange={[100, 0]} style={{ pointerEvents: "none" }}>
+      <div
+        data-testid={testId}
+        style={{
+          background: "rgba(20, 22, 26, 0.85)",
+          color: "#fff",
+          borderRadius: 6,
+          padding: "2px 8px",
+          fontSize: 12,
+          fontWeight: 700,
+          whiteSpace: "nowrap",
+          textAlign: "center",
+          direction: "rtl",
+          boxShadow: "0 1px 4px rgba(0,0,0,0.35)",
+          lineHeight: 1.3,
+        }}
+      >
+        {text}
+        {sub && (
+          <div style={{ fontSize: 9, fontWeight: 500, opacity: 0.75 }}>{sub}</div>
+        )}
+      </div>
+    </Html>
+  );
+}
+
+function DragMeasurements({
+  info,
+  segments,
+}: {
+  info: DragMeasureInfo;
+  segments: WallSegment[];
+}) {
+  const seg = segments.find((s) => s.id === info.wallId);
+  if (!seg) return null;
+  const { origin, dir, out } = segVectors(seg);
+  const inward = out.clone().negate();
+  const labelY = info.mountY + info.height + 0.14;
+  const frontOff = info.depth + 0.06;
+
+  const at = (along: number) =>
+    origin
+      .clone()
+      .addScaledVector(dir, along)
+      .addScaledVector(inward, frontOff)
+      .setY(labelY);
+
+  const leftGap = Math.max(info.offset - info.leftEdge, 0);
+  const rightGap = Math.max(info.rightEdge - (info.offset + info.width), 0);
+  const cm = (m: number) => `${Math.round(m / CM)} سم`;
+
+  return (
+    <>
+      <MeasureLabel
+        position={at((info.leftEdge + info.offset) / 2)}
+        text={cm(leftGap)}
+        sub={info.leftIsWall ? "من بداية الجدار" : "من العنصر المجاور"}
+        testId="label-drag-gap-left"
+      />
+      <MeasureLabel
+        position={at(info.offset + info.width / 2)}
+        text={cm(info.width)}
+        sub={`الإزاحة ${cm(info.offset)}`}
+        testId="label-drag-offset"
+      />
+      <MeasureLabel
+        position={at((info.offset + info.width + info.rightEdge) / 2)}
+        text={cm(rightGap)}
+        sub={info.rightIsWall ? "إلى نهاية الجدار" : "إلى العنصر المجاور"}
+        testId="label-drag-gap-right"
+      />
+    </>
+  );
+}
+
+/* ── Auto camera tour (presentation mode) ────────────────── */
+function CameraTour({
+  center,
+  roomSpan,
+  ceilingM,
+  onEnd,
+}: {
+  center: THREE.Vector3;
+  roomSpan: number;
+  ceilingM: number;
+  onEnd?: () => void;
+}) {
+  const tRef = useRef(0);
+  const { camera, gl } = useThree();
+
+  useEffect(() => {
+    // A press or scroll on the 3D canvas itself stops the tour and hands
+    // control back. UI buttons outside the canvas are unaffected.
+    const stop = () => onEnd?.();
+    const el = gl.domElement;
+    el.addEventListener("pointerdown", stop);
+    el.addEventListener("wheel", stop, { passive: true });
+    return () => {
+      el.removeEventListener("pointerdown", stop);
+      el.removeEventListener("wheel", stop);
+    };
+  }, [onEnd, gl]);
+
+  useFrame((_, delta) => {
+    tRef.current += Math.min(delta, 0.05);
+    const t = tRef.current;
+    const angle = t * 0.22; // slow orbit
+    // Radius breathes: sweeps in close then back out (cinematic feel).
+    const far = Math.max(roomSpan * 1.6, 3.4);
+    const near = Math.max(roomSpan * 0.55, 1.6);
+    const radius = near + (far - near) * (0.5 + 0.5 * Math.cos(t * 0.13));
+    // Eye height drifts between standing height and a gentle high shot.
+    const y = 1.5 + (Math.min(ceilingM + 1.2, 3.4) - 1.5) * (0.5 + 0.5 * Math.sin(t * 0.09));
+    camera.position.set(
+      center.x + radius * Math.cos(angle),
+      y,
+      center.z + radius * Math.sin(angle)
+    );
+    camera.lookAt(center.x, 0.95, center.z);
+  });
+
+  return null;
+}
+
+/* ── Camera view presets (natural / top / iso / reset) ───── */
+export interface CameraViewRequest {
+  mode: "person" | "top" | "iso" | "reset";
+  nonce: number;
+}
+
+function easeInOutCubic(x: number) {
+  return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+}
+
+/**
+ * Smoothly animates the camera to a requested preset view.
+ * Only reads/writes camera position and the OrbitControls target —
+ * no scene or collision logic is touched.
+ */
+function CameraViewAnimator({
+  request,
+  center,
+  roomSpan,
+  ceilingM,
+  bounds,
+  controlsRef,
+  onAnimatingChange,
+}: {
+  request?: CameraViewRequest | null;
+  center: THREE.Vector3;
+  roomSpan: number;
+  ceilingM: number;
+  bounds: { minX: number; maxX: number; minY: number; maxY: number };
+  controlsRef: React.MutableRefObject<any>;
+  onAnimatingChange: (v: boolean) => void;
+}) {
+  const { camera } = useThree();
+  const anim = useRef<{
+    fromPos: THREE.Vector3;
+    toPos: THREE.Vector3;
+    fromTgt: THREE.Vector3;
+    toTgt: THREE.Vector3;
+    t: number;
+    dur: number;
+  } | null>(null);
+  const lastNonce = useRef(0);
+
+  useEffect(() => {
+    if (!request || request.nonce === lastNonce.current) return;
+    lastNonce.current = request.nonce;
+
+    const defaultPos = new THREE.Vector3(
+      ((bounds.minX + bounds.maxX) / 2) * CM - 1.2,
+      1.65,
+      bounds.maxY * CM + 2.2
+    );
+    const defaultTgt = new THREE.Vector3(center.x, 1, center.z);
+
+    let toPos: THREE.Vector3;
+    let toTgt: THREE.Vector3;
+    switch (request.mode) {
+      case "person": {
+        // Eye-level view from inside the room looking at the kitchen.
+        toPos = new THREE.Vector3(
+          center.x,
+          1.6,
+          center.z + Math.max(roomSpan * 0.42, 1.3)
+        );
+        toTgt = new THREE.Vector3(center.x, 1.35, center.z - roomSpan * 0.5);
+        break;
+      }
+      case "top": {
+        toPos = new THREE.Vector3(
+          center.x,
+          ceilingM + Math.max(roomSpan * 1.15, 3.2),
+          center.z + 0.02
+        );
+        toTgt = new THREE.Vector3(center.x, 0, center.z);
+        break;
+      }
+      case "iso":
+      case "reset":
+      default: {
+        toPos = defaultPos;
+        toTgt = defaultTgt;
+        break;
+      }
+    }
+
+    const fromTgt = controlsRef.current
+      ? (controlsRef.current.target as THREE.Vector3).clone()
+      : defaultTgt.clone();
+    anim.current = {
+      fromPos: camera.position.clone(),
+      toPos,
+      fromTgt,
+      toTgt,
+      t: 0,
+      dur: 1.1,
+    };
+    onAnimatingChange(true);
+  }, [request, camera, center, roomSpan, ceilingM, bounds, controlsRef, onAnimatingChange]);
+
+  useFrame((_, delta) => {
+    const a = anim.current;
+    if (!a) return;
+    a.t += Math.min(delta, 0.05);
+    const k = easeInOutCubic(Math.min(a.t / a.dur, 1));
+    camera.position.lerpVectors(a.fromPos, a.toPos, k);
+    const tgt = new THREE.Vector3().lerpVectors(a.fromTgt, a.toTgt, k);
+    if (controlsRef.current) {
+      controlsRef.current.target.copy(tgt);
+      controlsRef.current.update();
+    } else {
+      camera.lookAt(tgt);
+    }
+    if (a.t >= a.dur) {
+      anim.current = null;
+      onAnimatingChange(false);
+    }
+  });
+
+  return null;
+}
+
+/* ── Scene contents (inside Suspense) ────────────────────── */
+function SceneContents({
+  layout,
+  walls,
+  ceilingHeight,
+  openings,
+  utilities,
+  selectedCabinetId = null,
+  onSelectCabinet,
+  selectedDecorId = null,
+  onSelectDecor,
+  adekoFinishById,
+  presentation = false,
+  tourActive = false,
+  onTourEnd,
+  viewRequest,
+  snapshotRequest,
+  onSnapshot,
+}: StudioSceneProps) {
+  const [camAnimating, setCamAnimating] = useState(false);
+  const segments = useMemo(() => getWallSegments(layout, walls), [layout, walls]);
+  const bounds = useMemo(() => getFloorBounds(segments), [segments]);
+  const ceilingM = ceilingHeight * CM;
+
+  const floorMaterialId = useKitchenToolStore((s) => s.floorMaterialId);
+  const wallMaterialId = useKitchenToolStore((s) => s.wallMaterialId);
+  const floorOption = findFloorOption(floorMaterialId);
+  const wallOption = findWallOption(wallMaterialId);
+  const environmentId = useKitchenToolStore((s) => s.environmentId);
+  const envOption = findEnvironmentOption(environmentId);
+
+  const placedCabinets = useKitchenToolStore((s) => s.placedCabinets ?? []);
+  const movePlacedCabinet = useKitchenToolStore((s) => s.movePlacedCabinet);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const controlsRef = useRef<any>(null);
+  const [drag, setDrag] = useState<{ id: string; def: CabinetDef } | null>(null);
+  const [dragInfo, setDragInfo] = useState<DragMeasureInfo | null>(null);
+  const [decorDrag, setDecorDrag] = useState<{
+    id: string;
+    item: DecorItem;
+    mountY: number;
+  } | null>(null);
+  const updatePlacedDecor = useKitchenToolStore((s) => s.updatePlacedDecor);
+
+  /** Compute live measurement info for a cabinet at (wallId, offset). Read-only
+      use of blockedIntervals — no collision-engine changes. */
+  const computeDragInfo = (
+    wallId: string,
+    offset: number,
+    def: CabinetDef,
+    excludeId: string
+  ): DragMeasureInfo | null => {
+    const seg = segments.find((s) => s.id === wallId);
+    if (!seg) return null;
+    const wallLenM = seg.length * CM;
+    const subject = placedCabinets.find((c) => c.id === excludeId);
+    const intervals = blockedIntervals(
+      wallId,
+      verticalSpan(def, subject?.mountY),
+      placedCabinets,
+      segments,
+      openings,
+      excludeId
+    );
+    const left = offset;
+    const right = offset + def.width;
+    let leftEdge = 0;
+    let leftIsWall = true;
+    let rightEdge = wallLenM;
+    let rightIsWall = true;
+    for (const iv of intervals) {
+      if (iv.b <= left + 1e-4 && iv.b > leftEdge) {
+        leftEdge = iv.b;
+        leftIsWall = false;
+      }
+      if (iv.a >= right - 1e-4 && iv.a < rightEdge) {
+        rightEdge = iv.a;
+        rightIsWall = false;
+      }
+    }
+    return {
+      wallId,
+      offset,
+      width: def.width,
+      mountY: def.mountY,
+      height: def.height,
+      depth: def.depth,
+      leftEdge,
+      rightEdge,
+      leftIsWall,
+      rightIsWall,
+    };
+  };
+
+  useEffect(() => {
+    if (!drag && !decorDrag) return;
+    const up = () => {
+      setDrag(null);
+      setDragInfo(null);
+      setDecorDrag(null);
+      if (controlsRef.current) controlsRef.current.enabled = true;
+    };
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+    return () => {
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+    };
+  }, [drag, decorDrag]);
+
+  const handleGrab = (id: string, def: CabinetDef) => {
+    if (presentation) return;
+    onSelectCabinet?.(id);
+    onSelectDecor?.(null);
+    if (def.corner) return;
+    // Disable orbit synchronously — the React prop update alone races with
+    // OrbitControls' native DOM listeners on the same pointerdown.
+    if (controlsRef.current) controlsRef.current.enabled = false;
+    setDrag({ id, def });
+    const placed = placedCabinets.find((c) => c.id === id);
+    if (placed) setDragInfo(computeDragInfo(placed.wallId, placed.offset, def, id));
+  };
+
+  const handleDragMove = (e: ThreeEvent<PointerEvent>) => {
+    if (!drag) return;
+    const placed = placedCabinets.find((c) => c.id === drag.id);
+    if (!placed) return;
+    const def = drag.def;
+    const pp = planPointAt(segments, e.point.x / CM, e.point.z / CM);
+    if (!pp.nearestWallId) return;
+    const seg = segments.find((s) => s.id === pp.nearestWallId);
+    if (!seg) return;
+    const wallLenM = seg.length * CM;
+    const desired = pp.distanceAlongWall * CM - def.width / 2;
+    const intervals = blockedIntervals(
+      pp.nearestWallId,
+      verticalSpan(def, placed.mountY),
+      placedCabinets,
+      segments,
+      openings,
+      placed.id
+    );
+    const resolved = resolveDragOffset(wallLenM, intervals, desired, def.width);
+    if (resolved === null) return;
+    if (pp.nearestWallId !== placed.wallId || Math.abs(resolved - placed.offset) > 1e-4) {
+      movePlacedCabinet(placed.id, pp.nearestWallId, resolved);
+    }
+    setDragInfo(computeDragInfo(pp.nearestWallId, resolved, def, placed.id));
+  };
+
+  const handleFloorDown = () => {
+    onSelectCabinet?.(null);
+    onSelectDecor?.(null);
+  };
+
+  const handleDecorGrab = (placed: PlacedDecorState, item: DecorItem) => {
+    if (presentation) return;
+    onSelectDecor?.(placed.id);
+    onSelectCabinet?.(null);
+    if (controlsRef.current) controlsRef.current.enabled = false;
+    setDecorDrag({
+      id: placed.id,
+      item,
+      mountY: placed.mountY ?? item.defaultMountY ?? 0,
+    });
+  };
+
+  const handleDecorDragMove = (e: ThreeEvent<PointerEvent>) => {
+    if (!decorDrag) return;
+    const item = decorDrag.item;
+    if (item.placement === "wall") {
+      const pp = planPointAt(segments, e.point.x / CM, e.point.z / CM);
+      if (!pp.nearestWallId) return;
+      const seg = segments.find((s) => s.id === pp.nearestWallId);
+      if (!seg) return;
+      const wallLenM = seg.length * CM;
+      const desired = pp.distanceAlongWall * CM - item.width / 2;
+      // Keep the item off doors/windows when its vertical band overlaps them.
+      const y0 = decorDrag.mountY;
+      const y1 = y0 + item.height;
+      const intervals = openings
+        .filter((o) => o.wallId === pp.nearestWallId)
+        .flatMap((o) => {
+          if (o.type === "door") {
+            if (y0 >= 2.1 - 0.02) return [];
+          } else {
+            const sill = (o.sillHeight ?? 90) * CM;
+            const top = sill + (o.height ?? 120) * CM;
+            if (y1 <= sill + 0.02 || y0 >= top - 0.02) return [];
+          }
+          return [
+            {
+              a: o.distanceFromWallStart * CM - 0.02,
+              b: (o.distanceFromWallStart + o.width) * CM + 0.02,
+            },
+          ];
+        });
+      const resolved = resolveDragOffset(wallLenM, intervals, desired, item.width);
+      if (resolved === null) return;
+      updatePlacedDecor(decorDrag.id, { wallId: pp.nearestWallId, offset: resolved });
+    } else {
+      // Rotation-aware footprint so long pieces can be pushed flush to walls.
+      const placed = (useKitchenToolStore.getState().placedDecor ?? []).find(
+        (d) => d.id === decorDrag.id
+      );
+      const rot = placed?.rotY ?? 0;
+      const c = Math.abs(Math.cos(rot));
+      const s = Math.abs(Math.sin(rot));
+      const halfX = (c * item.width + s * item.depth) / 2;
+      const halfZ = (s * item.width + c * item.depth) / 2;
+      const x = Math.min(
+        Math.max(e.point.x, bounds.minX * CM + halfX),
+        Math.max(bounds.maxX * CM - halfX, bounds.minX * CM + halfX)
+      );
+      const z = Math.min(
+        Math.max(e.point.z, bounds.minY * CM + halfZ),
+        Math.max(bounds.maxY * CM - halfZ, bounds.minY * CM + halfZ)
+      );
+      updatePlacedDecor(decorDrag.id, { x, z });
+    }
+  };
+
+  const center = useMemo(
+    () =>
+      new THREE.Vector3(
+        ((bounds.minX + bounds.maxX) / 2) * CM,
+        1,
+        ((bounds.minY + bounds.maxY) / 2) * CM
+      ),
+    [bounds]
+  );
+  const roomSpan = Math.max(
+    (bounds.maxX - bounds.minX) * CM,
+    (bounds.maxY - bounds.minY) * CM
+  );
+  const windowSun = useMemo(
+    () => computeWindowSun(segments, openings, ceilingM),
+    [segments, openings, ceilingM]
+  );
+
+  return (
+    <>
+      {/* Lower blur + environmentIntensity kill the old hazy/foggy cast while
+          keeping soft HDRI reflections on PBR surfaces. */}
+      <Environment
+        files={envOption.file}
+        background
+        blur={0.35}
+        environmentIntensity={0.75}
+      />
+      {windowSun && <WindowSunlight sun={windowSun} envId={envOption.id} />}
+      <directionalLight
+        position={[center.x + roomSpan * 0.9, ceilingM + 2.6, center.z + roomSpan * 1.2]}
+        intensity={windowSun ? 0.65 : 1.1}
+        castShadow
+        shadow-mapSize={[2048, 2048]}
+        shadow-bias={-0.0004}
+        shadow-camera-left={-roomSpan * 1.6}
+        shadow-camera-right={roomSpan * 1.6}
+        shadow-camera-top={roomSpan * 1.6}
+        shadow-camera-bottom={-roomSpan * 1.6}
+        shadow-camera-near={0.5}
+        shadow-camera-far={30}
+      />
+      {/* Warm even fill so opposite walls don't render washed-out/uneven —
+          kept low so blacks stay deep (no milky wash). */}
+      <ambientLight intensity={0.24} color="#ffe3c4" />
+
+      <Suspense fallback={null}>
+        <Floor
+          bounds={bounds}
+          option={floorOption}
+          onPointerDown={handleFloorDown}
+        />
+      </Suspense>
+
+      {/* Invisible drag plane at the grabbed item's height — captures
+          pointer movement anywhere on screen, independent of the floor. */}
+      {(drag || decorDrag) && (
+        <mesh
+          position={[
+            center.x,
+            drag
+              ? drag.def.mountY
+              : decorDrag!.item.placement === "wall"
+                ? decorDrag!.mountY
+                : decorDrag!.item.placement === "ceiling"
+                  ? ceilingM - decorDrag!.item.height
+                  : 0.001,
+            center.z,
+          ]}
+          rotation={[-Math.PI / 2, 0, 0]}
+          onPointerMove={drag ? handleDragMove : handleDecorDragMove}
+        >
+          <planeGeometry args={[Math.max(roomSpan * 12, 60), Math.max(roomSpan * 12, 60)]} />
+          <meshBasicMaterial
+            transparent
+            opacity={0}
+            depthWrite={false}
+            side={THREE.DoubleSide}
+          />
+        </mesh>
+      )}
+      <Suspense fallback={null}>
+        <Ceiling bounds={bounds} ceilingM={ceilingM} segments={segments} />
+      </Suspense>
+      <Downlights bounds={bounds} ceilingM={ceilingM} segments={segments} />
+      <Suspense fallback={null}>
+        <Walls
+          segments={segments}
+          ceilingM={ceilingM}
+          openings={openings}
+          option={wallOption}
+        />
+      </Suspense>
+      <Suspense fallback={null}>
+        <PlacedCabinets
+          segments={segments}
+          selectedId={selectedCabinetId}
+          onGrab={handleGrab}
+          adekoFinishById={adekoFinishById}
+        />
+      </Suspense>
+      <Suspense fallback={null}>
+        <PlacedDecorItems
+          segments={segments}
+          selectedId={selectedDecorId}
+          onGrab={handleDecorGrab}
+        />
+      </Suspense>
+      <Suspense fallback={null}>
+        <IslandUnit
+          segments={segments}
+          openings={openings}
+          adekoFinishById={adekoFinishById}
+        />
+      </Suspense>
+      <UtilityMarkers utilities={utilities} segments={segments} />
+
+      {drag && dragInfo && <DragMeasurements info={dragInfo} segments={segments} />}
+
+      {tourActive && (
+        <CameraTour
+          center={center}
+          roomSpan={roomSpan}
+          ceilingM={ceilingM}
+          onEnd={onTourEnd}
+        />
+      )}
+
+      <CameraViewAnimator
+        request={viewRequest}
+        center={center}
+        roomSpan={roomSpan}
+        ceilingM={ceilingM}
+        bounds={bounds}
+        controlsRef={controlsRef}
+        onAnimatingChange={setCamAnimating}
+      />
+
+      {!presentation && (
+        <GizmoHelper alignment="bottom-right" margin={[70, 70]}>
+          <GizmoViewport
+            axisColors={["#d92626", "#8a5a33", "#5d6d63"]}
+            labelColor="#f5f2ec"
+            hideNegativeAxes
+          />
+        </GizmoHelper>
+      )}
+
+      <OrbitControls
+        ref={controlsRef}
+        target={[center.x, 1, center.z]}
+        maxPolarAngle={Math.PI / 2 + 0.5}
+        minDistance={0.3}
+        maxDistance={Math.max(roomSpan * 3, 10)}
+        enableDamping
+        enabled={!drag && !decorDrag && !tourActive && !camAnimating}
+      />
+
+      <SnapshotHandler request={snapshotRequest} onSnapshot={onSnapshot} />
+    </>
+  );
+}
+
+/**
+ * High-resolution presentation render: temporarily upsizes the WebGL buffer
+ * (~2× up to 3840px wide), renders one frame, exports PNG, then restores.
+ */
+function SnapshotHandler({
+  request,
+  onSnapshot,
+}: {
+  request?: number;
+  onSnapshot?: (dataUrl: string) => void;
+}) {
+  const { gl, scene, camera } = useThree();
+  const lastRef = useRef(0);
+  useEffect(() => {
+    if (!request || request === lastRef.current || !onSnapshot) return;
+    lastRef.current = request;
+    const prev = new THREE.Vector2();
+    gl.getSize(prev);
+    const prevPixelRatio = gl.getPixelRatio();
+    try {
+      const scale = Math.min(2, 3840 / Math.max(prev.x, 1));
+      gl.setPixelRatio(1);
+      gl.setSize(Math.round(prev.x * scale * prevPixelRatio), Math.round(prev.y * scale * prevPixelRatio), false);
+      if (camera instanceof THREE.PerspectiveCamera) camera.updateProjectionMatrix();
+      gl.render(scene, camera);
+      onSnapshot(gl.domElement.toDataURL("image/png"));
+    } finally {
+      gl.setPixelRatio(prevPixelRatio);
+      gl.setSize(prev.x, prev.y, false);
+      if (camera instanceof THREE.PerspectiveCamera) camera.updateProjectionMatrix();
+      gl.render(scene, camera);
+    }
+  }, [request, onSnapshot, gl, scene, camera]);
+  return null;
+}
+
+/* ── Public component ────────────────────────────────────── */
+export interface StudioSceneProps {
+  layout: KitchenLayout;
+  walls: KitchenWall[];
+  ceilingHeight: number;
+  openings: KitchenOpening[];
+  utilities: KitchenUtility[];
+  selectedCabinetId?: string | null;
+  onSelectCabinet?: (id: string | null) => void;
+  selectedDecorId?: string | null;
+  onSelectDecor?: (id: string | null) => void;
+  /** Wood-type id → 3D finish, for Adeko parametric cabinets. */
+  adekoFinishById?: Record<number, AdekoFinish>;
+  /** Presentation mode: viewing only — no grabbing/dragging of items. */
+  presentation?: boolean;
+  /** Auto camera tour around the kitchen (presentation mode). */
+  tourActive?: boolean;
+  /** Called when the user interrupts the auto tour. */
+  onTourEnd?: () => void;
+  /** High-res snapshot request: bump the counter to capture a PNG. */
+  snapshotRequest?: number;
+  /** Receives the captured PNG data URL. */
+  onSnapshot?: (dataUrl: string) => void;
+  /** Camera preset request (person / top / iso / reset) — animated. */
+  viewRequest?: CameraViewRequest | null;
+}
+
+export default function StudioScene(props: StudioSceneProps) {
+  const segments = useMemo(
+    () => getWallSegments(props.layout, props.walls),
+    [props.layout, props.walls]
+  );
+  const bounds = useMemo(() => getFloorBounds(segments), [segments]);
+  const camPos: [number, number, number] = [
+    ((bounds.minX + bounds.maxX) / 2) * CM - 1.2,
+    1.65,
+    (bounds.maxY * CM) + 2.2,
+  ];
+
+  return (
+    <Canvas
+      shadows
+      camera={{ position: camPos, fov: 55, near: 0.05, far: 60 }}
+      gl={{ antialias: true }}
+      onCreated={({ gl }) => {
+        gl.toneMapping = THREE.ACESFilmicToneMapping;
+        gl.toneMappingExposure = 1.12;
+        gl.outputColorSpace = THREE.SRGBColorSpace;
+      }}
+      data-testid="canvas-studio-3d"
+    >
+      <SceneContents {...props} />
+    </Canvas>
+  );
+}

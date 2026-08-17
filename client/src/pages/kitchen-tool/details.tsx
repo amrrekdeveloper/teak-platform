@@ -111,7 +111,7 @@ const KIND_LABELS: Record<UtilityKind, { ar: string; en: string }> = {
   gas: { ar: "مخرج غاز", en: "Gas Outlet" },
 };
 
-export default function KitchenToolDetailsPage({ v2 = false }: { v2?: boolean }) {
+export default function KitchenToolDetailsPage() {
   const { t, isRTL } = useLanguage();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -365,7 +365,7 @@ export default function KitchenToolDetailsPage({ v2 = false }: { v2?: boolean })
       <div className="min-h-screen bg-background flex flex-col">
         <ToolNav homeTestId="link-details-home" />
         <div className="max-w-6xl mx-auto w-full px-6 pt-6">
-          <ToolStages current="details" v2={v2} />
+          <ToolStages current="details" />
         </div>
 
         <div className="flex-1 max-w-6xl mx-auto w-full px-6 py-8 grid grid-cols-1 xl:grid-cols-[340px_1fr] gap-8 items-start">
@@ -775,7 +775,7 @@ export default function KitchenToolDetailsPage({ v2 = false }: { v2?: boolean })
             <Button
               variant="outline"
               size="lg"
-              onClick={() => setLocation(v2 ? "/kitchen-designer-v2/space" : "/kitchen-designer/space")}
+              onClick={() => setLocation("/kitchen-designer/space")}
               className="font-bold min-w-[130px]"
               data-testid="button-details-back"
             >
@@ -786,7 +786,7 @@ export default function KitchenToolDetailsPage({ v2 = false }: { v2?: boolean })
               <Button
                 variant="ghost"
                 size="lg"
-                onClick={() => setLocation(v2 ? "/kitchen-designer-v2/compose" : "/kitchen-designer/studio")}
+                onClick={() => setLocation("/kitchen-designer/studio")}
                 className="font-bold text-muted-foreground"
                 data-testid="button-skip-details"
               >
@@ -794,7 +794,7 @@ export default function KitchenToolDetailsPage({ v2 = false }: { v2?: boolean })
               </Button>
               <Button
                 size="lg"
-                onClick={() => setLocation(v2 ? "/kitchen-designer-v2/compose" : "/kitchen-designer/studio")}
+                onClick={() => setLocation("/kitchen-designer/studio")}
                 className="font-bold min-w-[130px]"
                 data-testid="button-details-next"
               >
