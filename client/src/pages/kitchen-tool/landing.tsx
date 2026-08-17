@@ -103,12 +103,24 @@ export default function KitchenToolLandingPage() {
                   "From our factory to your home — Saudi quality, design in your hands."
                 )}
               </p>
-              <a href="/kitchen-designer/space" data-testid="link-kitchen-cta">
-                <Button size="lg" className="text-lg font-bold px-10 h-14 shadow-lg shadow-primary/25">
-                  {t("أداة تصميم مطابخ تيك الذكية", "Teak Smart Kitchen Design Tool")}
-                  <ArrowLeft className="w-5 h-5 ms-2 rtl:rotate-0 ltr:rotate-180" />
-                </Button>
-              </a>
+              <div className="flex flex-wrap items-center gap-4">
+                <a href="/kitchen-designer/space" data-testid="link-kitchen-cta">
+                  <Button size="lg" className="text-lg font-bold px-10 h-14 shadow-lg shadow-primary/25">
+                    {t("أداة تصميم مطابخ تيك الذكية", "Teak Smart Kitchen Design Tool")}
+                    <ArrowLeft className="w-5 h-5 ms-2 rtl:rotate-0 ltr:rotate-180" />
+                  </Button>
+                </a>
+                <a href="/kitchen-designer-v2/space" data-testid="link-kitchen-cta-v2">
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    className="text-lg font-bold px-8 h-14 border-primary/40 text-primary hover:bg-primary/10"
+                  >
+                    <Sparkles className="w-5 h-5 me-2" />
+                    {t("الأداة المطورة — تصميم بالذكاء الاصطناعي", "Advanced Tool — AI Design")}
+                  </Button>
+                </a>
+              </div>
             </motion.div>
 
             <motion.div

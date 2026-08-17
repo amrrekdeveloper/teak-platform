@@ -1,0 +1,44 @@
+The AI Planner + deterministic validator + editable Three.js result is exactly the direction I want.
+
+However, I want to change one architectural assumption in #194 before implementation.
+
+V2 must be a genuinely isolated fork of the current production Kitchen Designer, not just a new route that reuses the same store and the same mutable runtime state.
+
+The reason is simple: /kitchen-designer-v2 is our experimental future version. We may change it aggressively, and if it succeeds it may eventually replace /kitchen-designer. If it fails, we should be able to remove it without affecting V1.
+
+So before implementing #194, please revise the plan around these rules:
+
+Create V2 from a fresh snapshot of the current production Kitchen Designer.
+Give V2 its own Zustand store and its own persistence/localStorage namespace.
+V2 drafts, generated designs and temporary state must never overwrite or mutate V1 state.
+Do not refactor V1 just to make V2 cleaner.
+Shared read-only assets/utilities are fine if they are truly safe to share, but anything whose future V2 changes could alter V1 behavior should be copied or isolated.
+The abandoned existing kitchen-tool-v2 experiment is not the foundation; replace its routed implementation with the fresh V1-based V2.
+The AI Planner and validator must live in the V2 flow only for now.
+V1 /kitchen-designer must remain functionally unchanged.
+
+I also want one clarification in the roadmap:
+
+The goal of #194 is to make the AI generate a correct, editable kitchen layout in Three.js — not yet to guarantee the final photorealistic quality of the reference image.
+
+The reference image is still our target visual direction, but reaching that level also depends on the later visual work we already identified: slab fronts, real Teak materials, architectural door/window geometry, exterior view, ceiling/soffit cleanup, realistic recessed lights, under-cabinet lighting, sinks/hoods/appliances, and the real-time rendering/material pipeline.
+
+So please revise #194 into two clearly separated goals:
+
+Goal A — Intelligent design generation
+The AI understands the room, services and customer preferences, produces a structured kitchen plan, the deterministic validator makes it legal/manufacturable, and the result opens as a fully editable V2 Three.js design.
+
+Goal B — Visual target
+The generated layout must be compatible with our ongoing visual modernization so that the same design can progressively approach the attached high-quality kitchen reference. Do not try to solve all visual realism inside #194.
+
+Also please revisit one specific line in the current plan:
+
+“manufacturable sizes from the Adeko catalog only”
+
+This conflicts with the Teak Product Truth. Adeko may still be used as a temporary legacy fallback if technically necessary, but the V2 AI architecture must not be designed around Adeko sizes as the future manufacturing limit.
+
+Teak’s future cabinet model must support actual manufacturable parametric dimensions.
+
+Please revise the #194 plan with these changes and show me the updated architecture, isolation boundaries, files affected, and implementation sequence.
+
+Do not implement anything yet.

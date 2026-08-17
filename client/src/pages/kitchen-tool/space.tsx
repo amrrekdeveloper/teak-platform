@@ -29,7 +29,7 @@ const LAYOUT_OPTIONS: { value: KitchenLayout; ar: string; en: string }[] = [
   { value: "parallel", ar: "جداران متقابلان", en: "Two Facing Walls" },
 ];
 
-export default function KitchenToolSpacePage() {
+export default function KitchenToolSpacePage({ v2 = false }: { v2?: boolean }) {
   const { t, isRTL } = useLanguage();
   const [, setLocation] = useLocation();
   const {
@@ -71,7 +71,7 @@ export default function KitchenToolSpacePage() {
         <ToolNav homeTestId="link-space-home" />
 
         <div className="max-w-6xl mx-auto w-full px-6 pt-6">
-          <ToolStages current="space" />
+          <ToolStages current="space" v2={v2} />
         </div>
 
         <div className="flex-1 max-w-6xl mx-auto w-full px-6 py-8 grid grid-cols-1 xl:grid-cols-[340px_1fr] gap-8 items-start">
@@ -251,7 +251,7 @@ export default function KitchenToolSpacePage() {
             </Button>
             <Button
               size="lg"
-              onClick={() => setLocation("/kitchen-designer/details")}
+              onClick={() => setLocation(v2 ? "/kitchen-designer-v2/details" : "/kitchen-designer/details")}
               className="font-bold min-w-[130px]"
               data-testid="button-space-next"
             >

@@ -83,9 +83,7 @@ const KitchenToolLandingLazy = lazy(() => import("@/pages/kitchen-tool/landing")
 const KitchenToolSpaceLazy = lazy(() => import("@/pages/kitchen-tool/space"));
 const KitchenToolDetailsLazy = lazy(() => import("@/pages/kitchen-tool/details"));
 const KitchenToolStudioLazy = lazy(() => import("@/pages/kitchen-tool/studio"));
-const KitchenToolV2LandingLazy = lazy(() => import("@/pages/kitchen-tool-v2/index"));
-const KitchenToolV2SpaceLazy = lazy(() => import("@/pages/kitchen-tool-v2/space"));
-const KitchenToolV2RoomPreviewLazy = lazy(() => import("@/pages/kitchen-tool-v2/room-preview"));
+const KitchenToolAiComposeLazy = lazy(() => import("@/pages/kitchen-tool/ai-compose"));
 
 function KitchenToolFallback() {
   return (
@@ -123,6 +121,31 @@ function KitchenToolStudio() {
   return (
     <Suspense fallback={<KitchenToolFallback />}>
       <KitchenToolStudioLazy />
+    </Suspense>
+  );
+}
+
+/* «الأداة المطورة» (V2) — same space/details screens, then the AI compose step. */
+function KitchenToolV2Space() {
+  return (
+    <Suspense fallback={<KitchenToolFallback />}>
+      <KitchenToolSpaceLazy v2 />
+    </Suspense>
+  );
+}
+
+function KitchenToolV2Details() {
+  return (
+    <Suspense fallback={<KitchenToolFallback />}>
+      <KitchenToolDetailsLazy v2 />
+    </Suspense>
+  );
+}
+
+function KitchenToolV2Compose() {
+  return (
+    <Suspense fallback={<KitchenToolFallback />}>
+      <KitchenToolAiComposeLazy />
     </Suspense>
   );
 }
@@ -347,9 +370,10 @@ function Router() {
       <Route path="/kitchen-designer/utilities" component={KitchenToolDetails} />
       <Route path="/kitchen-designer/studio" component={KitchenToolStudio} />
       <Route path="/kitchen-designer" component={KitchenToolLanding} />
-      <Route path="/kitchen-designer-v2/space">{() => <Suspense fallback={<KitchenToolFallback />}><KitchenToolV2SpaceLazy /></Suspense>}</Route>
-      <Route path="/kitchen-designer-v2/room-preview">{() => <Suspense fallback={<KitchenToolFallback />}><KitchenToolV2RoomPreviewLazy /></Suspense>}</Route>
-      <Route path="/kitchen-designer-v2">{() => <Suspense fallback={<KitchenToolFallback />}><KitchenToolV2LandingLazy /></Suspense>}</Route>
+      <Route path="/kitchen-designer-v2/space" component={KitchenToolV2Space} />
+      <Route path="/kitchen-designer-v2/details" component={KitchenToolV2Details} />
+      <Route path="/kitchen-designer-v2/compose" component={KitchenToolV2Compose} />
+      <Route path="/kitchen-designer-v2" component={KitchenToolV2Space} />
       <Route path="/view-3d" component={Scene3DPage} />
       <Route path="/scene-3d" component={Scene3DPage} />
       <Route path="/dashboard" nest component={DashboardRoutes} />

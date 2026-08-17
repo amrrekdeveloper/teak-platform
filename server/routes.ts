@@ -1374,6 +1374,91 @@ export async function registerRoutes(
     }
   });
 
+  // AI kitchen planner — receives a room summary and asks an LLM for a
+  // structured layout plan (unit type + wall + position + width). The AI
+  // never draws anything: the client compiles the plan through the same
+  // deterministic collision engine as manual placement.
+  app.post("/api/kitchen-tool/ai-plan", async (req, res) => {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      res.status(503).json({ error: "ai_unavailable" });
+      return;
+    }
+    try {
+      const room = req.body?.room;
+      if (!room || typeof room !== "object" || !Array.isArray(room.walls)) {
+        res.status(400).json({ error: "invalid_room" });
+        return;
+      }
+      const system = [
+        "You are a professional kitchen layout planner for Teak Kitchens (Saudi Arabia).",
+        "You receive a JSON room summary (walls in cm, doors with swing, windows, water/drain/gas/electric points, customer preferences).",
+        "Reply ONLY with a JSON object: {\"units\":[{\"unit\":string,\"wallId\":string,\"offsetCm\":number,\"widthCm\":number}],\"island\":boolean}.",
+        "Allowed unit values: corner, sink, cooktop, tower, drawers, base, upper.",
+        "Rules of a professional design:",
+        "- offsetCm is the distance from the wall start to the unit's near edge.",
+        "- Place exactly one sink, centered as close as possible to the water/drain point (or under a window if no water point).",
+        "- Place exactly one cooktop near the gas point when one exists, never directly beside the sink (keep >= 60cm work surface between them), and never under a window.",
+        "- If the room has 2+ walls, start with one corner unit at the junction.",
+        "- Add one tower (tall oven/fridge column) at the end of a run when total walls >= 550cm.",
+        "- Never overlap doors or their swing area; leave door clearances free.",
+        "- Fill remaining base run with drawers (one stack near the cooktop) and base units, then upper units above the base run (not over the cooktop area, not over doors).",
+        "- Typical widths: 40-100cm. Sum of unit widths per wall must not exceed the wall length.",
+        "- Aim for the work triangle: sink, cooktop, tower spread over the runs, not crammed on one wall.",
+        "- island: true only if prefs.island is 'yes' or ('auto' and the room is clearly large, > 350cm free in both directions).",
+      ].join("\n");
+
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 25000);
+      let response: Response;
+      try {
+        response = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model: "gpt-4o",
+            temperature: 0.4,
+            response_format: { type: "json_object" },
+            messages: [
+              { role: "system", content: system },
+              { role: "user", content: JSON.stringify(room) },
+            ],
+          }),
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timer);
+      }
+      if (!response.ok) {
+        console.error("ai-plan: provider error", response.status);
+        res.status(502).json({ error: "ai_failed" });
+        return;
+      }
+      const data = (await response.json()) as {
+        choices?: { message?: { content?: string } }[];
+      };
+      const content = data.choices?.[0]?.message?.content;
+      if (!content) {
+        res.status(502).json({ error: "ai_failed" });
+        return;
+      }
+      let plan: unknown;
+      try {
+        plan = JSON.parse(content);
+      } catch {
+        res.status(502).json({ error: "ai_failed" });
+        return;
+      }
+      res.json({ plan });
+    } catch (error) {
+      console.error("ai-plan error:", error);
+      res.status(502).json({ error: "ai_failed" });
+    }
+  });
+
   // Public materials list for the 3D kitchen studio — active factory wood types.
   app.get("/api/kitchen-tool/materials", async (_req, res) => {
     try {
