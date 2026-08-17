@@ -32,6 +32,8 @@ import {
   parseAiPlan,
   compileAiPlan,
   buildFallbackPlan,
+  buildAutoDecor,
+  type PlanLighting,
 } from "@/components/kitchen-designer-v2/ai-plan";
 import { apiRequest } from "@/lib/queryClient";
 import teakLogo from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
@@ -104,6 +106,10 @@ export default function KitchenToolAiComposePage() {
   const clearPlacedCabinets = useKitchenToolStore((s) => s.clearPlacedCabinets);
   const addPlacedCabinet = useKitchenToolStore((s) => s.addPlacedCabinet);
   const setIslandEnabled = useKitchenToolStore((s) => s.setIslandEnabled);
+  const addPlacedDecor = useKitchenToolStore((s) => s.addPlacedDecor);
+  const removePlacedDecor = useKitchenToolStore((s) => s.removePlacedDecor);
+  const setLedStrips = useKitchenToolStore((s) => s.setLedStrips);
+  const setLightTemp = useKitchenToolStore((s) => s.setLightTemp);
 
   const [templateId, setTemplateId] = useState(KITCHEN_TEMPLATES[0].id);
   const [island, setIsland] = useState<IslandChoice>("auto");
@@ -150,6 +156,7 @@ export default function KitchenToolAiComposePage() {
 
     let cabinets = null as ReturnType<typeof compileAiPlan> | null;
     let aiIsland: boolean | undefined;
+    let aiLighting: PlanLighting | undefined;
     try {
       const room = buildRoomSummary(
         layout,
@@ -165,7 +172,8 @@ export default function KitchenToolAiComposePage() {
       const plan = parseAiPlan(data.plan);
       if (plan) {
         aiIsland = plan.island;
-        const compiled = compileAiPlan(plan, segments, openings, adekoDefs, template);
+        aiLighting = plan.lighting;
+        const compiled = compileAiPlan(plan, segments, openings, adekoDefs, template, utilities);
         if (compiled.length >= 3) cabinets = compiled;
       }
     } catch {
@@ -180,7 +188,8 @@ export default function KitchenToolAiComposePage() {
       usedFallback = true;
       const fb = buildFallbackPlan(segments, openings, utilities, island);
       aiIsland = fb.island;
-      cabinets = compileAiPlan(fb, segments, openings, adekoDefs, template);
+      aiLighting = fb.lighting;
+      cabinets = compileAiPlan(fb, segments, openings, adekoDefs, template, utilities);
     }
 
     // Island: explicit choice wins; "auto" follows AI opinion but only when
@@ -209,6 +218,17 @@ export default function KitchenToolAiComposePage() {
     clearPlacedCabinets();
     for (const c of cabinets) addPlacedCabinet(c);
     setIslandEnabled(finalIsland);
+
+    // Complete kitchen on first render: auto-pair the cooktop with a range
+    // hood decor item, and apply the designer's lighting intent.
+    removePlacedDecor("decor-auto-hood");
+    const allDefs = [
+      ...adekoDefs,
+      ...EXTRA_CABINET_DEFS.filter((x: CabinetDef) => !adekoDefs.some((d) => d.id === x.id)),
+    ];
+    for (const d of buildAutoDecor(cabinets, allDefs)) addPlacedDecor(d);
+    setLedStrips(aiLighting?.underCabinetLed !== false);
+    setLightTemp(aiLighting?.temp === "cool" ? "cool" : "warm");
     if (usedFallback) {
       console.info("compose: used deterministic utility-aware fallback planner");
     }
@@ -234,8 +254,8 @@ export default function KitchenToolAiComposePage() {
             </h1>
             <p className="text-sm text-muted-foreground">
               {t(
-                "أجب على سؤالين فقط، وسيخطط الذكاء الاصطناعي مطبخك بناءً على مساحتك ونقاط الخدمات — ثم يفتح الاستوديو والتصميم بالكامل ملكك للتعديل.",
-                "Answer just two questions and the AI will plan your kitchen from your space and utility points — then the studio opens and the design is fully yours to edit."
+                "أجب على سؤالين فقط، وستصمم الأداة المطورة مطبخك بناءً على مساحتك ونقاط الخدمات — ثم يفتح الاستوديو والتصميم بالكامل ملكك للتعديل.",
+                "Answer just two questions and the advanced tool will design your kitchen from your space and utility points — then the studio opens and the design is fully yours to edit."
               )}
             </p>
           </div>

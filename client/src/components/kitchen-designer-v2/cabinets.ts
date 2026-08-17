@@ -399,6 +399,17 @@ export const EXTRA_CABINET_DEFS: CabinetDef[] = [
     parametricKind: { place: "wall", doors: 2, drawers: 0, topDrawer: false, glass: false, open: false, filler: false },
   },
   {
+    id: "adeko-x-dishwasher-60",
+    nameAr: "غسالة أطباق مدمجة",
+    nameEn: "Dishwasher Housing 60",
+    level: "base",
+    width: 0.6,
+    depth: 0.6,
+    height: 0.9,
+    mountY: 0,
+    parametricKind: { place: "base", doors: 1, drawers: 0, topDrawer: false, glass: false, open: false, filler: false },
+  },
+  {
     id: "adeko-x-pantry-60",
     nameAr: "خزانة مؤونة طويلة",
     nameEn: "Tall Pantry 60",

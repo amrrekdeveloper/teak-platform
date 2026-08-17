@@ -1374,6 +1374,89 @@ export async function registerRoutes(
     }
   });
 
+  // V2 planning endpoint guards: per-IP rate limit window + strict
+  // size-bounded room schema (the payload is forwarded to a paid model).
+  const kitchenPlanRateLimit = new Map<string, { windowStart: number; count: number }>();
+  const kitchenRoomSchema = z.object({
+    layout: z.string().max(10),
+    ceilingCm: z.number().min(180).max(500),
+    walls: z
+      .array(z.object({ id: z.string().max(4), lengthCm: z.number().min(30).max(3000) }))
+      .min(1)
+      .max(6),
+    openings: z
+      .array(
+        z.object({
+          wallId: z.string().max(4),
+          type: z.enum(["door", "window"]),
+          widthCm: z.number().min(20).max(500),
+          fromWallStartCm: z.number().min(0).max(3000),
+          swing: z.string().max(10).optional(),
+          sillCm: z.number().min(0).max(300).optional(),
+          heightCm: z.number().min(20).max(300).optional(),
+        })
+      )
+      .max(12)
+      .default([]),
+    utilities: z
+      .array(
+        z.object({
+          kind: z.string().max(20),
+          wallId: z.string().max(4).optional(),
+          fromWallStartCm: z.number().min(0).max(3000).optional(),
+        })
+      )
+      .max(12)
+      .default([]),
+    prefs: z
+      .object({
+        styleAr: z.string().max(60),
+        island: z.enum(["yes", "no", "auto"]),
+      })
+      .optional(),
+  });
+
+  // Strict semantic schema for the model OUTPUT: unit family enum (incl.
+  // legacy aliases), bounded numbers, bounded array — and at least one
+  // sink among the units (a kitchen without a sink is semantically
+  // invalid; the client guard also enforces uniqueness/pinning).
+  const kitchenPlanUnitFamilies = [
+    "cornerUnit", "sinkBase", "cooktopBase", "ovenTower", "tallPantry",
+    "fridgeHousing", "dishwasherBase", "drawerBase", "baseCabinet", "wallCabinet", "filler",
+    // legacy aliases the client parser maps
+    "corner", "sink", "cooktop", "tower", "drawers", "base", "upper", "dishwasher",
+  ] as const;
+  const kitchenPlanOutputSchema = z.object({
+    units: z
+      .array(
+        z.object({
+          unit: z.enum(kitchenPlanUnitFamilies),
+          wallId: z.string().max(4).optional(),
+          offsetCm: z.number().min(0).max(3000).optional(),
+          widthCm: z.number().min(5).max(200).optional(),
+        }).passthrough()
+      )
+      .min(1)
+      .max(28),
+    island: z.boolean().optional(),
+    lighting: z
+      .object({
+        underCabinetLed: z.boolean().optional(),
+        temp: z.enum(["warm", "cool"]).optional(),
+      })
+      .passthrough()
+      .optional(),
+    designNotes: z.string().max(500).optional(),
+  }).passthrough()
+    .refine(
+      (p) => p.units.some((u) => u.unit === "sinkBase" || u.unit === "sink"),
+      { message: "plan must contain a sink unit" }
+    )
+    .refine(
+      (p) => p.units.some((u) => u.unit === "cooktopBase" || u.unit === "cooktop"),
+      { message: "plan must contain a cooktop unit" }
+    );
+
   // V2 intelligent kitchen designer — stateless planning endpoint.
   // Receives a room summary + preferences and asks the model to DESIGN the
   // kitchen as a semantic Teak plan (unit families with parametric widths,
@@ -1386,18 +1469,36 @@ export async function registerRoutes(
       res.status(503).json({ error: "ai_unavailable" });
       return;
     }
+    // Simple in-memory rate limit: this endpoint triggers paid model calls,
+    // so cap requests per IP per minute (public tool, no auth by design).
+    const rlKey = req.ip ?? "unknown";
+    const now = Date.now();
+    const rl = kitchenPlanRateLimit.get(rlKey);
+    if (rl && now - rl.windowStart < 60_000) {
+      if (rl.count >= 6) {
+        res.status(429).json({ error: "rate_limited" });
+        return;
+      }
+      rl.count += 1;
+    } else {
+      kitchenPlanRateLimit.set(rlKey, { windowStart: now, count: 1 });
+      if (kitchenPlanRateLimit.size > 5000) kitchenPlanRateLimit.clear();
+    }
     try {
-      const room = req.body?.room;
-      if (!room || typeof room !== "object" || !Array.isArray(room.walls)) {
+      // Strict, size-bounded validation — the model only ever receives a
+      // sanitized reconstruction, never the raw client payload.
+      const parsed = kitchenRoomSchema.safeParse(req.body?.room);
+      if (!parsed.success) {
         res.status(400).json({ error: "invalid_room" });
         return;
       }
+      const room = parsed.data;
       const system = [
         "You are a senior kitchen designer at Teak Kitchens (Saudi Arabia). You design the COMPLETE kitchen concept for a real customer room — functional zoning, storage balance, alignment and visual rhythm — like a capable human designer, not a wall-filling algorithm.",
         "You receive a JSON room summary: walls in cm, doors with swing direction, windows, water/drain/gas/electric points, and customer preferences (style, island).",
-        'Reply ONLY with a JSON object: {"units":[{"unit":string,"wallId":string,"offsetCm":number,"widthCm":number}],"island":boolean,"designNotes":string}.',
+        'Reply ONLY with a JSON object: {"units":[{"unit":string,"wallId":string,"offsetCm":number,"widthCm":number}],"island":boolean,"lighting":{"underCabinetLed":boolean,"temp":"warm"|"cool"},"designNotes":string}.',
         "Semantic unit families (design meaning, NOT catalog products):",
-        "- cornerUnit (90-105cm), sinkBase (60-120), cooktopBase (60-90), ovenTower (60), tallPantry (45-90), fridgeHousing (65-90), drawerBase (40-100), baseCabinet (30-100), wallCabinet (30-100), filler (5-15).",
+        "- cornerUnit (90-105cm), sinkBase (60-120), cooktopBase (60-90), ovenTower (60), tallPantry (45-90), fridgeHousing (65-90), dishwasherBase (45-60), drawerBase (40-100), baseCabinet (30-100), wallCabinet (30-100), filler (5-15).",
         "Widths are parametric manufacturable dimensions — choose the width that fits the composition, not fixed modules.",
         "Design rules:",
         "- offsetCm = distance from wall start to the unit's near edge. Sum of unit widths per wall must not exceed the wall length.",
@@ -1407,6 +1508,8 @@ export async function registerRoutes(
         "- On 2+ wall layouts start with one cornerUnit at the junction.",
         "- Tall zone: place fridgeHousing and ovenTower/tallPantry together at the END of a run (never mid-run breaking the worktop), fridge nearest the room entrance when practical.",
         "- drawerBase adjacent to the cooktop for utensils.",
+        "- Include one dishwasherBase directly ADJACENT to the sink (shared plumbing) on kitchens with enough wall length; a range hood is added above the cooktop automatically, do not model it.",
+        "- lighting: your intent for under-cabinet LED and light temperature (warm/cool) matching the style.",
         "- wallCabinet rows above the base run: aligned widths, consistent rhythm, none over the cooktop position, none over doors or windows.",
         "- Respect doors: never block a door opening or its swing arc; keep passage clearances free.",
         "- Use filler only to absorb small leftover gaps at corners/walls ends.",
@@ -1445,10 +1548,15 @@ export async function registerRoutes(
           const content = data.choices?.[0]?.message?.content;
           if (!content) return null;
           try {
-            const plan = JSON.parse(content) as { units?: unknown };
-            // Minimal structural validation — the client guard does the rest.
-            if (!plan || !Array.isArray(plan.units) || plan.units.length === 0) return null;
-            return plan;
+            const raw = JSON.parse(content);
+            // Strict semantic validation of the model output. Invalid or
+            // sink-less plans are rejected here and trigger the retry.
+            const check = kitchenPlanOutputSchema.safeParse(raw);
+            if (!check.success) {
+              console.error("kitchen-v2 plan: semantic validation failed", check.error.issues[0]?.message);
+              return null;
+            }
+            return check.data;
           } catch {
             return null;
           }

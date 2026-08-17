@@ -11,7 +11,7 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import AdekoBaseCabinet from "@/components/kitchen-designer-v2/adeko-cabinet";
 import type { CabinetDef } from "@/components/kitchen-designer-v2/cabinets";
 
-const LS_KEY = "kitchen-tool-thumbs-v1";
+const LS_KEY = "kitchen-designer-v2-thumbs";
 const THUMB_SIZE = 224;
 
 /* ── cache + subscription ────────────────────────────────── */
