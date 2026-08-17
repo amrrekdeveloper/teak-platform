@@ -26,14 +26,12 @@ import {
   type AdekoProductRow,
   type CabinetDef,
 } from "@/components/kitchen-designer-v2/cabinets";
-import {
-  KITCHEN_TEMPLATES,
-  buildTemplateCabinets,
-} from "@/components/kitchen-designer-v2/templates";
+import { KITCHEN_TEMPLATES } from "@/components/kitchen-designer-v2/templates";
 import {
   buildRoomSummary,
   parseAiPlan,
   compileAiPlan,
+  buildFallbackPlan,
 } from "@/components/kitchen-designer-v2/ai-plan";
 import { apiRequest } from "@/lib/queryClient";
 import teakLogo from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
@@ -45,7 +43,8 @@ const PHRASES: { ar: string; en: string }[] = [
   { ar: "نراعي الأبواب والنوافذ واتجاهات الفتح...", en: "Accounting for doors, windows and swing directions..." },
   { ar: "ندرس نقاط المياه والصرف والغاز...", en: "Studying water, drain and gas points..." },
   { ar: "نوزع مناطق العمل: الغسيل، الطهي، التخزين...", en: "Laying out work zones: washing, cooking, storage..." },
-  { ar: "نجهز التصميم ثلاثي الأبعاد...", en: "Preparing the 3D design..." },
+  { ar: "تصميم الخزائن وتنسيق الواجهات...", en: "Designing cabinets and coordinating fronts..." },
+  { ar: "جاري تصميم مطبخك...", en: "Composing your kitchen..." },
 ];
 
 /** Minimum time (ms) the composing screen stays up so it never flashes. */
@@ -161,7 +160,7 @@ export default function KitchenToolAiComposePage() {
         template.nameAr,
         island
       );
-      const res = await apiRequest("POST", "/api/kitchen-v2/ai-plan", { room });
+      const res = await apiRequest("POST", "/api/kitchen-designer-v2/plan", { room });
       const data = (await res.json()) as { plan?: unknown };
       const plan = parseAiPlan(data.plan);
       if (plan) {
@@ -173,10 +172,15 @@ export default function KitchenToolAiComposePage() {
       // AI unavailable/failed — the deterministic fallback below takes over.
     }
 
+    // Intelligent service unavailable or plan uncompilable — the V2
+    // deterministic utility-aware planner still designs a sensible kitchen
+    // from the room data itself (never a fixed template).
     let usedFallback = false;
     if (!cabinets || cabinets.length === 0) {
       usedFallback = true;
-      cabinets = buildTemplateCabinets(template, segments, openings, adekoDefs, utilities);
+      const fb = buildFallbackPlan(segments, openings, utilities, island);
+      aiIsland = fb.island;
+      cabinets = compileAiPlan(fb, segments, openings, adekoDefs, template);
     }
 
     // Island: explicit choice wins; "auto" follows AI opinion but only when
@@ -206,8 +210,7 @@ export default function KitchenToolAiComposePage() {
     for (const c of cabinets) addPlacedCabinet(c);
     setIslandEnabled(finalIsland);
     if (usedFallback) {
-      // Design still opens — sourced from the smart templates instead of AI.
-      console.info("ai-compose: fell back to smart templates");
+      console.info("compose: used deterministic utility-aware fallback planner");
     }
     setLocation("/kitchen-designer-v2/studio");
   };

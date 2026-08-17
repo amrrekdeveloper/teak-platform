@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { getWallSegments } from "@/components/kitchen-designer-v2/plan-svg";
-import { parseAiPlan, compileAiPlan, buildRoomSummary } from "@/components/kitchen-designer-v2/ai-plan";
+import { parseAiPlan, compileAiPlan, buildRoomSummary, buildFallbackPlan } from "@/components/kitchen-designer-v2/ai-plan";
 import { findCabinetDef, verticalSpan, type CabinetDef } from "@/components/kitchen-designer-v2/cabinets";
 import { KITCHEN_TEMPLATES } from "@/components/kitchen-designer-v2/templates";
 import type { KitchenOpening, KitchenWall } from "@/components/kitchen-designer-v2/store";
@@ -46,15 +46,15 @@ describe("parseAiPlan", () => {
   it("keeps valid units and drops invalid ones", () => {
     const plan = parseAiPlan({
       units: [
-        { unit: "sink", wallId: "A", offsetCm: 100, widthCm: 80 },
+        { unit: "sinkBase", wallId: "A", offsetCm: 100, widthCm: 80 },
         { unit: "spaceship", wallId: "A" },
-        { unit: "base", offsetCm: "x" },
+        { unit: "baseCabinet", offsetCm: "x" },
       ],
       island: true,
     });
     expect(plan).not.toBeNull();
     expect(plan!.units).toHaveLength(2);
-    expect(plan!.units[0]).toEqual({ unit: "sink", wallId: "A", offsetCm: 100, widthCm: 80 });
+    expect(plan!.units[0]).toEqual({ unit: "sinkBase", wallId: "A", offsetCm: 100, widthCm: 80 });
     expect(plan!.units[1].offsetCm).toBeUndefined();
     expect(plan!.island).toBe(true);
   });
@@ -64,9 +64,9 @@ describe("compileAiPlan", () => {
   it("places units at legal offsets and honors requested positions", () => {
     const plan = parseAiPlan({
       units: [
-        { unit: "sink", wallId: "A", offsetCm: 150, widthCm: 80 },
-        { unit: "cooktop", wallId: "B", offsetCm: 100, widthCm: 60 },
-        { unit: "base", wallId: "A", offsetCm: 0, widthCm: 80 },
+        { unit: "sinkBase", wallId: "A", offsetCm: 150, widthCm: 80 },
+        { unit: "cooktopBase", wallId: "B", offsetCm: 100, widthCm: 60 },
+        { unit: "baseCabinet", wallId: "A", offsetCm: 0, widthCm: 80 },
       ],
     })!;
     const cabs = compileAiPlan(plan, segments, [], [], template);
@@ -83,8 +83,8 @@ describe("compileAiPlan", () => {
   it("snaps overlapping requests to the nearest legal offset instead of overlapping", () => {
     const plan = parseAiPlan({
       units: [
-        { unit: "sink", wallId: "A", offsetCm: 100, widthCm: 80 },
-        { unit: "cooktop", wallId: "A", offsetCm: 110, widthCm: 60 },
+        { unit: "sinkBase", wallId: "A", offsetCm: 100, widthCm: 80 },
+        { unit: "cooktopBase", wallId: "A", offsetCm: 110, widthCm: 60 },
       ],
     })!;
     const cabs = compileAiPlan(plan, segments, [], [], template);
@@ -97,7 +97,7 @@ describe("compileAiPlan", () => {
       { id: "d1", wallId: "A", type: "door", width: 90, distanceFromWallStart: 150 },
     ];
     const plan = parseAiPlan({
-      units: [{ unit: "sink", wallId: "A", offsetCm: 160, widthCm: 80 }],
+      units: [{ unit: "sinkBase", wallId: "A", offsetCm: 160, widthCm: 80 }],
     })!;
     const cabs = compileAiPlan(plan, segments, openings, [], template);
     expect(cabs.length).toBe(1);
@@ -114,9 +114,9 @@ describe("compileAiPlan", () => {
     const tiny = getWallSegments("I", [{ id: "A", length: 100 }]);
     const plan = parseAiPlan({
       units: [
-        { unit: "sink", wallId: "A", offsetCm: 0, widthCm: 100 },
-        { unit: "cooktop", wallId: "A", offsetCm: 0, widthCm: 90 },
-        { unit: "tower", wallId: "A", offsetCm: 0 },
+        { unit: "sinkBase", wallId: "A", offsetCm: 0, widthCm: 100 },
+        { unit: "cooktopBase", wallId: "A", offsetCm: 0, widthCm: 90 },
+        { unit: "ovenTower", wallId: "A", offsetCm: 0 },
       ],
     })!;
     const cabs = compileAiPlan(plan, tiny, [], [], template);
@@ -126,8 +126,12 @@ describe("compileAiPlan", () => {
   });
 
   it("returns [] for a room with no free wall space (fallback trigger)", () => {
-    const tiny = getWallSegments("I", [{ id: "A", length: 30 }]);
-    const plan = parseAiPlan({ units: [{ unit: "sink", wallId: "A", offsetCm: 0 }] })!;
+    // getWallSegments clamps wall lengths to WALL_MIN, so build the tiny
+    // segment directly: a 30cm wall cannot host any 80cm sink unit.
+    const tiny = [
+      { id: "A", x1: 0, y1: 0, x2: 30, y2: 0, length: 30, nx: 0, ny: -1 },
+    ];
+    const plan = parseAiPlan({ units: [{ unit: "sinkBase", wallId: "A", offsetCm: 0 }] })!;
     expect(compileAiPlan(plan, tiny, [], [], template)).toHaveLength(0);
   });
 });
@@ -150,5 +154,29 @@ describe("buildRoomSummary", () => {
     expect(s.openings[0]).toMatchObject({ wallId: "A", type: "door", swing: "in" });
     expect(s.utilities[0]).toMatchObject({ kind: "water", wallId: "B", fromWallStartCm: 120 });
     expect(s.prefs).toEqual({ styleAr: "دفء البلوط", island: "auto" });
+  });
+});
+
+describe("buildFallbackPlan", () => {
+  it("designs a utility-aware plan: sink at water, cooktop at gas, compilable", () => {
+    const segments = getWallSegments("L", [
+      { id: "A", length: 400 },
+      { id: "B", length: 300 },
+    ]);
+    const utilities = [
+      { id: "u1", kind: "water", wallId: "A", positionAlongWall: 120 },
+      { id: "u2", kind: "gas", wallId: "B", positionAlongWall: 100 },
+    ] as any;
+    const plan = buildFallbackPlan(segments, [], utilities, "auto");
+    const sink = plan.units.find((u) => u.unit === "sinkBase")!;
+    expect(sink.wallId).toBe("A");
+    expect(Math.abs((sink.offsetCm ?? 0) - 80)).toBeLessThanOrEqual(1);
+    const cook = plan.units.find((u) => u.unit === "cooktopBase")!;
+    expect(cook.wallId).toBe("B");
+    expect(plan.units.some((u) => u.unit === "cornerUnit")).toBe(true);
+    expect(plan.units.some((u) => u.unit === "wallCabinet")).toBe(true);
+    const template = KITCHEN_TEMPLATES[0];
+    const cabs = compileAiPlan(plan, segments, [], [], template);
+    expect(cabs.length).toBeGreaterThanOrEqual(4);
   });
 });

@@ -1374,11 +1374,13 @@ export async function registerRoutes(
     }
   });
 
-  // AI kitchen planner — receives a room summary and asks an LLM for a
-  // structured layout plan (unit type + wall + position + width). The AI
-  // never draws anything: the client compiles the plan through the same
-  // deterministic collision engine as manual placement.
-  app.post("/api/kitchen-v2/ai-plan", async (req, res) => {
+  // V2 intelligent kitchen designer — stateless planning endpoint.
+  // Receives a room summary + preferences and asks the model to DESIGN the
+  // kitchen as a semantic Teak plan (unit families with parametric widths,
+  // zoning and relationships). It returns structure only — never meshes,
+  // never images. The client-side engineering guard makes the plan legal.
+  // Touches no V1 designs, quotations, Adeko records or pricing data.
+  app.post("/api/kitchen-designer-v2/plan", async (req, res) => {
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
       res.status(503).json({ error: "ai_unavailable" });
@@ -1391,70 +1393,80 @@ export async function registerRoutes(
         return;
       }
       const system = [
-        "You are a professional kitchen layout planner for Teak Kitchens (Saudi Arabia).",
-        "You receive a JSON room summary (walls in cm, doors with swing, windows, water/drain/gas/electric points, customer preferences).",
-        "Reply ONLY with a JSON object: {\"units\":[{\"unit\":string,\"wallId\":string,\"offsetCm\":number,\"widthCm\":number}],\"island\":boolean}.",
-        "Allowed unit values: corner, sink, cooktop, tower, drawers, base, upper.",
-        "Rules of a professional design:",
-        "- offsetCm is the distance from the wall start to the unit's near edge.",
-        "- Place exactly one sink, centered as close as possible to the water/drain point (or under a window if no water point).",
-        "- Place exactly one cooktop near the gas point when one exists, never directly beside the sink (keep >= 60cm work surface between them), and never under a window.",
-        "- If the room has 2+ walls, start with one corner unit at the junction.",
-        "- Add one tower (tall oven/fridge column) at the end of a run when total walls >= 550cm.",
-        "- Never overlap doors or their swing area; leave door clearances free.",
-        "- Fill remaining base run with drawers (one stack near the cooktop) and base units, then upper units above the base run (not over the cooktop area, not over doors).",
-        "- Typical widths: 40-100cm. Sum of unit widths per wall must not exceed the wall length.",
-        "- Aim for the work triangle: sink, cooktop, tower spread over the runs, not crammed on one wall.",
-        "- island: true only if prefs.island is 'yes' or ('auto' and the room is clearly large, > 350cm free in both directions).",
+        "You are a senior kitchen designer at Teak Kitchens (Saudi Arabia). You design the COMPLETE kitchen concept for a real customer room — functional zoning, storage balance, alignment and visual rhythm — like a capable human designer, not a wall-filling algorithm.",
+        "You receive a JSON room summary: walls in cm, doors with swing direction, windows, water/drain/gas/electric points, and customer preferences (style, island).",
+        'Reply ONLY with a JSON object: {"units":[{"unit":string,"wallId":string,"offsetCm":number,"widthCm":number}],"island":boolean,"designNotes":string}.',
+        "Semantic unit families (design meaning, NOT catalog products):",
+        "- cornerUnit (90-105cm), sinkBase (60-120), cooktopBase (60-90), ovenTower (60), tallPantry (45-90), fridgeHousing (65-90), drawerBase (40-100), baseCabinet (30-100), wallCabinet (30-100), filler (5-15).",
+        "Widths are parametric manufacturable dimensions — choose the width that fits the composition, not fixed modules.",
+        "Design rules:",
+        "- offsetCm = distance from wall start to the unit's near edge. Sum of unit widths per wall must not exceed the wall length.",
+        "- Zoning: washing (sink), cooking (cooktop + drawers for utensils), storage (tall units + pantry), with a sensible work triangle across the runs.",
+        "- Exactly one sinkBase, as close as possible to the water/drain point; under a window is excellent when compatible.",
+        "- Exactly one cooktopBase, near the gas point when one exists, >= 60cm of worktop away from the sink, never under a window (hood goes above it).",
+        "- On 2+ wall layouts start with one cornerUnit at the junction.",
+        "- Tall zone: place fridgeHousing and ovenTower/tallPantry together at the END of a run (never mid-run breaking the worktop), fridge nearest the room entrance when practical.",
+        "- drawerBase adjacent to the cooktop for utensils.",
+        "- wallCabinet rows above the base run: aligned widths, consistent rhythm, none over the cooktop position, none over doors or windows.",
+        "- Respect doors: never block a door opening or its swing arc; keep passage clearances free.",
+        "- Use filler only to absorb small leftover gaps at corners/walls ends.",
+        "- island: true only when prefs.island is 'yes', or 'auto' AND the free floor area clearly allows 90cm walkways around an island.",
+        "- designNotes: one short sentence describing your zoning rationale.",
       ].join("\n");
 
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 25000);
-      let response: Response;
-      try {
-        response = await fetch("https://api.openai.com/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify({
-            model: "gpt-4o",
-            temperature: 0.4,
-            response_format: { type: "json_object" },
-            messages: [
-              { role: "system", content: system },
-              { role: "user", content: JSON.stringify(room) },
-            ],
-          }),
-          signal: controller.signal,
-        });
-      } finally {
-        clearTimeout(timer);
-      }
-      if (!response.ok) {
-        console.error("ai-plan: provider error", response.status);
-        res.status(502).json({ error: "ai_failed" });
-        return;
-      }
-      const data = (await response.json()) as {
-        choices?: { message?: { content?: string } }[];
+      const callModel = async () => {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 25000);
+        try {
+          const response = await fetch("https://api.openai.com/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify({
+              model: "gpt-4o",
+              temperature: 0.4,
+              response_format: { type: "json_object" },
+              messages: [
+                { role: "system", content: system },
+                { role: "user", content: JSON.stringify(room) },
+              ],
+            }),
+            signal: controller.signal,
+          });
+          if (!response.ok) {
+            console.error("kitchen-v2 plan: provider error", response.status);
+            return null;
+          }
+          const data = (await response.json()) as {
+            choices?: { message?: { content?: string } }[];
+          };
+          const content = data.choices?.[0]?.message?.content;
+          if (!content) return null;
+          try {
+            const plan = JSON.parse(content) as { units?: unknown };
+            // Minimal structural validation — the client guard does the rest.
+            if (!plan || !Array.isArray(plan.units) || plan.units.length === 0) return null;
+            return plan;
+          } catch {
+            return null;
+          }
+        } finally {
+          clearTimeout(timer);
+        }
       };
-      const content = data.choices?.[0]?.message?.content;
-      if (!content) {
-        res.status(502).json({ error: "ai_failed" });
-        return;
-      }
-      let plan: unknown;
-      try {
-        plan = JSON.parse(content);
-      } catch {
+
+      // One retry on malformed/empty output before giving up.
+      let plan = await callModel();
+      if (!plan) plan = await callModel();
+      if (!plan) {
         res.status(502).json({ error: "ai_failed" });
         return;
       }
       res.json({ plan });
     } catch (error) {
-      console.error("ai-plan error:", error);
+      console.error("kitchen-v2 plan error:", error);
       res.status(502).json({ error: "ai_failed" });
     }
   });
