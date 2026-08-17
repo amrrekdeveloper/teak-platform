@@ -233,6 +233,8 @@ interface KitchenToolState {
   /** Artificial lighting (downlights + cove + under-cabinet LED). */
   lightsOn: boolean;
   lightTemp: "warm" | "cool";
+  /** Recessed spotlight trim ring finish (matches Teak's installed fixtures). */
+  spotTrim: "black" | "white";
   /** Gypsum soffit box above upper cabinets in the 3D studio. */
   showSoffit: boolean;
   /** Under-cabinet LED strips (independent of the main lights). */
@@ -260,6 +262,7 @@ interface KitchenToolState {
   setEnvironment: (id: string) => void;
   toggleLights: () => void;
   setLightTemp: (temp: "warm" | "cool") => void;
+  setSpotTrim: (trim: "black" | "white") => void;
   setShowSoffit: (value: boolean) => void;
   setLedStrips: (value: boolean) => void;
   addPlacedCabinet: (cabinet: PlacedCabinetState) => void;
@@ -304,6 +307,7 @@ export const useKitchenToolStore = create<KitchenToolState>()(
       environmentId: DEFAULT_ENVIRONMENT_ID,
       lightsOn: false,
       lightTemp: "warm",
+      spotTrim: "black",
       showSoffit: true,
       ledStrips: true,
       placedCabinets: [],
@@ -401,6 +405,7 @@ export const useKitchenToolStore = create<KitchenToolState>()(
       setEnvironment: (id) => set({ environmentId: id }),
       toggleLights: () => set((state) => ({ lightsOn: !state.lightsOn })),
       setLightTemp: (temp) => set({ lightTemp: temp }),
+      setSpotTrim: (trim) => set({ spotTrim: trim }),
       setShowSoffit: (value) => set({ showSoffit: value }),
       setLedStrips: (value) => set({ ledStrips: value }),
       addPlacedCabinet: (cabinet) =>
@@ -461,6 +466,7 @@ export const useKitchenToolStore = create<KitchenToolState>()(
           environmentId: DEFAULT_ENVIRONMENT_ID,
           lightsOn: false,
           lightTemp: "warm",
+          spotTrim: "black",
           showSoffit: true,
           ledStrips: true,
           placedCabinets: [],

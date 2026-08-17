@@ -310,6 +310,8 @@ function AmbiancePanel() {
   const lightTemp = useKitchenToolStore((s) => s.lightTemp ?? "warm");
   const toggleLights = useKitchenToolStore((s) => s.toggleLights);
   const setLightTemp = useKitchenToolStore((s) => s.setLightTemp);
+  const spotTrim = useKitchenToolStore((s) => s.spotTrim ?? "black");
+  const setSpotTrim = useKitchenToolStore((s) => s.setSpotTrim);
   const showSoffit = useKitchenToolStore((s) => s.showSoffit ?? true);
   const ledStrips = useKitchenToolStore((s) => s.ledStrips ?? true);
   const setLedStrips = useKitchenToolStore((s) => s.setLedStrips);
@@ -386,6 +388,32 @@ function AmbiancePanel() {
             ))}
           </div>
         )}
+        <div className="flex items-center gap-1.5">
+          {(
+            [
+              { id: "black", nameAr: "إطار أسود", nameEn: "Black trim", swatch: "#17171a" },
+              { id: "white", nameAr: "إطار أبيض", nameEn: "White trim", swatch: "#f2f0ec" },
+            ] as const
+          ).map((opt) => (
+            <button
+              key={opt.id}
+              type="button"
+              onClick={() => setSpotTrim(opt.id)}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-bold transition-colors ${
+                spotTrim === opt.id
+                  ? "border-primary bg-primary/10 text-primary"
+                  : "border-border text-muted-foreground hover:border-primary/50 hover:text-foreground"
+              }`}
+              data-testid={`button-spot-trim-${opt.id}`}
+            >
+              <span
+                className="w-3 h-3 rounded-full border border-border"
+                style={{ backgroundColor: opt.swatch }}
+              />
+              {t(opt.nameAr, opt.nameEn)}
+            </button>
+          ))}
+        </div>
         <label
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs font-bold text-muted-foreground hover:border-primary/50 hover:text-foreground transition-colors cursor-pointer select-none"
           data-testid="label-toggle-soffit"

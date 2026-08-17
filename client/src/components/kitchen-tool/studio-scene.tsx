@@ -1074,47 +1074,69 @@ function downlightLayout(segments: WallSegment[]): DownlightPoint[] {
   return dedup.slice(0, 16);
 }
 
-/** One real recessed fixture: flush trim ring + cavity + diffuser lens. */
+/** One real recessed fixture matching Teak's installed spots (reference
+ *  photos): flush trim ring (black anodized or gypsum-white), an anti-glare
+ *  cone rising into the recess, and the LED lens deep at the top — visibly
+ *  glowing when lit, a dark glass disc when off. */
 function RecessedDownlight({
   x,
   z,
   ceilingM,
   lit,
   lightColor,
+  trim,
 }: {
   x: number;
   z: number;
   ceilingM: number;
   lit: boolean;
   lightColor: string;
+  trim: "black" | "white";
 }) {
+  const black = trim === "black";
+  const trimColor = black ? "#17171a" : "#f2f0ec";
+  const coneColor = black ? "#101013" : "#b9b5ae";
   return (
     <group position={[x, ceilingM, z]}>
       {/* thin trim ring flush with the gypsum surface */}
       <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, -0.001, 0]}>
         <ringGeometry args={[DOWNLIGHT_RADIUS * 0.86, DOWNLIGHT_RADIUS + 0.011, 40]} />
-        <meshStandardMaterial color="#f2f0ec" roughness={0.4} metalness={0.05} side={THREE.DoubleSide} />
-      </mesh>
-      {/* cavity wall inside the ceiling thickness (visible through the cutout) */}
-      <mesh position={[0, DOWNLIGHT_DEPTH / 2, 0]}>
-        <cylinderGeometry args={[DOWNLIGHT_RADIUS, DOWNLIGHT_RADIUS, DOWNLIGHT_DEPTH, 40, 1, true]} />
-        <meshStandardMaterial color="#c9c5be" roughness={0.75} metalness={0} side={THREE.BackSide} />
-      </mesh>
-      {/* diffuser lens recessed at the top of the cavity */}
-      <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, DOWNLIGHT_DEPTH * 0.8, 0]}>
-        <circleGeometry args={[DOWNLIGHT_RADIUS * 0.92, 36]} />
         <meshStandardMaterial
-          color={lit ? "#fdf9f0" : "#dedbd4"}
+          color={trimColor}
+          roughness={black ? 0.35 : 0.4}
+          metalness={black ? 0.45 : 0.05}
+          side={THREE.DoubleSide}
+        />
+      </mesh>
+      {/* anti-glare cone: narrows from the trim opening up to the lens */}
+      <mesh position={[0, DOWNLIGHT_DEPTH / 2, 0]}>
+        <cylinderGeometry
+          args={[DOWNLIGHT_RADIUS * 0.62, DOWNLIGHT_RADIUS, DOWNLIGHT_DEPTH, 40, 1, true]}
+        />
+        <meshStandardMaterial
+          color={coneColor}
+          roughness={black ? 0.5 : 0.75}
+          metalness={black ? 0.3 : 0}
+          side={THREE.BackSide}
+        />
+      </mesh>
+      {/* LED lens deep at the top of the cone */}
+      <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, DOWNLIGHT_DEPTH * 0.86, 0]}>
+        <circleGeometry args={[DOWNLIGHT_RADIUS * 0.6, 36]} />
+        <meshStandardMaterial
+          color={lit ? "#fffdf6" : black ? "#3a3f45" : "#dedbd4"}
           emissive={lit ? lightColor : "#000000"}
-          emissiveIntensity={lit ? 2.2 : 0}
-          roughness={0.5}
+          emissiveIntensity={lit ? 3 : 0}
+          toneMapped={!lit}
+          roughness={lit ? 0.5 : 0.25}
+          metalness={lit ? 0 : 0.2}
           side={THREE.DoubleSide}
         />
       </mesh>
       {/* opaque cap sealing the cavity from above */}
       <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, DOWNLIGHT_DEPTH + 0.001, 0]}>
         <circleGeometry args={[DOWNLIGHT_RADIUS + 0.012, 36]} />
-        <meshStandardMaterial color="#c9c5be" roughness={0.8} metalness={0} side={THREE.DoubleSide} />
+        <meshStandardMaterial color={black ? "#17171a" : "#c9c5be"} roughness={0.8} metalness={0} side={THREE.DoubleSide} />
       </mesh>
     </group>
   );
@@ -1205,6 +1227,7 @@ function Downlights({
   // removed: ALL light effects are now baked (walls, ceiling halos, floor
   // pools) so they share the exact same color temperature.
   const lightsOn = useKitchenToolStore((s) => s.lightsOn ?? false);
+  const spotTrim = useKitchenToolStore((s) => s.spotTrim ?? "black");
   const lights = useMemo(() => downlightLayout(segments), [segments]);
   const glow = getGlowTexture();
 
@@ -1218,6 +1241,7 @@ function Downlights({
             ceilingM={ceilingM}
             lit={lightsOn}
             lightColor={WARM_LIGHT}
+            trim={spotTrim}
           />
           {lightsOn && (
             /* warm halo on the gypsum around the fixture */
@@ -1233,6 +1257,162 @@ function Downlights({
       ))}
       {lightsOn && <FloorLightPools bounds={bounds} lights={lights} />}
     </>
+  );
+}
+
+/* ── Under-cabinet LED lighting ──────────────────────────────
+ * Slim recessed aluminum profile under each upper cabinet's front edge with
+ * an emissive diffuser, plus BAKED light output (same approach as the
+ * downlights): a warm wash on the backsplash falling off downward and a
+ * soft pool on the countertop — no real lights, so performance stays flat. */
+const ledWashCache = new Map<string, THREE.Texture>();
+
+/** Vertical wash: bright at the top (LED), fading to nothing below. */
+function getLedWashTexture(color: string): THREE.Texture {
+  const key = `wash-${color}`;
+  const hit = ledWashCache.get(key);
+  if (hit) return hit;
+  const c = new THREE.Color(color);
+  const rgb = `${Math.round(c.r * 255)},${Math.round(c.g * 255)},${Math.round(c.b * 255)}`;
+  const canvas = document.createElement("canvas");
+  canvas.width = 8;
+  canvas.height = 128;
+  const ctx = canvas.getContext("2d")!;
+  const g = ctx.createLinearGradient(0, 0, 0, 128);
+  g.addColorStop(0, `rgba(${rgb},0.5)`);
+  g.addColorStop(0.35, `rgba(${rgb},0.22)`);
+  g.addColorStop(1, `rgba(${rgb},0)`);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 8, 128);
+  const t = new THREE.CanvasTexture(canvas);
+  t.colorSpace = THREE.SRGBColorSpace;
+  ledWashCache.set(key, t);
+  return t;
+}
+
+/** Countertop pool: brightest along the back (under the LED), fading forward. */
+function getLedPoolTexture(color: string): THREE.Texture {
+  const key = `pool-${color}`;
+  const hit = ledWashCache.get(key);
+  if (hit) return hit;
+  const c = new THREE.Color(color);
+  const rgb = `${Math.round(c.r * 255)},${Math.round(c.g * 255)},${Math.round(c.b * 255)}`;
+  const canvas = document.createElement("canvas");
+  canvas.width = 64;
+  canvas.height = 128;
+  const ctx = canvas.getContext("2d")!;
+  const g = ctx.createLinearGradient(0, 0, 0, 128);
+  g.addColorStop(0, `rgba(${rgb},0.34)`);
+  g.addColorStop(0.5, `rgba(${rgb},0.12)`);
+  g.addColorStop(1, `rgba(${rgb},0)`);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 64, 128);
+  // Soft side falloff so adjacent cabinets' pools blend instead of banding.
+  const side = ctx.createLinearGradient(0, 0, 64, 0);
+  side.addColorStop(0, "rgba(0,0,0,1)");
+  side.addColorStop(0.12, "rgba(0,0,0,0)");
+  side.addColorStop(0.88, "rgba(0,0,0,0)");
+  side.addColorStop(1, "rgba(0,0,0,1)");
+  ctx.globalCompositeOperation = "destination-out";
+  ctx.fillStyle = side;
+  ctx.fillRect(0, 0, 64, 128);
+  const t = new THREE.CanvasTexture(canvas);
+  t.colorSpace = THREE.SRGBColorSpace;
+  ledWashCache.set(key, t);
+  return t;
+}
+
+/** Countertop slab thickness above a base carcass (matches adeko-cabinet TOP_T). */
+const LED_COUNTER_TOP_T = 0.03;
+
+/** World Y of the counter surface directly under an upper cabinet, or null
+ *  when no base cabinet overlaps its span on the same wall. */
+function counterSurfaceUnder(
+  placed: PlacedCabinetState,
+  def: CabinetDef,
+  all: PlacedCabinetState[]
+): number | null {
+  const u0 = placed.offset;
+  const u1 = placed.offset + def.width;
+  let best: number | null = null;
+  for (const p of all) {
+    if (p.wallId !== placed.wallId || p.id === placed.id) continue;
+    const d = findCabinetDef(p.catalogId);
+    if (!d || d.level !== "base") continue;
+    const b0 = p.offset;
+    const b1 = p.offset + d.width;
+    if (b1 <= u0 || b0 >= u1) continue; // no horizontal overlap
+    const topY = (p.mountY ?? d.mountY) + d.height + LED_COUNTER_TOP_T;
+    if (best === null || topY > best) best = topY;
+  }
+  return best;
+}
+
+function UnderCabinetLed({
+  def,
+  lit,
+  lightColor,
+  dropM,
+}: {
+  def: CabinetDef;
+  lit: boolean;
+  lightColor: string;
+  /** Distance from the cabinet bottom down to the counter surface (m), or
+   *  null when there is no counter below — then only the wall wash renders. */
+  dropM: number | null;
+}) {
+  const stripW = Math.max(def.width - 0.04, 0.1);
+  // Wash length: down to the counter when present, else a bounded fade.
+  const washM = Math.max(0.15, Math.min(dropM ?? 0.7, 1.2));
+  return (
+    <group>
+      {/* recessed aluminum profile housing */}
+      <mesh position={[0, -0.006, def.depth / 2 - 0.035]}>
+        <boxGeometry args={[stripW, 0.012, 0.03]} />
+        <meshStandardMaterial color="#2a2a2e" roughness={0.5} metalness={0.6} />
+      </mesh>
+      {/* diffuser lens — glows when lit, milky when off */}
+      <mesh position={[0, -0.0125, def.depth / 2 - 0.035]} rotation={[Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[stripW, 0.018]} />
+        <meshStandardMaterial
+          color={lit ? lightColor : "#d8d5cf"}
+          emissive={lit ? lightColor : "#000000"}
+          emissiveIntensity={lit ? 2.4 : 0}
+          toneMapped={!lit}
+          roughness={0.6}
+        />
+      </mesh>
+      {lit && (
+        <>
+          {/* warm wash on the backsplash below the cabinet */}
+          <mesh position={[0, -washM / 2, -def.depth / 2 - 0.001]}>
+            <planeGeometry args={[def.width, washM]} />
+            <meshBasicMaterial
+              map={getLedWashTexture(lightColor)}
+              transparent
+              depthWrite={false}
+              toneMapped={false}
+            />
+          </mesh>
+          {/* soft pool on the countertop under the cabinet (only when a
+              base cabinet actually provides a counter surface below) */}
+          {dropM !== null && (
+            <mesh
+              position={[0, -dropM + 0.006, 0.32 / 2 - 0.005]}
+              rotation={[-Math.PI / 2, 0, 0]}
+            >
+              <planeGeometry args={[def.width + 0.1, def.depth + 0.32]} />
+              <meshBasicMaterial
+                map={getLedPoolTexture(lightColor)}
+                transparent
+                depthWrite={false}
+                toneMapped={false}
+              />
+            </mesh>
+          )}
+        </>
+      )}
+    </group>
   );
 }
 
@@ -1287,7 +1467,19 @@ function PlacedCabinetMesh({
 }) {
   const { lightsOn, lightColor } = useLighting();
   const ledStrips = useKitchenToolStore((s) => s.ledStrips ?? true);
+  const allPlaced = useKitchenToolStore((s) => s.placedCabinets ?? []);
   const seg = segments.find((s) => s.id === placed.wallId);
+
+  // Under-cabinet LED: distance from THIS cabinet's actual bottom down to
+  // the real counter surface below (null when no base cabinet underneath).
+  const ledDropM = useMemo(() => {
+    if (def.level !== "upper" || def.corner) return null;
+    const counterY = counterSurfaceUnder(placed, def, allPlaced);
+    if (counterY === null) return null;
+    const bottomY = placed.mountY ?? def.mountY;
+    const drop = bottomY - counterY;
+    return drop > 0.05 ? drop : null;
+  }, [placed, def, allPlaced]);
 
   const lCorner = isLCorner(def);
 
@@ -1382,16 +1574,13 @@ function PlacedCabinetMesh({
           }}
         />
       )}
-      {def.level === "upper" && lightsOn && ledStrips && !built.corner && (
-        <mesh position={[0, -0.008, def.depth / 2 - 0.02]}>
-          <boxGeometry args={[Math.max(def.width - 0.04, 0.1), 0.014, 0.025]} />
-          <meshStandardMaterial
-            color={lightColor}
-            emissive={lightColor}
-            emissiveIntensity={2.2}
-            toneMapped={false}
-          />
-        </mesh>
+      {def.level === "upper" && ledStrips && !built.corner && (
+        <UnderCabinetLed
+          def={def}
+          lit={lightsOn}
+          lightColor={lightColor}
+          dropM={ledDropM}
+        />
       )}
       {selected &&
         (built.corner ? (
