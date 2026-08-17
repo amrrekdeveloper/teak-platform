@@ -1,0 +1,35 @@
+We have now corrected the persistent project context. Do not implement anything yet.
+
+Before choosing the first application-code change, I want you to evaluate the safest and most effective starting point for modernizing the production Kitchen Designer toward the real Teak product.
+
+Please inspect the current implementation and compare these candidate first steps:
+
+A. Front geometry: replace the legacy Shaker/stile-and-rail front geometry with true flat/slab fronts while preserving the existing door pivots, click-to-open behavior, hinge directions, smooth animation, drag behavior, placement, and collision systems.
+
+B. Material/finish model: begin replacing the generic/invented cabinet finish system with a structure designed for real Teak-approved chipboard samples, including woodgrain and solid finishes.
+
+C. Carcass: replace the current legacy off-white carcass appearance with the standard grey chipboard appearance, without yet building the full finish catalog.
+
+Do not assume these must be done in this order.
+
+For each option, assess:
+
+implementation risk
+dependencies on other parts of the designer
+likelihood of breaking existing behavior
+visual/product-truth improvement
+reversibility
+how easy it is to test in isolation
+whether doing it first would make the next steps cleaner or harder
+
+Also tell me if you see a better first step than A, B, or C based on the actual code.
+
+I am specifically interested in an incremental modernization, not a rewrite.
+
+The current interaction quality is valuable and must be protected. In particular, opening cabinet doors by clicking them, smooth animations, placement/collision behavior, drag/move behavior, and the current studio workflow must continue to work.
+
+For the material system, do not assume that the photographs of our physical samples should simply be used directly as production textures. We want the eventual Three.js material pipeline to reproduce the real samples convincingly, with correct scale, grain direction, surface response, and appropriate PBR treatment.
+
+Please recommend the single safest first implementation step, explain why, identify exactly which files/systems it would touch, and describe how you would verify that nothing regressed.
+
+Do not implement anything and do not start task #185 yet. I only want the technical recommendation.

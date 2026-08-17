@@ -1,0 +1,88 @@
+Before we choose the first implementation task, I want you to understand the complete target for the production Kitchen Designer. Do not implement anything yet.
+
+We will develop this incrementally and protect the strong functionality that already exists, but I do not want us to choose the first code change without first understanding where the designer is ultimately going.
+
+I attached a small set of visual references for two different purposes:
+
+the high-quality kitchen visualization represents the level of realism and visual clarity we want the interactive designer to approach
+the real Teak kitchen and material samples represent actual Teak product/manufacturing reality
+the spotlight photos are references for the real recessed ceiling lighting used in our kitchens
+
+These are references for understanding the target, not instructions to copy the images literally.
+
+Product and interaction direction
+
+The final designer should remain an interactive real-time kitchen design tool. The customer should be able to place, move and configure cabinets and immediately see a high-quality result. We do not want a separate slow “final render” workflow as the normal experience.
+
+Existing valuable behavior such as cabinet placement/collision logic, dragging, click-to-open doors and their smooth animations, camera interaction, room measurements, openings and utilities must be preserved wherever appropriate.
+
+Known target areas and gaps
+
+These are the main areas we currently know we need to address. Please verify them against the actual implementation rather than assuming my description tells you how they should be implemented:
+
+Cabinet product model
+
+Teak cabinets should eventually be based on Teak’s real manufacturing capability, not constrained by the legacy Adeko catalog.
+Current fronts should become real flat/slab fronts.
+The subtle gaps, opening details, edge treatment and handle/handleless details are important to the realism of the cabinets.
+Teak can manufacture appropriate cabinet configurations and dimensions in moisture-resistant chipboard; legacy Adeko sizes are not the manufacturing limit.
+
+Real materials
+
+Standard grey chipboard carcass/interior.
+Customer-selected visible fronts from actual approved chipboard finishes.
+Both woodgrain and solid/plain finishes exist.
+Materials eventually need convincing real-world scale, grain direction, edge appearance and physically plausible surface response in Three.js.
+Do not assume that photographs of samples should simply be used directly as production textures.
+
+Room and architectural realism
+
+The ceiling/gypsum/soffit geometry needs to meet walls and corners cleanly with no floating pieces or visible gaps.
+Wall skirting/baseboard should be physically clean and visually related to the floor material.
+A real 3D room door should be represented where appropriate, not only an opening.
+Windows should contribute real depth and visual value. We want a convincing exterior/background through the window — for example vegetation/daylight/depth similar to high-quality architectural visualization — rather than an empty or visually flat opening.
+
+Lighting
+
+Ceiling downlights should look like real recessed fixtures, including the physical fixture when off and believable light output when on.
+The attached real Teak kitchen shows the type of recessed spotlight we use.
+Under-cabinet lighting and other existing useful lighting behavior should be evaluated and preserved/improved where appropriate.
+The goal is high-quality real-time lighting, not a fake static render.
+
+Kitchen equipment and functional components
+
+We need realistic sinks and relevant choices.
+There are different hood/extractor configurations. The existing wall-mounted hood is useful and should not be discarded if it is already good; we also need to support the other real hood configuration used by Teak where appropriate.
+Appliances and functional components should eventually feel like real products rather than rough procedural placeholders where their shape materially affects realism.
+
+Layout intelligence
+
+A ready-made kitchen should not merely fill wall length.
+Layout generation should eventually respect actual room dimensions, doors, windows and utility/service locations such as water, drain, gas and electricity.
+The system should make functionally sensible decisions about sink, hob, appliances, cabinets and circulation.
+An island is optional: some customers want one and some do not. The system therefore needs to be capable of determining whether an island fits or allowing it as a customer preference, rather than assuming every kitchen has or does not have one.
+The styling/finish of a kitchen should be conceptually separate from the functional layout generation.
+
+Visual quality
+
+The attached high-quality reference represents the direction we want: clean cabinet detailing, convincing materials, soft contact shadows, believable daylight/artificial light, exterior depth through windows and a polished architectural-visualization feel.
+However, this must remain an interactive Three.js experience with sensible performance.
+
+There are additional details we will provide later, so do not treat this list as a frozen final specification.
+
+For this Plan step, inspect the actual production code and give me a target-state gap analysis and modernization roadmap.
+
+I want you to identify:
+
+Which parts of this target already exist and are strong enough to preserve.
+Which parts exist but need visual or architectural improvement.
+Which parts are missing.
+Which items are coupled together technically and therefore should be planned together.
+Which items should deliberately remain separate so that we can test them safely.
+Whether the current Three.js / React Three Fiber architecture is suitable for reaching this target incrementally, or whether any limited architectural preparation is needed. Do not propose a renderer rewrite unless there is a compelling technical reason.
+A recommended phased sequence that gives us visible progress while minimizing regression risk.
+After considering the whole target, what the single safest and most strategically useful first application-code change should be.
+
+For the first change, explain why it comes first, which files/systems it touches, what it deliberately does not touch, and how you would verify that existing behavior has not regressed.
+
+Do not implement anything yet. Do not start task #185 yet. Do not rewrite the designer. I want the technical analysis and roadmap first.
