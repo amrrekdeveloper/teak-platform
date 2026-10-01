@@ -3,6 +3,8 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { seedProductionDatabase } from "./db-seed";
+import path from "node:path";
+import { createMaintenanceMiddleware } from "./maintenance";
 
 const app = express();
 const httpServer = createServer(app);
@@ -10,6 +12,12 @@ const httpServer = createServer(app);
 // Trust Replit's reverse proxy so that req.secure = true in production
 // Without this, express-session won't set cookies when secure: true
 app.set("trust proxy", 1);
+
+app.use(createMaintenanceMiddleware(
+  process.env.NODE_ENV === "production"
+    ? path.resolve(__dirname, "public")
+    : path.resolve(process.cwd(), "client/public"),
+));
 
 declare module "http" {
   interface IncomingMessage {

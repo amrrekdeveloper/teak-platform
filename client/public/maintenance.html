@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#9e0a0a">
+  <meta name="robots" content="noindex, nofollow">
+  <title>تيك | نعتني بالتفاصيل</title>
+  <link rel="icon" type="image/png" href="/__maintenance/logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Zain:wght@300;400;700;800&amp;display=swap" rel="stylesheet">
+  <style>
+    :root {
+      color-scheme: light;
+      --brand: #9e0a0a;
+      --paper: #f6f2ea;
+      --ink: #382a27;
+      --muted: #76665e;
+      --line: #dcd2c5;
+      --font: "Zain", Tahoma, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--paper); color: var(--ink); font-family: var(--font); }
+    .page { min-height: 100vh; min-height: 100dvh; display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 35%); }
+    .content { padding: 42px clamp(32px, 6vw, 112px) 30px; display: flex; flex-direction: column; min-width: 0; }
+    .topline { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 17px; }
+    .topline::before { content: ""; width: 26px; height: 1px; background: var(--brand); }
+    main { margin-block: auto; padding-block: 66px; max-width: 650px; animation: arrive .8s ease-out both; }
+    .eyebrow { margin: 0 0 22px; color: var(--brand); font-size: 18px; }
+    h1 { font-size: clamp(44px, 4.8vw, 76px); font-weight: 700; line-height: 1.15; margin: 0 0 24px; }
+    h1 span { display: block; color: var(--brand); }
+    .description { font-size: 23px; line-height: 1.7; margin: 0; max-width: 510px; color: var(--muted); }
+    .timing { margin-top: 40px; border-top: 1px solid var(--line); padding-top: 24px; }
+    .message { font-size: 20px; line-height: 1.5; margin: 0; color: var(--brand); }
+    .countdown { margin-top: 20px; }
+    [hidden] { display: none !important; }
+    .counter-label { margin: 0 0 12px; font-size: 17px; color: var(--muted); }
+    .digits { direction: ltr; display: flex; align-items: flex-start; width: min(100%, 390px); }
+    .unit { flex: 1; min-width: 0; text-align: center; }
+    .value { display: block; font-size: clamp(48px, 5vw, 68px); font-weight: 300; font-variant-numeric: tabular-nums; line-height: 1; color: var(--ink); }
+    .unit-label { display: block; margin-top: 7px; font-size: 17px; color: var(--muted); }
+    .separator { font-size: 31px; line-height: 1.5; color: #b9a69a; font-weight: 300; }
+    .schedule-note { margin: 20px 0 0; color: var(--muted); font-size: 16px; line-height: 1.6; }
+    footer { border-top: 1px solid var(--line); padding-top: 19px; display: flex; align-items: center; justify-content: space-between; gap: 16px; font-size: 16px; color: var(--muted); }
+    .domain { font-family: var(--font); color: var(--brand); font-size: 19px; letter-spacing: .06em; }
+    .brand-panel { position: relative; overflow: hidden; background: var(--brand); color: var(--paper); display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding: 58px 36px 38px; min-height: 100%; }
+    .logo { width: clamp(125px, 13vw, 185px); height: auto; display: block; position: relative; z-index: 1; }
+    .drawing { position: absolute; top: 50%; left: 50%; width: 115%; height: 64%; transform: translate(-50%, -44%); opacity: .24; pointer-events: none; }
+    .brand-caption { position: relative; z-index: 1; margin: auto 0 0; text-align: center; font-size: 21px; font-weight: 300; letter-spacing: .02em; }
+    .brand-caption::before { content: ""; display: block; width: 36px; height: 1px; background: #d9b8a5; margin: 0 auto 20px; }
+    @keyframes arrive { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+    @media (min-width: 1450px) { main { margin-inline: auto; width: 100%; } }
+    @media (max-width: 767px) {
+      .page { display: flex; flex-direction: column; }
+      .brand-panel { order: -1; min-height: 0; padding: 25px 24px; flex-direction: row; gap: 24px; }
+      .logo { width: 100px; }
+      .brand-caption { font-size: 18px; margin: 0; text-align: left; }
+      .brand-caption::before, .drawing { display: none; }
+      .content { padding: 25px 24px 22px; flex: 1; }
+      .topline { font-size: 15px; }
+      main { padding-block: 42px; max-width: none; }
+      .eyebrow { margin-bottom: 16px; font-size: 17px; }
+      h1 { font-size: clamp(40px, 8vw, 58px); margin-bottom: 20px; }
+      .description { font-size: 21px; line-height: 1.65; }
+      .timing { margin-top: 28px; padding-top: 20px; }
+      .message { font-size: 19px; }
+      .digits { max-width: 350px; }
+      .value { font-size: 54px; }
+      footer { font-size: 14px; align-items: baseline; }
+      .domain { font-size: 17px; }
+    }
+    @media (prefers-reduced-motion: reduce) { main { animation: none; } }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="content">
+      <div class="topline">تيك · مطابخ تُصمّم لك</div>
+      <main>
+        <p class="eyebrow">وقفة قصيرة، وعناية مستمرة</p>
+        <h1>نعتني بالتفاصيل،<span>حتى هنا.</span></h1>
+        <p class="description">نعمل على تحديث منصة تيك لتكون تجربتك معنا أكثر وضوحًا وسهولة. الموقع متوقف مؤقتًا للصيانة، ونقدّر تفهّمك وانتظارك.</p>
+        <section class="timing" aria-label="حالة المنصة وفترة الصيانة">
+          <p class="message" id="maintenance-message" role="status" aria-live="polite">__MAINTENANCE_INITIAL_MESSAGE__</p>
+          <div class="countdown" id="countdown" hidden>
+            <p class="counter-label" id="counter-label">الوقت المتبقي لفترة الصيانة المقررة</p>
+            <div class="digits" role="group" aria-labelledby="counter-label" aria-live="off">
+              <div class="unit"><span class="value" id="hours">—</span><span class="unit-label">ساعة</span></div>
+              <span class="separator" aria-hidden="true">:</span>
+              <div class="unit"><span class="value" id="minutes">—</span><span class="unit-label">دقيقة</span></div>
+              <span class="separator" aria-hidden="true">:</span>
+              <div class="unit"><span class="value" id="seconds">—</span><span class="unit-label">ثانية</span></div>
+            </div>
+          </div>
+          <p class="schedule-note">فترة الصيانة المقررة ٧٢ ساعة، وقد يستمر التطوير بعد انتهائها.</p>
+          <noscript><p class="schedule-note">يمكنك متابعة الوقت المتبقي عند تفعيل JavaScript. تظل المنصة تحت الصيانة حتى اكتمال التحديثات.</p></noscript>
+        </section>
+      </main>
+      <footer>
+        <span>تفاصيل مدروسة. مطابخ تشبهك.</span>
+        <span class="domain" dir="ltr">teak-sa.com</span>
+      </footer>
+    </div>
+    <aside class="brand-panel" aria-label="تيك">
+      <img class="logo" src="/__maintenance/logo.png" alt="تيك — TEAK" width="782" height="511">
+      <svg class="drawing" viewBox="0 0 500 650" fill="none" aria-hidden="true" focusable="false" preserveAspectRatio="xMidYMid meet">
+        <g stroke="#f6f2ea" stroke-width="1">
+          <path d="M62 599V110L320 44L443 126V615M62 110L185 193L443 126M185 193V632M62 599L185 632L443 615"/>
+          <path d="M78 123V585L169 610V204ZM203 207V610L309 603V179ZM327 174V601L425 595V148Z"/>
+          <path d="M203 373L425 344M203 390L425 361M318 177V601M157 351V403M218 340V361M411 314V335"/>
+          <path d="M21 616L185 650L478 629M62 110V80L320 14L443 96V126M320 14V44"/>
+          <path d="M78 534L169 557M203 552L425 536"/>
+        </g>
+      </svg>
+      <p class="brand-caption">لكل بيت، تفاصيله.</p>
+    </aside>
+  </div>
+  <script>
+    (function () {
+      "use strict";
+      const endsAt = __MAINTENANCE_ENDS_AT_MS__;
+      const serverNow = __MAINTENANCE_SERVER_NOW_MS__;
+      const offset = serverNow - Date.now();
+      const countdown = document.getElementById("countdown");
+      const message = document.getElementById("maintenance-message");
+      const hours = document.getElementById("hours");
+      const minutes = document.getElementById("minutes");
+      const seconds = document.getElementById("seconds");
+      let expired = false;
+      let interval;
+      if (!Number.isFinite(endsAt) || !Number.isFinite(serverNow)) return;
+      function update() {
+        if (expired) return;
+        const remaining = endsAt - (Date.now() + offset);
+        if (remaining <= 0) {
+          expired = true;
+          countdown.hidden = true;
+          message.textContent = "لا زالت المنصة تحت التطوير";
+          if (interval !== undefined) clearInterval(interval);
+          return;
+        }
+        const totalSeconds = Math.ceil(remaining / 1000);
+        hours.textContent = String(Math.floor(totalSeconds / 3600)).padStart(2, "0");
+        minutes.textContent = String(Math.floor(totalSeconds / 60) % 60).padStart(2, "0");
+        seconds.textContent = String(totalSeconds % 60).padStart(2, "0");
+        countdown.hidden = false;
+      }
+      update();
+      if (!expired) interval = setInterval(update, 1000);
+      document.addEventListener("visibilitychange", function () {
+        if (!document.hidden) update();
+      });
+    }());
+  </script>
+</body>
+</html>
