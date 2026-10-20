@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { createMaintenanceMiddleware, maintenanceConfig, renderMaintenanceHtml } from "./maintenance";
 import path from "node:path";
-import { readFileSync } from "node:fs";
+import { readFileSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { runInNewContext } from "node:vm";
 
 const publicDir = path.resolve("client/public");
@@ -77,6 +78,21 @@ describe("maintenance mode", () => {
   it("restores original routing only when explicitly disabled", () => {
     expect(request("/", "GET", false).passed).toBe(true);
     expect(request("/api/customers", "POST", false).passed).toBe(true);
+  });
+  it("loads current development HTML without recreating the middleware", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "teak-maintenance-"));
+    try {
+      for (const file of ["maintenance.html", "employee-portal.html", "technical-support.html", "maintenance-logo.png"])
+        writeFileSync(path.join(dir, file), "original");
+      const handler = createMaintenanceMiddleware(dir, true, () => start, true);
+      for (const [url, file] of [["/", "maintenance.html"], ["/employee-self-service", "employee-portal.html"]]) {
+        writeFileSync(path.join(dir, file), "updated-html");
+        let body = "";
+        const res = { set() { return this; }, status() { return this; }, type() { return this; }, send(value: string) { body = value; } };
+        handler({ path: url, method: "GET" } as any, res as any, () => {});
+        expect(body).toBe("updated-html");
+      }
+    } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 });
 

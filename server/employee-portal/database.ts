@@ -28,21 +28,21 @@ export async function initializeEmployeePortal() {
 export type PortalEmployee = {
   id: number; user_id: number | null; employee_number: string;
   full_name_ar: string; department: string; position: string;
-  phone: string | null; user_phone: string | null;
+  phone: string | null;
   status: string; attendance_enabled: boolean;
   contract_start: string; manager_id: number | null;
 };
 export async function employeeDirectory(): Promise<PortalEmployee[]> {
   const { rows } = await pool.query(`
     SELECT e.id,e.user_id,e.employee_number,e.full_name_ar,e.department,e.position,
-      e.phone,u.phone AS user_phone,e.status,e.attendance_enabled,
+      e.phone,e.status,e.attendance_enabled,
       e.contract_start::text,e.manager_id
-    FROM employees e LEFT JOIN users u ON e.user_id=u.id
+    FROM employees e
   `);
   return rows;
 }
 export const employeePhone = (e: PortalEmployee) =>
-  normalizeEmployeePhone(e.phone?.trim() || e.user_phone || "");
+  normalizeEmployeePhone(e.phone?.trim() || "");
 
 export function resolveEligibleEmployee(directory: PortalEmployee[], phone: string) {
   const matches = directory.filter(e => employeePhone(e) === phone);

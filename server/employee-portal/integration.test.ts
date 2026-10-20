@@ -154,7 +154,7 @@ describe.sequential("isolated employee protocol", () => {
       expect(sent.mock.calls.length).toBe(sentBefore);
       const cookie = challenge.cookies[0].split(";")[0];
       expect((await call("/otp/verify", "POST", { challengeId: challenge.data.challengeId, code: "2222" }, cookie)).status).toBe(401);
-      const verified = await call("/otp/verify", "POST", { challengeId: challenge.data.challengeId, code: "1111" }, cookie);
+      const verified = await call("/otp/verify", "POST", { challengeId: challenge.data.challengeId, code: "١١١١" }, cookie);
       expect(verified.status).toBe(200);
       const devCookie = verified.cookies.find(c => c.startsWith(DEVICE_COOKIE + "="))!.split(";")[0];
       expect((await call("/me", "GET", undefined, devCookie)).status).toBe(200);

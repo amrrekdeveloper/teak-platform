@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { normalizeEmployeePhone, permittedZone, riyadhDay, validDate, equalHash, tokenHash } from "./security";
-import { resolveEligibleEmployee, type PortalEmployee } from "./database";
+import { employeePhone, resolveEligibleEmployee, type PortalEmployee } from "./database";
 
 const employee = (id: number, phone: string, status = "active") =>
   ({ id, phone, status } as PortalEmployee);
@@ -20,6 +20,10 @@ describe("employee identity", () => {
     expect(resolveEligibleEmployee([employee(1, "0501234567"), employee(2, "+966501234567")], "966501234567")).toBeNull();
     expect(resolveEligibleEmployee([employee(1, "0501234567", "terminated")], "966501234567")).toBeNull();
     expect(resolveEligibleEmployee([], "966501234567")).toBeNull();
+  });
+  it("uses only the HR employee mobile, never an administrative account fallback", () => {
+    expect(employeePhone({ phone: null, user_phone: "0501234567" } as PortalEmployee)).toBeNull();
+    expect(employeePhone({ phone: "0507654321", user_phone: "0501234567" } as PortalEmployee)).toBe("966507654321");
   });
   it("hash comparisons do not accept malformed or partial token hashes", () => {
     expect(equalHash(tokenHash("one"), tokenHash("one"))).toBe(true);

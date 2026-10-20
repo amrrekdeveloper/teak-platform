@@ -10,6 +10,7 @@ import { equalHash, normalizeEmployeePhone, otpHash, tokenHash } from "./securit
 import { sendEmployeeOtp } from "./sms";
 import { registerEmployeeServices } from "./services";
 import { developmentOtpEnabled } from "./mode";
+import { toLatinDigits } from "../../shared/digits";
 
 const production = process.env.NODE_ENV === "production";
 export const DEVICE_COOKIE = production ? "__Host-teak-employee" : "teak-employee";
@@ -63,6 +64,10 @@ export function createEmployeePortalRouter() {
       !await takeLimit(`otp-cooldown:${tokenHash(phone!)}`, 1, 60))
       portalError(429, "يرجى الانتظار دقيقة قبل طلب رمز آخر. المحاولات المتكررة تتطلب الانتظار 15 دقيقة.");
     const employee = resolveEligibleEmployee(await employeeDirectory(), phone!);
+    // In the opted-in development environment, do not lead users into a
+    // nonexistent challenge. Production keeps its non-enumerating response.
+    if (developmentOtp && !employee)
+      portalError(400, "تعذّر الدخول بهذا الرقم. تحقق من تسجيله لموظف فعّال دون تكرار في الموارد البشرية.");
     const challengeId = randomUUID();
     const browserToken = readCookie(req, CHALLENGE_COOKIE) || randomBytes(32).toString("hex");
     res.cookie(CHALLENGE_COOKIE, browserToken, { ...cookieOptions, maxAge: 600000 });
@@ -94,7 +99,9 @@ export function createEmployeePortalRouter() {
   router.post("/otp/verify", asyncRoute(async (req, res) => {
     const developmentOtp = developmentOtpEnabled();
     const input = z.object({
-      challengeId: z.string().uuid(), code: z.string().regex(developmentOtp ? /^\d{4}$/ : /^\d{6}$/),
+      challengeId: z.string().uuid(),
+      code: z.string().max(20).transform(value => toLatinDigits(value).trim())
+        .pipe(z.string().regex(developmentOtp ? /^\d{4}$/ : /^\d{6}$/)),
       deviceName: z.string().trim().min(1).max(80).default("جهاز الموظف"),
     }).strict().safeParse(req.body);
     if (!input.success) portalError(400, developmentOtp ? "أدخل رمز التطوير المكوّن من أربعة أرقام." : "أدخل رمز التحقق المكوّن من ستة أرقام.");

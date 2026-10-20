@@ -25,15 +25,18 @@ export function createMaintenanceMiddleware(
   publicDir: string,
   enabled: boolean = maintenanceConfig.enabled,
   now: () => number = Date.now,
+  reloadTemplates: boolean = process.env.NODE_ENV === "development",
 ): RequestHandler {
   // When disabled there is no file dependency and the original app is unchanged.
   if (!enabled) return (_req, _res, next) => next();
   const template = readFileSync(path.join(publicDir, "maintenance.html"), "utf8");
   const logo = readFileSync(path.join(publicDir, "maintenance-logo.png"));
-  const employeePages = new Map([
-    ["/employee-self-service", readFileSync(path.join(publicDir, "employee-portal.html"), "utf8")],
-    ["/technical-support", readFileSync(path.join(publicDir, "technical-support.html"), "utf8")],
+  const employeeFiles = new Map([
+    ["/employee-self-service", "employee-portal.html"],
+    ["/technical-support", "technical-support.html"],
   ]);
+  const employeePages = new Map([...employeeFiles].map(([url, file]) =>
+    [url, readFileSync(path.join(publicDir, file), "utf8")]));
 
   return (req, res, next) => {
     res.set("Cache-Control", "no-store, max-age=0");
@@ -46,7 +49,12 @@ export function createMaintenanceMiddleware(
     // A short retry hint is not an automatic reopening promise.
     res.set("Retry-After", "3600");
     if (req.method === "GET" || req.method === "HEAD") {
-      const page = employeePages.get(req.path);
+      // These standalone pages bypass Vite. Reload their source in development
+      // rather than holding an obsolete HTML snapshot until a server restart.
+      const pageFile = employeeFiles.get(req.path);
+      const page = pageFile && reloadTemplates
+        ? readFileSync(path.join(publicDir, pageFile), "utf8")
+        : employeePages.get(req.path);
       if (page) {
         res.type("html").send(page);
         return;
@@ -59,7 +67,10 @@ export function createMaintenanceMiddleware(
         // Replit's deployment health check requests /. Keep it healthy while
         // serving only maintenance content; deep links return temporary 503.
         res.status(req.path === "/" ? 200 : 503);
-        res.type("html").send(renderMaintenanceHtml(template, now()));
+        const currentTemplate = reloadTemplates
+          ? readFileSync(path.join(publicDir, "maintenance.html"), "utf8")
+          : template;
+        res.type("html").send(renderMaintenanceHtml(currentTemplate, now()));
         return;
       }
     }
