@@ -14,6 +14,7 @@ import { ensureAttendanceExtensions } from "./attendance-support";
 import { freezeCurrentAttendanceSchedules } from "./attendance-schedule-history";
 import { runAttendanceCatchup } from "./attendance-scheduler";
 import { registerAttendanceOverride } from "./attendance-override";
+import { employeeMonthlyAttendanceRisk, notifyMonthlyAttendanceRisk } from "./attendance-risk";
 import { withUniqueEmployeePhone } from "./employee-portal/hr-onboarding";
 import {
   isProtectedOwner,
@@ -96,7 +97,7 @@ import {
   type OrderStageValue,
   type PaymentSchedule,
 } from "@shared/schema";
-import { resolveWorkSchedule, isLateCheckIn, riskLevel, RISK_POINTS, riyadhDateKey, isRiyadhWeekend } from "@shared/attendance";
+import { resolveWorkSchedule, isLateCheckIn, riyadhDateKey, isRiyadhWeekend } from "@shared/attendance";
 import { parseNum } from "@shared/digits";
 
 async function setOrderStage(quotationId: number, stage: OrderStageValue) {
@@ -8454,98 +8455,22 @@ export async function registerRoutes(
       if (period > currentPeriod) return res.status(400).json({ message: "لا يمكن حساب مؤشر الخطر لشهر مستقبلي." });
       const [py, pm] = period.split("-").map(Number);
       // نطاق الشهر بتوقيت الرياض (UTC+3): بداية اليوم الأول حتى نهاية آخر يوم
-      const startUtc = new Date(Date.UTC(py, pm - 1, 1, -3, 0, 0));
       const endOfMonthUtc = new Date(Date.UTC(py, pm, 1, -3, 0, 0) - 1);
       const endUtc = endOfMonthUtc.getTime() > now.getTime() ? now : endOfMonthUtc;
-
-      const [records, settings, allEmployees, allUsers] = await Promise.all([
-        storage.getAttendanceRecords({ from: startUtc.toISOString(), to: endUtc.toISOString() }),
-        storage.getWorkScheduleSettings(),
+      const [allEmployees, allUsers] = await Promise.all([
         storage.getEmployees(),
         storage.getUsers(),
       ]);
       const activeEmps = allEmployees.filter(e => e.status === "active" && e.attendanceEnabled);
-
-      // أيام العمل (أحد-خميس) من بداية الشهر حتى اليوم/نهاية الشهر
-      const workDays: string[] = [];
-      for (let t = startUtc.getTime(); t <= endUtc.getTime(); t += 24 * 60 * 60 * 1000) {
-        const d = new Date(t);
-        if (!isRiyadhWeekend(d)) workDays.push(riyadhDateKey(d));
-      }
-      // اليوم الحالي لا يُحتسب غياباً/نقصاً قبل انتهائه
-      const todayKey = riyadhDateKey(now);
-      const countableDays = period === currentPeriod ? workDays.filter(k => k < todayKey) : workDays;
-
-      // فهرسة السجلات: employeeId → يوم رياض → سجلات
-      const byEmpDay = new Map<number, Map<string, { type: string; checkTime: Date }[]>>();
-      for (const r of records) {
-        if (!r.employeeId) continue;
-        const key = riyadhDateKey(new Date(r.checkTime));
-        if (!byEmpDay.has(r.employeeId)) byEmpDay.set(r.employeeId, new Map());
-        const dayMap = byEmpDay.get(r.employeeId)!;
-        if (!dayMap.has(key)) dayMap.set(key, []);
-        dayMap.get(key)!.push({ type: r.type, checkTime: new Date(r.checkTime) });
-      }
-
       const results = [];
       for (const emp of activeEmps) {
         const user = allUsers.find(u => u.id === emp.userId);
-        const schedule = resolveWorkSchedule(settings, { id: emp.id, department: emp.department });
-        const dayMap = byEmpDay.get(emp.id) || new Map();
-        let late = 0, absent = 0, incomplete = 0;
-        const report = await attendanceSupport.employeeAttendanceReport(emp.id, `${period}-01`, riyadhDateKey(endUtc), now);
-        const approvedLeaves = (await storage.getLeaveRequests(emp.id)).filter(l => l.status === "approved");
-        const missingAttempts = await pool.query(`SELECT business_day,shift_key FROM attendance_violations
-          WHERE employee_id=$1 AND violation_type='missing_checkin' AND business_day LIKE $2`, [emp.id, `${period}-%`]);
-        for (const row of report.rows) {
-          if (row.day < emp.contractStart || isRiyadhWeekend(new Date(`${row.day}T12:00:00+03:00`)) ||
-            approvedLeaves.some(l => l.startDate <= row.day && l.endDate >= row.day) || row.adminOverride) continue;
-          const missingIn = missingAttempts.rows.some(v => v.business_day === row.day && v.shift_key === row.shiftId);
-          if (row.late) late++;
-          if (missingIn || row.status === "missing_checkin" || row.status === "missing_checkout") incomplete++;
-          else if (row.status === "absent") absent++;
-        }
-        const score = late * RISK_POINTS.late + absent * RISK_POINTS.absent + incomplete * RISK_POINTS.incomplete;
-        const level = riskLevel(score);
-        await pool.query(`INSERT INTO attendance_monthly_risk(employee_id,period,late,absent,incomplete,score)
-          VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(employee_id,period) DO UPDATE
-          SET late=$3,absent=$4,incomplete=$5,score=$6,calculated_at=now()`,
-        [emp.id,period,late,absent,incomplete,score]);
-        results.push({
-          employeeId: emp.id,
-          employeeNumber: emp.employeeNumber,
-          nameAr: emp.fullNameAr?.trim() || user?.fullNameAr || emp.phone || emp.employeeNumber,
-          department: emp.department,
-          late, absent, incomplete, score, level,
-        });
+        results.push(await employeeMonthlyAttendanceRisk(emp,period,riyadhDateKey(endUtc),now,user?.fullNameAr||undefined));
       }
 
       // تنبيه HR/المالك عند وصول موظف للبرتقالي أو الأحمر (مرة واحدة لكل موظف/شهر/مستوى)
       if (period === currentPeriod) {
-        const hrUsers = allUsers.filter(u => ["owner", "hr"].includes(u.role) && u.active !== false);
-        for (const r of results) {
-          if (r.level === "green") continue;
-          try {
-            const isNew = await storage.createRiskAlertIfNew(r.employeeId, period, r.level);
-            if (isNew) {
-              const levelAr = r.level === "red" ? "أحمر" : "برتقالي";
-              for (const u of hrUsers) {
-                await storage.createNotification({
-                  userId: u.id,
-                  titleAr: `مؤشر خطر ${levelAr}: ${r.nameAr}`,
-                  titleEn: `Risk alert (${r.level}): ${r.nameAr}`,
-                  messageAr: `وصل الموظف ${r.nameAr} إلى مستوى ${levelAr} (${r.score} نقطة) هذا الشهر — تأخير: ${r.late}، غياب: ${r.absent}، نقص حركة: ${r.incomplete}`,
-                  messageEn: `Employee ${r.nameAr} reached ${r.level} risk level (${r.score} points) this month`,
-                  type: "warning",
-                  relatedEntity: "employee",
-                  relatedId: r.employeeId,
-                });
-              }
-            }
-          } catch (e) {
-            console.error("Risk alert notify error:", e);
-          }
-        }
+        await notifyMonthlyAttendanceRisk(results,period,allUsers);
       }
 
       results.sort((a, b) => b.score - a.score);

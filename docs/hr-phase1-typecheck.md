@@ -45,7 +45,7 @@
 | `client/src/pages/scene-3d.tsx:5307:23` | قيمة nullable | المصمم |
 | `client/src/pages/scene-3d.tsx:5308:23` | قيمة nullable | المصمم |
 | `client/src/pages/work-orders.tsx:243:72` | معرّف nullable | أوامر العمل |
-| `server/routes.ts:10151:9` | entryId ناقص في أسطر الإقفال | الإقفال المحاسبي |
+| `server/routes.ts:10076:9` | entryId ناقص في أسطر الإقفال | الإقفال المحاسبي |
 | `server/storage.ts:1543:57` | توافق نوع attachments | إنشاء قيد محاسبي |
 | `server/storage.ts:1574:57` | توافق نوع attachments | الأرصدة الافتتاحية |
 | `server/storage.ts:1587:55` | توافق نوع attachments | تعديل قيد محاسبي |

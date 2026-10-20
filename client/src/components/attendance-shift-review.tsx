@@ -5,16 +5,14 @@ import { Input } from "@/components/ui/input";
 import { apiRequest } from "@/lib/queryClient";
 import { MedicalDocumentLinks } from "@/components/medical-document-links";
 import { riyadhDateKey, type AttendanceShift } from "@shared/attendance";
+import { attendanceMinutes, attendanceReportCells, type AttendanceReportRow } from "@shared/attendance-report";
 
-type Report = { employeeName: string; configurationWarnings: string[]; unassignedLegacyRecords: number; rows: {
-  id?: number; recordId?: number; recordIds?: number[];
-  day: string; shiftId: string; shiftLabel: string; status: string; checkIn: string | null; checkOut: string | null;
-  lateMinutes: number; earlyDepartureMinutes: number; adminOverride: boolean;
-}[] };
+export type AttendanceShiftReport = { employeeName: string; configurationWarnings: string[]; unassignedLegacyRecords: number; rows: AttendanceReportRow[] };
+type Report = AttendanceShiftReport;
 const labels: Record<string,string> = { present: "حاضر", late: "متأخر", absent: "غائب", pending: "لم تنته الوردية",
   missing_checkin: "نقص دخول", missing_checkout: "نقص خروج", rest_day: "راحة أسبوعية", approved_leave: "إجازة معتمدة", not_started: "قبل المباشرة", out_of_zone: "خارج النطاق", admin_override: "مصحح إدارياً", unverified_schedule: "جدول تاريخي غير موثق" };
 const escapeHtml = (value: unknown) => String(value ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]!));
-const time = (value: string | null) => value ? new Date(value).toLocaleTimeString("ar-SA", { timeZone: "Asia/Riyadh", hour: "2-digit", minute: "2-digit" }) : "—";
+const time = (value: string | Date | null) => value ? new Date(value).toLocaleTimeString("ar-SA", { timeZone: "Asia/Riyadh", hour: "2-digit", minute: "2-digit" }) : "—";
 
 /** Can also be mounted in the existing employee file with a fixed employeeId. */
 export function AttendanceShiftReview({ employees, employeeId }: { employees: {id:number;nameAr:string}[]; employeeId?: number }) {
@@ -34,8 +32,8 @@ export function AttendanceShiftReview({ employees, employeeId }: { employees: {i
       body{font:14px Arial;padding:24px}table{width:100%;border-collapse:collapse}td,th{border:1px solid #ccc;padding:8px}
       thead{display:table-header-group}tr{break-inside:avoid}@page{size:A4 landscape;margin:12mm}</style></head>
       <body><h1>${escapeHtml(report.data?.employeeName)}</h1><p>${escapeHtml(from)} — ${escapeHtml(to)} (توقيت الرياض)</p>
-      <table><thead><tr>${["التاريخ","الوردية","الدخول","الخروج","الحالة","تأخير / خروج مبكر","تصحيح"].map(x=>`<th>${x}</th>`).join("")}</tr></thead><tbody>
-      ${rows.map(r=>`<tr>${[r.day,r.shiftLabel,time(r.checkIn),time(r.checkOut),labels[r.status],`${r.lateMinutes} / ${r.earlyDepartureMinutes}`,r.adminOverride?"نعم":"—"].map(v=>`<td>${escapeHtml(v)}</td>`).join("")}</tr>`).join("")}
+      <table><thead><tr>${["التاريخ","الوردية","الدخول","الخروج","الحالة","تأخير (دقيقة)","خروج مبكر (دقيقة)","تصحيح"].map(x=>`<th>${x}</th>`).join("")}</tr></thead><tbody>
+      ${rows.map(r=>`<tr>${attendanceReportCells(r).map(v=>`<td>${escapeHtml(v)}</td>`).join("")}</tr>`).join("")}
       </tbody></table></body></html>`);
     popup.document.close(); popup.focus(); popup.print();
   };
@@ -57,11 +55,11 @@ export function AttendanceShiftReview({ employees, employeeId }: { employees: {i
     <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">{rows.map(r=><article className="border rounded-lg p-3 space-y-1 text-sm" key={`${r.day}:${r.shiftId}`}>
       <div className="flex justify-between gap-2 font-medium"><span>{r.day} · {r.shiftLabel}</span><span>{labels[r.status]}</span></div>
       <p>الدخول: {time(r.checkIn)} · الخروج: {time(r.checkOut)}</p>
-      {r.status==="unverified_schedule" ? <p className="text-amber-700">تحتاج مراجعة جدول الدوام التاريخي.</p> : <p>تأخير: {r.lateMinutes} دقيقة · خروج مبكر: {r.earlyDepartureMinutes} دقيقة</p>}
+      <p className={!r.scheduleVerified?"text-amber-700":""}>تأخير: {attendanceMinutes(r,"lateMinutes")} · خروج مبكر: {attendanceMinutes(r,"earlyDepartureMinutes")}{!r.scheduleVerified?" — تحتاج مراجعة الجدول التاريخي.":" دقيقة"}</p>
       {r.adminOverride && <p className="text-violet-700">مصحح إدارياً</p>}
-      {(r.recordId != null || r.id != null) && <div className="border-t pt-2 space-y-1">
+      {r.recordId != null && <div className="border-t pt-2 space-y-1">
         <strong className="text-xs">المرفقات الطبية</strong>
-        {(r.recordIds ?? [r.recordId ?? r.id!]).map(id=><MedicalDocumentLinks key={id} recordId={id} />)}
+        {(r.recordIds ?? [r.recordId!]).map(id=><MedicalDocumentLinks key={id} recordId={id} />)}
       </div>}
     </article>)}</div>
   </section>;
@@ -119,7 +117,7 @@ export function CollectiveShiftReview({ from, to, location, outOfZoneOnly }: {
   const filtered = base.filter(r=>!status || matches(r,status));
   const columns = ["الموظف","القسم","التاريخ","الوردية","الدخول","الخروج","الحالة","تأخير (دقيقة)","خروج مبكر (دقيقة)","تصحيح إداري","الموقع"];
   const values = (r:CollectiveRow) => [r.employeeName,r.department,r.day,r.shiftLabel,time(r.checkIn),time(r.checkOut),labels[r.status]||r.status,
-    String(r.lateMinutes),String(r.earlyDepartureMinutes),r.adminOverride?"نعم":"—",r.locationNames.join("، ")||r.homeLocation];
+    attendanceMinutes(r,"lateMinutes"),attendanceMinutes(r,"earlyDepartureMinutes"),r.adminOverride?"نعم":"—",r.locationNames.join("، ")||r.homeLocation];
   const [exportError,setExportError] = useState("");
   const excel = async () => {
     try {
@@ -166,7 +164,7 @@ export function CollectiveShiftReview({ from, to, location, outOfZoneOnly }: {
     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{filtered.map(r=><article key={`${r.employeeId}:${r.day}:${r.shiftId}`} className="border rounded-lg p-3 space-y-2 text-sm">
       <div className="flex justify-between gap-2"><strong>{r.employeeName}</strong><span>{labels[r.status]||r.status}</span></div>
       <p>{r.day} · {r.shiftLabel} · {r.department}</p><p>الدخول: {time(r.checkIn)} · الخروج: {time(r.checkOut)}</p>
-      <p>تأخير: {r.lateMinutes} د · خروج مبكر: {r.earlyDepartureMinutes} د</p>
+      <p className={!r.scheduleVerified?"text-amber-700":""}>تأخير: {attendanceMinutes(r,"lateMinutes")} · خروج مبكر: {attendanceMinutes(r,"earlyDepartureMinutes")}</p>
       <p className="text-muted-foreground">{r.locationNames.join("، ")||r.homeLocation}</p>
       {r.outOfZone&&<p className="text-amber-700">محاولة خارج النطاق</p>}{r.adminOverride&&<p className="text-violet-700">تصحيح إداري مسجل</p>}
     </article>)}</div>

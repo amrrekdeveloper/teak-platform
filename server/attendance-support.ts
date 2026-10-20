@@ -148,6 +148,11 @@ export async function employeeAttendanceReport(employeeId: number, from: string,
       const scheduleVerified = savedDays.has(day) || day === riyadhDateKey(new Date());
       if (!scheduleVerified && !["not_started","approved_leave","rest_day"].includes(status)) status="unverified_schedule";
       rows.push({ day, shiftId: shift.id, shiftLabel: shift.label, ...state, status,
+        // Current settings cannot establish historical schedule-dependent facts.
+        late: scheduleVerified ? state.late : null,
+        lateMinutes: scheduleVerified ? state.lateMinutes : null,
+        earlyDepartureMinutes: scheduleVerified ? state.earlyDepartureMinutes : null,
+        ended: scheduleVerified ? state.ended : null,
         recordId: events[0]?.id ?? null,
         recordIds: events.map(event=>event.id),
         scheduleVerified,

@@ -12,7 +12,10 @@ import { initializeEmployeePortal, employeeDirectory, employeePhone } from "./da
 import { tokenHash } from "./security";
 import { createEmployeePortalRouter, DEVICE_COOKIE } from "./router";
 import { sendEmployeeOtp } from "./sms";
-import { ensureAttendanceExtensions, registerAttendanceSupport } from "../attendance-support";
+import { ensureAttendanceExtensions, registerAttendanceSupport, employeeAttendanceReport } from "../attendance-support";
+import { employeeMonthlyAttendanceRisk, notifyMonthlyAttendanceRisk } from "../attendance-risk";
+import { storage } from "../storage";
+import { riyadhDateKey, isRiyadhWeekend } from "../../shared/attendance";
 import { registerAttendanceOverride } from "../attendance-override";
 import { initHrLeaveForm } from "../hr-leave-form";
 import { initHrWorkflowSupport, decideHrRequest } from "../hr-workflow-support";
@@ -114,6 +117,8 @@ afterAll(async () => {
     await pool.query("DELETE FROM attendance_day_schedules WHERE employee_id=$1", [id]);
     await pool.query("DELETE FROM attendance_violations WHERE employee_id=$1", [id]);
     await pool.query("DELETE FROM attendance_monthly_risk WHERE employee_id=$1", [id]);
+    await pool.query("DELETE FROM risk_alerts WHERE employee_id=$1",[id]);
+    await pool.query("DELETE FROM work_schedule_settings WHERE employee_id=$1",[id]);
     await pool.query("DELETE FROM hr_request_history WHERE employee_id=$1", [id]);
     await pool.query("DELETE FROM notifications WHERE related_entity='employee' AND related_id=$1", [id]);
     await pool.query("DELETE FROM leave_requests WHERE employee_id=$1", [id]);
@@ -141,6 +146,55 @@ afterAll(async () => {
 }, 30000);
 
 describe.sequential("isolated employee protocol", () => {
+  it("excludes unsnapshotted history after schedule changes from persisted risk and alerts, but retains verified history",async()=>{
+    const now=new Date(),today=riyadhDateKey(now);
+    const [y,m]=today.split("-").map(Number);
+    const period=riyadhDateKey(new Date(Date.UTC(y,m-2,1,12))).slice(0,7);
+    const days=Array.from({length:7},(_,i)=>`${period}-${String(i+1).padStart(2,"0")}`)
+      .filter(d=>!isRiyadhWeekend(new Date(`${d}T12:00:00+03:00`))).slice(0,3);
+    const snapshot=[{id:"single",label:"الدوام",start:"08:00",end:"16:00",graceMinutes:0}];
+    const {rows:[setting]}=await pool.query(`INSERT INTO work_schedule_settings(scope_type,employee_id,work_start_time,work_end_time,grace_minutes,shifts)
+      VALUES('employee',$1,'08:00','16:00',0,$2) RETURNING id`,[employeeId,JSON.stringify(snapshot)]);
+    for(const day of days)for(const [type,time] of [["check_in","09:00"],["check_out","15:00"]])
+      await pool.query(`INSERT INTO attendance_records(employee_id,type,check_time,shift_key)
+        VALUES($1,$2,$3::timestamptz AT TIME ZONE 'UTC','single')`,[employeeId,type,`${day}T${time}:00+03:00`]);
+    const before=await employeeAttendanceReport(employeeId,days[0],days[2]);
+    for(const row of before.rows.filter(r=>days.includes(r.day)))expect(row).toMatchObject({
+      scheduleVerified:false,late:null,lateMinutes:null,earlyDepartureMinutes:null,status:"unverified_schedule",
+    });
+    await pool.query(`UPDATE work_schedule_settings SET work_start_time='07:00',work_end_time='17:00',shifts=$2 WHERE id=$1`,
+      [setting.id,JSON.stringify([{...snapshot[0],start:"07:00",end:"17:00"}])]);
+    const changed=await employeeAttendanceReport(employeeId,days[0],days[2]);
+    expect(changed.rows.map(r=>[r.late,r.lateMinutes,r.earlyDepartureMinutes])).toEqual(before.rows.map(r=>[r.late,r.lateMinutes,r.earlyDepartureMinutes]));
+    expect(changed.rows.filter(r=>r.checkIn)).toHaveLength(3);
+    await pool.query(`INSERT INTO attendance_violations(employee_id,violation_type,attempted_type,details,business_day,shift_key)
+      VALUES($1,'missing_checkin','check_out','Isolated risk fixture',$2,'single')`,[employeeId,days[0]]);
+    await pool.query(`INSERT INTO attendance_monthly_risk(employee_id,period,late,absent,incomplete,score)
+      VALUES($1,$2,3,0,0,3)`,[employeeId,period]);
+    const employee=(await storage.getEmployee(employeeId))!;
+    const risk=await employeeMonthlyAttendanceRisk(employee,period,days[2],now);
+    expect(risk).toMatchObject({late:0,absent:0,incomplete:0,score:0,verifiedDays:0,assessmentAvailable:false});
+    expect(risk.unverifiedDays).toBeGreaterThanOrEqual(3);
+    expect((await pool.query("SELECT late,absent,incomplete,score FROM attendance_monthly_risk WHERE employee_id=$1 AND period=$2",[employeeId,period])).rows[0])
+      .toEqual({late:0,absent:0,incomplete:0,score:0});
+    const recipients=[{id:medicalReviewers.hr,role:"hr" as const,active:true}];
+    // Even a stale positive score cannot alert when its evidence is unavailable.
+    await notifyMonthlyAttendanceRisk([risk,{...risk,score:6,level:"red"}],period,recipients);
+    expect((await pool.query("SELECT 1 FROM risk_alerts WHERE employee_id=$1",[employeeId])).rowCount).toBe(0);
+    expect((await pool.query("SELECT 1 FROM notifications WHERE related_entity='employee' AND related_id=$1",[employeeId])).rowCount).toBe(0);
+    await pool.query("DELETE FROM attendance_violations WHERE employee_id=$1 AND business_day=$2",[employeeId,days[0]]);
+    // Fixture-only past snapshots model real evidence; never backfill actual employees.
+    for(const day of days)await pool.query("INSERT INTO attendance_day_schedules(employee_id,business_day,shifts) VALUES($1,$2,$3)",
+      [employeeId,day,JSON.stringify(snapshot)]);
+    const verified=await employeeAttendanceReport(employeeId,days[0],days[0]);
+    expect(verified.rows[0]).toMatchObject({scheduleVerified:true,late:true,lateMinutes:60,earlyDepartureMinutes:60});
+    const verifiedRisk=await employeeMonthlyAttendanceRisk(employee,period,days[2],now);
+    expect(verifiedRisk).toMatchObject({late:3,score:3,level:"orange",verifiedDays:3,assessmentAvailable:true});
+    await notifyMonthlyAttendanceRisk([verifiedRisk],period,recipients);
+    await notifyMonthlyAttendanceRisk([verifiedRisk],period,recipients);
+    expect((await pool.query("SELECT 1 FROM risk_alerts WHERE employee_id=$1",[employeeId])).rowCount).toBe(1);
+    expect((await pool.query("SELECT 1 FROM notifications WHERE related_entity='employee' AND related_id=$1",[employeeId])).rowCount).toBe(1);
+  });
   it("requires a device session and rejects cross-origin state changes", async () => {
     expect((await call("/me", "GET", undefined, "")).status).toBe(401);
     expect((await call("/otp/request", "POST", { phone: registeredPhone }, "", { Origin: "https://malicious.invalid" })).status).toBe(403);
@@ -181,13 +235,14 @@ describe.sequential("isolated employee protocol", () => {
     expect((await call("/summary")).data.employee.id).toBe(employeeId);
   });
   it("rejects employee ID spoofing and unverifiable GPS without saving attendance", async () => {
+    const baseline=(await pool.query("SELECT count(*)::int AS n FROM attendance_records WHERE employee_id=$1",[employeeId])).rows[0].n;
     const valid = { type: "check_in", latitude: 0, longitude: 0, accuracy: 10, locationTimestamp: Date.now() };
     expect((await call("/attendance", "POST", { ...valid, employeeId: secondId })).status).toBe(400);
     expect((await call("/attendance", "POST", { ...valid, accuracy: 1000 })).status).toBe(400);
     expect((await call("/attendance", "POST", { ...valid, locationTimestamp: Date.now() - 300000 })).status).toBe(400);
     expect((await call("/attendance", "POST", valid)).status).toBe(403);
     const { rows } = await pool.query("SELECT count(*)::int AS n FROM attendance_records WHERE employee_id=$1", [employeeId]);
-    expect(rows[0].n).toBe(0);
+    expect(rows[0].n).toBe(baseline);
   });
   it("cannot revoke another employee's device or query their private records", async () => {
     const foreignId = randomUUID();

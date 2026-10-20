@@ -18,6 +18,7 @@ import {
 import { useLanguage } from "@/components/language-provider";
 import AttendanceZonesMap from "@/components/attendance-zones-map";
 import { resolveWorkSchedule, isLateCheckIn, riyadhDateKey, riyadhDayBounds } from "@shared/attendance";
+import { attendanceStatusLabels, type AttendanceReportRow } from "@shared/attendance-report";
 import { loadMapsLibrary } from "@/lib/maps-loader";
 import { AttendanceShiftReview, AttendanceShiftEditor, CollectiveShiftReview } from "@/components/attendance-shift-review";
 
@@ -242,6 +243,20 @@ export default function AttendanceMonitorPage() {
     },
     refetchInterval: 60000,
   });
+  const exportEvidence=useQuery<{rows:(AttendanceReportRow&{employeeId:number})[]}>({
+    queryKey:["attendance-shift-monitor",dateRange.from,dateRange.to],
+    queryFn:async()=>{
+      const params=new URLSearchParams({from:riyadhDateKey(new Date(dateRange.from)),to:riyadhDateKey(new Date(dateRange.to))});
+      const response=await fetch(`/api/attendance/shift-monitor?${params}`);
+      if(!response.ok)throw new Error("تعذر تحميل دليل جداول الحضور.");
+      return response.json();
+    },
+    refetchInterval:60000,
+  });
+  const exportStatus=(employeeId:number,day:Date)=>{
+    const evidence=exportEvidence.data?.rows.filter(r=>r.employeeId===employeeId&&r.day===riyadhDateKey(day))||[];
+    return evidence.length?Array.from(new Set(evidence.map(r=>attendanceStatusLabels[r.status]||r.status))).join(" / "):"جدول تاريخي غير موثق";
+  };
 
   const { data: zones = [] } = useQuery<LocationZone[]>({
     queryKey: ["/api/attendance/zones"],
@@ -445,11 +460,12 @@ export default function AttendanceMonitorPage() {
   };
 
   const exportCSV = async () => {
+    if(!exportEvidence.data||exportEvidence.isError)return;
     const rows = [["اسم الموظف", "التاريخ", "وقت الدخول", "وقت الخروج", "المدة", "الموقع", "الحالة"]];
     visibleEmployees.forEach(emp => {
       days.forEach(day => {
         const dayRecs = recordsForDay(locRecords, day);
-        const s = getDayStatus(dayRecs, emp.id, lateCheck);
+        const s = getDayStatus(dayRecs, emp.id);
         rows.push([
           emp.nameAr,
           riyadhDateKey(day),
@@ -457,7 +473,7 @@ export default function AttendanceMonitorPage() {
           s.out ? formatTime(s.out.checkTime) : "—",
           s.duration || "—",
           (s.in?.locationName) || emp.locationName,
-          s.status === "present" ? "حاضر" : s.status === "late" ? "متأخر" : s.status === "absent" ? "غائب" : s.status === "missing_checkin" ? "نقص دخول" : "نقص خروج",
+          exportStatus(emp.id,day),
         ]);
       });
     });
@@ -482,11 +498,12 @@ export default function AttendanceMonitorPage() {
     st === "present" ? "حاضر" : st === "late" ? "متأخر" : st === "absent" ? "غائب" : st === "missing_checkin" ? "نقص دخول" : "نقص خروج";
 
   const exportPDF = () => {
+    if(!exportEvidence.data||exportEvidence.isError)return;
     const rowsHtml: string[] = [];
     visibleEmployees.forEach(emp => {
       days.forEach(day => {
         const dayRecs = recordsForDay(locRecords, day);
-        const s = getDayStatus(dayRecs, emp.id, lateCheck);
+        const s = getDayStatus(dayRecs, emp.id);
         rowsHtml.push(`<tr>
           <td>${emp.nameAr}</td>
           <td>${day.toISOString().split("T")[0]}</td>
@@ -494,7 +511,7 @@ export default function AttendanceMonitorPage() {
           <td>${s.out ? formatTime(s.out.checkTime) : "—"}</td>
           <td>${s.duration || "—"}</td>
           <td>${(s.in?.locationName) || emp.locationName || "—"}</td>
-          <td>${statusLabel(s.status)}</td>
+          <td>${exportStatus(emp.id,day)}</td>
         </tr>`);
       });
     });
@@ -540,11 +557,11 @@ export default function AttendanceMonitorPage() {
             <RefreshCw className="w-4 h-4 me-1" />
             {t("تحديث", "Refresh")}
           </Button>
-          <Button variant="outline" size="sm" onClick={exportCSV} data-testid="button-export-attendance">
+          <Button variant="outline" size="sm" onClick={exportCSV} disabled={!exportEvidence.data||exportEvidence.isFetching||exportEvidence.isError} data-testid="button-export-attendance">
             <Download className="w-4 h-4 me-1" />
             {t("Excel — الملخص القديم", "Excel — legacy summary")}
           </Button>
-          <Button variant="outline" size="sm" onClick={exportPDF} data-testid="button-export-attendance-pdf">
+          <Button variant="outline" size="sm" onClick={exportPDF} disabled={!exportEvidence.data||exportEvidence.isFetching||exportEvidence.isError} data-testid="button-export-attendance-pdf">
             <FileText className="w-4 h-4 me-1" />
             {t("PDF — الملخص القديم", "PDF — legacy summary")}
           </Button>
@@ -1528,6 +1545,9 @@ interface RiskScoreRow {
   incomplete: number;
   score: number;
   level: "green" | "orange" | "red";
+  assessmentAvailable:boolean;
+  verifiedDays:number;
+  unverifiedDays:number;
 }
 
 function RiskScoresTab() {
@@ -1636,10 +1656,13 @@ function RiskScoresTab() {
                   <tr key={r.employeeId} className="hover:bg-muted/20" data-testid={`row-risk-${r.employeeId}`}>
                     <td className="px-4 py-2 font-medium">{r.nameAr}</td>
                     <td className="px-4 py-2 text-xs text-muted-foreground">{deptLabel(r.department)}</td>
-                    <td className="px-4 py-2 text-center">{r.late}</td>
-                    <td className="px-4 py-2 text-center">{r.absent}</td>
-                    <td className="px-4 py-2 text-center">{r.incomplete}</td>
-                    <td className="px-4 py-2 text-center" data-testid={`text-risk-score-${r.employeeId}`}>{levelBadge(r.level, r.score)}</td>
+                     <td className="px-4 py-2 text-center">{r.assessmentAvailable?r.late:"غير متاح"}</td>
+                     <td className="px-4 py-2 text-center">{r.assessmentAvailable?r.absent:"غير متاح"}</td>
+                     <td className="px-4 py-2 text-center">{r.assessmentAvailable?r.incomplete:"غير متاح"}</td>
+                     <td className="px-4 py-2 text-center" data-testid={`text-risk-score-${r.employeeId}`}>
+                       {r.assessmentAvailable?levelBadge(r.level,r.score):<span className="text-muted-foreground">لا توجد أيام موثقة للتقييم</span>}
+                       {r.unverifiedDays>0&&<p className="text-xs text-amber-700 mt-1">{r.unverifiedDays} يومًا مستبعدًا لعدم توثيق الجدول</p>}
+                     </td>
                   </tr>
                 ))}
               </tbody>
