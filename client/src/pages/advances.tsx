@@ -3,6 +3,8 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLanguage } from "@/components/language-provider";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
+import { HrExpandedWorkspace, ReportPreview, type ReportData } from "@/components/hr-report";
 import type { EmployeeAdvance, Employee } from "@shared/schema";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,10 +21,13 @@ const fmt = (v: any) => Number(v || 0).toLocaleString("en-US", { minimumFraction
 export default function AdvancesPage() {
   const { t } = useLanguage();
   const { toast } = useToast();
+  const { user } = useAuth();
+  const canDisburse = ["owner", "accountant"].includes(user?.role || "");
+  const [report, setReport] = useState<ReportData | null>(null);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ employeeId: "", amount: "", installments: "1", reason: "" });
 
-  const { data: advances = [], isLoading } = useQuery<EmployeeAdvance[]>({ queryKey: ["/api/advances"] });
+  const { data: advances = [], isLoading, error: loadError } = useQuery<EmployeeAdvance[]>({ queryKey: ["/api/advances"] });
   const { data: employees = [] } = useQuery<Employee[]>({ queryKey: ["/api/employees"] });
   const empName = (id: number) => {
     const e = employees.find(x => x.id === id);
@@ -65,6 +70,7 @@ export default function AdvancesPage() {
   const totalOutstanding = advances.filter(a => a.status === "approved").reduce((s, a) => s + Number(a.remainingAmount || 0), 0);
 
   return (
+    <HrExpandedWorkspace>
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
@@ -74,10 +80,10 @@ export default function AdvancesPage() {
           <p className="text-muted-foreground text-sm">{t("طلب واعتماد السلف وخصمها تلقائياً من الراتب", "Request, approve and auto-deduct advances from payroll")}</p>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
+          {["owner", "hr"].includes(user?.role || "") && <DialogTrigger asChild>
             <Button data-testid="button-new-advance"><Plus className="w-4 h-4 me-1" />{t("سلفة جديدة", "New Advance")}</Button>
-          </DialogTrigger>
-          <DialogContent>
+          </DialogTrigger>}
+          <DialogContent className="max-h-[94dvh] overflow-y-auto">
             <DialogHeader><DialogTitle>{t("سلفة جديدة", "New Advance")}</DialogTitle></DialogHeader>
             <div className="space-y-3">
               <div className="space-y-1">
@@ -112,14 +118,16 @@ export default function AdvancesPage() {
               </div>
             </div>
             <DialogFooter>
-              <Button onClick={() => createMutation.mutate()} disabled={createMutation.isPending || !form.employeeId || !(Number(form.amount) > 0)} data-testid="button-submit-advance">
+              <Button onClick={() => createMutation.mutate()} disabled={createMutation.isPending || !form.employeeId || !(Number(form.amount) > 0) || !Number.isInteger(Number(form.installments)) || Number(form.installments) < 1} data-testid="button-submit-advance">
                 {createMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : t("حفظ", "Save")}
               </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
       </div>
+      <p className="rounded-lg border p-3 text-sm text-muted-foreground">{t("النموذج الرسمي للقرض والأرشفة الآلية معلقان لحين توفير الأصل المعتمد وربط بياناته. التقرير أدناه سجل مالي وليس بديلاً عن النموذج الرسمي. الصرف للمالك / المحاسب فقط.", "The official loan form and automatic archival await the approved original and its data integration. The report below is a financial record, not the official form. Only owner/accountant may disburse.")}</p>
 
+      {loadError && <p role="alert" className="text-destructive">{t("تعذر تحميل السلف. أعد المحاولة.", "Could not load advances. Please retry.")}</p>}
       <Card><CardContent className="p-4 flex items-center gap-3">
         <HandCoins className="w-8 h-8 text-primary" />
         <div><div className="text-2xl font-bold" data-testid="stat-outstanding">{fmt(totalOutstanding)}</div><div className="text-xs text-muted-foreground">{t("إجمالي السلف القائمة (ر.س)", "Total outstanding advances (SAR)")}</div></div>
@@ -132,7 +140,7 @@ export default function AdvancesPage() {
           ) : advances.length === 0 ? (
             <div className="p-8 text-center text-muted-foreground" data-testid="text-empty">{t("لا توجد سلف مسجلة", "No advances recorded")}</div>
           ) : (
-            <table className="w-full text-sm">
+            <table className="w-full text-sm hr-responsive">
               <thead className="border-b bg-muted/40">
                 <tr>
                   <th className="p-3 text-start font-medium">{t("الموظف", "Employee")}</th>
@@ -147,17 +155,23 @@ export default function AdvancesPage() {
               <tbody>
                 {advances.map(a => (
                   <tr key={a.id} className="border-b last:border-0" data-testid={`row-advance-${a.id}`}>
-                    <td className="p-3 font-medium">{empName(a.employeeId)}</td>
-                    <td className="p-3">{fmt(a.amount)}</td>
-                    <td className="p-3">{a.installments}</td>
-                    <td className="p-3">{fmt(a.monthlyDeduction)}</td>
-                    <td className="p-3 font-semibold" data-testid={`text-remaining-${a.id}`}>{fmt(a.remainingAmount)}</td>
-                    <td className="p-3">{statusBadge(a.status)}</td>
-                    <td className="p-3">
+                    <td data-label={t("الموظف", "Employee")} className="p-3 font-medium">{empName(a.employeeId)}</td>
+                    <td data-label={t("المبلغ", "Amount")} className="p-3">{fmt(a.amount)}</td>
+                    <td data-label={t("الأقساط", "Installments")} className="p-3">{a.installments}</td>
+                    <td data-label={t("القسط", "Monthly")} className="p-3">{fmt(a.monthlyDeduction)}</td>
+                    <td data-label={t("المتبقي", "Remaining")} className="p-3 font-semibold" data-testid={`text-remaining-${a.id}`}>{fmt(a.remainingAmount)}</td>
+                    <td data-label={t("الحالة", "Status")} className="p-3">{statusBadge(a.status)}</td>
+                    <td data-label={t("إجراءات", "Actions")} className="p-3 flex-wrap">
+                      <Button variant="outline" size="sm" onClick={() => {
+                        const employee = employees.find(e => e.id === a.employeeId);
+                        setReport({ title: t("سجل السلفة — ليس النموذج الرسمي", "Advance record — not the official form"), subtitle: `${empName(a.employeeId)} | #${a.id} | ${a.status}`,
+                          headings: [t("البيان", "Field"), t("القيمة", "Value")],
+                          rows: [[t("رقم الموظف", "Employee number"), employee?.employeeNumber || "—"], [t("القسم", "Department"), employee?.department || "—"], [t("المسمى", "Position"), employee?.position || "—"], [t("تاريخ التعيين", "Hiring date"), employee?.contractStart || "—"], [t("الراتب", "Salary"), employee?.monthlySalary || "—"], [t("المبلغ", "Amount"), fmt(a.amount)], [t("الأقساط", "Installments"), a.installments], [t("القسط الشهري", "Monthly installment"), fmt(a.monthlyDeduction)], [t("المتبقي", "Remaining"), fmt(a.remainingAmount)], [t("السبب", "Reason"), a.reason || "—"]] });
+                      }}>{t("فتح / PDF", "Open / PDF")}</Button>
                       {a.status === "pending" && (
                         <div className="flex gap-2">
-                          <Button size="sm" disabled={decideMutation.isPending} onClick={() => decideMutation.mutate({ id: a.id, action: "approve" })} data-testid={`button-approve-${a.id}`}>{t("اعتماد", "Approve")}</Button>
-                          <Button size="sm" variant="outline" disabled={decideMutation.isPending} onClick={() => decideMutation.mutate({ id: a.id, action: "reject" })} data-testid={`button-reject-${a.id}`}>{t("رفض", "Reject")}</Button>
+                          {canDisburse && <Button size="sm" disabled={decideMutation.isPending} onClick={() => { if (window.confirm(t("تأكيد اعتماد وصرف السلفة؟", "Approve and disburse this advance?"))) decideMutation.mutate({ id: a.id, action: "approve" }); }} data-testid={`button-approve-${a.id}`}>{t("اعتماد وصرف", "Approve & pay")}</Button>}
+                          {["owner", "hr"].includes(user?.role || "") && <Button size="sm" variant="outline" disabled={decideMutation.isPending} onClick={() => decideMutation.mutate({ id: a.id, action: "reject" })} data-testid={`button-reject-${a.id}`}>{t("رفض", "Reject")}</Button>}
                         </div>
                       )}
                     </td>
@@ -168,6 +182,8 @@ export default function AdvancesPage() {
           )}
         </CardContent>
       </Card>
+      <ReportPreview report={report} onClose={() => setReport(null)} />
     </div>
+    </HrExpandedWorkspace>
   );
 }

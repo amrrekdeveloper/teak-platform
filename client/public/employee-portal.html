@@ -90,6 +90,7 @@
           <button class="tab" id="tab-attendance" role="tab" aria-selected="true" aria-controls="panel-attendance" type="button">الحضور والانصراف</button>
           <button class="tab" id="tab-leaves" role="tab" aria-selected="false" aria-controls="panel-leaves" type="button">الإجازات</button>
           <button class="tab" id="tab-permissions" role="tab" aria-selected="false" aria-controls="panel-permissions" type="button">الاستئذان</button>
+          <button class="tab" id="tab-acknowledgments" role="tab" aria-selected="false" aria-controls="panel-acknowledgments" type="button">الإقرارات والقرارات</button>
           <button class="tab" id="tab-sessions" role="tab" aria-selected="false" aria-controls="panel-sessions" type="button">أجهزتي</button>
           <button class="tab" id="tab-support" role="tab" aria-selected="false" aria-controls="panel-support" type="button">الدعم الفني</button>
         </nav>
@@ -97,6 +98,7 @@
           <div class="section-head"><div><h2>الحضور والانصراف</h2><p>سجّل حضورك وتابع سجلك.</p></div></div>
           <div class="layout-grid">
             <article class="panel"><h3>تسجيل حركة</h3><p class="panel-intro">اسمح بالموقع وسجّل من نطاق العمل.</p>
+              <label for="attendance-shift">الفترة</label><select id="attendance-shift"><option value="">تحديد تلقائي حسب الوقت الحالي</option></select>
               <div class="attendance-actions"><button class="btn" id="check-in" type="button" data-testid="check-in">تسجيل حضور</button><button class="btn secondary" id="check-out" type="button" data-testid="check-out">تسجيل انصراف</button></div>
               <p class="geo-note">وقت التسجيل حسب توقيت النظام.</p><p class="live-message" id="attendance-message" role="status" aria-live="polite"></p>
             </article>
@@ -112,6 +114,19 @@
                 <div class="form-row"><label for="leave-start">من تاريخ</label><input id="leave-start" name="startDate" type="date" required></div>
                 <div class="form-row"><label for="leave-end">إلى تاريخ</label><input id="leave-end" name="endDate" type="date" required></div>
                 <div class="form-row wide"><label for="leave-reason">سبب الطلب</label><textarea id="leave-reason" name="reason" required maxlength="1000"></textarea></div>
+                <details class="wide"><summary>تفاصيل نموذج الإجازة</summary>
+                  <div class="form-row"><label for="leave-destination">الوجهة</label><input id="leave-destination" maxlength="200"></div>
+                  <div class="form-row"><label for="leave-passport">رقم الجواز (عند الحاجة)</label><input id="leave-passport" maxlength="50"></div>
+                  <div class="form-row"><label for="leave-departure">تاريخ المغادرة</label><input id="leave-departure" type="date"></div>
+                  <div class="form-row"><label for="leave-return">تاريخ العودة</label><input id="leave-return" type="date"></div>
+                  <div class="form-row"><label for="leave-address">العنوان أثناء الإجازة</label><input id="leave-address" maxlength="500"></div>
+                  <div class="form-row"><label for="leave-contact">رقم التواصل أثناء الإجازة</label><input id="leave-contact" type="tel" maxlength="40"></div>
+                  <div class="form-row"><label for="leave-tickets">بيانات التذاكر</label><textarea id="leave-tickets" maxlength="500"></textarea></div>
+                  <div class="form-row"><label for="leave-visa">بيانات التأشيرة</label><textarea id="leave-visa" maxlength="500"></textarea></div>
+                  <div class="form-row"><label for="leave-notes">ملاحظات</label><textarea id="leave-notes" maxlength="2000"></textarea></div>
+                  <label><input id="leave-ack" type="checkbox"> أتعهد أنا الموقع أدناه بالالتزام بمواعيد عودتي من الإجازة المعتمدة.</label>
+                  <p class="hint">إقرار إلكتروني عادي، وليس توقيعًا رقميًا مؤهلًا.</p>
+                </details>
                 <div class="actions"><button class="btn" type="submit">إرسال طلب الإجازة</button></div>
               </form><p class="live-message" id="leave-message" role="status" aria-live="polite"></p>
             </article>
@@ -123,7 +138,12 @@
           <div class="layout-grid">
             <article class="panel"><h3>طلب استئذان جديد</h3>
               <form id="permission-form" class="request-form" novalidate data-testid="permission-form">
-                <div class="form-row wide"><label for="permission-type">نوع الاستئذان</label><select id="permission-type" name="type" required><option value="late_arrival">تأخر عن الحضور</option><option value="early_departure">انصراف مبكر</option></select></div>
+                <div class="form-row wide"><label for="permission-type">نوع الاستئذان</label><select id="permission-type" name="type" required><option value="leave">مغادرة العمل</option><option value="permission">استئذان شخصي</option><option value="sick">استئذان طبي</option><option value="official">مهمة رسمية</option><option value="remote">عمل عن بعد</option></select></div>
+                <div class="form-row"><label for="permission-period">الفترة</label><select id="permission-period"><option value="morning">صباحية</option><option value="evening">مسائية</option></select></div>
+                <div class="form-row"><label for="permission-purpose">الغرض</label><select id="permission-purpose"><option value="work">عمل</option><option value="personal">شخصي</option><option value="emergency">طارئ</option></select></div>
+                <div class="form-row"><label for="permission-return-date">تاريخ العودة</label><input id="permission-return-date" type="date" required></div>
+                <div class="form-row wide"><label for="permission-notes">ملاحظات</label><textarea id="permission-notes" maxlength="2000"></textarea></div>
+                <div class="form-row wide"><label><input id="permission-acknowledged" type="checkbox" required> أقر بصحة الطلب (إقرار إلكتروني عادي، ليس توقيعاً رقمياً مؤهلاً)</label></div>
                 <div class="form-row"><label for="permission-date">التاريخ</label><input id="permission-date" name="date" type="date" required></div>
                 <div class="form-row"><label for="permission-start">من الساعة</label><input id="permission-start" name="startTime" type="time" required></div>
                 <div class="form-row"><label for="permission-end">إلى الساعة</label><input id="permission-end" name="endTime" type="time" required></div>
@@ -137,6 +157,16 @@
         <section class="tab-panel" id="panel-sessions" role="tabpanel" aria-labelledby="tab-sessions" hidden>
           <div class="section-head"><div><h2>أجهزتي المسجلة</h2><p>راجع الجلسات النشطة وأنهِ الجلسات التي لا تحتاجها.</p></div><button class="btn secondary" id="revoke-all" type="button">إنهاء كل الجلسات</button></div>
           <div class="panel"><div id="session-list" class="sessions"></div><p class="live-message" id="session-message" role="status" aria-live="polite"></p></div>
+        </section>
+        <section class="tab-panel" id="panel-acknowledgments" role="tabpanel" aria-labelledby="tab-acknowledgments" hidden>
+          <div class="section-head"><div><h2>الإقرارات والقرارات</h2><p>راجع نسخة الإجراء قبل الإقرار. الإقرار يخص السجل المعروض فقط، لا مرفقات غير معروضة. هذا إقرار إلكتروني عادي وليس توقيعاً رقمياً مؤهلاً.</p></div></div>
+          <form id="workflow-request-form" class="panel"><h3>طلب إجراء</h3>
+            <label for="workflow-kind">الإجراء</label><select id="workflow-kind"><option value="wf04">عودة من إجازة</option><option value="wf06b">طلب عدم تجديد العقد</option></select>
+            <label for="workflow-date">تاريخ العودة / انتهاء العقد</label><input id="workflow-date" type="date" required>
+            <label for="workflow-note">ملاحظات</label><textarea id="workflow-note" maxlength="2000"></textarea>
+            <button class="btn" type="submit">إنشاء للمراجعة والإقرار</button>
+          </form>
+          <p id="ack-message" class="live-message" role="status"></p><div id="ack-list"></div><div id="decision-history"></div>
         </section>
         <section class="tab-panel" id="panel-support" role="tabpanel" aria-labelledby="tab-support" hidden>
           <div class="section-head"><div><h2>الدعم الفني</h2><p>نحن هنا لمساعدتك.</p></div></div>
@@ -177,16 +207,16 @@
       function clearPrivate(){
         summary=null;sessionId=null;dashboard.querySelectorAll("[id^='employee-'],#attendance-history,#leave-balance,#leave-history,#permission-history,#session-list").forEach(el=>el.textContent="");
         ["attendance-message","leave-message","permission-message","session-message"].forEach(id=>message($(id),""));
-        ["attendance-history","leave-history","permission-history","session-list"].forEach(id=>$(id).replaceChildren());
+        ["attendance-history","leave-history","permission-history","session-list","ack-list","decision-history"].forEach(id=>$(id).replaceChildren());
       }
       function errorText(target,error){message(target,error.message||"حدث خطأ غير متوقع.","error");}
       function statusLabel(status){
-        const labels={pending:"قيد المراجعة",approved:"مقبول",rejected:"مرفوض",cancelled:"ملغي",accepted:"مقبول"};
+        const labels={pending:"قيد المراجعة",manager_approved:"وافق المدير — بانتظار الموارد البشرية",clarification_requested:"مطلوب توضيح",auto_approved:"اعتماد تلقائي تاريخي",approved:"مقبول",rejected:"مرفوض",cancelled:"ملغي",accepted:"مقبول"};
         return labels[String(status||"").toLowerCase()]||status||"—";
       }
       function statusClass(status){return ["approved","accepted"].includes(String(status||"").toLowerCase())?"ok":String(status||"").toLowerCase()==="pending"?"wait":""}
       function typeLabel(value){
-        const labels={check_in:"حضور",check_out:"انصراف",annual:"سنوية",sick:"مرضية",unpaid:"بدون راتب",emergency:"طارئة",maternity:"أمومة",other:"أخرى",late_arrival:"تأخر عن الحضور",early_departure:"انصراف مبكر"};
+        const labels={check_in:"حضور",check_out:"انصراف",annual:"سنوية",sick:"مرضية",unpaid:"بدون راتب",emergency:"طارئة",maternity:"أمومة",other:"أخرى",leave:"مغادرة العمل",permission:"استئذان شخصي",official:"مهمة رسمية",remote:"عمل عن بعد",late_arrival:"تأخر عن الحضور",early_departure:"انصراف مبكر"};
         return labels[value]||value||"—";
       }
       function dateText(value,withTime){
@@ -212,8 +242,9 @@
         renderTable($("leave-history"),["النوع","من","إلى","الأيام","الحالة"],rows,"لا توجد طلبات إجازة","ستجد طلباتك السابقة هنا.");
       }
       function renderPermissionHistory(items){
-        const rows=(Array.isArray(items)?items:[]).map(r=>[typeLabel(r.type),dateText(r.date),[r.startTime,r.endTime].filter(Boolean).join(" – ")||"—",{statusPill:true,value:r.status}]);
-        renderTable($("permission-history"),["النوع","التاريخ","الوقت","الحالة"],rows,"لا توجد طلبات استئذان","ستظهر طلباتك السابقة هنا.");
+        const rows=(Array.isArray(items)?items:[]).map(r=>[typeLabel(r.type),dateText(r.date),[r.startTime,r.endTime].filter(Boolean).join(" – ")||"—",r.hoursRequested,{statusPill:true,value:r.status}]);
+        renderTable($("permission-history"),["النوع","التاريخ","الوقت","الساعات","الحالة"],rows,"لا توجد طلبات استئذان","ستظهر طلباتك السابقة هنا.");
+        for(const item of items||[]){const link=document.createElement("a");link.href=API+"/permissions/"+item.id+"/document";link.target="_blank";link.rel="noopener";link.textContent="طباعة طلب #"+item.id;link.style.cssText="display:inline-block;margin:8px";$("permission-history").append(link);}
       }
       function renderBalance(balance){
         const box=$("leave-balance");box.replaceChildren();const card=document.createElement("div");card.className="balance-card";
@@ -230,6 +261,11 @@
         });
       }
       function renderDashboard(data){
+        const shiftSelect=$("attendance-shift"),selectedShift=shiftSelect.value;shiftSelect.replaceChildren();
+        const auto=document.createElement("option");auto.value="";auto.textContent="تحديد تلقائي حسب الوقت الحالي";shiftSelect.append(auto);
+        for(const shift of data.shifts||[]){const option=document.createElement("option");option.value=shift.id;option.textContent=`${shift.label} · ${shift.start} — ${shift.end} · سماح ${shift.graceMinutes} دقيقة`;shiftSelect.append(option);}
+        if(Array.from(shiftSelect.options).some(o=>o.value===selectedShift))shiftSelect.value=selectedShift;
+        loadAcknowledgments();
         message($("dashboard-error"),"");
         const activeTab=document.querySelector(".tab[aria-selected='true']")?.id.slice(4)||"attendance";
         summary=data;const employee=data.employee||{};
@@ -249,6 +285,49 @@
           const retry=document.createElement("button");retry.type="button";retry.className="btn secondary";retry.textContent="إعادة المحاولة";retry.addEventListener("click",loadSummary);target.append(" ",retry);
         }
       }
+      document.addEventListener("visibilitychange",()=>{if(!document.hidden&&sessionId)loadSummary().catch(()=>{});});
+      async function loadAcknowledgments(){
+        const box=$("ack-list"),history=$("decision-history");box.replaceChildren();history.replaceChildren();
+        try {
+          const [data,events]=await Promise.all([request("/acknowledgments"),request("/request-history")]);
+          for(const item of data.pending){
+            const card=document.createElement("article");card.className="panel";
+            const title=document.createElement("h3");title.textContent=item.document.title;
+            const content=document.createElement("pre");content.style.cssText="white-space:pre-wrap;overflow-wrap:anywhere;font:inherit";
+            content.textContent=JSON.stringify(item.document,null,2);
+            const version=document.createElement("p");version.style.overflowWrap="anywhere";version.textContent="بصمة النسخة SHA-256: "+item.version;
+            if(item.document.workflow==="wf03"){
+              const label=document.createElement("label");label.textContent="تاريخ المباشرة الفعلي";
+              const date=document.createElement("input");date.type="date";date.value=item.document.formData.startDate||"";label.append(date);
+              const save=document.createElement("button");save.className="btn secondary";save.textContent="حفظ التاريخ ومراجعة النسخة";
+              save.onclick=async()=>{try{await request("/acknowledgments/"+item.id+"/commencement",{method:"PATCH",body:{startDate:date.value}});await loadAcknowledgments();}catch(e){errorText($("ack-message"),e);}};
+              card.append(label,save);
+            }
+            const button=document.createElement("button");button.className="btn";button.textContent="قرأت هذه النسخة وأقر بالاطلاع عليها";
+            button.onclick=async()=>{if(!confirm("هل قرأت النسخة المعروضة وتقر بها؟ هذا إقرار إلكتروني عادي."))return;button.disabled=true;
+              try{await request("/acknowledgments/"+item.id,{method:"POST",body:{version:item.version,acknowledged:true}});message($("ack-message"),"تم حفظ الإقرار ونسخة المستند.","success");await loadAcknowledgments();}
+              catch(e){errorText($("ack-message"),e);}finally{button.disabled=false;}};
+            card.append(title,content,version,button);box.append(card);
+          }
+          if(!data.pending.length){const p=document.createElement("p");p.textContent="لا توجد إقرارات بانتظارك.";box.append(p);}
+          for(const record of data.evidence){const p=document.createElement("p");p.style.overflowWrap="anywhere";p.textContent="إقرار محفوظ #"+record.action_id+" · "+record.acknowledged_at+" · "+record.document_hash;box.append(p);}
+          for(const item of data.clarifications||[]){const p=document.createElement("p");p.textContent=item.title+" #"+item.id+" · "+item.note;const button=document.createElement("button");button.className="btn secondary";button.textContent="الرد على التوضيح";
+            button.onclick=async()=>{const note=prompt("اكتب توضيحك");if(!note)return;try{await request("/workflow-requests/"+item.id+"/clarification",{method:"POST",body:{note}});await loadAcknowledgments();}catch(e){errorText($("ack-message"),e);}};box.append(p,button);}
+          const latest=new Set();
+          for(const event of events){const p=document.createElement("p");p.textContent=`${event.kind==="leave"?"إجازة":"استئذان"} #${event.request_id} · ${event.next_status} · ${event.note||""} · ${event.created_at}`;history.append(p);
+            const key=event.kind+event.request_id;if(!latest.has(key)&&event.next_status==="clarification_requested"){
+              const b=document.createElement("button");b.className="btn secondary";b.textContent="إرسال التوضيح";b.onclick=async()=>{const note=prompt("اكتب توضيحك");if(!note)return;try{await request(`/requests/${event.kind}/${event.request_id}/clarification`,{method:"POST",body:{note}});await loadSummary();}catch(e){errorText($("ack-message"),e);}};history.append(b);}
+            latest.add(key);
+          }
+        }catch(e){errorText($("ack-message"),e);}
+      }
+      $("workflow-request-form").addEventListener("submit",async event=>{
+        event.preventDefault();const workflow=$("workflow-kind").value;
+        const formData={notes:$("workflow-note").value,[workflow==="wf04"?"returnDate":"contractEnd"]:$("workflow-date").value};
+        const button=event.currentTarget.querySelector("button");button.disabled=true;
+        try{const data=await request("/workflow-requests",{method:"POST",body:{workflow,formData}});message($("ack-message"),data.message,"success");await loadAcknowledgments();}
+        catch(e){errorText($("ack-message"),e);}finally{button.disabled=false;}
+      });
       async function checkSession(){
         show(loginView,false);show(loadingView,true);
         try{const data=await request("/me");sessionId=data.sessionId||null;await loadSummary();}
@@ -309,7 +388,7 @@
         navigator.geolocation.getCurrentPosition(async position=>{
           try{
             message(status,"جارٍ تسجيل الحركة…");
-            const coords=position.coords;const data=await request("/attendance",{method:"POST",body:{type,latitude:coords.latitude,longitude:coords.longitude,accuracy:coords.accuracy,locationTimestamp:position.timestamp}});
+            const coords=position.coords;const shiftId=$("attendance-shift").value;const data=await request("/attendance",{method:"POST",body:{type,latitude:coords.latitude,longitude:coords.longitude,accuracy:coords.accuracy,locationTimestamp:position.timestamp,...(shiftId?{shiftId}:{})}});
             message(status,data.message||"تم تسجيل الحركة بنجاح.","success");await loadSummary();
           }catch(error){if(loginView.hidden)errorText(status,error);}
           finally{$("check-in").disabled=false;$("check-out").disabled=false;}
@@ -322,6 +401,10 @@
       $("leave-form").addEventListener("submit",async event=>{
         event.preventDefault();const form=event.currentTarget;if(!form.reportValidity())return;
         const body={leaveType:$("leave-type").value,startDate:$("leave-start").value,endDate:$("leave-end").value,reason:$("leave-reason").value.trim()};
+        body.leaveFormData={employeeAcknowledged:$("leave-ack").checked};
+        for(const [key,id] of Object.entries({destination:"leave-destination",passportNumber:"leave-passport",actualDepartureDate:"leave-departure",actualReturnDate:"leave-return",leaveAddress:"leave-address",leavePhone:"leave-contact",ticketDetails:"leave-tickets",visaDetails:"leave-visa",notes:"leave-notes"})){
+          const value=$(id).value.trim();if(value)body.leaveFormData[key]=value;
+        }
         if(body.endDate<body.startDate){errorText($("leave-message"),new Error("تاريخ نهاية الإجازة يجب أن يكون في يوم البداية أو بعده."));return;}
         const button=form.querySelector("button[type=submit]");button.disabled=true;message($("leave-message"),"جارٍ إرسال الطلب…");
         try{const data=await request("/leaves",{method:"POST",body});message($("leave-message"),data.message||"تم إرسال طلب الإجازة.","success");form.reset();await loadSummary();}
@@ -329,8 +412,8 @@
       });
       $("permission-form").addEventListener("submit",async event=>{
         event.preventDefault();const form=event.currentTarget;if(!form.reportValidity())return;
-        const body={type:$("permission-type").value,date:$("permission-date").value,startTime:$("permission-start").value,endTime:$("permission-end").value,reason:$("permission-reason").value.trim()};
-        if(body.endTime<=body.startTime){errorText($("permission-message"),new Error("وقت النهاية يجب أن يكون بعد وقت البداية."));return;}
+        const body={type:$("permission-type").value,date:$("permission-date").value,returnDate:$("permission-return-date").value,period:$("permission-period").value,purpose:$("permission-purpose").value,notes:$("permission-notes").value,acknowledged:$("permission-acknowledged").checked,startTime:$("permission-start").value,endTime:$("permission-end").value,reason:$("permission-reason").value.trim()};
+        if(body.returnDate+"T"+body.endTime<=body.date+"T"+body.startTime){errorText($("permission-message"),new Error("وقت العودة يجب أن يكون بعد المغادرة."));return;}
         const button=form.querySelector("button[type=submit]");button.disabled=true;message($("permission-message"),"جارٍ إرسال الطلب…");
         try{const data=await request("/permissions",{method:"POST",body});message($("permission-message"),data.message||"تم إرسال طلب الاستئذان.","success");form.reset();await loadSummary();}
         catch(error){errorText($("permission-message"),error);}finally{button.disabled=false;}

@@ -12,6 +12,8 @@ import { initializeEmployeePortal, employeeDirectory, employeePhone } from "./da
 import { tokenHash } from "./security";
 import { createEmployeePortalRouter, DEVICE_COOKIE } from "./router";
 import { sendEmployeeOtp } from "./sms";
+import { ensureAttendanceExtensions } from "../attendance-support";
+import { initHrLeaveForm } from "../hr-leave-form";
 
 vi.mock("./sms", () => ({ sendEmployeeOtp: vi.fn(async () => {}) }));
 
@@ -34,6 +36,8 @@ beforeAll(async () => {
   process.env.TAQNYAT_API_KEY = "vitest-transport-disabled";
   process.env.SESSION_SECRET ||= randomBytes(32).toString("hex");
   await initializeEmployeePortal();
+  await ensureAttendanceExtensions();
+  await initHrLeaveForm();
   const existing = new Set((await employeeDirectory()).map(employeePhone));
   do { registeredPhone = `96650${String(Math.floor(Math.random() * 10000000)).padStart(7, "0")}`; }
   while (existing.has(registeredPhone));
@@ -62,6 +66,9 @@ afterAll(async () => {
     await pool.query(`DELETE FROM notifications WHERE related_entity='attendance_permission' AND related_id IN
       (SELECT id FROM attendance_permissions WHERE employee_id=$1)`, [id]);
     await pool.query("DELETE FROM attendance_records WHERE employee_id=$1", [id]);
+    await pool.query("DELETE FROM attendance_violations WHERE employee_id=$1", [id]);
+    await pool.query("DELETE FROM attendance_monthly_risk WHERE employee_id=$1", [id]);
+    await pool.query("DELETE FROM notifications WHERE related_entity='employee' AND related_id=$1", [id]);
     await pool.query("DELETE FROM leave_requests WHERE employee_id=$1", [id]);
     await pool.query("DELETE FROM attendance_permissions WHERE employee_id=$1", [id]);
     await pool.query("DELETE FROM employees WHERE id=$1", [id]);
@@ -133,12 +140,14 @@ describe.sequential("isolated employee protocol", () => {
     expect(response.data.employee.id).toBe(employeeId);
     expect(response.data.sessions.every((d: any) => d.id !== foreignId)).toBe(true);
   });
-  it("revokes a valid session on duplicated HR phone records", async () => {
-    await pool.query("UPDATE employees SET phone=$1 WHERE id=$2", [registeredPhone, secondId]);
+  it("rejects duplicate HR phones and revokes the old session after an authorized phone change", async () => {
+    await expect(pool.query("UPDATE employees SET phone=$1 WHERE id=$2", [registeredPhone, secondId]))
+      .rejects.toMatchObject({ code: "23505" });
+    await pool.query("UPDATE employees SET phone=NULL WHERE id=$1", [employeeId]);
     expect((await call("/me")).status).toBe(401);
     const { rows } = await pool.query("SELECT revoked_at FROM employee_portal_devices WHERE id=$1", [sessionId]);
     expect(rows[0].revoked_at).not.toBeNull();
-    await pool.query("UPDATE employees SET phone=NULL WHERE id=$1", [secondId]);
+    await pool.query("UPDATE employees SET phone=$1 WHERE id=$2", [registeredPhone, employeeId]);
   });
   it("uses 1111 only in opted-in development, without SMS, and rejects that session outside development", async () => {
     const env = { node: process.env.NODE_ENV, flag: process.env.EMPLOYEE_PORTAL_DEV_OTP, deployment: process.env.REPLIT_DEPLOYMENT };

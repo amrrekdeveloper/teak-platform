@@ -64,6 +64,8 @@ function polygonClearance(p: Point, vertices: Point[]) {
   return min;
 }
 export function permittedZone(zones: Zone[], point: Point, accuracy: number) {
+  if (!Number.isFinite(point.lat) || !Number.isFinite(point.lng) || Math.abs(point.lat) > 90 ||
+    Math.abs(point.lng) > 180 || !Number.isFinite(accuracy) || accuracy <= 0 || accuracy > 50) return undefined;
   return zones.find(zone => {
     if (!zone.isActive) return false;
     const polygon = zone.polygonCoords;

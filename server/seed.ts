@@ -169,7 +169,6 @@ export async function seedDatabase() {
 
   const existingUsers = await db.select().from(users).limit(1);
   if (existingUsers.length > 0) {
-    await seedRealUsers();
     console.log("Database already seeded, skipping baseline...");
     return;
   }

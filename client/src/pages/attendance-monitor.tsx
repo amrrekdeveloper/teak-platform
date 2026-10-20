@@ -17,8 +17,9 @@ import {
 } from "lucide-react";
 import { useLanguage } from "@/components/language-provider";
 import AttendanceZonesMap from "@/components/attendance-zones-map";
-import { resolveWorkSchedule, isLateCheckIn } from "@shared/attendance";
+import { resolveWorkSchedule, isLateCheckIn, riyadhDateKey, riyadhDayBounds } from "@shared/attendance";
 import { loadMapsLibrary } from "@/lib/maps-loader";
+import { AttendanceShiftReview, AttendanceShiftEditor, CollectiveShiftReview } from "@/components/attendance-shift-review";
 
 interface AttendanceRecord {
   id: number;
@@ -40,6 +41,9 @@ interface AttendanceRecord {
   overrideNote: string | null;
   overrideBy: number | null;
   overrideAt: string | null;
+  shiftKey?: string | null;
+  shiftLabel?: string;
+  shiftEndTime?: string;
 }
 
 const OVERRIDE_EXCUSE_LABELS: Record<string, string> = {
@@ -96,38 +100,35 @@ interface LocationZone {
 }
 
 function formatTime(ts: string) {
-  return new Date(ts).toLocaleTimeString("ar-SA", { hour: "2-digit", minute: "2-digit", hour12: true });
+  return new Date(ts).toLocaleTimeString("ar-SA", { timeZone: "Asia/Riyadh", hour: "2-digit", minute: "2-digit", hour12: true });
 }
 
 function formatDate(ts: string) {
-  return new Date(ts).toLocaleDateString("ar-SA", { weekday: "short", month: "short", day: "numeric" });
+  return new Date(ts).toLocaleDateString("ar-SA", { timeZone: "Asia/Riyadh", weekday: "short", month: "short", day: "numeric" });
 }
 
 function getTodayRange() {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const end = new Date();
-  end.setHours(23, 59, 59, 999);
-  return { from: today.toISOString(), to: end.toISOString() };
+  return riyadhDayBounds(riyadhDateKey(new Date()));
 }
 
 function getDaysInRange(from: string, to: string): Date[] {
   const days: Date[] = [];
-  const start = new Date(from); start.setHours(0, 0, 0, 0);
-  const end = new Date(to); end.setHours(0, 0, 0, 0);
+  const start = new Date(riyadhDayBounds(riyadhDateKey(new Date(from))).from);
+  const end = new Date(riyadhDayBounds(riyadhDateKey(new Date(to))).from);
   const cur = new Date(start);
   let guard = 0;
   while (cur <= end && guard < 370) {
     days.push(new Date(cur));
-    cur.setDate(cur.getDate() + 1);
+    cur.setTime(cur.getTime() + 86400000);
     guard++;
   }
   return days;
 }
 
 function recordsForDay(records: AttendanceRecord[], day: Date): AttendanceRecord[] {
-  const start = new Date(day); start.setHours(0, 0, 0, 0);
-  const end = new Date(day); end.setHours(23, 59, 59, 999);
+  const bounds = riyadhDayBounds(riyadhDateKey(day));
+  const start = new Date(bounds.from);
+  const end = new Date(bounds.to);
   const s = start.getTime(), e = end.getTime();
   return records.filter(r => {
     const t = new Date(r.checkTime).getTime();
@@ -136,7 +137,7 @@ function recordsForDay(records: AttendanceRecord[], day: Date): AttendanceRecord
 }
 
 function formatDayShort(day: Date) {
-  return day.toLocaleDateString("ar-SA", { weekday: "short", month: "short", day: "numeric" });
+  return day.toLocaleDateString("ar-SA", { timeZone: "Asia/Riyadh", weekday: "short", month: "short", day: "numeric" });
 }
 
 function getDayStatus(
@@ -145,11 +146,14 @@ function getDayStatus(
   lateCheck?: (checkTime: string, employeeId: number) => boolean,
 ) {
   const empRecords = records.filter(r => r.employeeId === employeeId);
+  if (new Set(empRecords.map(r => r.shiftKey).filter(Boolean)).size > 1)
+    return { status: "split_shifts", in: null, out: null, duration: null, outOfZone: empRecords.some(r => r.isOutOfZone) };
   if (!empRecords.length) return { status: "absent", in: null, out: null, duration: null, outOfZone: false };
   const checkIn = empRecords.filter(r => r.type === "check_in").sort((a, b) => new Date(a.checkTime).getTime() - new Date(b.checkTime).getTime())[0];
   const checkOut = empRecords.filter(r => r.type === "check_out").sort((a, b) => new Date(b.checkTime).getTime() - new Date(a.checkTime).getTime())[0];
   let status = "present";
-  if (checkIn && !checkOut) status = "missing_checkout";
+  if (checkIn && !checkOut && checkIn.shiftEndTime &&
+    Date.now() > +new Date(`${riyadhDateKey(new Date(checkIn.checkTime))}T${checkIn.shiftEndTime}:00+03:00`)) status = "missing_checkout";
   if (!checkIn) status = checkOut ? "missing_checkin" : "absent";
   if (status === "present" && checkIn && lateCheck && lateCheck(checkIn.checkTime, employeeId)) status = "late";
   let duration: string | null = null;
@@ -170,6 +174,7 @@ function StatusBadge({ status }: { status: string }) {
     missing_checkout: { label: "نقص خروج", icon: <AlertTriangle className="w-3 h-3" />, className: "bg-yellow-100 text-yellow-700 dark:bg-yellow-950 dark:text-yellow-400" },
     missing_checkin: { label: "نقص دخول", icon: <AlertTriangle className="w-3 h-3" />, className: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400" },
     late: { label: "متأخر", icon: <Clock className="w-3 h-3" />, className: "bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-400" },
+    split_shifts: { label: "ورديات مستقلة — راجع سجل الموظف", icon: <Clock className="w-3 h-3" />, className: "bg-blue-100 text-blue-700" },
   };
   const s = map[status] || { label: status, icon: null, className: "bg-muted text-muted-foreground" };
   return (
@@ -180,6 +185,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export default function AttendanceMonitorPage() {
+  const [expandedWorkspace, setExpandedWorkspace] = useState(false);
   const { t } = useLanguage();
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -195,6 +201,8 @@ export default function AttendanceMonitorPage() {
   const [overrideExcuse, setOverrideExcuse] = useState("forgot_fingerprint");
   const [overrideNote, setOverrideNote] = useState("");
   const [overrideTime, setOverrideTime] = useState("");
+  const [medicalUploading, setMedicalUploading] = useState(false);
+  const [medicalAttachmentId, setMedicalAttachmentId] = useState<number | null>(null);
   const [locationPopup, setLocationPopup] = useState<{ lat: string; lng: string; name: string | null; isOutOfZone: boolean } | null>(null);
   const miniMapRef = useRef<HTMLDivElement>(null);
 
@@ -368,48 +376,30 @@ export default function AttendanceMonitorPage() {
   const toggleStatusFilter = (key: string) => setStatusFilter(prev => (prev === key ? "all" : key));
 
   const makeRange = (startDaysAgo: number, endDaysAgo = 0) => {
-    const start = new Date();
-    start.setDate(start.getDate() - startDaysAgo);
-    start.setHours(0, 0, 0, 0);
-    const end = new Date();
-    end.setDate(end.getDate() - endDaysAgo);
-    end.setHours(23, 59, 59, 999);
-    return { from: start.toISOString(), to: end.toISOString() };
+    return { from: riyadhDayBounds(riyadhDateKey(new Date(Date.now() - startDaysAgo * 86400000))).from,
+      to: riyadhDayBounds(riyadhDateKey(new Date(Date.now() - endDaysAgo * 86400000))).to };
   };
   const handleSetToday = () => setDateRange(getTodayRange());
   const handleSetYesterday = () => setDateRange(makeRange(1, 1));
   const handleSetWeek = () => setDateRange(makeRange(6));
   const handleSetMonth = () => setDateRange(makeRange(29));
   const handleSetThisMonth = () => {
-    const now = new Date();
-    const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
-    const end = new Date(now);
-    end.setHours(23, 59, 59, 999);
-    setDateRange({ from: start.toISOString(), to: end.toISOString() });
+    setDateRange({ from: riyadhDayBounds(`${riyadhDateKey(new Date()).slice(0, 7)}-01`).from, to: getTodayRange().to });
   };
   const shiftDay = (delta: number) => {
     setDateRange(prev => {
-      const from = new Date(prev.from);
-      from.setDate(from.getDate() + delta);
-      from.setHours(0, 0, 0, 0);
-      const to = new Date(from);
-      to.setHours(23, 59, 59, 999);
-      return { from: from.toISOString(), to: to.toISOString() };
+      return riyadhDayBounds(riyadhDateKey(new Date(+new Date(prev.from) + delta * 86400000)));
     });
   };
 
   const sameRange = (a: { from: string; to: string }, b: { from: string; to: string }) =>
-    a.from.split("T")[0] === b.from.split("T")[0] && a.to.split("T")[0] === b.to.split("T")[0];
+    riyadhDateKey(new Date(a.from)) === riyadhDateKey(new Date(b.from)) && riyadhDateKey(new Date(a.to)) === riyadhDateKey(new Date(b.to));
   const isTodayActive = sameRange(dateRange, getTodayRange());
   const isYesterdayActive = sameRange(dateRange, makeRange(1, 1));
   const isWeekActive = sameRange(dateRange, makeRange(6));
   const isMonthActive = sameRange(dateRange, makeRange(29));
   const isThisMonthActive = (() => {
-    const now = new Date();
-    const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
-    const end = new Date(now);
-    end.setHours(23, 59, 59, 999);
-    return sameRange(dateRange, { from: start.toISOString(), to: end.toISOString() });
+    return sameRange(dateRange, { from: riyadhDayBounds(`${riyadhDateKey(new Date()).slice(0, 7)}-01`).from, to: getTodayRange().to });
   })();
 
   const toggleExpand = (id: number) => {
@@ -422,26 +412,25 @@ export default function AttendanceMonitorPage() {
 
   const openEditDialog = (rec: AttendanceRecord) => {
     setEditRecord(rec);
-    const dt = new Date(rec.checkTime);
-    setEditTime(`${String(dt.getHours()).padStart(2, "0")}:${String(dt.getMinutes()).padStart(2, "0")}`);
+    const dt = new Date(new Date(rec.checkTime).getTime() + 3 * 3600000);
+    setEditTime(`${String(dt.getUTCHours()).padStart(2, "0")}:${String(dt.getUTCMinutes()).padStart(2, "0")}`);
     setEditNotes(rec.notes || "");
   };
 
   const openOverrideDialog = (rec: AttendanceRecord) => {
     setOverrideRecord(rec);
+    setMedicalAttachmentId(null);
     setOverrideExcuse("forgot_fingerprint");
     setOverrideNote("");
-    const dt = new Date(rec.checkTime);
-    setOverrideTime(`${String(dt.getHours()).padStart(2, "0")}:${String(dt.getMinutes()).padStart(2, "0")}`);
+    const dt = new Date(new Date(rec.checkTime).getTime() + 3 * 3600000);
+    setOverrideTime(`${String(dt.getUTCHours()).padStart(2, "0")}:${String(dt.getUTCMinutes()).padStart(2, "0")}`);
   };
 
   const handleOverride = () => {
     if (!overrideRecord) return;
     let newCheckTime: string | undefined;
     if (overrideTime) {
-      const original = new Date(overrideRecord.checkTime);
-      const [h, m] = overrideTime.split(":").map(Number);
-      original.setHours(h, m, 0, 0);
+      const original = new Date(`${riyadhDateKey(new Date(overrideRecord.checkTime))}T${overrideTime}:00+03:00`);
       if (original.toISOString() !== new Date(overrideRecord.checkTime).toISOString()) {
         newCheckTime = original.toISOString();
       }
@@ -451,13 +440,11 @@ export default function AttendanceMonitorPage() {
 
   const handleEdit = () => {
     if (!editRecord) return;
-    const original = new Date(editRecord.checkTime);
-    const [h, m] = editTime.split(":").map(Number);
-    original.setHours(h, m, 0, 0);
+    const original = new Date(`${riyadhDateKey(new Date(editRecord.checkTime))}T${editTime}:00+03:00`);
     editMutation.mutate({ id: editRecord.id, checkTime: original.toISOString(), notes: editNotes });
   };
 
-  const exportCSV = () => {
+  const exportCSV = async () => {
     const rows = [["اسم الموظف", "التاريخ", "وقت الدخول", "وقت الخروج", "المدة", "الموقع", "الحالة"]];
     visibleEmployees.forEach(emp => {
       days.forEach(day => {
@@ -465,7 +452,7 @@ export default function AttendanceMonitorPage() {
         const s = getDayStatus(dayRecs, emp.id, lateCheck);
         rows.push([
           emp.nameAr,
-          day.toISOString().split("T")[0],
+          riyadhDateKey(day),
           s.in ? formatTime(s.in.checkTime) : "—",
           s.out ? formatTime(s.out.checkTime) : "—",
           s.duration || "—",
@@ -474,13 +461,21 @@ export default function AttendanceMonitorPage() {
         ]);
       });
     });
-    const csv = rows.map(r => r.join(",")).join("\n");
-    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
+    const ExcelJS = await import("exceljs");
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet("الحضور", { views: [{ rightToLeft: true, state: "frozen", ySplit: 1 }] });
+    sheet.addRows(rows);
+    sheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+    sheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF245B49" } };
+    sheet.columns.forEach(column => { column.width = 24; });
+    sheet.autoFilter = { from: "A1", to: "G1" };
+    const blob = new Blob([await workbook.xlsx.writeBuffer()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `تقرير_الدوام_${new Date().toISOString().split("T")[0]}.csv`;
+    a.download = `تقرير_الدوام_${riyadhDateKey(new Date())}.xlsx`;
     a.click();
+    URL.revokeObjectURL(url);
   };
 
   const statusLabel = (st: string) =>
@@ -532,7 +527,7 @@ export default function AttendanceMonitorPage() {
   };
 
   return (
-    <div className="p-4 md:p-6 space-y-5 max-w-7xl mx-auto" dir="rtl">
+    <div className={expandedWorkspace ? "fixed inset-0 z-50 bg-background overflow-auto p-3 md:p-6 space-y-5" : "p-3 md:p-6 space-y-5 max-w-7xl mx-auto min-w-0"} dir="rtl">
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
@@ -540,21 +535,23 @@ export default function AttendanceMonitorPage() {
           <p className="text-muted-foreground text-sm">{t("تتبع حضور وانصراف الموظفين", "Track employee attendance")}</p>
         </div>
         <div className="flex gap-2 flex-wrap">
+          <Button variant="outline" size="sm" onClick={() => setExpandedWorkspace(v => !v)}>{expandedWorkspace ? "إغلاق العرض الموسع" : "عرض موسع"}</Button>
           <Button variant="outline" size="sm" onClick={() => refetch()} data-testid="button-refresh-attendance">
             <RefreshCw className="w-4 h-4 me-1" />
             {t("تحديث", "Refresh")}
           </Button>
           <Button variant="outline" size="sm" onClick={exportCSV} data-testid="button-export-attendance">
             <Download className="w-4 h-4 me-1" />
-            {t("تصدير Excel", "Export Excel")}
+            {t("Excel — الملخص القديم", "Excel — legacy summary")}
           </Button>
           <Button variant="outline" size="sm" onClick={exportPDF} data-testid="button-export-attendance-pdf">
             <FileText className="w-4 h-4 me-1" />
-            {t("تصدير PDF", "Export PDF")}
+            {t("PDF — الملخص القديم", "PDF — legacy summary")}
           </Button>
         </div>
       </div>
 
+      <AttendanceShiftReview employees={employees} />
       {/* Filters */}
       <div className="flex gap-2 flex-wrap items-center bg-muted/30 rounded-xl p-3">
         <Filter className="w-4 h-4 text-muted-foreground" />
@@ -587,11 +584,11 @@ export default function AttendanceMonitorPage() {
         <div className="flex gap-1 items-center">
           <Input
             type="date"
-            value={dateRange.from.split("T")[0]}
+            value={riyadhDateKey(new Date(dateRange.from))}
             onChange={e => {
               const v = e.target.value;
               if (!v) return;
-              const d = new Date(v + "T00:00:00");
+              const d = new Date(v + "T00:00:00+03:00");
               if (isNaN(d.getTime())) return;
               setDateRange(prev => ({ ...prev, from: d.toISOString() }));
             }}
@@ -601,11 +598,11 @@ export default function AttendanceMonitorPage() {
           <span className="text-muted-foreground text-xs">إلى</span>
           <Input
             type="date"
-            value={dateRange.to.split("T")[0]}
+            value={riyadhDateKey(new Date(dateRange.to))}
             onChange={e => {
               const v = e.target.value;
               if (!v) return;
-              const d = new Date(v + "T23:59:59");
+              const d = new Date(v + "T23:59:59.999+03:00");
               if (isNaN(d.getTime())) return;
               setDateRange(prev => ({ ...prev, to: d.toISOString() }));
             }}
@@ -636,6 +633,8 @@ export default function AttendanceMonitorPage() {
         </Button>
       </div>
 
+      <details className="border rounded-lg p-2">
+      <summary className="text-sm cursor-pointer">ملخص قديم حسب اليوم — مراجعة السجلات التاريخية فقط</summary>
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <Card
@@ -716,8 +715,10 @@ export default function AttendanceMonitorPage() {
       </div>
 
       {/* Main Content */}
-      <Tabs defaultValue="daily">
+      </details>
+      <Tabs defaultValue="shifts">
         <TabsList className="mb-4 flex-wrap h-auto gap-1">
+          <TabsTrigger value="shifts">مراقبة الورديات</TabsTrigger>
           <TabsTrigger value="daily" data-testid="tab-daily">
             <Users className="w-4 h-4 me-1" />
             الحضور اليومي
@@ -758,6 +759,7 @@ export default function AttendanceMonitorPage() {
           )}
         </TabsList>
 
+        <TabsContent value="shifts"><CollectiveShiftReview from={dateRange.from} to={dateRange.to} location={locationFilter} outOfZoneOnly={outOfZoneOnly} /></TabsContent>
         {/* Daily Summary Tab */}
         <TabsContent value="daily">
           <Card>
@@ -1278,6 +1280,25 @@ export default function AttendanceMonitorPage() {
                 data-testid="input-override-time"
               />
             </div>
+            {overrideExcuse === "medical_excuse" && <div className="space-y-2">
+              <label className="text-sm font-medium" htmlFor="medical-report-file">التقرير الطبي (مطلوب، PDF أو PNG/JPEG، حتى 5 MB)</label>
+              <Input id="medical-report-file" type="file" accept="application/pdf,image/png,image/jpeg" disabled={medicalUploading} onChange={async e => {
+                const file = e.target.files?.[0];
+                if (!file || !overrideRecord) return;
+                if (file.size > 5 * 1024 * 1024) { toast({ title: "الحد الأقصى 5 MB", variant: "destructive" }); return; }
+                setMedicalUploading(true);
+                try {
+                  const form = new FormData(); form.append("file", file);
+                  const result = await fetch(`/api/attendance/record/${overrideRecord.id}/medical-attachment`, { method: "POST", body: form, credentials: "same-origin" });
+                  const body = await result.json();
+                  if (!result.ok) throw new Error(body.message);
+                  setMedicalAttachmentId(body.id);
+                  toast({ title: "تم حفظ المرفق الطبي الآمن" });
+                } catch (error) { toast({ title: (error as Error).message, variant: "destructive" }); }
+                finally { setMedicalUploading(false); }
+              }} />
+              {medicalAttachmentId && <a className="text-sm underline" href={`/api/attendance/medical-attachments/${medicalAttachmentId}`}>تنزيل التقرير الطبي المحمي</a>}
+            </div>}
             <div className="space-y-1">
               <label className="text-sm font-medium">ملاحظة / سبب التصحيح</label>
               <Textarea
@@ -1293,7 +1314,7 @@ export default function AttendanceMonitorPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOverrideRecord(null)}>إلغاء</Button>
-            <Button onClick={handleOverride} disabled={overrideMutation.isPending} data-testid="button-save-override">
+            <Button onClick={handleOverride} disabled={overrideMutation.isPending || medicalUploading} data-testid="button-save-override">
               {overrideMutation.isPending ? "جاري الحفظ..." : "اعتماد التدخل"}
             </Button>
           </DialogFooter>
@@ -1383,6 +1404,7 @@ function WorkScheduleSettingsTab({ employees }: { employees: EmployeeInfo[] }) {
                 const edit = edits[s.id];
                 return (
                   <div key={s.id} className="flex flex-wrap items-center gap-3 border rounded-lg p-3" data-testid={`row-work-setting-${s.id}`}>
+                    <AttendanceShiftEditor settingId={s.id} />
                     <div className="min-w-40 font-medium text-sm">{scopeLabel(s)}</div>
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-muted-foreground">بدء الدوام</span>
@@ -1509,7 +1531,7 @@ interface RiskScoreRow {
 }
 
 function RiskScoresTab() {
-  const currentMonth = new Date().toISOString().slice(0, 7);
+  const currentMonth = riyadhDateKey(new Date()).slice(0, 7);
   const [month, setMonth] = useState(currentMonth);
   const [sortDesc, setSortDesc] = useState(true);
 

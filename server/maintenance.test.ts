@@ -13,6 +13,7 @@ function request(url: string, method = "GET", enabled = true, now = start) {
   const headers: Record<string, string> = {};
   const result = { status: 200, body: undefined as unknown, passed: false, headers };
   const res = {
+    locals: {},
     set(key: string, value: string) { headers[key] = value; return this; },
     status(code: number) { result.status = code; return this; },
     type(value: string) { headers.type = value; return this; },
@@ -55,7 +56,7 @@ describe("maintenance mode", () => {
   });
   it("serves the actual logo without opening a static-file bypass", () => {
     expect(request("/__maintenance/logo.png").headers.type).toBe("png");
-    expect(request("/assets/app.js").headers.type).toBe("html");
+    expect(request("/assets/app.js").passed).toBe(true);
   });
   it("allows only isolated employee pages/API, never administrative application paths", () => {
     expect(request("/employee-self-service").headers.type).toBe("html");
@@ -63,7 +64,9 @@ describe("maintenance mode", () => {
     expect(request("/technical-support").status).toBe(200);
     expect(request("/api/employee-portal/me").passed).toBe(true);
     expect(request("/api/employee-portal/otp/request", "POST").passed).toBe(true);
-    for (const url of ["/api/auth/login", "/api/employees", "/api/employee-auth/verify-pin"]) {
+    expect(request("/api/employees", "POST").passed).toBe(true); // Guarded after admin session middleware.
+    expect(request("/hr/login").passed).toBe(true);
+    for (const url of ["/api/auth/login", "/api/employee-auth/verify-pin"]) {
       expect(request(url, "POST").status).toBe(503);
       expect(request(url, "POST").passed).toBe(false);
     }
@@ -82,7 +85,7 @@ describe("maintenance mode", () => {
   it("loads current development HTML without recreating the middleware", () => {
     const dir = mkdtempSync(path.join(tmpdir(), "teak-maintenance-"));
     try {
-      for (const file of ["maintenance.html", "employee-portal.html", "technical-support.html", "maintenance-logo.png"])
+      for (const file of ["maintenance.html", "employee-portal.html", "technical-support.html", "manager-portal.html", "maintenance-logo.png"])
         writeFileSync(path.join(dir, file), "original");
       const handler = createMaintenanceMiddleware(dir, true, () => start, true);
       for (const [url, file] of [["/", "maintenance.html"], ["/employee-self-service", "employee-portal.html"]]) {

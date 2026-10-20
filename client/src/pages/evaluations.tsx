@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLanguage } from "@/components/language-provider";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { HrExpandedWorkspace, ReportPreview, type ReportData } from "@/components/hr-report";
 import type { PerformanceEvaluation, Employee } from "@shared/schema";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -31,13 +32,14 @@ export default function EvaluationsPage() {
   const { t } = useLanguage();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
+  const [report, setReport] = useState<ReportData | null>(null);
   const [form, setForm] = useState<any>({
     employeeId: "", period: currentPeriod(),
     scoreQuality: 3, scoreProductivity: 3, scoreAttendance: 3, scoreTeamwork: 3, scoreDiscipline: 3,
     strengths: "", improvements: "", status: "draft",
   });
 
-  const { data: evals = [], isLoading } = useQuery<PerformanceEvaluation[]>({ queryKey: ["/api/evaluations"] });
+  const { data: evals = [], isLoading, error: loadError } = useQuery<PerformanceEvaluation[]>({ queryKey: ["/api/evaluations"] });
   const { data: employees = [] } = useQuery<Employee[]>({ queryKey: ["/api/employees"] });
   const empName = (id: number) => {
     const e = employees.find(x => x.id === id);
@@ -60,6 +62,7 @@ export default function EvaluationsPage() {
   const scoreColor = (n: number) => n >= 4 ? "text-green-600 dark:text-green-400" : n >= 3 ? "text-amber-600 dark:text-amber-400" : "text-red-600 dark:text-red-400";
 
   return (
+    <HrExpandedWorkspace>
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
@@ -121,6 +124,7 @@ export default function EvaluationsPage() {
         </Dialog>
       </div>
 
+      {loadError && <p role="alert" className="text-destructive">{t("تعذر تحميل التقييمات. أعد المحاولة.", "Could not load evaluations. Please retry.")}</p>}
       <Card>
         <CardContent className="p-0 overflow-x-auto">
           {isLoading ? (
@@ -136,6 +140,7 @@ export default function EvaluationsPage() {
                   <th className="p-3 text-start font-medium">{t("الإجمالي", "Overall")}</th>
                   <th className="p-3 text-start font-medium">{t("نقاط القوة", "Strengths")}</th>
                   <th className="p-3 text-start font-medium">{t("مجالات التحسين", "Improvements")}</th>
+                  <th className="p-3 text-start font-medium">{t("الحالة / المستند", "Status / document")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -146,6 +151,12 @@ export default function EvaluationsPage() {
                     <td className="p-3"><span className={`font-bold ${scoreColor(Number(ev.overallScore))}`} data-testid={`text-overall-${ev.id}`}>{Number(ev.overallScore).toFixed(2)}/5</span></td>
                     <td className="p-3 max-w-[200px] truncate text-muted-foreground">{ev.strengths || "—"}</td>
                     <td className="p-3 max-w-[200px] truncate text-muted-foreground">{ev.improvements || "—"}</td>
+                    <td className="p-3"><Badge variant="outline">{ev.status === "finalized" ? t("نهائي", "Final") : t("مسودة", "Draft")}</Badge><Button variant="ghost" size="sm" onClick={() => setReport({
+                      title: t("تقييم الأداء", "Performance evaluation"),
+                      subtitle: `${empName(ev.employeeId)} | ${ev.period} | #${ev.id} | ${ev.status === "finalized" ? t("نهائي", "Final") : t("مسودة — غير نهائي", "Draft — not final")}`,
+                      headings: [t("البند", "Criterion"), t("النتيجة / التفاصيل", "Score / details")],
+                      rows: [...CRITERIA.map(c => [t(c.ar, c.en), `${(ev as any)[c.key]}/5`]), [t("المتوسط", "Average"), `${Number(ev.overallScore).toFixed(2)}/5`], [t("نقاط القوة", "Strengths"), ev.strengths || "—"], [t("مجالات التحسين", "Improvements"), ev.improvements || "—"]],
+                    })}>{t("فتح / طباعة / PDF", "Open / Print / PDF")}</Button></td>
                   </tr>
                 ))}
               </tbody>
@@ -153,6 +164,8 @@ export default function EvaluationsPage() {
           )}
         </CardContent>
       </Card>
+      <ReportPreview report={report} onClose={() => setReport(null)} />
     </div>
+    </HrExpandedWorkspace>
   );
 }

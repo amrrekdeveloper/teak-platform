@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>تيك — مساحة المدير</title><style>
+body{font-family:system-ui;background:#f7f6f2;color:#243a35;margin:0}main{max-width:1040px;margin:auto;padding:20px}
+header{display:flex;justify-content:space-between;align-items:center}article,details,form{background:white;border:1px solid #ddd;border-radius:12px;padding:16px;margin:12px 0}
+button,input,select,textarea{font:inherit;padding:9px;border:1px solid #bbb;border-radius:7px;margin:4px;max-width:100%;box-sizing:border-box}button{cursor:pointer;background:#244e42;color:white}pre{white-space:pre-wrap;overflow-wrap:anywhere}#error{color:#a12d2d}label{display:block}a{color:inherit}.muted{color:#667}
+</style></head><body><main><header><h1>مساحة المدير</h1><a href="/employee-portal">بوابة الموظف المستقلة</a></header>
+<p class="muted">طلبات فريقك فقط · راجع السجل قبل القرار · الاعتماد النهائي للموارد البشرية</p>
+<form id="login"><h2>دخول المدير المباشر</h2><p>استخدم حسابك الإداري المخصص، لا رمز بوابة الموظف.</p>
+<label>اسم المستخدم<input id="username" autocomplete="username" required></label>
+<label>كلمة المرور<input id="password" type="password" autocomplete="current-password" required></label><button>دخول مساحة المدير</button></form>
+<p id="error" role="alert"></p><button id="refresh">تحديث</button><div id="workspace"></div>
+<form id="warning"><h2>رفع مخالفة</h2><label>الموظف<select id="employee" required></select></label>
+<label>نوع المخالفة<select id="violation"><option value="attendance">حضور وانصراف</option><option value="conduct">سلوك</option><option value="performance">أداء</option><option value="safety">سلامة</option><option value="other">أخرى</option></select></label>
+<label>الدرجة<select id="level"><option value="notice">لفت نظر</option><option value="warning1">إنذار أول</option><option value="warning2">إنذار ثانٍ</option><option value="final">إنذار نهائي</option></select></label>
+<label>التاريخ<input id="incident" type="date" required></label><label>الوصف<textarea id="description" required></textarea></label><button>رفع إلى الموارد البشرية</button></form>
+</main><script>
+const $=id=>document.getElementById(id);
+async function api(path,body){const r=await fetch(path,{credentials:"same-origin",headers:{"Content-Type":"application/json"},...(body?{method:"POST",body:JSON.stringify(body)}:{})});const data=await r.json();if(!r.ok){if(r.status===401||r.status===403){$("login").hidden=false;$("warning").hidden=true;$("workspace").replaceChildren()}throw Error(data.message||"تعذر تحميل البيانات. سجّل الدخول بحسابك الإداري.")}return data}
+function node(tag,text){const n=document.createElement(tag);n.textContent=text;return n}
+function detail(title,data){const d=node("details","");d.append(node("summary",title));const labels={status:"الحالة",reason:"السبب",notes:"الملاحظات",note:"الملاحظة",date:"التاريخ",startDate:"من",endDate:"إلى",startTime:"وقت المغادرة",endTime:"وقت العودة",hoursRequested:"الساعات",workflow:"المسار",decision:"القرار",previous_status:"الحالة السابقة",next_status:"الحالة الجديدة",created_at:"وقت القرار",days:"الأيام",leaveType:"نوع الإجازة",type:"النوع"};const states={pending:"قيد المراجعة",manager_approved:"اعتمد المدير",approved:"معتمد",rejected:"مرفوض",clarification_requested:"مطلوب توضيح",approve:"موافقة",reject:"رفض",clarify:"طلب توضيح",annual:"سنوية",permission:"استئذان"};for(const item of Array.isArray(data)?data:[data]){const list=node("dl","");for(const [key,label]of Object.entries(labels)){if(item?.[key]===undefined||item[key]===null)continue;list.append(node("dt",label),node("dd",states[item[key]]||String(item[key])))}d.append(list)}return d}
+async function decide(path,decision){const note=prompt("ملاحظة القرار (مطلوبة للرفض وطلب التوضيح)");if(note===null)return;try{await api(path,{decision,notes:note,note});await load()}catch(e){$("error").textContent=e.message}}
+async function load(){try{$("error").textContent="";const data=await api("/api/manager/workspace");$("login").hidden=true;$("warning").hidden=false;$("workspace").replaceChildren();$("employee").replaceChildren();
+for(const emp of data.employees){const o=node("option",emp.name);o.value=emp.id;$("employee").append(o);
+const section=node("article","");section.append(node("h2",emp.name+" · "+emp.number));
+const ls=data.leaves.filter(r=>r.employeeId===emp.id),ps=data.permissions.filter(r=>r.employeeId===emp.id);
+section.append(detail("السجل الكامل للإجازات والاستئذان والقرارات",{leaves:ls,permissions:ps,history:data.history.filter(r=>r.employee_id===emp.id)}));
+for(const [kind,items] of [["leave",ls],["permission",ps]])for(const item of items){if(!["pending","clarification_requested"].includes(item.status))continue;
+const card=node("div","");card.append(node("h3",(kind==="leave"?"إجازة":"استئذان")+" #"+item.id),detail("تفاصيل الطلب",item));
+for(const [decision,label] of [["approve","موافقة المدير"],["reject","رفض"],["clarify","طلب توضيح"]]){const b=node("button",label);b.onclick=()=>decide(kind==="leave"?`/api/leaves/${item.id}/decision`:`/api/attendance/permission/${item.id}/decision`,decision);card.append(b)}section.append(card)}
+for(const action of data.actions.filter(a=>a.employeeId===emp.id)){section.append(detail("إجراء "+action.workflow+" · "+action.status,action));
+if(["pending","in_progress"].includes(action.status)&&((["wf04","wf06b"].includes(action.workflow)&&action.currentStep===1)||(action.workflow==="wf10"&&action.currentStep===0))){for(const [decision,label] of [["complete","تأكيد / مراجعة المدير"],["reject","رفض"],["clarify","طلب توضيح"]]){const b=node("button",label);b.onclick=()=>decide(`/api/hr-actions/${action.id}/step`,decision);section.append(b)}}}
+$("workspace").append(section)}if(!data.employees.length)$("workspace").append(node("p","لا يوجد موظفون مرتبطون بك كمدير مباشر."))}
+catch(e){$("error").textContent=e.message}}
+$("warning").onsubmit=async e=>{e.preventDefault();try{await api("/api/manager/warnings",{employeeId:Number($("employee").value),formData:{violationType:$("violation").value,level:$("level").value,incidentDate:$("incident").value,description:$("description").value}});$("warning").reset();await load()}catch(err){$("error").textContent=err.message}};
+$("login").onsubmit=async e=>{e.preventDefault();const button=e.currentTarget.querySelector("button");button.disabled=true;try{await api("/api/manager-access/login",{username:$("username").value,password:$("password").value});$("password").value="";await load()}catch(err){$("error").textContent=err.message}finally{button.disabled=false}};
+$("warning").hidden=true;
+$("refresh").onclick=load;load();
+</script></body></html>

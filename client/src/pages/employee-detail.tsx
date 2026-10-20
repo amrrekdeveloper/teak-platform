@@ -9,6 +9,10 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { HrWorkflowSection } from "@/components/hr-action-panel";
+import { HrExpandedWorkspace, ReportPreview, type ReportData } from "@/components/hr-report";
+import { officialLeaveReport } from "@/lib/hr-official-forms";
+import { EmployeeAttendanceReport } from "@/components/employee-attendance-report";
+import { HrDocumentArchive } from "@/components/hr-document-archive";
 import {
   Loader2, ArrowLeft, ArrowRight, FileText, Download, Phone, Mail,
   CreditCard, CalendarDays, Briefcase, Building2, BadgeCheck, User, Clock,
@@ -115,6 +119,7 @@ export default function EmployeeDetailPage() {
   const id = params?.id;
   const empId = id ? parseInt(id) : NaN;
   const [previewDoc, setPreviewDoc] = useState<any | null>(null);
+  const [officialReport, setOfficialReport] = useState<ReportData | null>(null);
 
   const { data: employee, isLoading } = useQuery<Employee>({
     queryKey: ["/api/employees", id],
@@ -129,7 +134,7 @@ export default function EmployeeDetailPage() {
     queryKey: ["/api/employees", id, "assets"],
     queryFn: async () => {
       const r = await fetch(`/api/employees/${id}/assets`, { credentials: "include" });
-      if (!r.ok) return [];
+      if (!r.ok) throw new Error("تعذر تحميل العهد");
       return r.json();
     },
     enabled: !!id,
@@ -175,6 +180,7 @@ export default function EmployeeDetailPage() {
   const empLeaves = allLeaves.filter(l => l.employeeId === emp.id);
 
   return (
+    <HrExpandedWorkspace>
     <div className="space-y-5 max-w-5xl mx-auto">
       {/* Top bar */}
       <div className="flex items-center gap-3">
@@ -280,6 +286,7 @@ export default function EmployeeDetailPage() {
 
         {/* 2: المستندات وسرية المعلومات (WF-08) */}
         <TabsContent value="documents" className="space-y-4 mt-4">
+          <HrDocumentArchive employeeId={employee.id} />
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-base flex items-center gap-2">
@@ -380,6 +387,7 @@ export default function EmployeeDetailPage() {
 
         {/* 4: الإجازات والدوام (WF-01 عبر نظام الإجازات + WF-04/09) */}
         <TabsContent value="leaves" className="space-y-4 mt-4">
+          <EmployeeAttendanceReport employee={employee} />
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-base flex items-center gap-2">
@@ -401,6 +409,7 @@ export default function EmployeeDetailPage() {
                           {l.reason ? <p className="text-xs text-muted-foreground truncate">{l.reason}</p> : null}
                         </div>
                         <Badge className={`${st.cls} text-[10px]`}>{t(st.ar, st.en)}</Badge>
+                         <Button variant="outline" size="sm" onClick={() => setOfficialReport(officialLeaveReport(employee, l))}>{t("النموذج / PDF", "Form / PDF")}</Button>
                       </div>
                     );
                   })}
@@ -449,6 +458,7 @@ export default function EmployeeDetailPage() {
           </Card>
         </TabsContent>
       </Tabs>
+      <ReportPreview report={officialReport} onClose={() => setOfficialReport(null)} />
 
       <Dialog open={!!previewDoc} onOpenChange={open => !open && setPreviewDoc(null)}>
         <DialogContent className="max-w-4xl w-[95vw] h-[88vh] flex flex-col p-0 gap-0">
@@ -482,5 +492,6 @@ export default function EmployeeDetailPage() {
         </DialogContent>
       </Dialog>
     </div>
+    </HrExpandedWorkspace>
   );
 }

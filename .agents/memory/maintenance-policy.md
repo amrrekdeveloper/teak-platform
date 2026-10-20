@@ -9,11 +9,11 @@ The maintenance countdown is informational, not authorization to reopen. Reopen 
 
 **How to apply:** Keep deadline handling separate from enabling/disabling maintenance. Disabling maintenance must be a deliberate change followed by republishing.
 
-The current maintenance page, not the hidden original application homepage, is the approved public entry page. Only the isolated employee portal and the technical-support placeholder may be reachable during maintenance; this is not authorization to expose administrative routes.
+The current maintenance page, not the hidden original application homepage, is the approved public entry page. The owner additionally authorized narrowly scoped HR management and direct-manager workspaces during maintenance; this does not authorize the general administrative platform.
 
-**Why:** The owner explicitly approved these two entry points while requiring preservation of the current branding, welcome copy, and responsive layout, with the administrative application remaining closed.
+**Why:** The owner expanded the scope to complete HR/attendance while preserving the approved homepage and keeping unrelated administration closed.
 
-**How to apply:** Preserve the existing public page beyond these entry points. Review maintenance exceptions narrowly; employee-service availability must never imply administrative availability.
+**How to apply:** Preserve the public page except the approved footer shield beside teak. HR uses an active HR administrative account; managers require actual employee-manager relationships. Enforce narrow server-side scopes. Employee OTP never authorizes administration, and HR preparation never authorizes financial disbursement or owner-only decisions.
 
 Maintenance must remain compatible with Replit's root-path deployment health check.
 

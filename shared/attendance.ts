@@ -6,6 +6,54 @@ export interface WorkScheduleLike {
   employeeId?: number | null;
   workStartTime: string; // HH:mm
   graceMinutes: number;
+  workEndTime?: string | null;
+  shifts?: AttendanceShift[] | null;
+}
+
+export interface AttendanceShift { id: string; label: string; start: string; end: string; graceMinutes: number }
+
+export function resolveAttendanceShifts(settings: WorkScheduleLike[], employee: { id: number; department?: string | null }): AttendanceShift[] {
+  const selected = settings.find(s => s.scopeType === "employee" && s.employeeId === employee.id)
+    || settings.find(s => s.scopeType === "department" && !!employee.department && s.department === employee.department)
+    || settings.find(s => s.scopeType === "default");
+  if (selected?.shifts?.length) return selected.shifts;
+  // No invented closing time: HR must explicitly configure it before reconciliation.
+  return [{ id: "single", label: "الدوام", start: selected?.workStartTime || "08:00", end: selected?.workEndTime || "", graceMinutes: selected?.graceMinutes ?? 15 }];
+}
+
+export function riyadhDayBounds(day: string) {
+  const start = new Date(`${day}T00:00:00+03:00`);
+  return { from: start.toISOString(), to: new Date(start.getTime() + 86400000 - 1).toISOString() };
+}
+
+export function shiftEnded(day: string, shift: AttendanceShift, now = new Date()): boolean {
+  return !!shift.end && shift.end > shift.start && now.getTime() > new Date(`${day}T${shift.end}:00+03:00`).getTime();
+}
+
+export function validateShifts(shifts: AttendanceShift[]): boolean {
+  const time = /^([01]\d|2[0-3]):[0-5]\d$/;
+  return shifts.length >= 1 && shifts.length <= 2 && new Set(shifts.map(s => s.id)).size === shifts.length &&
+    shifts.every((s, i) => /^[a-z0-9_-]{1,30}$/.test(s.id) && typeof s.label === "string" && s.label.length > 0 &&
+      s.label.length <= 80 && time.test(s.start) && time.test(s.end) && s.end > s.start &&
+      Number.isInteger(s.graceMinutes) && s.graceMinutes >= 0 && s.graceMinutes <= 240 &&
+      (!i || shifts[i - 1].end < s.start));
+}
+
+export function shiftAttendanceStatus(
+  day: string, shift: AttendanceShift,
+  events: { type: string; checkTime: string | Date; isManualEdit?: boolean }[], now = new Date(),
+) {
+  const ordered = [...events].sort((a, b) => +new Date(a.checkTime) - +new Date(b.checkTime));
+  const checkIn = ordered.find(r => r.type === "check_in");
+  const checkOut = ordered.find(r => r.type === "check_out" && (!checkIn || +new Date(r.checkTime) > +new Date(checkIn.checkTime)));
+  const ended = shiftEnded(day, shift, now);
+  const lateMinutes = checkIn ? Math.max(0, Math.floor((+new Date(checkIn.checkTime) - +new Date(`${day}T${shift.start}:00+03:00`)) / 60000)) : 0;
+  const late = !!checkIn && isLateCheckIn(new Date(checkIn.checkTime), { workStartTime: shift.start, graceMinutes: shift.graceMinutes });
+  const status = !checkIn ? (checkOut ? "missing_checkin" : ended ? "absent" : "pending")
+    : !checkOut && ended ? "missing_checkout" : late ? "late" : "present";
+  return { status, checkIn: checkIn?.checkTime ?? null, checkOut: checkOut?.checkTime ?? null, late, lateMinutes,
+    earlyDepartureMinutes: checkOut && shift.end ? Math.max(0, Math.floor((+new Date(`${day}T${shift.end}:00+03:00`) - +new Date(checkOut.checkTime)) / 60000)) : 0,
+    adminOverride: events.some(r => r.isManualEdit), ended };
 }
 
 // أولوية التخصيص: موظف > قسم > افتراضي

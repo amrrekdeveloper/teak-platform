@@ -1,0 +1,60 @@
+Continue development ONLY in the current TEAK project (`amrrekdeveloper/teak-platform`, branch `main`).
+
+I have reviewed the latest synchronized code. The Employee Self-Service and Technical Support links now appear correctly on the maintenance page.
+
+**Implement the next stage now: secure HR management access and employee onboarding.**
+
+### 1. Add the HR shield entry
+
+On the existing maintenance page, add a small, elegant shield icon immediately next to the word `teak` in the footer.
+
+- Keep the entire existing page, branding, wording, layout, and the two service links unchanged.
+- The shield should open a dedicated, secure HR management login.
+- Make its placement and touch target excellent on both mobile and desktop.
+- Do not expose or reopen the full administrative platform.
+
+### 2. Enable HR management during maintenance
+
+The current maintenance middleware blocks all administrative routes and APIs. Introduce the smallest secure, explicitly scoped exception needed for the HR workspace.
+
+- Reuse the existing administrative username/password authentication and authorized HR role.
+- Never hardcode credentials, introduce a default password, or bypass authentication.
+- Provide an authorized HR manager with full **HR-domain permissions**, including employee management, attendance monitoring, leave and permission approvals, HR workflows, and the existing HR modules.
+- Do not grant unrestricted platform-owner, IT, sales, finance administration, or system-settings privileges.
+- Reuse the existing HR screens, backend services, tables, and approval workflows. Avoid duplicating them.
+- Enforce access on the server, including direct API requests. A hidden menu or shield icon is not a security control.
+- Preserve maintenance mode for every unrelated application page and API.
+
+If no suitable HR administrative account exists, explain the secure owner-authorized provisioning method without creating an insecure default account.
+
+### 3. Make employee onboarding functional
+
+From the HR workspace, I must be able to:
+
+1. Open the existing Human Resources module.
+2. Add a new employee using the existing employee form.
+3. Register a unique Saudi mobile number in the HR employee record.
+4. Set the employee as active and enable attendance.
+5. Save the employee and verify that the record is available to the Employee Self-Service portal.
+
+**Important:** A regular employee must NOT need a separate administrative user account. Keep `employees` identity and employee OTP sessions independent of administrative `users` accounts. The optional administrative user linkage must not be required for self-service access.
+
+### 4. Complete the HR access and approval experience
+
+Ensure the HR manager can open and use the existing attendance monitor, leave requests, permission requests, pending approvals, and employee records with correct HR permissions.
+
+Fix any HR permission or navigation gaps required for this workflow. Do not redesign unrelated modules or expand into new HR features yet.
+
+### 5. Verify on desktop and mobile
+
+Test the complete development workflow:
+
+Shield icon → HR login → HR workspace → Add employee → Save → Sign out → Employee Self-Service → Employee phone login → Employee dashboard.
+
+Verify role isolation, unauthorized access rejection, and that the rest of the platform remains blocked by maintenance.
+
+Do not send real SMS, republish production, or modify real employee records for testing. Preserve the development-only OTP behavior for now.
+
+When finished, provide the exact Preview URLs, the HR login/provisioning instructions, the tests performed, and any remaining blockers. I will personally create the employee and test both experiences afterward.
+
+Proceed with implementation, not another planning-only response.

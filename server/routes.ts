@@ -2,7 +2,14 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { eq } from "drizzle-orm";
 import { storage } from "./storage";
+import { payrollRole, payrollAction, approveAdvance, payrollFailure, PayrollError, initPayrollSafety, nextAdvanceInstallment } from "./hr-payroll";
+import { decideHrRequest, annualUsage, annualEntitlementAt, initHrWorkflowSupport, workflowClarification, advanceHrActionVersioned } from "./hr-workflow-support";
+import { captureLeaveForm, initHrLeaveForm } from "./hr-leave-form";
+import { registerManagerWorkspace } from "./hr-manager-workspace";
 import { setupAuth, requireAuth, requireRole, comparePasswords, hashPassword, getEffectivePermissionsForUser } from "./auth";
+import { initializeHrDataIntegrity, deleteUnusedEmployee } from "./hr-data-integrity";
+import { ensureAttendanceExtensions, reconcileAttendance } from "./attendance-support";
+import { withUniqueEmployeePhone } from "./employee-portal/hr-onboarding";
 import {
   isProtectedOwner,
   isValidPermissionKey,
@@ -272,6 +279,7 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
   setupAuth(app);
+  await initializeHrDataIntegrity();
 
   // Retired PIN/user-account bridge. Employee identity is now established
   // exclusively through /api/employee-portal OTP + independent device sessions.
@@ -930,8 +938,10 @@ export async function registerRoutes(
       const allUsers = await storage.getUsers();
       const currentUser = req.session.userId ? await storage.getUser(req.session.userId) : null;
       const isAdmin = ["owner", "it", "assistant"].includes(currentUser?.role || "");
-      const visibleUsers = isAdmin ? allUsers : allUsers.filter(u => u.active !== false);
-      const safeUsers = visibleUsers.map(({ password, ...u }) => {
+      const visibleUsers = req.session.hrWorkspace
+        ? allUsers.filter(u => u.active && !["owner", "it", "assistant", "accountant"].includes(u.role))
+        : isAdmin ? allUsers : allUsers.filter(u => u.active !== false);
+      const safeUsers = visibleUsers.map(({ password, employeePin, financePin, ...u }) => {
         if (isAdmin) return u;
         return { id: u.id, username: u.username, fullNameAr: u.fullNameAr, fullNameEn: u.fullNameEn, role: u.role, active: u.active };
       });
@@ -3678,9 +3688,10 @@ export async function registerRoutes(
       parsed.employeeNumber = num;
       const dup = (await storage.getEmployees()).find(e => e.employeeNumber === num);
       if (dup) return res.status(409).json({ message: `رقم الموظف ${num} مستخدم لموظف آخر`, messageEn: `Employee number ${num} is already in use` });
-      const emp = await storage.createEmployee(parsed);
+      const emp = await withUniqueEmployeePhone(parsed, undefined, () => storage.createEmployee(parsed));
       res.status(201).json(emp);
     } catch (error: any) {
+      if (error?.status === 400 || error?.status === 409) return res.status(error.status).json({ message: error.message });
       if (error?.name === "ZodError") return res.status(400).json({ message: "بيانات غير صالحة", messageEn: "Invalid data", errors: error.errors });
       if (error?.code === "23505") return res.status(409).json({ message: "رقم الموظف مستخدم لموظف آخر", messageEn: "Employee number already in use" });
       console.error("Employee creation error:", error);
@@ -3701,10 +3712,12 @@ export async function registerRoutes(
         const existing = (await storage.getEmployees()).find(e => e.employeeNumber === num && e.id !== empId);
         if (existing) return res.status(409).json({ message: `رقم الموظف ${num} مستخدم لموظف آخر`, messageEn: `Employee number ${num} is already in use` });
       }
-      const updated = await storage.updateEmployee(parseInt(req.params.id), req.body);
+      const empId = parseInt(req.params.id);
+      const updated = await withUniqueEmployeePhone(req.body, empId, () => storage.updateEmployee(empId, req.body));
       if (!updated) return res.status(404).json({ message: "الموظف غير موجود", messageEn: "Employee not found" });
       res.json(updated);
     } catch (error: any) {
+      if (error?.status === 400 || error?.status === 409) return res.status(error.status).json({ message: error.message });
       if (error?.code === "23505") return res.status(409).json({ message: "رقم الموظف مستخدم لموظف آخر", messageEn: "Employee number already in use" });
       res.status(500).json({ message: "حدث خطأ في تحديث الموظف", messageEn: "Error updating employee" });
     }
@@ -3716,10 +3729,12 @@ export async function registerRoutes(
       if (isNaN(id)) return res.status(400).json({ message: "معرف غير صالح" });
       const emp = await storage.getEmployee(id);
       if (!emp) return res.status(404).json({ message: "الموظف غير موجود" });
-      await storage.deleteEmployee(id);
+      if (req.body?.confirmEmployeeNumber !== emp.employeeNumber)
+        return res.status(400).json({ message: "أكّد الحذف بإرسال رقم الموظف." });
+      await deleteUnusedEmployee(id);
       return res.json({ message: "تم حذف سجل الموظف بنجاح" });
-    } catch {
-      return res.status(500).json({ message: "حدث خطأ أثناء الحذف" });
+    } catch (error: any) {
+      return res.status(error.status || 500).json({ message: error.status ? error.message : "حدث خطأ أثناء الحذف" });
     }
   });
 
@@ -3836,7 +3851,7 @@ export async function registerRoutes(
 
   // ==================== HR AUDIT LOG ====================
 
-  app.get("/api/hr-audit-log", requireRole("owner", "it"), async (req, res) => {
+  app.get("/api/hr-audit-log", requireRole("owner", "it", "hr"), async (req, res) => {
     try {
       const employeeId = req.query.employeeId ? parseInt(req.query.employeeId as string) : undefined;
       res.json(await storage.getHrAuditLogs(employeeId));
@@ -3926,7 +3941,7 @@ export async function registerRoutes(
   const computeNet = (basic: number, allowances: number, deductions: number, advance: number = 0) =>
     Math.max(0, basic + allowances - deductions - advance);
 
-  app.get("/api/payroll", requireRole("owner", "assistant", "hr", "accountant"), async (req, res) => {
+  app.get("/api/payroll", payrollRole("owner", "hr", "accountant"), async (req, res) => {
     try {
       const period = typeof req.query.period === "string" ? req.query.period : undefined;
       res.json(await storage.getPayrollRecords(period));
@@ -3936,10 +3951,10 @@ export async function registerRoutes(
   });
 
   // Generate draft payroll records for all active employees for a given period.
-  app.post("/api/payroll/generate", requireRole("owner", "assistant", "hr"), async (req, res) => {
+  app.post("/api/payroll/generate", payrollRole("owner", "hr"), async (req, res) => {
     try {
       const period = typeof req.body.period === "string" ? req.body.period.trim() : "";
-      if (!/^\d{4}-\d{2}$/.test(period)) {
+      if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(period)) {
         return res.status(400).json({ message: "الفترة غير صالحة (YYYY-MM)", messageEn: "Invalid period (YYYY-MM)" });
       }
       const employees = await storage.getEmployees();
@@ -3953,9 +3968,7 @@ export async function registerRoutes(
         let advDeduction = 0;
         const adv = await storage.getActiveAdvanceForEmployee(emp.id);
         if (adv) {
-          const remaining = parseFloat(adv.remainingAmount?.toString() || "0");
-          const monthly = parseFloat(adv.monthlyDeduction?.toString() || "0");
-          advDeduction = Math.max(0, Math.min(monthly, remaining));
+          advDeduction = Number(await nextAdvanceInstallment(adv));
         }
         await storage.createPayrollRecord({
           employeeId: emp.id,
@@ -3977,16 +3990,17 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/payroll/:id", requireRole("owner", "assistant", "hr"), async (req, res) => {
+  app.patch("/api/payroll/:id", payrollRole("owner", "hr"), async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = Number(req.params.id);
+      if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ message: "رقم السجل غير صالح" });
       const record = await storage.getPayrollRecord(id);
       if (!record) return res.status(404).json({ message: "السجل غير موجود", messageEn: "Record not found" });
-      if (record.status === "paid") {
+      if (record.status !== "draft") {
         return res.status(400).json({ message: "لا يمكن تعديل راتب مدفوع", messageEn: "Cannot edit a paid record" });
       }
 
-      const validNum = (v: any) => { const n = parseFloat(v); return Number.isFinite(n) && n >= 0 ? n : null; };
+      const validNum = (v: any) => { const n = Number(v); return /^\d+(\.\d{1,2})?$/.test(String(v)) && Number.isFinite(n) && n >= 0 && n < 10000000000 ? n : null; };
       const updates: any = {};
       let basic = parseFloat(record.basicSalary.toString());
       let allowances = parseFloat(record.allowances.toString());
@@ -4011,9 +4025,11 @@ export async function registerRoutes(
       if (req.body.deductions !== undefined) updates.deductions = deductions.toFixed(2);
       if (req.body.notes !== undefined) updates.notes = req.body.notes;
       const advanceDed = parseFloat(record.advanceDeduction?.toString() || "0");
+      if (basic + allowances < deductions + advanceDed) return res.status(400).json({ message: "الخصومات تتجاوز الراتب والبدلات" });
       updates.netSalary = computeNet(basic, allowances, deductions, advanceDed).toFixed(2);
 
       const updated = await storage.updatePayrollRecord(id, updates);
+      if (!updated) return res.status(409).json({ message: "تغيرت حالة المسير؛ أعد تحميل الصفحة" });
       res.json(updated);
     } catch (error) {
       console.error("Payroll update error:", error);
@@ -4021,86 +4037,45 @@ export async function registerRoutes(
     }
   });
 
-  // Mark a payroll record as paid: sets paid date and posts a salary journal entry.
-  app.post("/api/payroll/:id/pay", requireRole("owner", "assistant", "hr", "accountant"), async (req, res) => {
-    try {
-      const id = parseInt(req.params.id);
-      const record = await storage.getPayrollRecord(id);
-      if (!record) return res.status(404).json({ message: "السجل غير موجود", messageEn: "Record not found" });
-      if (record.status === "paid") {
-        return res.status(400).json({ message: "تم دفع هذا الراتب مسبقاً", messageEn: "Already paid" });
-      }
-
-      const paidDate = new Date().toISOString().slice(0, 10);
-      const net = parseFloat(record.netSalary.toString());
-      const advRecovered = parseFloat(record.advanceDeduction?.toString() || "0");
-      // Salary expense = cash paid (net) + advance recovered (deducted from pay).
-      const salaryExpense = net + advRecovered;
-
-      // Post the salary journal entry FIRST. Ordering journal-before-paid means a
-      // journal failure leaves the record in 'draft' (retryable) instead of
-      // paid-without-a-ledger-entry. The reference guard makes a retry idempotent.
-      //   Dr 6100 رواتب وأجور (salary expense)
-      //   Cr 1140 سلف الموظفين (advance recovered, if any)
-      //   Cr 1111 الصندوق (net cash paid)
-      if (salaryExpense > 0) {
-        const existing = await storage.findJournalEntryByReference("payroll", record.id);
-        if (!existing) {
-          const emp = await storage.getEmployee(record.employeeId);
-          const empName = emp?.fullNameAr || emp?.fullNameEn || `#${record.employeeId}`;
-          const lines: any[] = [
-            { entryId: 0, accountCode: "6100", accountNameAr: "رواتب وأجور", debit: salaryExpense.toFixed(2), credit: "0" },
-          ];
-          if (advRecovered > 0) {
-            lines.push({ entryId: 0, accountCode: "1140", accountNameAr: "سلف وعهد الموظفين", debit: "0", credit: advRecovered.toFixed(2) });
-          }
-          if (net > 0) {
-            lines.push({ entryId: 0, accountCode: "1111", accountNameAr: "الصندوق", debit: "0", credit: net.toFixed(2) });
-          }
-          await storage.createJournalEntry(
-            {
-              date: paidDate,
-              description: `صرف راتب ${empName} عن ${record.period}`,
-              reference: `PAY-${record.id}`,
-              referenceType: "payroll",
-              referenceId: record.id,
-              status: "posted",
-              createdBy: req.session.userId,
-            } as any,
-            lines,
-          );
-        }
-      }
-
-      // Conditional transition draft -> paid; guards against a concurrent double-pay.
-      const updated = await storage.markPayrollPaid(id, paidDate);
-      if (!updated) {
-        return res.status(409).json({ message: "تم دفع هذا الراتب مسبقاً", messageEn: "Already paid" });
-      }
-
-      // Recover the advance installment now that the salary is paid. Runs only after
-      // the conditional pay succeeded, so it can't double-decrement on a retry.
-      if (advRecovered > 0) {
-        const adv = await storage.getActiveAdvanceForEmployee(record.employeeId);
-        if (adv) {
-          const remaining = Math.max(0, parseFloat(adv.remainingAmount?.toString() || "0") - advRecovered);
-          await storage.updateEmployeeAdvance(adv.id, {
-            remainingAmount: remaining.toFixed(2),
-            status: remaining <= 0 ? "settled" : "approved",
-          } as any);
-        }
-      }
-
-      res.json(updated);
-    } catch (error) {
-      console.error("Payroll pay error:", error);
-      res.status(500).json({ message: "حدث خطأ في الصرف", messageEn: "Error processing payment" });
+  app.post("/api/payroll/bulk", payrollRole("owner", "hr", "accountant"), async (req, res) => {
+    const { ids, action } = req.body;
+    if (!Array.isArray(ids) || ids.length < 1 || ids.length > 200 ||
+      ids.some(id => !Number.isSafeInteger(id) || id < 1) || !["approve", "pay"].includes(action)) {
+      return res.status(400).json({ message: "حدد من 1 إلى 200 سجل وعملية صحيحة" });
     }
+    const user = await storage.getUser(req.session.userId!);
+    const allowed = action === "pay" ? ["owner", "accountant"] : ["owner", "hr"];
+    const results: { id: number; ok: boolean; message: string }[] = [];
+    const seen = new Set<number>();
+    for (const id of ids) {
+      if (!user || !allowed.includes(user.role)) {
+        results.push({ id, ok: false, message: "غير مصرح بهذه العملية" });
+      } else if (seen.has(id)) {
+        results.push({ id, ok: false, message: "السجل مكرر في الطلب" });
+      } else {
+        seen.add(id);
+        try {
+          await payrollAction(id, action, user.id);
+          results.push({ id, ok: true, message: action === "pay" ? "تم الصرف" : "تم الاعتماد" });
+        } catch (error) { results.push({ id, ok: false, message: payrollFailure(error) }); }
+      }
+    }
+    res.json({ results });
+  });
+
+  app.post("/api/payroll/:id/approve", payrollRole("owner", "hr"), async (req, res) => {
+    try { res.json(await payrollAction(Number(req.params.id), "approve", req.session.userId!)); }
+    catch (error) { res.status(error instanceof PayrollError ? error.status : 500).json({ message: payrollFailure(error) }); }
+  });
+
+  app.post("/api/payroll/:id/pay", payrollRole("owner", "accountant"), async (req, res) => {
+    try { res.json(await payrollAction(Number(req.params.id), "pay", req.session.userId!)); }
+    catch (error) { res.status(error instanceof PayrollError ? error.status : 500).json({ message: payrollFailure(error) }); }
   });
 
   // ==================== EMPLOYEE ADVANCES (السلف) ====================
 
-  app.get("/api/advances", requireRole("owner", "assistant", "hr", "accountant"), async (req, res) => {
+  app.get("/api/advances", payrollRole("owner", "hr", "accountant"), async (req, res) => {
     try {
       const employeeId = req.query.employeeId ? parseInt(req.query.employeeId as string) : undefined;
       res.json(await storage.getEmployeeAdvances(employeeId));
@@ -4109,19 +4084,20 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/advances", requireRole("owner", "assistant", "hr"), async (req, res) => {
+  app.post("/api/advances", payrollRole("owner", "hr"), async (req, res) => {
     try {
-      const employeeId = parseInt(req.body.employeeId);
-      const amount = parseFloat(req.body.amount);
-      const installments = parseInt(req.body.installments);
+      const employeeId = Number(req.body.employeeId);
+      const amount = Number(req.body.amount);
+      const installments = Number(req.body.installments);
       if (!Number.isInteger(employeeId)) return res.status(400).json({ message: "الموظف مطلوب", messageEn: "Employee required" });
-      if (!Number.isFinite(amount) || amount <= 0) return res.status(400).json({ message: "المبلغ غير صالح", messageEn: "Invalid amount" });
+      if (!/^\d+(\.\d{1,2})?$/.test(String(req.body.amount)) || !Number.isFinite(amount) || amount <= 0 || amount >= 10000000000) return res.status(400).json({ message: "المبلغ غير صالح", messageEn: "Invalid amount" });
       if (!Number.isInteger(installments) || installments < 1) return res.status(400).json({ message: "عدد الأقساط غير صالح", messageEn: "Invalid installments" });
 
       const emp = await storage.getEmployee(employeeId);
       if (!emp) return res.status(404).json({ message: "الموظف غير موجود", messageEn: "Employee not found" });
 
       const monthly = Math.round((amount / installments) * 100) / 100;
+      if (monthly < 0.01) return res.status(400).json({ message: "قسط السلفة أقل من هللة" });
       const created = await storage.createEmployeeAdvance({
         employeeId,
         amount: amount.toFixed(2),
@@ -4139,69 +4115,15 @@ export async function registerRoutes(
     }
   });
 
-  // Approve an advance: disburse cash and post a journal (Dr 1140 / Cr 1111).
-  app.post("/api/advances/:id/approve", requireRole("owner", "assistant", "hr"), async (req, res) => {
-    try {
-      const id = parseInt(req.params.id);
-      const adv = await storage.getEmployeeAdvance(id);
-      if (!adv) return res.status(404).json({ message: "السلفة غير موجودة", messageEn: "Advance not found" });
-      if (adv.status !== "pending") return res.status(400).json({ message: "تمت معالجة هذه السلفة مسبقاً", messageEn: "Advance already processed" });
-
-      // Only one active (approved) advance per employee to keep payroll recovery simple.
-      const existingActive = await storage.getActiveAdvanceForEmployee(adv.employeeId);
-      if (existingActive) {
-        return res.status(409).json({ message: "يوجد سلفة نشطة لهذا الموظف بالفعل", messageEn: "Employee already has an active advance" });
-      }
-
-      const approvedDate = new Date().toISOString().slice(0, 10);
-      const amount = parseFloat(adv.amount.toString());
-
-      // Post disbursement journal FIRST (idempotent via reference guard).
-      const existingJe = await storage.findJournalEntryByReference("advance", adv.id);
-      if (!existingJe && amount > 0) {
-        const emp = await storage.getEmployee(adv.employeeId);
-        const empName = emp?.fullNameAr || emp?.fullNameEn || `#${adv.employeeId}`;
-        await storage.createJournalEntry(
-          {
-            date: approvedDate,
-            description: `صرف سلفة للموظف ${empName}`,
-            reference: `ADV-${adv.id}`,
-            referenceType: "advance",
-            referenceId: adv.id,
-            status: "posted",
-            createdBy: req.session.userId,
-          } as any,
-          [
-            { entryId: 0, accountCode: "1140", accountNameAr: "سلف وعهد الموظفين", debit: amount.toFixed(2), credit: "0" },
-            { entryId: 0, accountCode: "1111", accountNameAr: "الصندوق", debit: "0", credit: amount.toFixed(2) },
-          ] as any,
-        );
-      }
-
-      let updated;
-      try {
-        updated = await storage.updateEmployeeAdvance(id, {
-          status: "approved",
-          approvedBy: req.session.userId,
-          approvedDate,
-        } as any);
-      } catch (e: any) {
-        // Partial unique index race: another active advance won the approval.
-        if (e?.code === "23505") {
-          return res.status(409).json({ message: "يوجد سلفة نشطة لهذا الموظف بالفعل", messageEn: "Employee already has an active advance" });
-        }
-        throw e;
-      }
-      res.json(updated);
-    } catch (error) {
-      console.error("Advance approve error:", error);
-      res.status(500).json({ message: "حدث خطأ في الاعتماد", messageEn: "Error approving advance" });
-    }
+  app.post("/api/advances/:id/approve", payrollRole("owner", "accountant"), async (req, res) => {
+    try { res.json(await approveAdvance(Number(req.params.id), req.session.userId!)); }
+    catch (error) { res.status(error instanceof PayrollError ? error.status : 500).json({ message: payrollFailure(error) }); }
   });
 
-  app.post("/api/advances/:id/reject", requireRole("owner", "assistant", "hr"), async (req, res) => {
+  app.post("/api/advances/:id/reject", payrollRole("owner", "hr"), async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = Number(req.params.id);
+      if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ message: "رقم السلفة غير صالح" });
       const adv = await storage.getEmployeeAdvance(id);
       if (!adv) return res.status(404).json({ message: "السلفة غير موجودة", messageEn: "Advance not found" });
       if (adv.status !== "pending") return res.status(400).json({ message: "تمت معالجة هذه السلفة مسبقاً", messageEn: "Advance already processed" });
@@ -4211,6 +4133,7 @@ export async function registerRoutes(
         approvedDate: new Date().toISOString().slice(0, 10),
         notes: typeof req.body.notes === "string" ? req.body.notes : adv.notes,
       } as any);
+      if (!updated) return res.status(409).json({ message: "تغيرت حالة السلفة؛ أعد تحميل الصفحة" });
       res.json(updated);
     } catch (error) {
       res.status(500).json({ message: "حدث خطأ في الرفض", messageEn: "Error rejecting advance" });
@@ -4218,12 +4141,6 @@ export async function registerRoutes(
   });
 
   // ==================== LEAVE REQUESTS (الإجازات) ====================
-
-  const annualEntitlement = (contractStart: string | null): number => {
-    if (!contractStart) return 21;
-    const years = (Date.now() - new Date(contractStart).getTime()) / (1000 * 3600 * 24 * 365.25);
-    return years >= 5 ? 30 : 21;
-  };
 
   app.get("/api/leaves", requireRole("owner", "assistant", "hr"), async (req, res) => {
     try {
@@ -4241,8 +4158,9 @@ export async function registerRoutes(
       const year = typeof req.query.year === "string" && /^\d{4}$/.test(req.query.year) ? req.query.year : String(new Date().getFullYear());
       const emp = await storage.getEmployee(employeeId);
       if (!emp) return res.status(404).json({ message: "الموظف غير موجود", messageEn: "Employee not found" });
-      const entitlement = annualEntitlement(emp.contractStart);
-      const used = await storage.getApprovedAnnualLeaveDays(employeeId, year);
+      const today = new Date().toISOString().slice(0, 10);
+      const entitlement = annualEntitlementAt(emp.contractStart, year === today.slice(0, 4) ? today : `${year}-12-31`);
+      const used = annualUsage(await storage.getLeaveRequests(employeeId), Number(year));
       res.json({ entitlement, used, remaining: Math.max(0, entitlement - used), year });
     } catch (error) {
       res.status(500).json({ message: "حدث خطأ", messageEn: "Error computing balance" });
@@ -4262,6 +4180,9 @@ export async function registerRoutes(
         return res.status(400).json({ message: "التواريخ غير صالحة", messageEn: "Invalid dates" });
       }
       const start = new Date(startDate); const end = new Date(endDate);
+      if (![start,end].every(d=>Number.isFinite(d.getTime())) ||
+        start.toISOString().slice(0,10)!==startDate || end.toISOString().slice(0,10)!==endDate)
+        return res.status(400).json({message:"التواريخ غير صالحة"});
       if (end < start) return res.status(400).json({ message: "تاريخ النهاية قبل البداية", messageEn: "End before start" });
       const days = Math.floor((end.getTime() - start.getTime()) / (1000 * 3600 * 24)) + 1;
 
@@ -4270,11 +4191,14 @@ export async function registerRoutes(
 
       const created = await storage.createLeaveRequest({
         employeeId, leaveType, startDate, endDate, days,
+        leaveFormData: await captureLeaveForm(employeeId, req.body.leaveFormData, { kind: "admin", userId: req.session.userId! }, startDate),
         reason: typeof req.body.reason === "string" ? req.body.reason : null,
         status: "pending",
       } as any);
       res.status(201).json(created);
     } catch (error) {
+      if (error instanceof z.ZodError) return res.status(400).json({ message: "بيانات نموذج الإجازة غير صالحة", errors: error.flatten() });
+      if (error instanceof Error && "status" in error) return res.status(Number(error.status)).json({ message: error.message });
       console.error("Leave create error:", error);
       res.status(500).json({ message: "حدث خطأ في إنشاء الطلب", messageEn: "Error creating leave" });
     }
@@ -4305,6 +4229,7 @@ export async function registerRoutes(
     try {
       const emp = await storage.getEmployee(employeeId);
       if (!emp?.managerId) return false;
+      if (emp.managerId === emp.id) return false;
       const mgr = await storage.getEmployee(emp.managerId);
       return !!mgr?.userId && mgr.userId === userId;
     } catch {
@@ -4321,74 +4246,11 @@ export async function registerRoutes(
         return res.status(400).json({ message: "قرار غير صالح", messageEn: "Invalid decision" });
       }
       const normalized = decision === "approved" ? "approve" : decision === "rejected" ? "reject" : decision;
-      const leave = await storage.getLeaveRequest(id);
-      if (!leave) return res.status(404).json({ message: "الطلب غير موجود", messageEn: "Request not found" });
-      if (leave.status === "approved" || leave.status === "rejected") {
-        return res.status(400).json({ message: "تمت معالجة هذا الطلب مسبقاً", messageEn: "Already processed" });
-      }
-
-      const userId = req.session.userId!;
-      const user = await storage.getUser(userId);
-      const isHrRole = !!user && ["owner", "assistant", "hr"].includes(user.role);
-      const isMgr = await isManagerOf(userId, leave.employeeId);
-      if (!isHrRole && !isMgr) {
-        return res.status(403).json({ message: "غير مصرح لك بهذا القرار", messageEn: "Not authorized" });
-      }
-
-      const emp = await storage.getEmployee(leave.employeeId);
-      const hasManager = !!emp?.managerId;
-      const today = new Date().toISOString().slice(0, 10);
-
-      if (normalized === "clarify") {
-        if (!note) return res.status(400).json({ message: "سبب طلب التوضيح مطلوب", messageEn: "Reason required" });
-        const updated = await storage.updateLeaveRequest(id, { status: "clarification_requested", notes: note } as any);
-        await notifyEmployeeUser(leave.employeeId, "طلب توضيح على إجازتك", `يرجى توضيح: ${note}`, id);
-        return res.json(updated);
-      }
-
-      if (normalized === "reject") {
-        const updated = await storage.updateLeaveRequest(id, {
-          status: "rejected",
-          approvedBy: userId,
-          approvedDate: today,
-          notes: note ?? leave.notes,
-        } as any);
-        await notifyEmployeeUser(leave.employeeId, "تم رفض طلب الإجازة", note ? `السبب: ${note}` : "تم رفض طلبك", id);
-        return res.json(updated);
-      }
-
-      // approve
-      const atManagerStage = leave.status === "pending" || leave.status === "clarification_requested";
-      if (atManagerStage && hasManager) {
-        if (!isMgr && !isHrRole) return res.status(403).json({ message: "غير مصرح", messageEn: "Not authorized" });
-        // موافقة المدير (أو HR نيابةً) → مرحلة HR النهائية
-        if (isMgr) {
-          const updated = await storage.updateLeaveRequest(id, {
-            status: "manager_approved",
-            managerApprovedBy: userId,
-            managerApprovedDate: today,
-            notes: note ?? leave.notes,
-          } as any);
-          await notifyEmployeeUser(leave.employeeId, "وافق مديرك على الإجازة", "بانتظار الاعتماد النهائي من الموارد البشرية", id);
-          return res.json(updated);
-        }
-      }
-      // الاعتماد النهائي: HR/المالك (أو مباشرة إن لم يوجد مدير)
-      if (!isHrRole) {
-        return res.status(403).json({ message: "الاعتماد النهائي من الموارد البشرية", messageEn: "Final approval is HR" });
-      }
-      const updated = await storage.updateLeaveRequest(id, {
-        status: "approved",
-        managerApprovedBy: leave.managerApprovedBy ?? userId,
-        managerApprovedDate: leave.managerApprovedDate ?? today,
-        approvedBy: userId,
-        approvedDate: today,
-        notes: note ?? leave.notes,
-      } as any);
-      await notifyEmployeeUser(leave.employeeId, "تم اعتماد الإجازة", `إجازتك من ${leave.startDate} إلى ${leave.endDate} معتمدة`, id);
-      res.json(updated);
-    } catch (error) {
-      res.status(500).json({ message: "حدث خطأ في القرار", messageEn: "Error processing decision" });
+      const updated = await decideHrRequest("leave", id, req.session.userId!, normalized, note);
+      await notifyEmployeeUser(updated.employee_id, "تحديث طلب الإجازة", note || updated.status, id);
+      res.json(await storage.getLeaveRequest(id));
+    } catch (error: any) {
+      res.status(error.status || 500).json({ message: error.status ? error.message : "حدث خطأ في القرار" });
     }
   });
 
@@ -4404,21 +4266,26 @@ export async function registerRoutes(
 
       const allLeaves = await storage.getLeaveRequests();
       const allPerms = await storage.getAttendancePermissions();
+      const permissionManagerApprovals = new Set((await pool.query(
+        "SELECT DISTINCT request_id FROM hr_request_history WHERE kind='permission' AND next_status='manager_approved'",
+      )).rows.map(r => r.request_id));
+      const decisionHistory = (await pool.query("SELECT * FROM hr_request_history ORDER BY id DESC")).rows;
 
       const relevantLeave = (l: typeof allLeaves[number]) => {
         if (l.status === "pending" || l.status === "clarification_requested") {
           const emp = allEmployees.find(e => e.id === l.employeeId);
-          if (emp?.managerId) return managedIds.includes(l.employeeId) || isHrRole;
+          if (emp?.managerId && !l.managerApprovedBy) return managedIds.includes(l.employeeId);
           return isHrRole;
         }
         if (l.status === "manager_approved") return isHrRole;
         return false;
       };
       const relevantPerm = (p: typeof allPerms[number]) => {
+        if (String(p.status) === "manager_approved") return isHrRole;
         if (p.status !== "pending" && p.status !== "clarification_requested") return false;
         if (!p.employeeId) return isHrRole;
         const emp = allEmployees.find(e => e.id === p.employeeId);
-        if (emp?.managerId) return managedIds.includes(p.employeeId) || isHrRole;
+        if (emp?.managerId && !permissionManagerApprovals.has(p.id)) return managedIds.includes(p.employeeId);
         return isHrRole;
       };
 
@@ -4432,7 +4299,8 @@ export async function registerRoutes(
         const empPerms = allPerms.filter(p => p.employeeId === employeeId);
         const approved = empLeaves.filter(l => l.status === "approved").length + empPerms.filter(p => p.status === "approved" || p.status === "auto_approved").length;
         const rejected = empLeaves.filter(l => l.status === "rejected").length + empPerms.filter(p => p.status === "rejected").length;
-        return { totalLeaves: empLeaves.length, totalPermissions: empPerms.length, approved, rejected };
+        return { totalLeaves: empLeaves.length, totalPermissions: empPerms.length, approved, rejected,
+          leaves: empLeaves, permissions: empPerms, decisions:decisionHistory.filter(r=>r.employee_id===employeeId) };
       };
 
       res.json({
@@ -4483,17 +4351,16 @@ export async function registerRoutes(
 
   // ==================== HR ACTIONS (ملف الموظف — WF-01..WF-10) ====================
 
-  const { HR_WORKFLOWS } = await import("@shared/hr-workflows");
+  const { HR_WORKFLOWS, canPerformAdministrativeHrStep } = await import("@shared/hr-workflows");
+  registerManagerWorkspace(app, requireAuth);
 
   // من يستطيع تنفيذ خطوة؟ HR/المالك/المساعد دائماً؛ المدير المباشر لخطوات manager
   const canActHrStep = async (userId: number, stepRole: string, employeeId: number | null): Promise<boolean> => {
     const user = await storage.getUser(userId);
     if (!user) return false;
-    const isHrRole = ["owner", "assistant", "hr"].includes(user.role);
-    if (stepRole === "owner") return ["owner", "assistant"].includes(user.role);
-    if (isHrRole) return true; // HR ينفذ خطوات hr/employee (تسجيل الإقرار) وmanager عند غياب المدير
-    if (stepRole === "manager" && employeeId != null) return isManagerOf(userId, employeeId);
-    return false;
+    const employee = employeeId != null ? await storage.getEmployee(employeeId) : null;
+    return canPerformAdministrativeHrStep(user.role, stepRole as import("@shared/hr-workflows").HrStepRole,
+      !!employee, !!employee?.managerId, employeeId != null && await isManagerOf(userId, employeeId));
   };
 
   app.get("/api/hr-actions", requireRole("owner", "assistant", "hr"), async (req, res) => {
@@ -4502,6 +4369,18 @@ export async function registerRoutes(
       const workflow = typeof req.query.workflow === "string" ? req.query.workflow : undefined;
       const prehire = req.query.prehire === "true";
       const rows = await storage.getHrActions({ employeeId, workflow, prehire });
+      if (req.query.due === "true") {
+        const today = new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Riyadh"}).format(new Date());
+        const due = [];
+        for (const row of rows) {
+          if (row.workflow !== "wf05" || !row.linkedActionId || !["pending","in_progress"].includes(row.status)) continue;
+          const source = await storage.getHrAction(row.linkedActionId);
+          const end = (source?.formData as any)?.contractEnd;
+          if (source && ["wf06","wf06b"].includes(source.workflow) && typeof end === "string" &&
+            /^\d{4}-\d{2}-\d{2}$/.test(end) && Number.isFinite(Date.parse(end)) && end <= today) due.push(row);
+        }
+        return res.json(due);
+      }
       res.json(rows);
     } catch {
       res.status(500).json({ message: "حدث خطأ", messageEn: "Error fetching HR actions" });
@@ -4514,6 +4393,9 @@ export async function registerRoutes(
       const def = HR_WORKFLOWS[workflow];
       if (!def) return res.status(400).json({ message: "مسار غير معروف", messageEn: "Unknown workflow" });
       const employeeId = req.body.employeeId != null ? parseInt(req.body.employeeId) : null;
+      if (employeeId != null && (!Number.isInteger(employeeId) || !await storage.getEmployee(employeeId))) {
+        return res.status(400).json({ message: "هوية الموظف المرتبطة غير صالحة" });
+      }
       if (def.tab !== "prehire") {
         if (!Number.isInteger(employeeId)) return res.status(400).json({ message: "الموظف مطلوب", messageEn: "Employee required" });
         const emp = await storage.getEmployee(employeeId!);
@@ -4527,7 +4409,7 @@ export async function registerRoutes(
       }
       const user = await storage.getUser(req.session.userId!);
       const created = await storage.createHrAction({
-        employeeId: def.tab === "prehire" ? null : employeeId,
+        employeeId,
         workflow,
         tab: def.tab,
         status: "pending",
@@ -4555,6 +4437,10 @@ export async function registerRoutes(
       const id = parseInt(String(req.params.id));
       const decision = String(req.body.decision || "");
       const note = typeof req.body.note === "string" && req.body.note.trim() ? req.body.note.trim() : undefined;
+      if (decision === "clarify") {
+        try { return res.json(await workflowClarification(id,note || "",{userId:req.session.userId!})); }
+        catch(error:any) { return res.status(error.status || 500).json({message:error.status ? error.message : "تعذر طلب التوضيح"}); }
+      }
       if (!["complete", "reject", "cancel"].includes(decision)) {
         return res.status(400).json({ message: "قرار غير صالح", messageEn: "Invalid decision" });
       }
@@ -4567,6 +4453,8 @@ export async function registerRoutes(
       if (!def) return res.status(400).json({ message: "مسار غير معروف", messageEn: "Unknown workflow" });
       const step = def.steps[action.currentStep];
       if (!step) return res.status(400).json({ message: "لا توجد خطوة حالية", messageEn: "No current step" });
+      if (decision === "complete" && (action.timeline as any[])?.at(-1)?.action === "clarify")
+        return res.status(409).json({message:"بانتظار رد الموظف على طلب التوضيح"});
 
       const userId = req.session.userId!;
       const allowed = await canActHrStep(userId, step.role, action.employeeId);
@@ -4590,10 +4478,18 @@ export async function registerRoutes(
 
       // دمج تحديثات النموذج المُرسلة مع الخطوة (إن وجدت)
       const bodyFd = (req.body.formData && typeof req.body.formData === "object") ? req.body.formData : null;
+      if (bodyFd && Object.keys(bodyFd).length && !(step.role === "hr" && step.kind === "execute")) {
+        return res.status(409).json({ message: "لا يمكن تعديل المستند بعد إعداده؛ أنشئ إجراءً مصححاً لإعادة الاعتمادات والإقرار" });
+      }
       const mergedFd: any = bodyFd ? { ...((action.formData as any) || {}), ...bodyFd } : (action.formData as any) || {};
+      if (decision === "complete" && action.workflow === "wf06" &&
+        (!Number.isFinite(Date.parse(mergedFd.contractEnd)) || !Number.isFinite(Date.parse(mergedFd.noticeDate)) ||
+          (Date.parse(mergedFd.contractEnd) - Date.parse(mergedFd.noticeDate)) / 86400000 < 60)) {
+        return res.status(400).json({ message: "إشعار عدم التجديد من الشركة يجب أن يسبق انتهاء العقد بستين يوماً على الأقل" });
+      }
 
       if (decision === "reject" || decision === "cancel") {
-        const updated = await storage.advanceHrAction(id, action.currentStep, {
+        const updated = await advanceHrActionVersioned(action, {
           status: decision === "reject" ? "rejected" : "cancelled",
           timeline,
         } as any);
@@ -4608,7 +4504,7 @@ export async function registerRoutes(
       const nextStep = action.currentStep + 1;
       const isLast = nextStep >= def.steps.length;
       // عند الإكمال النهائي: التحقق من الحقول الإلزامية
-      if (isLast) {
+      if (isLast || step.kind === "execute") {
         const missing = def.fields.filter(f => f.required && !String(mergedFd[f.key] ?? "").trim());
         if (missing.length > 0) {
           return res.status(400).json({
@@ -4619,7 +4515,7 @@ export async function registerRoutes(
         }
       }
       const newStatus = isLast ? "completed" : "in_progress";
-      const updated = await storage.advanceHrAction(id, action.currentStep, {
+      const updated = await advanceHrActionVersioned(action, {
         currentStep: isLast ? action.currentStep : nextStep,
         status: newStatus,
         timeline,
@@ -4627,86 +4523,15 @@ export async function registerRoutes(
       } as any);
       if (!updated) return res.status(409).json({ message: "تم تعديل الإجراء من مستخدم آخر، حدّث الصفحة", messageEn: "Action was modified concurrently, refresh" });
 
-      let chained: any = null;
-      if (isLast) {
-        if (action.employeeId) {
-          await notifyEmployeeUser(action.employeeId, `اكتمل: ${def.nameAr}`, "اكتمل الإجراء بنجاح", id);
-        }
-        // السلاسل التلقائية
-        if (action.workflow === "wf02") {
-          // WF-02 ← WF-03: مباشرة عمل تلقائياً بنفس بيانات المرشح
-          const existing = await storage.getHrActionByLink(action.id, "wf03");
-          chained = existing || await storage.createHrAction({
-            employeeId: null,
-            workflow: "wf03",
-            tab: "prehire",
-            status: "pending",
-            currentStep: 0,
-            formData: { ...mergedFd, startDate: mergedFd?.startDate || "" },
-            linkedActionId: action.id,
-            timeline: [{ step: "created", action: "إنشاء تلقائي بعد قبول العرض الوظيفي", byUserId: userId, byName: entry.byName, at: entry.at }],
-            createdBy: userId,
-          } as any);
-        } else if (action.workflow === "wf03" && !action.employeeId) {
-          // WF-03 مكتمل ← إنشاء ملف الموظف من بيانات العرض الوظيفي
-          const src = (action.linkedActionId ? await storage.getHrAction(action.linkedActionId) : null);
-          const fd: any = { ...((src?.formData as any) || {}), ...mergedFd };
-          const validDepts = ["sales", "design", "production", "warehouse", "finance", "hr", "it", "delivery", "installation", "quality", "management", "customer_service", "purchasing", "other"];
-          const empNumber = `EMP-${Date.now().toString().slice(-6)}`;
-          try {
-            const newEmp = await storage.createEmployee({
-              employeeNumber: empNumber,
-              fullNameAr: fd.candidateName || "موظف جديد",
-              nationality: fd.nationality === "saudi" ? "saudi" : "resident",
-              position: fd.position || "-",
-              department: validDepts.includes(fd.department) ? fd.department : "production",
-              monthlySalary: String(parseFloat(fd.monthlySalary) || 0),
-              contractStart: fd.startDate || new Date().toISOString().slice(0, 10),
-              phone: fd.candidatePhone || null,
-              status: "active",
-            } as any);
-            await storage.updateHrAction(id, { employeeId: newEmp.id } as any);
-            if (src) await storage.updateHrAction(src.id, { employeeId: newEmp.id } as any);
-            chained = { createdEmployee: newEmp };
-          } catch (e) {
-            console.error("wf03 employee creation failed:", e);
-          }
-        } else if (def.autoNext === "wf05" && (action.workflow === "wf06" || action.workflow === "wf06b")) {
-          // WF-06/06B ← جدولة WF-05 عند انتهاء العقد
-          const fd: any = mergedFd;
-          const existing = await storage.getHrActionByLink(action.id, "wf05");
-          chained = existing || await storage.createHrAction({
-            employeeId: action.employeeId,
-            workflow: "wf05",
-            tab: "requests",
-            status: "pending",
-            currentStep: 0,
-            formData: { reason: "other", lastWorkingDay: fd.contractEnd || "", notes: "مجدول تلقائياً بعد اعتماد عدم التجديد" },
-            linkedActionId: action.id,
-            timeline: [{ step: "created", action: "إنشاء تلقائي (جدولة إنهاء عند انتهاء العقد)", byUserId: userId, byName: entry.byName, at: entry.at }],
-            createdBy: userId,
-          } as any);
-        } else if (action.workflow === "wf05") {
-          // WF-05 ← WF-07 إقرار مستحقات
-          const existing = await storage.getHrActionByLink(action.id, "wf07");
-          chained = existing || await storage.createHrAction({
-            employeeId: action.employeeId,
-            workflow: "wf07",
-            tab: "requests",
-            status: "pending",
-            currentStep: 0,
-            formData: { amount: "", details: "" },
-            linkedActionId: action.id,
-            timeline: [{ step: "created", action: "إنشاء تلقائي بعد إنهاء الخدمات", byUserId: userId, byName: entry.byName, at: entry.at }],
-            createdBy: userId,
-          } as any);
-        }
-      }
-
-      res.json({ ...updated, chained });
-    } catch (e) {
+      if (isLast && updated.employeeId)
+        await notifyEmployeeUser(updated.employeeId, `اكتمل: ${def.nameAr}`, "اكتمل الإجراء بنجاح", id);
+      res.json(updated);
+    } catch (e: any) {
       console.error("hr-action step error:", e);
-      res.status(500).json({ message: "حدث خطأ في تنفيذ الخطوة", messageEn: "Error processing step" });
+      res.status(e.status || (e.code === "23505" || e.cause?.code === "23505" ? 409 : 500)).json({
+        message:e.status ? e.message : e.code === "23505" || e.cause?.code === "23505"
+          ? "تعارض في هوية الموظف أو الإجراء المرتبط؛ لم يتم اعتماد الخطوة" : "حدث خطأ في تنفيذ الخطوة؛ لم يتم حفظ تغيير جزئي",
+      });
     }
   });
 
@@ -7103,6 +6928,9 @@ export async function registerRoutes(
     console.warn("Task #35 migration warning (non-fatal):", task35MigrationError instanceof Error ? task35MigrationError.message : String(task35MigrationError));
   }
 
+  // Retired data repair: intentionally NOT called on startup. Reapplying old
+  // identity/location decisions would overwrite current HR-managed records.
+  async function retiredLegacyIdentityRepair() {
   // Fix duplicate مهند: deactivate old 'mohnad' account (id=4) in all envs including production
   try {
     await db.execute(`UPDATE users SET active = false WHERE username = 'mohnad' AND active = true`);
@@ -7251,6 +7079,7 @@ export async function registerRoutes(
     console.warn("Employee migration (non-fatal):", empMigrationError instanceof Error ? empMigrationError.message : String(empMigrationError));
   }
 
+  }
   // HR Module: Add new columns to employees and create new tables
   try {
     await db.execute(`
@@ -7356,6 +7185,7 @@ export async function registerRoutes(
       CREATE UNIQUE INDEX IF NOT EXISTS uniq_active_advance_per_employee
       ON employee_advances(employee_id) WHERE status = 'approved';
     `);
+    await initPayrollSafety();
     // Leave Requests (الإجازات)
     await db.execute(`
       DO $$ BEGIN
@@ -7541,6 +7371,24 @@ export async function registerRoutes(
     }
   } catch (hrMigrationError) {
     console.warn("HR migration (non-fatal):", hrMigrationError instanceof Error ? hrMigrationError.message : String(hrMigrationError));
+  }
+  // Required workflow evidence/decision tables must exist before accepting requests.
+  await initHrWorkflowSupport();
+  await initHrLeaveForm();
+  await ensureAttendanceExtensions();
+  const reconcileRecent = async () => {
+    try {
+      for (let days = 2; days >= 0; days--) {
+        const day = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh" })
+          .format(new Date(Date.now() - days * 86400000));
+        await reconcileAttendance(day);
+      }
+    } catch (error) { console.error("Attendance reconciliation failed", error); }
+  };
+  // Reconciliation must not mutate actual employee history in development.
+  if (process.env.NODE_ENV === "production" && process.env.REPLIT_DEPLOYMENT === "1") {
+    void reconcileRecent();
+    setInterval(reconcileRecent, 5 * 60 * 1000).unref();
   }
 
   app.get("/api/daily-sales-logs/today", requireRole("sales"), async (req, res) => {
@@ -8569,33 +8417,13 @@ export async function registerRoutes(
       if (!["approve", "reject", "clarify"].includes(decision)) {
         return res.status(400).json({ message: "قرار غير صالح" });
       }
-      const perms = await storage.getAttendancePermissions();
-      const perm = perms.find(p => p.id === id);
-      if (!perm) return res.status(404).json({ message: "الطلب غير موجود" });
-      if (perm.status === "approved" || perm.status === "rejected" || perm.status === "auto_approved") {
-        return res.status(400).json({ message: "تمت معالجة هذا الطلب مسبقاً" });
-      }
-
-      const userId = req.session.userId!;
-      const user = await storage.getUser(userId);
-      const isHrRole = !!user && ["owner", "it", "hr"].includes(user.role);
-      const isMgr = perm.employeeId ? await isManagerOf(userId, perm.employeeId) : false;
-      if (!isHrRole && !isMgr) return res.status(403).json({ message: "غير مصرح لك بهذا القرار" });
-
-      const newStatus = decision === "approve" ? "approved" : decision === "reject" ? "rejected" : "clarification_requested";
-      if (decision === "clarify" && !note) return res.status(400).json({ message: "سبب طلب التوضيح مطلوب" });
-      const updated = await storage.updateAttendancePermission(id, {
-        status: newStatus,
-        reviewedBy: userId,
-        reason: note ? `${perm.reason || ""}${perm.reason ? " | " : ""}قرار: ${note}` : perm.reason,
-      } as any);
-      if (perm.employeeId) {
-        const titleAr = decision === "approve" ? "تم اعتماد الاستئذان" : decision === "reject" ? "تم رفض الاستئذان" : "طلب توضيح على الاستئذان";
-        await notifyEmployeeUser(perm.employeeId, titleAr, note ? `ملاحظة: ${note}` : `استئذانك بتاريخ ${perm.date}`, id);
+      const updated = await decideHrRequest("permission", id, req.session.userId!, decision, note);
+      if (updated.employee_id) {
+        await notifyEmployeeUser(updated.employee_id, "تحديث طلب الاستئذان", note || updated.status, id);
       }
       res.json(updated);
-    } catch {
-      res.status(500).json({ message: "حدث خطأ" });
+    } catch (error: any) {
+      res.status(error.status || 500).json({ message: error.status ? error.message : "حدث خطأ" });
     }
   });
 
@@ -8620,6 +8448,7 @@ export async function registerRoutes(
       const now = new Date();
       const currentPeriod = riyadhDateKey(now).slice(0, 7);
       const period = /^\d{4}-(0[1-9]|1[0-2])$/.test(monthParam) ? monthParam : currentPeriod;
+      if (period > currentPeriod) return res.status(400).json({ message: "لا يمكن حساب مؤشر الخطر لشهر مستقبلي." });
       const [py, pm] = period.split("-").map(Number);
       // نطاق الشهر بتوقيت الرياض (UTC+3): بداية اليوم الأول حتى نهاية آخر يوم
       const startUtc = new Date(Date.UTC(py, pm - 1, 1, -3, 0, 0));
@@ -8661,24 +8490,24 @@ export async function registerRoutes(
         const schedule = resolveWorkSchedule(settings, { id: emp.id, department: emp.department });
         const dayMap = byEmpDay.get(emp.id) || new Map();
         let late = 0, absent = 0, incomplete = 0;
-        for (const dayKey of countableDays) {
-          const recs = dayMap.get(dayKey) || [];
-          const ins = recs.filter((r: { type: string }) => r.type === "check_in");
-          const outs = recs.filter((r: { type: string }) => r.type === "check_out");
-          if (!ins.length && !outs.length) { absent++; continue; }
-          if (!ins.length || !outs.length) { incomplete++; continue; }
-          const firstIn = ins.sort((a: { checkTime: Date }, b: { checkTime: Date }) => a.checkTime.getTime() - b.checkTime.getTime())[0];
-          if (isLateCheckIn(firstIn.checkTime, schedule)) late++;
-        }
-        // إذا كان اليوم الحالي وفيه دخول متأخر، احسب التأخيرة فوراً
-        if (period === currentPeriod && !isRiyadhWeekend(now)) {
-          const todayRecs = dayMap.get(todayKey) || [];
-          const todayIns = todayRecs.filter((r: { type: string }) => r.type === "check_in")
-            .sort((a: { checkTime: Date }, b: { checkTime: Date }) => a.checkTime.getTime() - b.checkTime.getTime());
-          if (todayIns.length && isLateCheckIn(todayIns[0].checkTime, schedule)) late++;
+        const report = await attendanceSupport.employeeAttendanceReport(emp.id, `${period}-01`, riyadhDateKey(endUtc), now);
+        const approvedLeaves = (await storage.getLeaveRequests(emp.id)).filter(l => l.status === "approved");
+        const missingAttempts = await pool.query(`SELECT business_day,shift_key FROM attendance_violations
+          WHERE employee_id=$1 AND violation_type='missing_checkin' AND business_day LIKE $2`, [emp.id, `${period}-%`]);
+        for (const row of report.rows) {
+          if (row.day < emp.contractStart || isRiyadhWeekend(new Date(`${row.day}T12:00:00+03:00`)) ||
+            approvedLeaves.some(l => l.startDate <= row.day && l.endDate >= row.day) || row.adminOverride) continue;
+          const missingIn = missingAttempts.rows.some(v => v.business_day === row.day && v.shift_key === row.shiftId);
+          if (row.late) late++;
+          if (missingIn || row.status === "missing_checkin" || row.status === "missing_checkout") incomplete++;
+          else if (row.status === "absent") absent++;
         }
         const score = late * RISK_POINTS.late + absent * RISK_POINTS.absent + incomplete * RISK_POINTS.incomplete;
         const level = riskLevel(score);
+        await pool.query(`INSERT INTO attendance_monthly_risk(employee_id,period,late,absent,incomplete,score)
+          VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(employee_id,period) DO UPDATE
+          SET late=$3,absent=$4,incomplete=$5,score=$6,calculated_at=now()`,
+        [emp.id,period,late,absent,incomplete,score]);
         results.push({
           employeeId: emp.id,
           employeeNumber: emp.employeeNumber,
@@ -8704,7 +8533,7 @@ export async function registerRoutes(
                   titleEn: `Risk alert (${r.level}): ${r.nameAr}`,
                   messageAr: `وصل الموظف ${r.nameAr} إلى مستوى ${levelAr} (${r.score} نقطة) هذا الشهر — تأخير: ${r.late}، غياب: ${r.absent}، نقص حركة: ${r.incomplete}`,
                   messageEn: `Employee ${r.nameAr} reached ${r.level} risk level (${r.score} points) this month`,
-                  type: "attendance",
+                  type: "warning",
                   relatedEntity: "employee",
                   relatedId: r.employeeId,
                 });
@@ -8725,6 +8554,9 @@ export async function registerRoutes(
   });
 
   // إعدادات أوقات الدوام — Work schedule settings
+  // Additive attendance routes share the existing HR authorization.
+  const attendanceSupport = await import("./attendance-support");
+  attendanceSupport.registerAttendanceSupport(app, requireRole("owner", "it", "hr"));
   app.get("/api/attendance/work-settings", requireRole("owner", "it", "hr"), async (_req, res) => {
     try {
       res.json(await storage.getWorkScheduleSettings());
@@ -8804,7 +8636,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/attendance/monitor", requireRole("owner", "it"), async (req, res) => {
+  app.get("/api/attendance/monitor", requireRole("owner", "it", "hr"), async (req, res) => {
     const { from, to, locationName, employeeId } = req.query as Record<string, string>;
     try {
       const records = await storage.getAttendanceRecords({
@@ -8824,33 +8656,43 @@ export async function registerRoutes(
             id: e.id,
             employeeNumber: e.employeeNumber,
             nameAr: e.fullNameAr?.trim() || user?.fullNameAr || e.phone || e.employeeNumber,
-            phone: user?.phone || e.phone,
+            phone: e.phone || undefined,
             department: e.department,
             locationName: e.fingerprintLocation || e.fingerScanLocation || "غير محدد",
           };
         });
-      res.json({ records, permissions, employees: employeesWithInfo });
+      const scheduleRows = await attendanceSupport.attendanceSchedules();
+      const { resolveAttendanceShifts } = await import("../shared/attendance");
+      const shiftKeys = records.length ? await pool.query("SELECT id,shift_key FROM attendance_records WHERE id=ANY($1::int[])", [records.map(r => r.id)]) : { rows: [] };
+      const recordShift = new Map(shiftKeys.rows.map(r => [r.id, r.shift_key]));
+      const enrichedRecords = records.map(record => {
+        const employee = allEmployees.find(e => e.id === record.employeeId);
+        const shifts = employee ? resolveAttendanceShifts(scheduleRows, employee) : [];
+        const shiftKey = recordShift.get(record.id);
+        const shift = shifts.find(s => s.id === shiftKey) || (shifts.length === 1 ? shifts[0] : undefined);
+        return { ...record, shiftKey, shiftLabel: shift?.label, shiftEndTime: shift?.end };
+      });
+      res.json({ records: enrichedRecords, permissions, employees: employeesWithInfo });
     } catch {
       res.status(500).json({ message: "حدث خطأ" });
     }
   });
 
-  app.patch("/api/attendance/record/:id", requireRole("owner", "it"), async (req, res) => {
+  app.patch("/api/attendance/record/:id", requireRole("owner", "it", "hr"), async (req, res) => {
     const id = parseInt(req.params.id);
     const userId = (req as any).user?.id;
     try {
       const before = await storage.getAttendanceRecord(id);
       if (!before) return res.status(404).json({ message: "السجل غير موجود" });
-      const updated = await storage.updateAttendanceRecord(id, { ...req.body, isManualEdit: true, editedBy: userId });
-      if (!updated) return res.status(404).json({ message: "السجل غير موجود" });
-      await storage.createAttendanceAuditLog({
-        recordId: id,
-        employeeId: before.employeeId,
-        action: "manual_edit",
-        oldValue: { type: before.type, checkTime: before.checkTime, notes: before.notes },
-        newValue: { type: updated.type, checkTime: updated.checkTime, notes: updated.notes },
-        reason: req.body.editReason || null,
-        editedBy: userId,
+      const correction = z.object({
+        checkTime: z.string().datetime({ offset: true }),
+        notes: z.string().trim().min(3).max(1000),
+        editReason: z.string().trim().min(3).max(1000).optional(),
+      }).strict().safeParse(req.body);
+      if (!correction.success) return res.status(400).json({ message: "حدد وقتًا صحيحًا وسببًا واضحًا للتعديل؛ لا يجوز تعديل هوية الموظف أو بيانات الجهاز." });
+      const updated = await attendanceSupport.correctAttendanceRecord(id, userId, {
+        checkTime: correction.data.checkTime, notes: correction.data.notes,
+        reason: correction.data.editReason || correction.data.notes,
       });
       res.json(updated);
     } catch {
@@ -8868,50 +8710,22 @@ export async function registerRoutes(
       if (!OVERRIDE_EXCUSES.includes(excuseType)) {
         return res.status(400).json({ message: "نوع العذر غير صحيح" });
       }
+      if (typeof note !== "string" || note.trim().length < 3 || note.length > 1000)
+        return res.status(400).json({ message: "سبب التصحيح مطلوب." });
+      if (excuseType === "medical_excuse") {
+        const attachment = await pool.query("SELECT id FROM attendance_medical_attachments WHERE record_id=$1 LIMIT 1", [id]);
+        if (!attachment.rowCount) return res.status(400).json({ message: "أرفق التقرير الطبي عبر رفع المرفقات الآمن قبل اعتماد العذر." });
+      }
       const before = await storage.getAttendanceRecord(id);
       if (!before) return res.status(404).json({ message: "السجل غير موجود" });
 
-      const updateData: any = {
-        overrideExcuse: excuseType,
-        overrideNote: note || null,
-        overrideBy: userId,
-        overrideAt: new Date(),
-        isManualEdit: true,
-        editedBy: userId,
-      };
       if (newCheckTime) {
-        const t = new Date(newCheckTime);
-        if (isNaN(t.getTime())) return res.status(400).json({ message: "وقت غير صحيح" });
-        updateData.checkTime = t;
+        if (!z.string().datetime({ offset: true }).safeParse(newCheckTime).success)
+          return res.status(400).json({ message: "وقت غير صحيح" });
       }
-      const updated = await storage.updateAttendanceRecord(id, updateData);
-
-      await storage.createAttendanceAuditLog({
-        recordId: id,
-        employeeId: before.employeeId,
-        action: "admin_override",
-        excuseType,
-        oldValue: { checkTime: before.checkTime, overrideExcuse: before.overrideExcuse },
-        newValue: { checkTime: updated?.checkTime, overrideExcuse: excuseType },
-        reason: note || null,
-        editedBy: userId,
+      const updated = await attendanceSupport.correctAttendanceRecord(id, userId, {
+        checkTime: newCheckTime, notes: note, reason: note, excuse: excuseType,
       });
-
-      // إجازة طارئة / عذر طبي ← إنشاء طلب إجازة معتمد لليوم نفسه (بلا أثر مالي)
-      if ((excuseType === "emergency_leave" || excuseType === "medical_excuse") && before.employeeId) {
-        const dayStr = new Date(before.checkTime).toISOString().slice(0, 10);
-        await storage.createLeaveRequest({
-          employeeId: before.employeeId,
-          leaveType: excuseType === "medical_excuse" ? "sick" : "emergency",
-          startDate: dayStr,
-          endDate: dayStr,
-          days: 1,
-          reason: note || "تدخل إداري — تصحيح سجل حضور",
-          status: "approved",
-          approvedBy: userId,
-          approvedDate: new Date().toISOString().slice(0, 10),
-        } as any);
-      }
 
       res.json(updated);
     } catch {
@@ -8925,9 +8739,9 @@ export async function registerRoutes(
       const { recordId, month } = req.query as { recordId?: string; month?: string };
       let from: string | undefined, to: string | undefined;
       if (month && /^\d{4}-\d{2}$/.test(month)) {
-        from = `${month}-01T00:00:00`;
+        from = `${month}-01T00:00:00+03:00`;
         const [y, m] = month.split("-").map(Number);
-        to = new Date(Date.UTC(y, m, 1)).toISOString();
+        to = new Date(Date.UTC(y, m, 1, -3) - 1).toISOString();
       }
       const logs = await storage.getAttendanceAuditLogs({
         recordId: recordId ? parseInt(recordId) : undefined,
@@ -8974,7 +8788,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/attendance/zones", requireRole("owner", "it"), async (req, res) => {
+  app.post("/api/attendance/zones", requireRole("owner", "it", "hr"), async (req, res) => {
     try {
       const zone = await storage.createLocationZone(req.body);
       res.json(zone);
@@ -8983,7 +8797,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/attendance/zones/:id", requireRole("owner", "it"), async (req, res) => {
+  app.patch("/api/attendance/zones/:id", requireRole("owner", "it", "hr"), async (req, res) => {
     try {
       const zone = await storage.updateLocationZone(parseInt(req.params.id), req.body);
       res.json(zone);
@@ -8992,7 +8806,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/attendance/zones/:id", requireRole("owner", "it"), async (req, res) => {
+  app.delete("/api/attendance/zones/:id", requireRole("owner", "it", "hr"), async (req, res) => {
     try {
       await storage.deleteLocationZone(parseInt(req.params.id));
       res.json({ success: true });
@@ -9001,7 +8815,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/attendance/device-report", requireRole("owner", "it"), async (_req, res) => {
+  app.get("/api/attendance/device-report", requireRole("owner", "it", "hr"), async (_req, res) => {
     try {
       const today = new Date();
       today.setHours(0, 0, 0, 0);

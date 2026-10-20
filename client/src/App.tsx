@@ -75,6 +75,7 @@ import FinanceVatReportPage from "@/pages/finance-vat-report";
 import FinanceBankReconciliationPage from "@/pages/finance-bank-reconciliation";
 import FinanceFiscalYearsPage from "@/pages/finance-fiscal-years";
 import FinanceSettingsPage from "@/pages/finance-settings";
+import HrWorkspace from "@/pages/hr-workspace";
 import AppLayout from "@/components/app-layout";
 import NotFound from "@/pages/not-found";
 import { getPermissionKeyForLocation } from "@shared/permissions";
@@ -361,6 +362,7 @@ function DashboardRoutes() {
 function Router() {
   return (
     <Switch>
+      <Route path="/hr" nest component={HrWorkspace} />
       <Route path="/" component={LandingPage} />
       <Route path="/login">{() => { window.location.replace("/employee-login"); return null; }}</Route>
       <Route path="/products" component={ProductsPage} />
@@ -397,6 +399,8 @@ function Router() {
 function FloatingContactWrapper() {
   const [location] = useLocation();
   const isPublicPage =
+    location !== "/hr" &&
+    !location.startsWith("/hr/") &&
     !location.startsWith("/dashboard") &&
     !location.startsWith("/login") &&
     !location.startsWith("/employee-login") &&
@@ -410,6 +414,7 @@ function FloatingContactWrapper() {
 
 function App() {
   const [showSplash, setShowSplash] = useState(() => {
+    if (window.location.pathname === "/hr" || window.location.pathname.startsWith("/hr/")) return false;
     if (sessionStorage.getItem("splashShown")) return false;
     return true;
   });

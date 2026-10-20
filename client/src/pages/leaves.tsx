@@ -3,6 +3,9 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLanguage } from "@/components/language-provider";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { HrDueTerminations } from "@/components/hr-action-panel";
+import { HrLeaveFormFields } from "@/components/hr-leave-form-fields";
+import type { LeaveFormInput } from "@shared/hr-leave-form";
 import type { LeaveRequest, Employee, AttendancePermission } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -31,10 +34,27 @@ const PERM_TYPES: Record<string, { ar: string; en: string }> = {
   remote: { ar: "عمل عن بعد", en: "Remote" },
 };
 
-type PendingData = {
-  leaves: (LeaveRequest & { employee: { nameAr: string; department: string } | null; history: { totalLeaves: number; totalPermissions: number; approved: number; rejected: number } })[];
-  permissions: (AttendancePermission & { employee: { nameAr: string; department: string } | null; history: { totalLeaves: number; totalPermissions: number; approved: number; rejected: number } })[];
+type ReviewHistory = {
+  totalLeaves:number; totalPermissions:number; approved:number; rejected:number;
+  leaves?:LeaveRequest[]; permissions?:AttendancePermission[];
+  decisions?:{id:number;kind:string;request_id:number;decision:string;note:string|null;created_at:string}[];
 };
+type PendingData = {
+  leaves: (LeaveRequest & { employee: { nameAr: string; department: string } | null; history: ReviewHistory })[];
+  permissions: (AttendancePermission & { employee: { nameAr: string; department: string } | null; history: ReviewHistory })[];
+};
+
+function ReviewerHistory({history}:{history:ReviewHistory}) {
+  const {t}=useLanguage();
+  return <details className="text-xs mt-2 max-w-md">
+    <summary className="cursor-pointer underline">{t("مراجعة السجل الكامل والقرارات", "Review full history and decisions")}</summary>
+    <div className="space-y-2 max-h-64 overflow-auto py-2">
+      {history.leaves?.map(r=><p key={`l${r.id}`}>#{r.id} · {r.leaveType} · {r.startDate} — {r.endDate} · {r.status} · {r.reason}</p>)}
+      {history.permissions?.map(r=><p key={`p${r.id}`}>#{r.id} · {r.type} · {r.date} · {r.startTime} — {r.endTime} · {r.hoursRequested} {t("ساعة","hours")} · {r.status} · {r.reason}</p>)}
+      {history.decisions?.map(r=><p key={`d${r.id}`}>{r.kind} #{r.request_id} · {r.decision} · {r.note} · {r.created_at}</p>)}
+    </div>
+  </details>;
+}
 
 type ReportRow = {
   employeeId: number; nameAr: string; department: string;
@@ -46,6 +66,7 @@ export default function LeavesPage() {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ employeeId: "", leaveType: "annual", startDate: "", endDate: "", reason: "" });
+  const [leaveFormData, setLeaveFormData] = useState<LeaveFormInput>({});
   const [balanceEmp, setBalanceEmp] = useState("");
   const [decisionTarget, setDecisionTarget] = useState<{ kind: "leave" | "permission"; id: number } | null>(null);
   const [decisionNote, setDecisionNote] = useState("");
@@ -81,8 +102,9 @@ export default function LeavesPage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/leaves", form),
+    mutationFn: () => apiRequest("POST", "/api/leaves", { ...form, leaveFormData }),
     onSuccess: () => {
+      setLeaveFormData({});
       queryClient.invalidateQueries({ queryKey: ["/api/leaves"] });
       queryClient.invalidateQueries({ queryKey: ["/api/pending-requests"] });
       setOpen(false);
@@ -125,6 +147,7 @@ export default function LeavesPage() {
 
   const decisionButtons = (kind: "leave" | "permission", id: number) => (
     <div className="flex flex-wrap gap-2">
+      {kind === "permission" && <a className="text-sm underline" href={`/api/hr-permissions/${id}/document`} target="_blank" rel="noreferrer">{t("النموذج الكامل / طباعة", "Full form / Print")}</a>}
       <Button size="sm" disabled={decideMutation.isPending} onClick={() => decideMutation.mutate({ kind, id, decision: "approve" })} data-testid={`button-approve-${kind}-${id}`}>{t("اعتماد", "Approve")}</Button>
       <Button size="sm" variant="outline" disabled={decideMutation.isPending} onClick={() => { setDecisionTarget({ kind, id }); setDecisionNote(""); }} data-testid={`button-reject-${kind}-${id}`}>{t("رفض / توضيح", "Reject / Clarify")}</Button>
     </div>
@@ -134,6 +157,7 @@ export default function LeavesPage() {
 
   return (
     <div className="space-y-6">
+      <HrDueTerminations />
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2" data-testid="text-leaves-title">
@@ -145,7 +169,7 @@ export default function LeavesPage() {
           <DialogTrigger asChild>
             <Button data-testid="button-new-leave"><Plus className="w-4 h-4 me-1" />{t("طلب إجازة", "New Request")}</Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="w-[96vw] max-w-3xl max-h-[94dvh] overflow-y-auto">
             <DialogHeader><DialogTitle>{t("طلب إجازة", "Leave Request")}</DialogTitle></DialogHeader>
             <div className="space-y-3">
               <div className="space-y-1">
@@ -180,6 +204,7 @@ export default function LeavesPage() {
                 <Label>{t("السبب (اختياري)", "Reason (optional)")}</Label>
                 <Textarea value={form.reason} onChange={e => setForm(f => ({ ...f, reason: e.target.value }))} data-testid="input-leave-reason" />
               </div>
+              <HrLeaveFormFields value={leaveFormData} onChange={setLeaveFormData} employees={employees} employeeId={Number(form.employeeId)} />
             </div>
             <DialogFooter>
               <Button onClick={() => createMutation.mutate()} disabled={createMutation.isPending || !form.employeeId || !form.startDate || !form.endDate} data-testid="button-submit-leave">
@@ -221,6 +246,7 @@ export default function LeavesPage() {
                     <td className="p-3 text-xs text-muted-foreground">
                       {t(`إجازات: ${l.history.totalLeaves} | استئذانات: ${l.history.totalPermissions} | مقبول: ${l.history.approved} | مرفوض: ${l.history.rejected}`,
                         `Leaves: ${l.history.totalLeaves} | Perms: ${l.history.totalPermissions} | OK: ${l.history.approved} | No: ${l.history.rejected}`)}
+                      <ReviewerHistory history={l.history} />
                     </td>
                     <td className="p-3">{statusBadge(l.status)}</td>
                     <td className="p-3">{decisionButtons("leave", l.id)}</td>
@@ -235,6 +261,7 @@ export default function LeavesPage() {
                     <td className="p-3 text-xs text-muted-foreground">
                       {t(`إجازات: ${p.history.totalLeaves} | استئذانات: ${p.history.totalPermissions} | مقبول: ${p.history.approved} | مرفوض: ${p.history.rejected}`,
                         `Leaves: ${p.history.totalLeaves} | Perms: ${p.history.totalPermissions} | OK: ${p.history.approved} | No: ${p.history.rejected}`)}
+                      <ReviewerHistory history={p.history} />
                     </td>
                     <td className="p-3">{statusBadge(p.status)}</td>
                     <td className="p-3">{decisionButtons("permission", p.id)}</td>

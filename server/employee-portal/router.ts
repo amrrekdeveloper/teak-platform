@@ -9,6 +9,7 @@ import {
 import { equalHash, normalizeEmployeePhone, otpHash, tokenHash } from "./security";
 import { sendEmployeeOtp } from "./sms";
 import { registerEmployeeServices } from "./services";
+import { registerEmployeeAcknowledgments } from "./acknowledgments";
 import { developmentOtpEnabled } from "./mode";
 import { toLatinDigits } from "../../shared/digits";
 
@@ -200,6 +201,7 @@ export function createEmployeePortalRouter() {
     res.json({ success: true });
   }));
   registerEmployeeServices(router);
+  registerEmployeeAcknowledgments(router);
   router.use((_req, res) => res.status(404).json({ message: "الخدمة غير موجودة." }));
   router.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err instanceof z.ZodError ? 400 : (err.status || 500);

@@ -1,7 +1,17 @@
-// تعريفات مسارات HR الموحّدة (WF-01..WF-10) — تُستخدم في الواجهة والخادم معاً
+// تعريفات مسارات HR الموحّدة (WF-02..WF-10). WF-01 غير معرّف ولا تُخترع له قواعد.
 // الحالات الموحّدة (القسم 3): pending / in_progress / approved / rejected / completed / cancelled
 
 export type HrStepRole = "manager" | "hr" | "owner" | "employee";
+
+export function canPerformAdministrativeHrStep(
+  role: string, step: HrStepRole, hasEmployee: boolean, hasManager: boolean, isAssignedManager: boolean,
+): boolean {
+  const hr = ["owner", "assistant", "hr"].includes(role);
+  if (step === "employee") return false;
+  if (step === "owner") return ["owner", "assistant"].includes(role);
+  if (step === "hr") return hr;
+  return hasEmployee && (hasManager ? isAssignedManager : hr);
+}
 
 export interface HrWorkflowStep {
   key: string;

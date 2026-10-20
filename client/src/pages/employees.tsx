@@ -4,6 +4,9 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLanguage } from "@/components/language-provider";
 import { useAuth } from "@/hooks/use-auth";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { toLatinDigits } from "@shared/digits";
+import { HrExpandedWorkspace, ReportPreview, type ReportData } from "@/components/hr-report";
+import { exportEmployeeWorkbook, employeeExportRow, employeeHeadings } from "@/lib/hr-employee-export";
 import { useToast } from "@/hooks/use-toast";
 import type { Employee, EmployeeAsset, HrAction } from "@shared/schema";
 import { HrActionCard, NewHrActionDialog } from "@/components/hr-action-panel";
@@ -106,6 +109,7 @@ interface EmployeeForm {
   department: string;
   monthlySalary: string;
   iqamaNumber: string;
+  dateOfBirth: string;
   iqamaExpiry: string;
   contractStart: string;
   contractEnd: string;
@@ -129,6 +133,7 @@ const emptyForm: EmployeeForm = {
   department: "production",
   monthlySalary: "",
   iqamaNumber: "",
+  dateOfBirth: "",
   iqamaExpiry: "",
   contractStart: "",
   contractEnd: "",
@@ -254,9 +259,14 @@ function FormFields({ data, onChange, users, jobTitlesList }: {
         </Select>
       </div>
       <div className="space-y-1">
-        <Label>{t("رقم الجوال", "Phone")}</Label>
-        <Input value={data.phone} onChange={e => onChange({ ...data, phone: e.target.value })}
-          placeholder="+966 5x xxx xxxx" data-testid="input-phone" dir="ltr" className="text-start" />
+        <Label>{t("رقم الجوال", "Phone")} *</Label>
+        <Input type="tel" inputMode="numeric" maxLength={15} value={data.phone}
+          onChange={e => onChange({ ...data, phone: toLatinDigits(e.target.value).replace(/[^0-9+]/g, "") })}
+          placeholder="05xxxxxxxx" data-testid="input-phone" dir="ltr" className="text-start" />
+      </div>
+      <div className="space-y-1">
+        <Label>{t("تاريخ الميلاد", "Date of birth")}</Label>
+        <Input type="date" value={data.dateOfBirth} onChange={e => onChange({ ...data, dateOfBirth: e.target.value })} data-testid="input-birth-date" />
       </div>
       <div className="space-y-1">
         <Label>{t("البريد الإلكتروني", "Email")}</Label>
@@ -269,7 +279,7 @@ function FormFields({ data, onChange, users, jobTitlesList }: {
           placeholder={t("مثال: المقر الرئيسي", "e.g. Main Office")} data-testid="input-finger-scan" />
       </div>
       <div className="space-y-1">
-        <Label>{t("حساب المستخدم", "User Account")}</Label>
+        <Label>{t("حساب إداري مرتبط (اختياري)", "Linked admin account (optional)")}</Label>
         <Select value={data.userId || "none"} onValueChange={v => onChange({ ...data, userId: v === "none" ? "" : v })}>
           <SelectTrigger data-testid="select-user"><SelectValue placeholder={t("بدون حساب", "No account")} /></SelectTrigger>
           <SelectContent>
@@ -281,6 +291,7 @@ function FormFields({ data, onChange, users, jobTitlesList }: {
             ))}
           </SelectContent>
         </Select>
+        <p className="text-xs text-muted-foreground">{t("لا يلزم حساب إداري لدخول الموظف للخدمة الذاتية.", "Self-service does not require an admin account.")}</p>
       </div>
       <div className="space-y-1">
         <Label>{t("المدير المباشر (اختياري)", "Direct Manager (optional)")}</Label>
@@ -1060,6 +1071,7 @@ function EmployeeDetailDialog({ emp, users, onClose }: { emp: Employee; users: a
     department: emp.department,
     monthlySalary: emp.monthlySalary?.toString() || "",
     iqamaNumber: emp.iqamaNumber || "",
+    dateOfBirth: emp.dateOfBirth || "",
     iqamaExpiry: emp.iqamaExpiry || "",
     contractStart: emp.contractStart || "",
     contractEnd: emp.contractEnd || "",
@@ -1112,6 +1124,7 @@ function EmployeeDetailDialog({ emp, users, onClose }: { emp: Employee; users: a
       insuranceExpiry: editForm.insuranceExpiry || null,
       fingerScanLocation: editForm.fingerScanLocation || null,
       phone: editForm.phone || null,
+      dateOfBirth: editForm.dateOfBirth || null,
       email: editForm.email || null,
       attendanceEnabled: editForm.attendanceEnabled,
     };
@@ -1125,7 +1138,7 @@ function EmployeeDetailDialog({ emp, users, onClose }: { emp: Employee; users: a
   };
 
   const serviceDuration = computeServiceDuration(emp.contractStart, t);
-  const canManageAccess = currentUser?.role === "owner" || currentUser?.role === "hr" || currentUser?.role === "it";
+  const canManageAccess = !currentUser?.maintenanceScope && (currentUser?.role === "owner" || currentUser?.role === "hr" || currentUser?.role === "it");
 
   return (
     <div className="space-y-3">
@@ -1264,6 +1277,11 @@ export default function EmployeesPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const [deleteEmpConfirm, setDeleteEmpConfirm] = useState<Employee | null>(null);
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
+  const [departmentFilter, setDepartmentFilter] = useState("all");
+  const [employeeDialogExpanded, setEmployeeDialogExpanded] = useState(false);
+  const [report, setReport] = useState<ReportData | null>(null);
+  const [exporting, setExporting] = useState(false);
   const [form, setForm] = useState<EmployeeForm>(emptyForm);
   const [sortKey, setSortKey] = useState<SortKey>("employeeNumber");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -1284,7 +1302,7 @@ export default function EmployeesPage() {
     onError: async (err: any) => {
       try {
         const r = await err.json?.();
-        toast({ title: r?.message || t("حدث خطأ في إضافة الموظف", "Error adding employee"), variant: "destructive" });
+        toast({ title: r?.message || err?.message || t("حدث خطأ في إضافة الموظف", "Error adding employee"), variant: "destructive" });
       } catch {
         toast({ title: t("حدث خطأ في إضافة الموظف", "Error adding employee"), variant: "destructive" });
       }
@@ -1292,14 +1310,14 @@ export default function EmployeesPage() {
   });
 
   const deleteEmpMutation = useMutation({
-    mutationFn: (id: number) => apiRequest("DELETE", `/api/employees/${id}`),
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/employees/${id}`, { confirmEmployeeNumber: deleteConfirmation }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/employees"] });
       setDeleteEmpConfirm(null);
       toast({ title: t("تم حذف سجل الموظف بنجاح", "Employee record deleted") });
     },
-    onError: () => {
-      toast({ title: t("خطأ في الحذف", "Delete failed"), variant: "destructive" });
+    onError: (error: Error) => {
+      toast({ title: error.message || t("خطأ في الحذف", "Delete failed"), variant: "destructive" });
     },
   });
 
@@ -1330,6 +1348,7 @@ export default function EmployeesPage() {
     const q = search.toLowerCase();
     return employees
       .filter(e => filter === "all" || e.status === filter)
+      .filter(e => departmentFilter === "all" || (e.department || "__none") === departmentFilter)
       .filter(e =>
         !q ||
         e.employeeNumber?.toLowerCase().includes(q) ||
@@ -1353,7 +1372,7 @@ export default function EmployeesPage() {
         if (av > bv) return sortDir === "asc" ? 1 : -1;
         return 0;
       });
-  }, [employees, filter, search, sortKey, sortDir, users]);
+  }, [employees, filter, search, sortKey, sortDir, users, departmentFilter]);
 
   const activeEmps = employees.filter(e => e.status === "active");
   const saudiCount = activeEmps.filter(e => e.nationality === "saudi").length;
@@ -1361,7 +1380,8 @@ export default function EmployeesPage() {
   const totalSalary = activeEmps.reduce((s, e) => s + parseFloat(e.monthlySalary?.toString() || "0"), 0);
 
   const isFormValid = (f: EmployeeForm) =>
-    f.fullNameAr.trim() && f.employeeNumber.trim() && f.position.trim() && f.monthlySalary && f.contractStart.length === 10;
+    f.fullNameAr.trim() && f.employeeNumber.trim() && f.position.trim() && f.monthlySalary && f.contractStart.length === 10 &&
+    /^(?:05\d{8}|(?:\+?966|00966)5\d{8})$/.test(toLatinDigits(f.phone));
 
   const handleCreate = () => {
     const data: any = {
@@ -1378,6 +1398,7 @@ export default function EmployeesPage() {
       insuranceExpiry: form.insuranceExpiry || null,
       fingerScanLocation: form.fingerScanLocation || null,
       phone: form.phone || null,
+      dateOfBirth: form.dateOfBirth || null,
       email: form.email || null,
       attendanceEnabled: form.attendanceEnabled,
     };
@@ -1396,6 +1417,7 @@ export default function EmployeesPage() {
   const thCls = "px-3 py-2.5 text-start text-xs font-semibold text-muted-foreground uppercase tracking-wide cursor-pointer select-none whitespace-nowrap hover:text-foreground transition-colors";
 
   return (
+    <HrExpandedWorkspace>
     <div className="space-y-5">
       {insuranceAlerts.length > 0 && (
         <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg p-3 flex items-start gap-3" data-testid="alert-insurance-expiry">
@@ -1437,6 +1459,22 @@ export default function EmployeesPage() {
       </div>
 
       <PrehireSection />
+      <div className="flex flex-wrap items-center gap-2">
+        <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
+          <SelectTrigger className="w-full sm:w-64" aria-label={t("القسم", "Department")}><SelectValue /></SelectTrigger>
+          <SelectContent><SelectItem value="all">{t("كل الأقسام", "All departments")} ({employees.length})</SelectItem>
+            {Array.from(new Set(employees.map(e => e.department || ""))).sort().map(d => <SelectItem key={d} value={d || "__none"}>{departmentLabels[d] ? t(departmentLabels[d].ar, departmentLabels[d].en) : d || t("غير محدد", "Unassigned")} ({employees.filter(e => (e.department || "") === d).length})</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Button variant="outline" disabled={exporting || isLoading} onClick={async () => {
+          setExporting(true);
+          try { await exportEmployeeWorkbook(employees, departmentFilter === "all" ? undefined : departmentFilter === "__none" ? "" : departmentFilter); }
+          catch (e) { toast({ title: t("تعذر تصدير Excel", "Excel export failed"), description: (e as Error).message, variant: "destructive" }); }
+          finally { setExporting(false); }
+        }}>{exporting ? <Loader2 className="w-4 h-4 animate-spin me-2" /> : <Download className="w-4 h-4 me-2" />}{t("Excel — المصنع / القسم", "Excel — master / department")}</Button>
+        <Button variant="outline" onClick={() => setReport({ title: t("تقرير الموظفين", "Employee report"), subtitle: `${t("عدد النتائج", "Results")}: ${filtered.length}`, headings: employeeHeadings, rows: filtered.map(employeeExportRow) })}>{t("طباعة النتائج / PDF", "Print results / PDF")}</Button>
+      </div>
+      <ReportPreview report={report} onClose={() => setReport(null)} />
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
@@ -1480,7 +1518,7 @@ export default function EmployeesPage() {
 
       <Card className="overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm" data-testid="table-employees">
+          <table className="w-full text-sm hr-responsive" data-testid="table-employees">
             <thead className="bg-muted/40 border-b">
               <tr>
                 <th className={thCls} onClick={() => handleSort("employeeNumber")}>
@@ -1523,13 +1561,13 @@ export default function EmployeesPage() {
 
                 return (
                   <tr key={emp.id} className="hover:bg-muted/30 transition-colors" data-testid={`row-employee-${emp.id}`}>
-                    <td className="px-3 py-3 font-mono text-xs text-muted-foreground" data-testid={`text-emp-number-${emp.id}`}>
+                    <td data-label={t("رقم الموظف", "Employee number")} className="px-3 py-3 font-mono text-xs text-muted-foreground" data-testid={`text-emp-number-${emp.id}`}>
                       <div>#{emp.employeeNumber}</div>
                       {!emp.attendanceEnabled && (
                         <span className="text-[9px] text-orange-500 font-medium">{t("حضور معطّل", "Attendance off")}</span>
                       )}
                     </td>
-                    <td className="px-3 py-3">
+                    <td data-label={t("الاسم", "Name")} className="px-3 py-3">
                       <div className="font-medium text-sm leading-tight">{userName}</div>
                       {emp.userId && (
                         <div className="text-xs text-muted-foreground mt-0.5">
@@ -1537,35 +1575,36 @@ export default function EmployeesPage() {
                         </div>
                       )}
                     </td>
-                    <td className="px-3 py-3 font-medium">{emp.position}</td>
-                    <td className="px-3 py-3 text-muted-foreground">{t(dept.ar, dept.en)}</td>
-                    <td className="px-3 py-3 text-sm text-muted-foreground">{serviceDuration}</td>
-                    <td className="px-3 py-3 font-semibold tabular-nums text-end" data-testid={`text-salary-${emp.id}`}>
+                    <td data-label={t("المسمى", "Position")} className="px-3 py-3 font-medium">{emp.position}</td>
+                    <td data-label={t("القسم", "Department")} className="px-3 py-3 text-muted-foreground">{t(dept.ar, dept.en)}</td>
+                    <td data-label={t("مدة الخدمة", "Service")} className="px-3 py-3 text-sm text-muted-foreground">{serviceDuration}</td>
+                    <td data-label={t("الراتب", "Salary")} className="px-3 py-3 font-semibold tabular-nums text-end" data-testid={`text-salary-${emp.id}`}>
                       {salary.toLocaleString()}
                     </td>
-                    <td className="px-3 py-3">
+                    <td data-label={t("الحالة", "Status")} className="px-3 py-3">
                       <Badge className={`${status.cls} text-[10px]`} data-testid={`badge-status-${emp.id}`}>
                         {t(status.ar, status.en)}
                       </Badge>
                     </td>
-                    <td className="px-3 py-3 text-center">
+                    <td data-label={t("إجراءات", "Actions")} className="px-3 py-3 text-center">
                       <div className="flex items-center justify-center gap-1">
                         {(currentUser?.role === "owner" || currentUser?.role === "assistant" || currentUser?.role === "hr") && (
-                          <Button size="icon" variant="ghost" className="h-7 w-7" asChild
+                          <Button size="icon" variant="ghost" className="h-10 w-10" aria-label={t("عرض ملف الموظف", "View employee file")} asChild
                             data-testid={`button-view-employee-${emp.id}`}>
                             <Link href={`/employees/${emp.id}`}>
                               <Eye className="w-3.5 h-3.5" />
                             </Link>
                           </Button>
                         )}
-                        <Button size="icon" variant="ghost" className="h-7 w-7"
+                        <Button size="icon" variant="ghost" className="h-10 w-10" aria-label={t("تعديل الموظف", "Edit employee")}
                           onClick={() => setSelectedEmployee(emp)} data-testid={`button-edit-employee-${emp.id}`}>
                           <Pencil className="w-3.5 h-3.5" />
                         </Button>
                         {(currentUser?.role === "owner" || currentUser?.role === "hr" || currentUser?.role === "it" || currentUser?.role === "assistant") && (
                           <Button size="icon" variant="ghost"
-                            className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
-                            onClick={() => setDeleteEmpConfirm(emp)}
+                            className="h-10 w-10 text-destructive hover:text-destructive hover:bg-destructive/10"
+                            aria-label={t("حذف سجل غير مستخدم", "Delete unused record")}
+                            onClick={() => { setDeleteConfirmation(""); setDeleteEmpConfirm(emp); }}
                             data-testid={`button-delete-employee-${emp.id}`}>
                             <Trash2 className="w-3.5 h-3.5" />
                           </Button>
@@ -1586,10 +1625,11 @@ export default function EmployeesPage() {
       </Card>
 
       <Dialog open={!!selectedEmployee} onOpenChange={open => { if (!open) setSelectedEmployee(null); }}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className={employeeDialogExpanded ? "w-[98vw] max-w-[98vw] h-[96dvh] overflow-y-auto" : "w-[96vw] max-w-2xl max-h-[94dvh] overflow-y-auto"}>
           <DialogHeader>
             <DialogTitle>{t("ملف الموظف", "Employee Profile")} — #{selectedEmployee?.employeeNumber}</DialogTitle>
           </DialogHeader>
+          <Button variant="outline" size="sm" onClick={() => setEmployeeDialogExpanded(v => !v)}>{employeeDialogExpanded ? t("تصغير مساحة العمل", "Compact workspace") : t("توسيع البيانات والمستندات والعهد", "Expand information, documents & assets")}</Button>
           {selectedEmployee && (
             <EmployeeDetailDialog emp={selectedEmployee} users={users} onClose={() => setSelectedEmployee(null)} />
           )}
@@ -1604,7 +1644,7 @@ export default function EmployeesPage() {
       </Dialog>
 
       {/* Delete Employee Confirmation Dialog */}
-      <Dialog open={!!deleteEmpConfirm} onOpenChange={(open) => { if (!open) setDeleteEmpConfirm(null); }}>
+      <Dialog open={!!deleteEmpConfirm} onOpenChange={(open) => { setDeleteConfirmation(""); if (!open) setDeleteEmpConfirm(null); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-destructive">
@@ -1616,10 +1656,11 @@ export default function EmployeesPage() {
             <div className="space-y-4">
               <p className="text-muted-foreground text-sm">
                 {t(
-                  `سيتم حذف سجل الموظف رقم #${deleteEmpConfirm.employeeNumber} نهائياً بما يشمل وثائقه وسجل التدقيق. هذا الإجراء لا يمكن التراجع عنه.`,
-                  `Employee record #${deleteEmpConfirm.employeeNumber} and all associated documents will be permanently deleted. This cannot be undone.`
+                  `الحذف نهائي ومتاح فقط للسجل غير المستخدم قبل بدء العمل دون أي تاريخ مرتبط. للموظف الفعلي استخدم التعطيل أو إجراء الإنهاء. اكتب رقم الموظف ${deleteEmpConfirm.employeeNumber} للتأكيد.`,
+                  `Permanent deletion is only allowed for unused pre-employment records without history. Deactivate or terminate real employees instead. Type ${deleteEmpConfirm.employeeNumber} to confirm.`
                 )}
               </p>
+              <Input aria-label={t("تأكيد رقم الموظف", "Confirm employee number")} value={deleteConfirmation} onChange={e => setDeleteConfirmation(e.target.value)} autoComplete="off" />
               <div className="flex gap-2 justify-end">
                 <Button variant="outline" onClick={() => setDeleteEmpConfirm(null)} data-testid="button-cancel-delete-emp">
                   {t("إلغاء", "Cancel")}
@@ -1627,7 +1668,7 @@ export default function EmployeesPage() {
                 <Button
                   variant="destructive"
                   onClick={() => deleteEmpMutation.mutate(deleteEmpConfirm.id)}
-                  disabled={deleteEmpMutation.isPending}
+                  disabled={deleteEmpMutation.isPending || deleteConfirmation !== deleteEmpConfirm.employeeNumber}
                   data-testid="button-confirm-delete-emp"
                 >
                   {deleteEmpMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : t("حذف نهائي", "Delete")}
@@ -1638,6 +1679,7 @@ export default function EmployeesPage() {
         </DialogContent>
       </Dialog>
     </div>
+    </HrExpandedWorkspace>
   );
 }
 

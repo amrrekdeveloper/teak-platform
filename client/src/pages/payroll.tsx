@@ -3,6 +3,8 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLanguage } from "@/components/language-provider";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
+import { HrExpandedWorkspace } from "@/components/hr-report";
 import type { PayrollRecord, Employee } from "@shared/schema";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -21,10 +23,15 @@ const fmt = (v: any) => Number(v || 0).toLocaleString("en-US", { minimumFraction
 export default function PayrollPage() {
   const { t } = useLanguage();
   const { toast } = useToast();
+  const { user } = useAuth();
+  const canPay = ["owner", "accountant"].includes(user?.role || "");
+  const canPrepare = ["owner", "hr"].includes(user?.role || "");
+  const [selected, setSelected] = useState<number[]>([]);
+  const [bulkResults, setBulkResults] = useState<{ id: number; ok: boolean; message: string }[]>([]);
   const [period, setPeriod] = useState(currentPeriod());
   const [edits, setEdits] = useState<Record<number, { allowances: string; deductions: string }>>({});
 
-  const { data: records = [], isLoading } = useQuery<PayrollRecord[]>({
+  const { data: records = [], isLoading, error: loadError } = useQuery<PayrollRecord[]>({
     queryKey: ["/api/payroll", period],
     queryFn: async () => {
       const res = await fetch(`/api/payroll?period=${encodeURIComponent(period)}`, { credentials: "include" });
@@ -34,6 +41,18 @@ export default function PayrollPage() {
   });
 
   const { data: employees = [] } = useQuery<Employee[]>({ queryKey: ["/api/employees"] });
+  const bulkMutation = useMutation({
+    mutationFn: async (action: "approve" | "pay") => {
+      const response = await apiRequest("POST", "/api/payroll/bulk", { ids: selected, action });
+      return response.json();
+    },
+    onSuccess: (data: { results: { id: number; ok: boolean; message: string }[] }) => {
+      setBulkResults(data.results);
+      setSelected(data.results.filter(r => !r.ok).map(r => r.id));
+      queryClient.invalidateQueries({ queryKey: ["/api/payroll", period] });
+    },
+    onError: (error: Error) => toast({ title: error.message, variant: "destructive" }),
+  });
   const empName = (id: number) => {
     const e = employees.find(x => x.id === id);
     return e?.fullNameAr || e?.fullNameEn || `#${id}`;
@@ -94,6 +113,7 @@ export default function PayrollPage() {
   const draftCount = records.filter(r => r.status === "draft").length;
 
   return (
+    <HrExpandedWorkspace>
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
@@ -105,14 +125,15 @@ export default function PayrollPage() {
         <div className="flex items-end gap-2">
           <div className="space-y-1">
             <Label className="text-xs">{t("الشهر", "Month")}</Label>
-            <Input type="month" value={period} onChange={e => setPeriod(e.target.value)} className="w-40" data-testid="input-payroll-period" />
+            <Input type="month" value={period} onChange={e => { setPeriod(e.target.value); setSelected([]); setBulkResults([]); setEdits({}); }} className="w-40" data-testid="input-payroll-period" />
           </div>
-          <Button onClick={() => generateMutation.mutate()} disabled={generateMutation.isPending} data-testid="button-generate-payroll">
+          {canPrepare && <Button onClick={() => generateMutation.mutate()} disabled={generateMutation.isPending} data-testid="button-generate-payroll">
             {generateMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : t("إنشاء المسيّر", "Generate")}
-          </Button>
+          </Button>}
         </div>
       </div>
 
+      {loadError && <p role="alert" className="rounded-lg border border-destructive p-3 text-destructive">{t("تعذر تحميل مسير الرواتب. أعد المحاولة؛ لا تُعتبر القائمة الفارغة نتيجة صحيحة.", "Payroll could not be loaded. Retry; an empty list is not a valid result.")}</p>}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Card><CardContent className="p-4 flex items-center gap-3">
           <Users className="w-8 h-8 text-muted-foreground" />
@@ -132,6 +153,18 @@ export default function PayrollPage() {
         </CardContent></Card>
       </div>
 
+      <div className="rounded-lg border p-4 space-y-3">
+        <p className="text-sm">{t("حدد السجلات غير المدفوعة والخالية من تعديلات غير محفوظة. الاعتماد لا يعني الصرف.", "Select unpaid records without unsaved edits. Approval does not disburse funds.")}</p>
+        <div className="flex flex-wrap items-center gap-3">
+          {canPrepare && <Button variant="outline" onClick={() => setSelected(records.filter(r => r.status === "draft" && !edits[r.id]).map(r => r.id))}>{t("تحديد كل المؤهل للاعتماد", "Select all eligible for approval")}</Button>}
+          {canPay && <Button variant="outline" onClick={() => setSelected(records.filter(r => String(r.status) === "approved" && !edits[r.id]).map(r => r.id))}>{t("تحديد كل المؤهل للصرف", "Select all eligible for payment")}</Button>}
+          <Button variant="ghost" onClick={() => setSelected([])}>{t("مسح التحديد", "Clear selection")}</Button>
+          <span>{t("المحدد", "Selected")}: {selected.length}</span>
+          {canPrepare && <Button disabled={!selected.length || bulkMutation.isPending || selected.some(id => !!edits[id] || records.find(r => r.id === id)?.status !== "draft")} onClick={() => bulkMutation.mutate("approve")}>{t("اعتماد المحدد", "Approve selected")}</Button>}
+          {canPay && <Button disabled={!selected.length || bulkMutation.isPending || selected.some(id => !!edits[id] || String(records.find(r => r.id === id)?.status) !== "approved")} onClick={() => { if (window.confirm(t(`تأكيد صرف ${selected.length} راتب وتسجيل القيود؟`, `Pay ${selected.length} salaries and post journals?`))) bulkMutation.mutate("pay"); }}>{t("صرف المحدد", "Pay selected")}</Button>}
+        </div>
+        {bulkResults.length > 0 && <ul aria-live="polite" className="space-y-2">{bulkResults.map(result => <li key={result.id} className={result.ok ? "text-green-700" : "text-destructive"}>{empName(records.find(r => r.id === result.id)?.employeeId || 0)} — {result.ok ? t("نجح", "Success") : t("فشل", "Failed")}: {result.message}</li>)}</ul>}
+      </div>
       <Card>
         <CardContent className="p-0 overflow-x-auto">
           {isLoading ? (
@@ -141,9 +174,10 @@ export default function PayrollPage() {
               {t("لا توجد سجلات لهذا الشهر. اضغط \"إنشاء المسيّر\" لإنشائها.", "No records for this month. Click \"Generate\" to create them.")}
             </div>
           ) : (
-            <table className="w-full text-sm">
+            <table className="w-full text-sm hr-responsive">
               <thead className="border-b bg-muted/40">
                 <tr className="text-start">
+                  <th className="p-3">{t("تحديد", "Select")}</th>
                   <th className="p-3 text-start font-medium">{t("الموظف", "Employee")}</th>
                   <th className="p-3 text-start font-medium">{t("الأساسي", "Basic")}</th>
                   <th className="p-3 text-start font-medium">{t("بدلات", "Allowances")}</th>
@@ -160,26 +194,27 @@ export default function PayrollPage() {
                   const dirty = !!edits[r.id];
                   return (
                     <tr key={r.id} className="border-b last:border-0" data-testid={`row-payroll-${r.id}`}>
-                      <td className="p-3 font-medium" data-testid={`text-emp-${r.id}`}>{empName(r.employeeId)}</td>
-                      <td className="p-3">{fmt(r.basicSalary)}</td>
-                      <td className="p-3">
-                        <Input type="number" min="0" value={editVal(r, "allowances")} disabled={isPaid}
+                      <td data-label={t("تحديد", "Select")} className="p-3"><input type="checkbox" className="w-5 h-5" aria-label={`${t("تحديد", "Select")} ${empName(r.employeeId)}`} disabled={isPaid || dirty || bulkMutation.isPending} checked={selected.includes(r.id)} onChange={e => setSelected(ids => e.target.checked ? [...ids, r.id] : ids.filter(id => id !== r.id))} /></td>
+                      <td data-label={t("الموظف", "Employee")} className="p-3 font-medium" data-testid={`text-emp-${r.id}`}>{empName(r.employeeId)}</td>
+                      <td data-label={t("الأساسي", "Basic")} className="p-3">{fmt(r.basicSalary)}</td>
+                      <td data-label={t("بدلات", "Allowances")} className="p-3">
+                        <Input aria-label={t("بدلات", "Allowances")} type="number" min="0" value={editVal(r, "allowances")} disabled={r.status !== "draft" || !canPrepare}
                           onChange={e => setEdit(r, "allowances", e.target.value)} className="w-24 h-8" data-testid={`input-allowances-${r.id}`} />
                       </td>
-                      <td className="p-3">
-                        <Input type="number" min="0" value={editVal(r, "deductions")} disabled={isPaid}
+                      <td data-label={t("خصومات", "Deductions")} className="p-3">
+                        <Input aria-label={t("خصومات", "Deductions")} type="number" min="0" value={editVal(r, "deductions")} disabled={r.status !== "draft" || !canPrepare}
                           onChange={e => setEdit(r, "deductions", e.target.value)} className="w-24 h-8" data-testid={`input-deductions-${r.id}`} />
                       </td>
-                      <td className="p-3 text-muted-foreground" data-testid={`text-advance-${r.id}`}>{fmt(r.advanceDeduction)}</td>
-                      <td className="p-3 font-semibold" data-testid={`text-net-${r.id}`}>{fmt(isPaid ? r.netSalary : previewNet(r))}</td>
-                      <td className="p-3">
+                      <td data-label={t("سلفة", "Advance")} className="p-3 text-muted-foreground" data-testid={`text-advance-${r.id}`}>{fmt(r.advanceDeduction)}</td>
+                      <td data-label={t("الصافي", "Net")} className="p-3 font-semibold" data-testid={`text-net-${r.id}`}>{fmt(isPaid ? r.netSalary : previewNet(r))}</td>
+                      <td data-label={t("الحالة", "Status")} className="p-3">
                         {isPaid ? (
                           <Badge variant="outline" className="gap-1 border-green-500 text-green-600 dark:text-green-400"><CheckCircle2 className="w-3 h-3" />{t("مدفوع", "Paid")}</Badge>
                         ) : (
-                          <Badge variant="outline" className="gap-1 border-amber-500 text-amber-600 dark:text-amber-400"><Clock className="w-3 h-3" />{t("مسودة", "Draft")}</Badge>
+                          <Badge variant="outline" className="gap-1 border-amber-500 text-amber-600 dark:text-amber-400"><Clock className="w-3 h-3" />{String(r.status) === "approved" ? t("معتمد", "Approved") : t("مسودة", "Draft")}</Badge>
                         )}
                       </td>
-                      <td className="p-3">
+                      <td data-label={t("إجراءات", "Actions")} className="p-3">
                         {!isPaid && (
                           <div className="flex gap-2">
                             {dirty && (
@@ -189,10 +224,10 @@ export default function PayrollPage() {
                                 {t("حفظ", "Save")}
                               </Button>
                             )}
-                            <Button size="sm" disabled={dirty || payMutation.isPending}
-                              onClick={() => payMutation.mutate(r.id)} data-testid={`button-pay-${r.id}`}>
+                            {canPay && <Button size="sm" disabled={String(r.status) !== "approved" || dirty || payMutation.isPending || bulkMutation.isPending}
+                              onClick={() => { if (window.confirm(t("تأكيد صرف الراتب وتسجيل القيد؟", "Pay salary and post journal?"))) payMutation.mutate(r.id); }} data-testid={`button-pay-${r.id}`}>
                               {t("صرف", "Pay")}
-                            </Button>
+                            </Button>}
                           </div>
                         )}
                       </td>
@@ -205,5 +240,6 @@ export default function PayrollPage() {
         </CardContent>
       </Card>
     </div>
+    </HrExpandedWorkspace>
   );
 }

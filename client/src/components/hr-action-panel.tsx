@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLanguage } from "@/components/language-provider";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { HrCommencementDocument } from "@/components/hr-commencement-document";
 import type { HrAction } from "@shared/schema";
 import { HR_WORKFLOWS, HR_STATUS_LABELS, type HrWorkflowDef } from "@shared/hr-workflows";
 import { Card, CardContent } from "@/components/ui/card";
@@ -120,6 +121,7 @@ export function HrActionCard({ action, employeeName, queryKey }: { action: HrAct
         </div>
 
         {/* Steps progress */}
+        {action.workflow === "wf03" && <HrCommencementDocument action={action} />}
         <div className="flex flex-wrap items-center gap-1.5">
           {def.steps.map((s, i) => {
             const done = action.status === "completed" || i < action.currentStep;
@@ -162,7 +164,7 @@ export function HrActionCard({ action, employeeName, queryKey }: { action: HrAct
           </div>
         )}
 
-        {active && curStep && missingRequired.length > 0 && (
+        {active && curStep?.role === "hr" && curStep.kind === "execute" && missingRequired.length > 0 && (
           <div className="rounded-md border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-3 space-y-2">
             <p className="text-xs font-semibold text-amber-700 dark:text-amber-300">
               {t("حقول إلزامية يجب تعبئتها قبل الإكمال النهائي", "Required fields to fill before final completion")}
@@ -191,7 +193,13 @@ export function HrActionCard({ action, employeeName, queryKey }: { action: HrAct
           </div>
         )}
 
-        {active && curStep && (
+        {active && curStep?.role === "employee" && (
+          <p className="text-sm text-muted-foreground border-t pt-2">
+            {t("بانتظار إقرار الموظف من بوابته الشخصية. الإقرار الإلكتروني العادي ليس توقيعاً رقمياً مؤهلاً، ولا يجوز للموارد البشرية تنفيذه نيابةً عنه.",
+              "Awaiting the employee's own portal acknowledgment. Ordinary electronic acknowledgment is not a qualified digital signature; HR cannot sign on their behalf.")}
+          </p>
+        )}
+        {active && curStep && curStep.role !== "employee" && (
           <div className="flex flex-wrap items-center gap-2 pt-1 border-t">
             <span className="text-xs text-muted-foreground">
               {t("الخطوة الحالية:", "Current step:")} <b>{t(curStep.labelAr, curStep.labelEn)}</b>
@@ -199,7 +207,7 @@ export function HrActionCard({ action, employeeName, queryKey }: { action: HrAct
             <div className="flex gap-1.5 ms-auto">
               <Button size="sm" className="h-7"
                 onClick={() => stepMut.mutate({ decision: "complete", ...(Object.keys(fillFd).length ? { formData: fillFd } : {}) })}
-                disabled={stepMut.isPending || (isLastStep && missingRequired.length > 0 && missingStillEmpty)}
+                disabled={stepMut.isPending || ((isLastStep || curStep.kind === "execute") && missingRequired.length > 0 && missingStillEmpty)}
                 data-testid={`button-complete-step-${action.id}`}>
                 {stepMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : curStep.kind === "acknowledge" ? <PenLine className="w-3.5 h-3.5 me-1" /> : <CheckCircle2 className="w-3.5 h-3.5 me-1" />}
                 {curStep.kind === "acknowledge" ? t("إقرار/توقيع", "Sign") : curStep.kind === "approve" ? t("اعتماد", "Approve") : t("تنفيذ", "Execute")}
@@ -207,6 +215,10 @@ export function HrActionCard({ action, employeeName, queryKey }: { action: HrAct
               <Button size="sm" variant="destructive" className="h-7" onClick={() => setRejectOpen(true)} disabled={stepMut.isPending} data-testid={`button-reject-step-${action.id}`}>
                 <XCircle className="w-3.5 h-3.5 me-1" />{t("رفض", "Reject")}
               </Button>
+              {["manager", "hr"].includes(curStep.role) && <Button size="sm" variant="outline" className="h-7" disabled={stepMut.isPending}
+                onClick={() => { const note = window.prompt(t("سبب طلب التوضيح", "Clarification reason")); if (note?.trim()) stepMut.mutate({decision:"clarify",note}); }}>
+                {t("طلب توضيح", "Clarify")}
+              </Button>}
               <Button size="sm" variant="outline" className="h-7" onClick={() => stepMut.mutate({ decision: "cancel" })} disabled={stepMut.isPending} data-testid={`button-cancel-action-${action.id}`}>
                 <Ban className="w-3.5 h-3.5 me-1" />{t("إلغاء", "Cancel")}
               </Button>
@@ -339,4 +351,20 @@ export function HrWorkflowSection({ workflows, employeeId, employeeName }: {
       )}
     </div>
   );
+}
+
+export function HrDueTerminations() {
+  const {t}=useLanguage();
+  const queryKey=["/api/hr-actions","due"];
+  const {data=[],error,isLoading}=useQuery<HrAction[]>({
+    queryKey,
+    queryFn:async()=>{const r=await fetch("/api/hr-actions?due=true",{credentials:"include"});if(!r.ok)throw new Error(t("تعذر تحميل الاستحقاقات","Unable to load due actions"));return r.json();},
+  });
+  return <Card><CardContent className="p-4 space-y-3">
+    <h2 className="font-semibold">{t("إنهاءات مجدولة حل موعد مراجعتها","Scheduled terminations due for review")}</h2>
+    <p className="text-sm text-muted-foreground">{t("تتطلب إجراءً صريحاً من HR ثم اعتماد الإدارة وإقرار الموظف. حلول الموعد لا يعتمد أي خطوة تلقائياً.","Explicit HR preparation, management approval and employee acknowledgment remain required. Reaching the date approves nothing automatically.")}</p>
+    {error && <p role="alert">{error.message}</p>}
+    {isLoading ? <Loader2 className="animate-spin" /> : !data.length && <p className="text-sm">{t("لا توجد إجراءات مستحقة","No actions due")}</p>}
+    {data.map(action=><div key={action.id}><p className="text-sm">#{action.employeeId}</p><HrActionCard action={action} queryKey={queryKey}/></div>)}
+  </CardContent></Card>;
 }

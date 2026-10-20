@@ -193,7 +193,6 @@ export interface IStorage {
   getPayrollRecordByEmployeePeriod(employeeId: number, period: string): Promise<PayrollRecord | undefined>;
   createPayrollRecord(record: InsertPayrollRecord): Promise<PayrollRecord>;
   updatePayrollRecord(id: number, data: Partial<InsertPayrollRecord>): Promise<PayrollRecord | undefined>;
-  markPayrollPaid(id: number, paidDate: string): Promise<PayrollRecord | undefined>;
 
   // Employee Advances (السلف)
   getEmployeeAdvances(employeeId?: number): Promise<EmployeeAdvance[]>;
@@ -877,23 +876,26 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createPayrollRecord(record: InsertPayrollRecord): Promise<PayrollRecord> {
-    const [created] = await db.insert(payrollRecords).values(record).returning();
-    return created;
+    const [created] = await db.insert(payrollRecords).values(record).onConflictDoNothing({
+      target: [payrollRecords.employeeId, payrollRecords.period],
+    }).returning();
+    return created ?? (await this.getPayrollRecordByEmployeePeriod(record.employeeId, record.period))!;
   }
 
   async updatePayrollRecord(id: number, data: Partial<InsertPayrollRecord>): Promise<PayrollRecord | undefined> {
-    const [updated] = await db.update(payrollRecords).set(data).where(eq(payrollRecords.id, id)).returning();
-    return updated;
-  }
-
-  async markPayrollPaid(id: number, paidDate: string): Promise<PayrollRecord | undefined> {
-    // Conditional transition: only a 'draft' record becomes 'paid'. A concurrent
-    // second call matches no rows and returns undefined (no double-pay).
-    const [updated] = await db.update(payrollRecords)
-      .set({ status: "paid", paidDate })
-      .where(and(eq(payrollRecords.id, id), eq(payrollRecords.status, "draft")))
-      .returning();
-    return updated;
+    return db.transaction(async tx => {
+      const [row] = await tx.select().from(payrollRecords).where(eq(payrollRecords.id, id)).for("update");
+      if (!row || row.status !== "draft") return undefined;
+      const merged = { ...row, ...data };
+      const netCents = Math.round(Number(merged.basicSalary) * 100) + Math.round(Number(merged.allowances) * 100)
+        - Math.round(Number(merged.deductions) * 100) - Math.round(Number(row.advanceDeduction) * 100);
+      if (!Number.isSafeInteger(netCents) || netCents < 0) throw new Error("Payroll deductions exceed salary");
+      const [updated] = await tx.update(payrollRecords).set({
+        basicSalary: merged.basicSalary, allowances: merged.allowances, deductions: merged.deductions,
+        notes: merged.notes, netSalary: (netCents / 100).toFixed(2),
+      }).where(eq(payrollRecords.id, id)).returning();
+      return updated;
+    });
   }
 
   // ===== Employee Advances (السلف) =====
@@ -922,7 +924,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateEmployeeAdvance(id: number, data: Partial<InsertEmployeeAdvance>): Promise<EmployeeAdvance | undefined> {
-    const [updated] = await db.update(employeeAdvances).set(data).where(eq(employeeAdvances.id, id)).returning();
+    const [updated] = await db.update(employeeAdvances).set(data)
+      .where(and(eq(employeeAdvances.id, id), eq(employeeAdvances.status, "pending"))).returning();
     return updated;
   }
 

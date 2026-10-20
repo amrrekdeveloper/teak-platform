@@ -1,6 +1,7 @@
 import type { RequestHandler } from "express";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { isHrWorkspaceApi, isHrWorkspacePage, isManagerApi } from "../shared/hr-access";
 
 // Disable ONLY when the owner requests reopening, then republish.
 // The deadline is fixed, not relative to server startup or a visitor's session.
@@ -34,8 +35,9 @@ export function createMaintenanceMiddleware(
   const employeeFiles = new Map([
     ["/employee-self-service", "employee-portal.html"],
     ["/technical-support", "technical-support.html"],
+    ["/manager-portal", "manager-portal.html"],
   ]);
-  const employeePages = new Map([...employeeFiles].map(([url, file]) =>
+  const employeePages = new Map(Array.from(employeeFiles).map(([url, file]) =>
     [url, readFileSync(path.join(publicDir, file), "utf8")]));
 
   return (req, res, next) => {
@@ -46,6 +48,18 @@ export function createMaintenanceMiddleware(
     // This isolated API is the ONLY application surface available during
     // maintenance. It never mounts administrative session middleware.
     if (req.path.startsWith("/api/employee-portal/")) return next();
+    if (isHrWorkspaceApi(req.method, req.path) || isManagerApi(req.method, req.path)) {
+      res.locals.hrMaintenanceRequest = true;
+      return next(); // Authentication + fresh role check follow session loading.
+    }
+    if (req.method === "GET" || req.method === "HEAD") {
+      if (isHrWorkspacePage(req.path)) return next();
+      // Only SPA assets needed to render the isolated HR shell. This does not
+      // permit navigation to ERP pages or access to their APIs.
+      const devAsset = reloadTemplates && /^\/(?:@vite\/client$|@react-refresh$|@replit\/vite-plugin-dev-banner\/banner-script\.js$|src\/|node_modules\/\.vite\/|@fs\/)/.test(req.path);
+      if (devAsset || /^\/assets\/[^?]+\.(?:js|css|png|jpg|jpeg|svg|webp|woff2?|ttf)$/.test(req.path))
+        return next();
+    }
     // A short retry hint is not an automatic reopening promise.
     res.set("Retry-After", "3600");
     if (req.method === "GET" || req.method === "HEAD") {

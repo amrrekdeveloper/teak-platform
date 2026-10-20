@@ -7,6 +7,10 @@ import { pool } from "./db";
 import { storage } from "./storage";
 import type { User } from "@shared/schema";
 import { computeEffectivePermissions, isProtectedOwner } from "@shared/permissions";
+import { HR_WORKSPACE_PERMISSIONS } from "../shared/hr-access";
+import { enforceHrWorkspaceScope, hasManagerAssignment } from "./hr-access";
+import { takeLimit } from "./employee-portal/database";
+import { tokenHash } from "./employee-portal/security";
 
 const scryptAsync = promisify(scrypt);
 
@@ -37,6 +41,8 @@ declare module "express-session" {
   interface SessionData {
     userId: number;
     adminAuthenticated?: boolean;
+    hrWorkspace?: boolean;
+    managerWorkspace?: boolean;
   }
 }
 
@@ -63,18 +69,25 @@ export function setupAuth(app: Express) {
       },
     })
   );
+  app.use(enforceHrWorkspaceScope);
 
-  app.post("/api/auth/login", async (req: Request, res: Response) => {
+  app.post(["/api/auth/login", "/api/hr-access/login", "/api/manager-access/login"], async (req: Request, res: Response) => {
     try {
+      const hrLogin = req.path === "/api/hr-access/login";
+      const managerLogin = req.path === "/api/manager-access/login";
       const { username, password } = req.body;
-      if (!username || !password) {
+      if (typeof username !== "string" || typeof password !== "string" ||
+        !username.trim() || !password || username.length > 100 || password.length > 256) {
         return res.status(400).json({
           message: "اسم المستخدم وكلمة المرور مطلوبان",
           messageEn: "Username and password are required",
         });
       }
+      if ((hrLogin || managerLogin) && (!await takeLimit(`hr-login-ip:${tokenHash(req.ip || "unknown")}`, 30, 900) ||
+        !await takeLimit(`hr-login-user:${tokenHash(username.trim().toLowerCase())}`, 10, 900)))
+        return res.status(429).json({ message: "محاولات دخول متكررة. حاول بعد 15 دقيقة." });
 
-      const user = await storage.getUserByUsername(username);
+      const user = await storage.getUserByUsername(username.trim());
       if (!user || !(await comparePasswords(password, user.password))) {
         return res.status(401).json({
           message: "اسم المستخدم أو كلمة المرور غير صحيحة",
@@ -82,21 +95,28 @@ export function setupAuth(app: Express) {
         });
       }
 
-      if (!user.active) {
+      if (!user.active || user.archived) {
         return res.status(403).json({
           message: "الحساب معطل. يرجى التواصل مع المسؤول",
           messageEn: "Account is disabled. Please contact administrator",
         });
       }
+      if (hrLogin && user.role !== "hr")
+        return res.status(403).json({ message: "هذا المدخل مخصص لحسابات الموارد البشرية فقط." });
+      if (managerLogin && !await hasManagerAssignment(user.id))
+        return res.status(403).json({ message: "لا توجد علاقة مدير مباشر فعالة لهذا الحساب." });
 
       // New session ID prevents fixation. Existing unmarked PIN-created
       // sessions must authenticate again using administrative credentials.
       await new Promise<void>((resolve, reject) => req.session.regenerate(err => err ? reject(err) : resolve()));
       req.session.userId = user.id;
       req.session.adminAuthenticated = true;
+      req.session.hrWorkspace = hrLogin;
+      req.session.managerWorkspace = managerLogin;
       const { password: _, employeePin: _pin, financePin: _financePin, ...safeUser } = user;
-      const permissions = await getEffectivePermissionsForUser(user);
-      return res.json({ ...safeUser, permissions });
+      const permissions = managerLogin ? [] : hrLogin ? HR_WORKSPACE_PERMISSIONS : await getEffectivePermissionsForUser(user);
+      await new Promise<void>((resolve, reject) => req.session.save(err => err ? reject(err) : resolve()));
+      return res.json({ ...safeUser, permissions, ...(hrLogin ? { maintenanceScope: "hr" } : managerLogin ? { maintenanceScope: "manager" } : {}) });
     } catch (error) {
       console.error("Login error:", error);
       return res.status(500).json({
@@ -136,8 +156,8 @@ export function setupAuth(app: Express) {
         });
       }
       const { password: _, employeePin: _pin, financePin: _financePin, ...safeUser } = user;
-      const permissions = await getEffectivePermissionsForUser(user);
-      return res.json({ ...safeUser, permissions });
+      const permissions = req.session.managerWorkspace ? [] : req.session.hrWorkspace ? HR_WORKSPACE_PERMISSIONS : await getEffectivePermissionsForUser(user);
+      return res.json({ ...safeUser, permissions, ...(req.session.hrWorkspace ? { maintenanceScope: "hr" } : req.session.managerWorkspace ? { maintenanceScope: "manager" } : {}) });
     } catch (error) {
       return res.status(500).json({
         message: "حدث خطأ",

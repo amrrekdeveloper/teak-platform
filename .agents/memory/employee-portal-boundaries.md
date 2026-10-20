@@ -15,6 +15,12 @@ The HR employee mobile is the sole login identifier; do not fall back to an admi
 
 **How to apply:** Missing, duplicate, or inactive HR phone records must not authenticate. In development, explain ineligible phone records directly rather than presenting a challenge that cannot succeed.
 
+Manually requested test employees must exist only in the development database, with no administrative account, and must never be added to startup seeds or production data copies.
+
+**Why:** The owner explicitly requested a development employee for hands-on testing and emphasized that it must not move to production.
+
+**How to apply:** Insert test records through the development database target only. Do not persist their phone numbers in code or memory, and exclude such records from any later explicit development-to-production data transfer.
+
 The employee portal is mobile-first: the owner states 99% of employees will use phones. Use compact typography and short operational Arabic copy, not oversized marketing headings or repeated explanatory notices.
 
 **Why:** The owner explicitly rejected the earlier oversized, verbose portal design while retaining TEAK's white, ivory, black, and deep-crimson identity.
