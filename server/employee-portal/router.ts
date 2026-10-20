@@ -9,6 +9,7 @@ import {
 import { equalHash, normalizeEmployeePhone, otpHash, tokenHash } from "./security";
 import { sendEmployeeOtp } from "./sms";
 import { registerEmployeeServices } from "./services";
+import { developmentOtpEnabled } from "./mode";
 
 const production = process.env.NODE_ENV === "production";
 export const DEVICE_COOKIE = production ? "__Host-teak-employee" : "teak-employee";
@@ -49,10 +50,12 @@ export function createEmployeePortalRouter() {
     }
     next();
   });
+  router.get("/config", (_req, res) => res.json({ developmentOtp: developmentOtpEnabled() }));
   router.post("/otp/request", asyncRoute(async (req, res) => {
+    const developmentOtp = developmentOtpEnabled();
     const phone = normalizeEmployeePhone(req.body?.phone);
     if (!phone) portalError(400, "أدخل رقم جوال سعودي صحيحًا.");
-    if (!process.env.TAQNYAT_API_KEY || !process.env.SESSION_SECRET)
+    if ((!developmentOtp && !process.env.TAQNYAT_API_KEY) || !process.env.SESSION_SECRET)
       portalError(503, "خدمة الدخول غير متاحة حاليًا. تواصل مع الدعم الفني.");
     const ipKey = tokenHash(req.ip || "unknown");
     if (!await takeLimit(`otp-ip:${ipKey}`, 20, 900) ||
@@ -64,14 +67,14 @@ export function createEmployeePortalRouter() {
     const browserToken = readCookie(req, CHALLENGE_COOKIE) || randomBytes(32).toString("hex");
     res.cookie(CHALLENGE_COOKIE, browserToken, { ...cookieOptions, maxAge: 600000 });
     if (employee) {
-      const code = String(randomInt(100000, 1000000));
+      const code = developmentOtp ? "1111" : String(randomInt(100000, 1000000));
       await pool.query("UPDATE employee_portal_otps SET used_at=now() WHERE employee_id=$1 AND used_at IS NULL", [employee.id]);
       await pool.query(`INSERT INTO employee_portal_otps
-        (id,employee_id,phone,code_hash,browser_hash,expires_at)
-        VALUES($1,$2,$3,$4,$5,now()+interval '5 minutes')`,
-      [challengeId, employee.id, phone, otpHash(challengeId, code), tokenHash(browserToken)]);
+        (id,employee_id,phone,code_hash,browser_hash,auth_mode,expires_at)
+        VALUES($1,$2,$3,$4,$5,$6,now()+interval '5 minutes')`,
+      [challengeId, employee.id, phone, otpHash(challengeId, code), tokenHash(browserToken), developmentOtp ? "development" : "sms"]);
       try {
-        await sendEmployeeOtp(phone!, code);
+        if (!developmentOtp) await sendEmployeeOtp(phone!, code);
         await pool.query("UPDATE employee_portal_otps SET sent=true WHERE id=$1", [challengeId]);
       } catch {
         await pool.query("UPDATE employee_portal_otps SET used_at=now() WHERE id=$1", [challengeId]);
@@ -82,16 +85,19 @@ export function createEmployeePortalRouter() {
     // Uniform response avoids exposing employee registration or duplicate phones.
     res.json({
       challengeId, expiresIn: 300, resendAfter: 60,
-      message: "إذا كان الرقم مسجلًا لموظف مؤهل فستصلك رسالة تحقق. عند عدم وصولها راجع رقمك لدى الموارد البشرية.",
+      message: developmentOtp
+        ? "وضع التطوير فقط: استخدم الرمز 1111 للرقم المسجل لموظف مؤهل. لا تُرسل رسائل SMS."
+        : "إذا كان الرقم مسجلًا لموظف مؤهل فستصلك رسالة تحقق. عند عدم وصولها راجع رقمك لدى الموارد البشرية.",
     });
   }));
 
   router.post("/otp/verify", asyncRoute(async (req, res) => {
+    const developmentOtp = developmentOtpEnabled();
     const input = z.object({
-      challengeId: z.string().uuid(), code: z.string().regex(/^\d{6}$/),
+      challengeId: z.string().uuid(), code: z.string().regex(developmentOtp ? /^\d{4}$/ : /^\d{6}$/),
       deviceName: z.string().trim().min(1).max(80).default("جهاز الموظف"),
     }).strict().safeParse(req.body);
-    if (!input.success) portalError(400, "أدخل رمز التحقق المكوّن من ستة أرقام.");
+    if (!input.success) portalError(400, developmentOtp ? "أدخل رمز التطوير المكوّن من أربعة أرقام." : "أدخل رمز التحقق المكوّن من ستة أرقام.");
     const { challengeId, code, deviceName } = input.data!;
     if (!await takeLimit(`verify-ip:${tokenHash(req.ip || "unknown")}`, 30, 900))
       portalError(429, "تجاوزت محاولات التحقق. حاول بعد 15 دقيقة.");
@@ -107,7 +113,8 @@ export function createEmployeePortalRouter() {
         await client.query("COMMIT");
         portalError(401, message);
       };
-      if (!challenge || !challenge.sent || challenge.used_at || !challenge.valid_time ||
+      if (!challenge || challenge.auth_mode !== (developmentOtp ? "development" : "sms") ||
+        !challenge.sent || challenge.used_at || !challenge.valid_time ||
         challenge.attempts >= 5 || !browserToken || !equalHash(challenge.browser_hash, tokenHash(browserToken))) {
         await deny("الرمز غير صالح أو انتهت صلاحيته. اطلب رمزًا جديدًا.");
       }
@@ -126,9 +133,9 @@ export function createEmployeePortalRouter() {
           SELECT id FROM employee_portal_devices WHERE employee_id=$1 AND revoked_at IS NULL
           ORDER BY created_at DESC OFFSET 9)`, [employee!.id]);
       await client.query(`INSERT INTO employee_portal_devices
-        (id,employee_id,phone,token_hash,device_name,expires_at)
-        VALUES($1,$2,$3,$4,$5,now()+interval '30 days')`,
-      [randomUUID(), employee!.id, challenge.phone, tokenHash(deviceToken), deviceName]);
+        (id,employee_id,phone,token_hash,device_name,auth_mode,expires_at)
+        VALUES($1,$2,$3,$4,$5,$6,now()+interval '30 days')`,
+      [randomUUID(), employee!.id, challenge.phone, tokenHash(deviceToken), deviceName, challenge.auth_mode]);
       await client.query("UPDATE employee_portal_otps SET used_at=now() WHERE id=$1", [challengeId]);
       await client.query("COMMIT");
     } catch (error) {
@@ -143,10 +150,14 @@ export function createEmployeePortalRouter() {
   router.use(asyncRoute(async (req, res, next) => {
     const token = readCookie(req, DEVICE_COOKIE);
     if (!token) portalError(401, "سجّل الدخول برقم جوالك أولًا.");
-    const { rows } = await pool.query(`SELECT id,employee_id,phone FROM employee_portal_devices
+    const { rows } = await pool.query(`SELECT id,employee_id,phone,auth_mode FROM employee_portal_devices
       WHERE token_hash=$1 AND revoked_at IS NULL AND expires_at>now()`, [tokenHash(token)]);
     const device = rows[0];
     if (!device) portalError(401, "انتهت جلسة الجهاز أو أُلغيت. سجّل الدخول مجددًا.");
+    if (device.auth_mode !== "sms" && !(device.auth_mode === "development" && developmentOtpEnabled())) {
+      await pool.query("UPDATE employee_portal_devices SET revoked_at=now() WHERE id=$1", [device.id]);
+      portalError(401, "جلسة التطوير غير متاحة في هذه البيئة. سجّل الدخول مجددًا.");
+    }
     const employee = resolveEligibleEmployee(await employeeDirectory(), device.phone);
     if (!employee || employee.id !== device.employee_id) {
       await pool.query("UPDATE employee_portal_devices SET revoked_at=now() WHERE id=$1", [device.id]);

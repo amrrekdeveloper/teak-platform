@@ -1,7 +1,7 @@
 /**
  * Development-database protocol tests. SMS transport is mocked ONLY by Vitest;
  * verification, hashing, locks, expiry and sessions use the real implementation.
- * No demo code or authentication bypass is present in the running application.
+ * Development-only authentication is explicitly isolated from live SMS.
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import express from "express";
@@ -139,5 +139,33 @@ describe.sequential("isolated employee protocol", () => {
     const { rows } = await pool.query("SELECT revoked_at FROM employee_portal_devices WHERE id=$1", [sessionId]);
     expect(rows[0].revoked_at).not.toBeNull();
     await pool.query("UPDATE employees SET phone=NULL WHERE id=$1", [secondId]);
+  });
+  it("uses 1111 only in opted-in development, without SMS, and rejects that session outside development", async () => {
+    const env = { node: process.env.NODE_ENV, flag: process.env.EMPLOYEE_PORTAL_DEV_OTP, deployment: process.env.REPLIT_DEPLOYMENT };
+    try {
+      process.env.NODE_ENV = "development";
+      process.env.EMPLOYEE_PORTAL_DEV_OTP = "true";
+      delete process.env.REPLIT_DEPLOYMENT;
+      await pool.query("DELETE FROM employee_portal_limits WHERE key=$1", [`otp-cooldown:${tokenHash(registeredPhone)}`]);
+      expect((await call("/config", "GET", undefined, "")).data.developmentOtp).toBe(true);
+      const sentBefore = sent.mock.calls.length;
+      const challenge = await call("/otp/request", "POST", { phone: registeredPhone }, "");
+      expect(challenge.status).toBe(200);
+      expect(sent.mock.calls.length).toBe(sentBefore);
+      const cookie = challenge.cookies[0].split(";")[0];
+      expect((await call("/otp/verify", "POST", { challengeId: challenge.data.challengeId, code: "2222" }, cookie)).status).toBe(401);
+      const verified = await call("/otp/verify", "POST", { challengeId: challenge.data.challengeId, code: "1111" }, cookie);
+      expect(verified.status).toBe(200);
+      const devCookie = verified.cookies.find(c => c.startsWith(DEVICE_COOKIE + "="))!.split(";")[0];
+      expect((await call("/me", "GET", undefined, devCookie)).status).toBe(200);
+      process.env.NODE_ENV = "production";
+      expect((await call("/config", "GET", undefined, "")).data.developmentOtp).toBe(false);
+      expect((await call("/otp/verify", "POST", { challengeId: challenge.data.challengeId, code: "1111" }, cookie)).status).toBe(400);
+      expect((await call("/me", "GET", undefined, devCookie)).status).toBe(401);
+    } finally {
+      for (const [key, value] of [["NODE_ENV", env.node], ["EMPLOYEE_PORTAL_DEV_OTP", env.flag], ["REPLIT_DEPLOYMENT", env.deployment]] as const) {
+        if (value === undefined) delete process.env[key]; else process.env[key] = value;
+      }
+    }
   });
 });

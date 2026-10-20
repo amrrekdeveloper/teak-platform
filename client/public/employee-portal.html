@@ -41,7 +41,8 @@
         <div class="login-card">
           <p class="eyebrow">أهلًا بك في بوابة تيك</p>
           <h1 class="login-heading" id="login-title">خدماتك، أقرب إليك.</h1>
-          <p class="login-copy">أدخل رقم جوالك المسجل لدى تيك لنرسل رمز تحقق برسالة نصية.</p>
+          <p class="login-copy" id="login-copy">أدخل رقم جوالك المسجل لدى تيك لنرسل رمز تحقق برسالة نصية.</p>
+          <div id="development-notice" class="notice" role="status" hidden>بيئة تطوير فقط — رمز الدخول التجريبي 1111، ولا تُرسل رسائل SMS.</div>
           <div id="login-error" class="error" role="alert" hidden></div>
           <div id="login-success" class="success" role="status" hidden></div>
           <form id="phone-form" novalidate>
@@ -65,7 +66,7 @@
               <button class="text-button" id="change-phone" type="button">تغيير رقم الجوال</button>
             </div>
           </form>
-          <p class="hint">تسجيل الدخول محمي برمز يُرسل إلى جوالك. لا تشارك الرمز مع أي شخص.</p>
+          <p class="hint" id="login-security-note">تسجيل الدخول محمي برمز يُرسل إلى جوالك. لا تشارك الرمز مع أي شخص.</p>
         </div>
       </section>
       <section id="loading-view" class="login-wrap" aria-label="جار تحميل بياناتك" hidden>
@@ -328,7 +329,25 @@
         catch(error){errorText($("dashboard-error"),error);}
         finally{button.disabled=false;}
       });
-      checkSession();
+      async function initialize(){
+        // Fail closed if the server's environment configuration cannot be loaded.
+        $("send-otp").disabled=true;
+        try{
+          const config=await request("/config");
+          const development=config.developmentOtp===true;
+          show($("development-notice"),development);
+          $("otp-code").maxLength=development?4:6;
+          $("otp-code").placeholder=development?"••••":"••••••";
+          if(development){
+            $("login-copy").textContent="أدخل رقم جوالك المسجل لدى تيك لتجربة الدخول برمز التطوير.";
+            $("send-otp").textContent="متابعة برمز التطوير";
+            $("login-security-note").textContent="رمز 1111 للتطوير فقط. في الموقع المنشور يلزم رمز SMS حقيقي.";
+          }
+          $("send-otp").disabled=false;
+          await checkSession();
+        }catch(error){showLogin();errorText($("login-error"),error);}
+      }
+      initialize();
     }());
   </script>
 </body>

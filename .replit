@@ -52,6 +52,9 @@ VITE_FIREBASE_MESSAGING_SENDER_ID = "139809884027"
 VITE_FIREBASE_APP_ID = "1:139809884027:web:1d63c2be4fd74cbad1dfde"
 VITE_FIREBASE_MEASUREMENT_ID = "G-4PJVCELR5Q"
 
+[userenv.development]
+EMPLOYEE_PORTAL_DEV_OTP = "true"
+
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 20000

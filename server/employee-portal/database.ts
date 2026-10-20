@@ -17,6 +17,8 @@ export async function initializeEmployeePortal() {
       expires_at timestamptz NOT NULL, revoked_at timestamptz
     );
     CREATE INDEX IF NOT EXISTS employee_portal_devices_employee ON employee_portal_devices(employee_id);
+    ALTER TABLE employee_portal_otps ADD COLUMN IF NOT EXISTS auth_mode text NOT NULL DEFAULT 'sms';
+    ALTER TABLE employee_portal_devices ADD COLUMN IF NOT EXISTS auth_mode text NOT NULL DEFAULT 'sms';
     CREATE TABLE IF NOT EXISTS employee_portal_limits (
       key text PRIMARY KEY, count integer NOT NULL, resets_at timestamptz NOT NULL
     );
