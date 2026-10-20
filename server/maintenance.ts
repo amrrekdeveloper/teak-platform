@@ -1,7 +1,7 @@
 import type { RequestHandler } from "express";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { isHrWorkspaceApi, isHrWorkspacePage, isManagerApi } from "../shared/hr-access";
+import { isHrWorkspaceApi, isHrWorkspacePage, isManagerApi, isSystemAdminApi } from "../shared/hr-access";
 
 // Disable ONLY when the owner requests reopening, then republish.
 // The deadline is fixed, not relative to server startup or a visitor's session.
@@ -36,6 +36,7 @@ export function createMaintenanceMiddleware(
     ["/employee-self-service", "employee-portal.html"],
     ["/technical-support", "technical-support.html"],
     ["/manager-portal", "manager-portal.html"],
+    ["/system-admin", "system-admin.html"],
   ]);
   const employeePages = new Map(Array.from(employeeFiles).map(([url, file]) =>
     [url, readFileSync(path.join(publicDir, file), "utf8")]));
@@ -48,7 +49,7 @@ export function createMaintenanceMiddleware(
     // This isolated API is the ONLY application surface available during
     // maintenance. It never mounts administrative session middleware.
     if (req.path.startsWith("/api/employee-portal/")) return next();
-    if (isHrWorkspaceApi(req.method, req.path) || isManagerApi(req.method, req.path)) {
+    if (isHrWorkspaceApi(req.method, req.path) || isManagerApi(req.method, req.path) || isSystemAdminApi(req.method, req.path)) {
       res.locals.hrMaintenanceRequest = true;
       return next(); // Authentication + fresh role check follow session loading.
     }

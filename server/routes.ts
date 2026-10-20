@@ -8,6 +8,7 @@ import { captureLeaveForm, initHrLeaveForm } from "./hr-leave-form";
 import { registerManagerWorkspace } from "./hr-manager-workspace";
 import { setupAuth, requireAuth, requireRole, comparePasswords, hashPassword, getEffectivePermissionsForUser } from "./auth";
 import { initializeHrDataIntegrity, deleteUnusedEmployee } from "./hr-data-integrity";
+import { initializeSystemAdmin } from "./system-admin";
 import { ensureAttendanceExtensions, reconcileAttendance } from "./attendance-support";
 import { withUniqueEmployeePhone } from "./employee-portal/hr-onboarding";
 import {
@@ -279,6 +280,8 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
   setupAuth(app);
+  const systemAdminStatus = await initializeSystemAdmin({ hashPassword, comparePasswords });
+  console.log(`System administrator setup: ${systemAdminStatus}`);
   await initializeHrDataIntegrity();
 
   // Retired PIN/user-account bridge. Employee identity is now established

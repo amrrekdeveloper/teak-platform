@@ -56,6 +56,12 @@ export function isManagerApi(method: string, path: string) {
     (method === "POST" && /^\/api\/(?:manager-access\/login|auth\/logout|manager\/warnings|leaves\/\d+\/decision|attendance\/permission\/\d+\/decision|hr-actions\/\d+\/step)$/.test(path));
 }
 
+export function isSystemAdminApi(method: string, path: string) {
+  return (method === "POST" && /^\/api\/system-admin\/(?:login|logout|hr-accounts)$/.test(path)) ||
+    (method === "GET" && /^\/api\/system-admin\/(?:me|hr-accounts)$/.test(path)) ||
+    (method === "PATCH" && /^\/api\/system-admin\/hr-accounts\/\d+$/.test(path));
+}
+
 export function isHrWorkspaceIdentity(
   user: { role: string; active: boolean; archived?: boolean } | undefined,
   session: { userId?: number; adminAuthenticated?: boolean; hrWorkspace?: boolean },

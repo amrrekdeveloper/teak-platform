@@ -15,6 +15,12 @@ The current maintenance page, not the hidden original application homepage, is t
 
 **How to apply:** Preserve the public page except the approved footer shield beside teak. HR uses an active HR administrative account; managers require actual employee-manager relationships. Enforce narrow server-side scopes. Employee OTP never authorizes administration, and HR preparation never authorizes financial disbursement or owner-only decisions.
 
+The owner separately authorized a system-administrator entry to provision HR administrative accounts during maintenance, using owner-selected secrets.
+
+**Why:** The owner needs to create production HR credentials without reopening the general administrative platform.
+
+**How to apply:** Restrict this entry to the explicitly designated owner and HR account management only. Bootstrap once per database; never overwrite existing accounts or passwords on restart or silently promote a conflicting username. Development account rows do not imply production provisioning.
+
 Maintenance must remain compatible with Replit's root-path deployment health check.
 
 **Why:** Replit checks `/` when publishing; rejecting every request as unavailable can interfere with deployment health.

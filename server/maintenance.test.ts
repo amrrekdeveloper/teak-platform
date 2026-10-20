@@ -70,7 +70,8 @@ describe("maintenance mode", () => {
       expect(request(url, "POST").status).toBe(503);
       expect(request(url, "POST").passed).toBe(false);
     }
-    expect(request("/system-admin").status).toBe(503);
+    expect(request("/system-admin").status).toBe(200);
+    expect(request("/api/system-admin/hr-accounts").passed).toBe(true);
   });
   it("keeps maintenance active after expiry with the requested exact message", () => {
     const result = request("/", "GET", true, end + 1);
@@ -85,7 +86,7 @@ describe("maintenance mode", () => {
   it("loads current development HTML without recreating the middleware", () => {
     const dir = mkdtempSync(path.join(tmpdir(), "teak-maintenance-"));
     try {
-      for (const file of ["maintenance.html", "employee-portal.html", "technical-support.html", "manager-portal.html", "maintenance-logo.png"])
+      for (const file of ["maintenance.html", "employee-portal.html", "technical-support.html", "manager-portal.html", "system-admin.html", "maintenance-logo.png"])
         writeFileSync(path.join(dir, file), "original");
       const handler = createMaintenanceMiddleware(dir, true, () => start, true);
       for (const [url, file] of [["/", "maintenance.html"], ["/employee-self-service", "employee-portal.html"]]) {

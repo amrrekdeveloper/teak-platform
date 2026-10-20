@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#9e0a0a">
+  <meta name="robots" content="noindex, nofollow">
+  <title>إدارة حسابات الموارد البشرية | تيك</title>
+  <link rel="icon" type="image/png" href="/__maintenance/logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Zain:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root{color-scheme:light;--brand:#9e0a0a;--brand-deep:#760909;--paper:#f7f5f1;--card:#fff;--ink:#252321;--muted:#706d68;--line:#e5e1dc;--soft:#f2efea;--sage:#426d5a;--shadow:0 10px 28px rgba(34,28,24,.07);--font:"Zain",Tahoma,sans-serif}
+    *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;min-height:100vh;min-height:100dvh;background:var(--paper);color:var(--ink);font-family:var(--font);font-size:15px}button,input{font:inherit}button,a{-webkit-tap-highlight-color:transparent}button{cursor:pointer}a{color:inherit}
+    .shell{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column}.masthead{height:62px;flex:none;border-bottom:1px solid var(--line);background:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 clamp(16px,4vw,48px);gap:16px}.brand{display:flex;align-items:center;gap:12px;text-decoration:none}.brand img{width:60px;height:auto;display:block;filter:brightness(0) saturate(100%) invert(11%) sepia(94%) saturate(3915%) hue-rotate(353deg) brightness(81%) contrast(111%)}.brand-rule{width:1px;height:27px;background:var(--line)}.brand span:last-child{font-size:14px;color:var(--muted)}.mast-right{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}.status-dot{width:7px;height:7px;border-radius:50%;background:var(--sage)}
+    .main{width:min(1000px,calc(100% - 32px));margin:0 auto;padding:24px 0 36px;flex:1}.intro{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:17px}.eyebrow{margin:0 0 2px;color:var(--brand);font-size:13px}.intro h1{font-size:23px;line-height:1.2;margin:0;font-weight:700}.intro p:last-child{margin:4px 0 0;color:var(--muted);font-size:14px}.scope-chip{border:1px solid var(--line);background:#fff;padding:7px 11px;color:var(--muted);font-size:13px;white-space:nowrap}
+    .dialog-backdrop{position:fixed;inset:0;background:rgba(37,35,33,.46);display:grid;place-items:center;padding:16px;z-index:5}.dialog-card{width:min(440px,100%);max-height:calc(100dvh - 32px);overflow:auto;background:var(--paper);border:1px solid var(--line);box-shadow:0 18px 48px rgba(34,28,24,.2);padding:20px}.dialog-card h2{margin:0 0 5px;font-size:19px}.dialog-card p{margin:0 0 13px;color:var(--muted);font-size:13px;line-height:1.45}
+    .login-wrap{max-width:440px;margin:clamp(20px,6vh,54px) auto}.card{background:var(--card);border:1px solid var(--line);box-shadow:var(--shadow);padding:22px}.login-card{position:relative;overflow:hidden}.login-card:before{content:"";position:absolute;inset:0 0 auto;height:3px;background:var(--brand)}.card h2{font-size:19px;line-height:1.2;margin:0 0 5px}.copy{font-size:14px;color:var(--muted);margin:0 0 16px;line-height:1.5}.field{margin:0 0 12px;min-width:0}.field label{display:block;font-weight:600;margin-bottom:4px;font-size:14px}.field input{width:100%;min-height:44px;padding:8px 11px;border:1px solid #d8d4cf;border-radius:3px;background:#fff;color:var(--ink);outline:none}.field input:focus{border-color:var(--brand);box-shadow:0 0 0 2px rgba(158,10,10,.1)}.field input[dir=ltr]{text-align:left}.hint{font-size:12px;color:var(--muted);margin:5px 0 0;line-height:1.4}.actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.btn{min-height:42px;padding:8px 14px;border-radius:3px;border:1px solid var(--brand);background:var(--brand);color:#fff;font-weight:600;transition:background .18s,border-color .18s;font-size:14px}.btn:hover:not(:disabled){background:var(--brand-deep);border-color:var(--brand-deep)}.btn:focus-visible,.text-button:focus-visible,.brand:focus-visible,a:focus-visible{outline:2px solid var(--brand);outline-offset:3px}.btn:disabled{opacity:.55;cursor:wait}.btn.secondary{background:transparent;color:var(--brand)}.btn.secondary:hover:not(:disabled){background:var(--brand);color:#fff}.btn.danger{background:#fff;color:var(--brand);border-color:#c9a4a1}.btn.danger:hover:not(:disabled){background:#f7efed;color:#761515}.text-button{min-height:40px;padding:7px 9px;border:0;background:none;color:var(--brand);text-decoration:underline;text-underline-offset:3px;font-size:13px}.toggle-password{position:absolute;left:8px;top:31px;border:0;background:transparent;color:var(--brand);padding:5px 7px;font-size:12px}.password-wrap{position:relative}.password-wrap input{padding-left:66px}
+    .notice{padding:8px 10px;margin:10px 0;line-height:1.4;font-size:13px;border-right:2px solid var(--brand);background:#f7efed;color:#6b1616}.notice[hidden]{display:none}.error,.success{padding:8px 10px;margin:10px 0;line-height:1.4;font-size:13px}.error{background:#fbefed;border:1px solid #e6c8c4;color:#832d22}.success{background:#eff4ef;border:1px solid #c8d9cb;color:#345d47}[hidden]{display:none!important}
+    .dashboard{animation:rise .22s ease-out both}.profile-strip{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 15px;background:var(--brand);color:#fff;margin-bottom:16px}.profile-copy h2{font-size:19px;line-height:1.2;margin:0}.profile-copy p{margin:2px 0 0;color:#f1dede;font-size:12px}.logout{background:transparent;border:1px solid rgba(255,255,255,.7);color:#fff;padding:8px 12px;border-radius:3px;min-height:40px;white-space:nowrap}.section-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:0 0 10px}.section-head h2{font-size:18px;margin:0;line-height:1.2}.section-head p{margin:2px 0 0;color:var(--muted);font-size:13px}.layout{display:grid;grid-template-columns:minmax(280px,.78fr) minmax(0,1.22fr);gap:14px;align-items:start}.panel{border:1px solid var(--line);background:var(--card);padding:16px;min-width:0}.panel h3{font-size:16px;margin:0 0 4px}.panel-intro{margin:0 0 13px;color:var(--muted);font-size:13px;line-height:1.45}.account-list{display:grid;gap:8px}.account{border:1px solid var(--line);padding:12px;background:#fff;min-width:0}.account-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}.account-name{min-width:0}.account-name strong{display:block;font-size:15px;line-height:1.25;overflow-wrap:anywhere}.account-name small{display:block;color:var(--muted);font-size:12px;overflow-wrap:anywhere}.account-user{font-family:ui-monospace,Consolas,monospace;font-size:12px;direction:ltr;text-align:right;color:#514c47;margin-top:4px}.pill{display:inline-flex;align-items:center;gap:5px;border-radius:20px;background:#efede9;padding:3px 9px;font-size:12px;color:var(--ink);white-space:nowrap}.pill.active{background:#e8f0e9;color:#42634d}.pill.inactive{background:#f4e8e6;color:#842b26}.account-meta{color:var(--muted);font-size:12px;margin:7px 0 9px}.account-actions{display:flex;gap:6px;flex-wrap:wrap}.account-actions .btn{min-height:36px;padding:5px 10px;font-size:13px}.empty{padding:22px 14px;text-align:center;color:var(--muted);border:1px dashed #d2cdc6;background:#faf9f7;font-size:13px}.empty strong{display:block;color:var(--ink);font-size:15px;margin-bottom:3px}.loading-box{border:1px solid var(--line);background:#fff;padding:15px}.loading-line{height:8px;background:linear-gradient(90deg,#eae7e2 20%,#f4f2ee 45%,#eae7e2 70%);background-size:220% 100%;animation:shimmer 1.3s linear infinite;border-radius:8px;margin:9px 0}.footer{border-top:1px solid var(--line);padding:12px clamp(16px,4vw,48px);display:flex;justify-content:space-between;gap:12px;color:var(--muted);font-size:12px;background:#fff}.footer a{color:var(--brand);text-decoration:none}.footer-links{display:flex;gap:15px;flex-wrap:wrap}.footer a:hover{text-decoration:underline}.live-message{min-height:18px;margin:7px 0 0;color:var(--muted);font-size:13px}
+    @keyframes rise{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}@keyframes shimmer{to{background-position:-220% 0}}
+    @media(max-width:760px){.masthead{height:55px;padding-inline:14px}.brand img{width:52px}.brand span:last-child{font-size:13px}.mast-right{font-size:12px}.main{width:calc(100% - 24px);padding:16px 0 24px}.intro{align-items:flex-start}.intro h1{font-size:21px}.scope-chip{padding:6px 8px;font-size:12px}.login-wrap{margin:18px auto}.layout{grid-template-columns:minmax(0,1fr)}.panel{padding:13px}.profile-strip{align-items:flex-start;flex-wrap:wrap;padding:11px}.logout{margin-inline-start:auto}.footer{padding:10px 12px;flex-wrap:wrap}.account-actions .btn{flex:1}.section-head{align-items:flex-start}}
+    @media(max-width:390px){.masthead{padding-inline:10px}.brand{gap:7px}.main{width:calc(100% - 20px)}.intro{display:block}.scope-chip{display:inline-block;margin-top:9px}.card{padding:19px 15px}.panel{padding:11px}.account{padding:10px}.account-top{gap:7px}}
+    @media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header class="masthead">
+      <a class="brand" href="/" aria-label="العودة إلى تيك"><img src="/__maintenance/logo.png" alt="تيك — TEAK" width="782" height="511"><span class="brand-rule" aria-hidden="true"></span><span>حسابات الموارد البشرية</span></a>
+      <div class="mast-right"><span class="status-dot" aria-hidden="true"></span><span>وصول المالك</span></div>
+    </header>
+    <main class="main">
+      <header class="intro">
+        <div><p class="eyebrow">تيك · إدارة الوصول</p><h1>حسابات الموارد البشرية</h1><p>إنشاء حسابات الموارد البشرية ومراجعة حالتها.</p></div>
+        <div class="scope-chip">نطاق المالك · أثناء الصيانة</div>
+      </header>
+      <section id="login-view" class="login-wrap" aria-labelledby="login-title">
+        <div class="card login-card">
+          <p class="eyebrow">دخول آمن</p><h2 id="login-title">تسجيل دخول المالك</h2>
+          <p class="copy">هذه الصفحة مخصصة لإدارة حسابات الموارد البشرية فقط. حساب المالك مستقل عن حسابات HR؛ بيانات الدخول لا تعمل بالتبادل بين الشاشتين.</p>
+          <div id="login-error" class="error" role="alert" hidden></div>
+          <form id="login-form" autocomplete="on">
+            <div class="field"><label for="login-username">اسم المستخدم</label><input id="login-username" name="username" type="text" autocomplete="username" minlength="3" maxlength="80" required dir="ltr" autocapitalize="none" spellcheck="false"></div>
+            <div class="field"><label for="login-password">كلمة المرور</label><div class="password-wrap"><input id="login-password" name="password" type="password" autocomplete="current-password" minlength="12" maxlength="256" required dir="ltr"><button type="button" class="toggle-password" data-toggle="login-password" aria-pressed="false">إظهار</button></div></div>
+            <button class="btn" id="login-submit" type="submit">دخول</button>
+          </form>
+        </div>
+      </section>
+      <section id="loading-view" class="login-wrap" aria-label="جار التحقق من الجلسة" hidden>
+        <div class="loading-box"><div class="loading-line" style="width:42%"></div><div class="loading-line" style="width:78%"></div><div class="loading-line" style="width:58%"></div></div>
+      </section>
+      <section id="dashboard-view" class="dashboard" hidden>
+        <div id="page-error" class="error" role="alert" hidden></div>
+        <div id="page-success" class="success" role="status" aria-live="polite" hidden></div>
+        <section class="profile-strip" aria-label="جلسة المالك">
+          <div class="profile-copy"><h2 id="owner-name"></h2><p>جلسة إدارة حسابات HR</p></div>
+          <button class="logout" id="logout" type="button">تسجيل الخروج</button>
+        </section>
+        <div class="layout">
+          <section class="panel" aria-labelledby="create-title">
+            <h2 id="create-title">إنشاء حساب HR</h2>
+            <p class="panel-intro">ينشئ هذا النموذج حساب موارد بشرية فقط. اختر كلمة مرور مؤقتة وشاركها عبر قناة آمنة.</p>
+            <form id="create-form" autocomplete="off">
+              <div class="field"><label for="create-username">اسم المستخدم</label><input id="create-username" name="username" type="text" minlength="3" maxlength="80" pattern="[A-Za-z0-9._-]{3,80}" autocomplete="off" required dir="ltr" autocapitalize="none" spellcheck="false"><p class="hint">3–80 حرفًا: أحرف لاتينية أو أرقام أو . _ -</p></div>
+              <div class="field"><label for="create-name-ar">الاسم بالعربية</label><input id="create-name-ar" name="fullNameAr" type="text" maxlength="160" autocomplete="off" required></div>
+              <div class="field"><label for="create-name-en">الاسم بالإنجليزية <span class="hint">(اختياري)</span></label><input id="create-name-en" name="fullNameEn" type="text" maxlength="160" autocomplete="off" dir="auto"></div>
+              <div class="field"><label for="create-password">كلمة مرور مؤقتة</label><div class="password-wrap"><input id="create-password" name="password" type="password" minlength="12" maxlength="256" autocomplete="new-password" required dir="ltr"><button type="button" class="toggle-password" data-toggle="create-password" aria-pressed="false">إظهار</button></div><p class="hint">12–256 حرفًا. لن تُعرض كلمة المرور بعد إنشاء الحساب.</p></div>
+              <button class="btn" id="create-submit" type="submit">إنشاء حساب الموارد البشرية</button>
+            </form>
+          </section>
+          <section class="panel" aria-labelledby="accounts-title">
+            <div class="section-head"><div><h2 id="accounts-title">الحسابات</h2><p>تظهر هنا حسابات الموارد البشرية فقط.</p></div><button class="btn secondary" id="refresh" type="button">تحديث</button></div>
+            <div id="list-error" class="error" role="alert" hidden></div>
+            <div id="account-list" class="account-list" aria-live="polite" aria-busy="false"></div>
+          </section>
+        </div>
+      </section>
+      <section id="reset-dialog" class="dialog-backdrop" role="dialog" aria-modal="true" aria-labelledby="reset-title" hidden>
+        <div class="dialog-card">
+          <h2 id="reset-title">تعيين كلمة مرور جديدة</h2>
+          <p id="reset-description">أدخل كلمة مرور جديدة للحساب المحدد. لن تُعرض أو تُحفظ بعد الإرسال.</p>
+          <form id="reset-form" autocomplete="off">
+            <div class="field"><label for="reset-password">كلمة المرور الجديدة</label><div class="password-wrap"><input id="reset-password" name="password" type="password" minlength="12" maxlength="256" autocomplete="new-password" required dir="ltr" aria-describedby="reset-hint"><button type="button" class="toggle-password" data-toggle="reset-password" aria-pressed="false">إظهار</button></div><p class="hint" id="reset-hint">يجب أن تتكون من 12–256 حرفًا.</p></div>
+            <div class="actions"><button class="btn" id="reset-submit" type="submit">حفظ كلمة المرور الجديدة</button><button class="btn secondary" id="reset-cancel" type="button">إلغاء</button></div>
+          </form>
+        </div>
+      </section>
+    </main>
+    <footer class="footer"><span>تيك · وصول محدود وآمن</span><nav class="footer-links" aria-label="روابط مستقلة"><a href="/">الرئيسية</a><a href="/hr/login">دخول الموارد البشرية</a></nav></footer>
+  </div>
+  <script>
+    (function(){
+      "use strict";
+      const $=id=>document.getElementById(id);
+      const loginView=$("login-view"),loadingView=$("loading-view"),dashboard=$("dashboard-view");
+      let busy=false,resetTarget=null,previousFocus=null;
+      function show(el,visible){el.hidden=!visible}
+      function message(el,text,kind){el.textContent=text||"";if(kind)el.className=kind;show(el,!!text)}
+      function safeString(value){return typeof value==="string"?value:""}
+      async function request(path,options){
+        const opts=options||{},headers={"X-Requested-With":"XMLHttpRequest"};
+        if(opts.body)headers["Content-Type"]="application/json";
+        let response;
+        try{response=await fetch(path,{method:opts.method||"GET",credentials:"same-origin",headers,body:opts.body?JSON.stringify(opts.body):undefined,cache:"no-store"});}
+        catch(error){throw new Error("تعذر الاتصال بالخدمة. تحقق من الاتصال ثم حاول مجددًا.");}
+        let data={};try{data=await response.json()}catch(error){data={}}
+        if(response.status===401&&path!=="/api/system-admin/login"){
+          const hadSession=!dashboard.hidden;
+          clearPrivate();show(dashboard,false);show(loadingView,false);show(loginView,true);$("login-password").value="";
+          message($("login-error"),hadSession?"انتهت الجلسة. سجّل الدخول مجددًا.":"","error");
+          throw new Error(typeof data.message==="string"?data.message:"انتهت الجلسة. سجّل الدخول مجددًا.");
+        }
+        if(!response.ok){const fallback=response.status===409?"اسم المستخدم مستخدم بالفعل. اختر اسمًا آخر.":response.status===401?"بيانات الدخول غير صحيحة.":"تعذر إكمال الطلب. حاول مرة أخرى.";throw new Error(typeof data.message==="string"?data.message:fallback)}
+        return data;
+      }
+      function clearPrivate(){
+        $("owner-name").textContent="";
+        $("account-list").replaceChildren();
+        $("create-form").reset();
+        ["login-password","create-password"].forEach(id=>$(id).value="");
+      }
+      function setBusy(button,value,label){button.disabled=value;if(label)button.textContent=value?"جارٍ التنفيذ…":label}
+      function dateLabel(value){
+        if(!value)return "—";const date=new Date(value);if(Number.isNaN(date.getTime()))return String(value);
+        return new Intl.DateTimeFormat("ar-SA",{dateStyle:"medium"}).format(date);
+      }
+      function element(tag,text,className){
+        const node=document.createElement(tag);if(text!==undefined)node.textContent=text;if(className)node.className=className;return node;
+      }
+      function clearTransientMessages(){message($("page-error"),"");message($("page-success"),"");message($("list-error"),"")}
+      function renderAccounts(accounts){
+        const list=$("account-list");list.replaceChildren();
+        if(!Array.isArray(accounts))throw new Error("استجابة الحسابات غير صالحة.");
+        if(!accounts.length){const empty=element("div","", "empty");empty.append(element("strong","لا توجد حسابات بعد"));empty.append(element("span","أنشئ أول حساب موارد بشرية من النموذج المجاور."));list.append(empty);return}
+        accounts.forEach(account=>{
+          const card=element("article","", "account"),top=element("div","", "account-top"),identity=element("div","", "account-name");
+          identity.append(element("strong",safeString(account.fullNameAr)||"بدون اسم"));
+          if(account.fullNameEn)identity.append(element("small",safeString(account.fullNameEn)));
+          identity.append(element("div",safeString(account.username),"account-user"));
+          const active=account.active===true;
+          top.append(identity,element("span",active?"نشط":"موقوف","pill "+(active?"active":"inactive")));
+          card.append(top,element("p","تاريخ الإنشاء: "+dateLabel(account.createdAt),"account-meta"));
+          const actions=element("div","","account-actions");
+          const edit=element("button","تعديل الاسم","btn secondary");edit.type="button";edit.addEventListener("click",()=>editAccount(account));actions.append(edit);
+          const reset=element("button","تعيين كلمة مرور","btn secondary");reset.type="button";reset.addEventListener("click",()=>resetPassword(account));actions.append(reset);
+          const toggle=element("button",active?"إيقاف الحساب":"إعادة تفعيل","btn "+(active?"danger":"secondary"));toggle.type="button";toggle.addEventListener("click",()=>toggleAccount(account));actions.append(toggle);
+          card.append(actions);list.append(card);
+        });
+      }
+      async function loadAccounts(){
+        const list=$("account-list"),refresh=$("refresh");list.setAttribute("aria-busy","true");refresh.disabled=true;
+        message($("list-error"),"");
+        const loading=element("div","","loading-box");loading.setAttribute("aria-label","جار تحميل الحسابات");
+        for(let i=0;i<3;i++)loading.append(element("div","","loading-line"));
+        list.replaceChildren(loading);
+        try{const accounts=await request("/api/system-admin/hr-accounts");renderAccounts(accounts)}
+        catch(error){if(!loginView.hidden)return;message($("list-error"),error.message,"error");const retry=element("button","إعادة المحاولة","btn secondary");retry.type="button";retry.addEventListener("click",loadAccounts);list.replaceChildren(retry)}
+        finally{list.setAttribute("aria-busy","false");refresh.disabled=false}
+      }
+      async function enterWorkspace(identity){
+        show(loginView,false);show(loadingView,false);show(dashboard,true);
+        $("owner-name").textContent=safeString(identity.fullNameAr)||safeString(identity.username)||"المالك";
+        clearTransientMessages();await loadAccounts();
+      }
+      async function start(){
+        show(loginView,false);show(dashboard,false);show(loadingView,true);
+        try{const identity=await request("/api/system-admin/me");if(identity.maintenanceScope!=="system-admin")throw new Error("الجلسة لا تملك نطاق إدارة المالك.");await enterWorkspace(identity)}
+        catch(error){if(dashboard.hidden){show(loadingView,false);show(loginView,true)}}
+      }
+      async function toggleAccount(account){
+        const active=account.active===true;
+        const confirmation=active
+          ?"سيتم إيقاف حساب الموارد البشرية هذا. لن يتمكن صاحبه من تسجيل الدخول. هل تريد المتابعة؟"
+          :"سيتم إعادة تفعيل حساب الموارد البشرية هذا. هل تريد المتابعة؟";
+        if(!window.confirm(confirmation))return;
+        clearTransientMessages();
+        try{await request("/api/system-admin/hr-accounts/"+encodeURIComponent(account.id),{method:"PATCH",body:{active:!active}});message($("page-success"),active?"تم إيقاف الحساب.":"تمت إعادة تفعيل الحساب.","success");await loadAccounts()}
+        catch(error){message($("page-error"),error.message,"error")}
+      }
+      async function editAccount(account){
+        const fullNameAr=window.prompt("الاسم بالعربية:",safeString(account.fullNameAr));if(fullNameAr===null)return;
+        const fullNameEn=window.prompt("الاسم بالإنجليزية (اختياري):",safeString(account.fullNameEn));if(fullNameEn===null)return;
+        if(!fullNameAr.trim()){message($("page-error"),"الاسم بالعربية مطلوب.","error");return}
+        clearTransientMessages();
+        try{await request("/api/system-admin/hr-accounts/"+encodeURIComponent(account.id),{method:"PATCH",body:{fullNameAr:fullNameAr.trim(),fullNameEn:fullNameEn.trim()}});message($("page-success"),"تم تحديث بيانات الحساب.","success");await loadAccounts()}
+        catch(error){message($("page-error"),error.message,"error")}
+      }
+      async function resetPassword(account){
+        clearTransientMessages();resetTarget=account;previousFocus=document.activeElement;
+        $("reset-description").textContent="الحساب: "+safeString(account.username)+". أدخل كلمة مرور جديدة. لن تُعرض أو تُحفظ بعد الإرسال.";
+        $("reset-form").reset();$("reset-password").type="password";
+        const toggle=document.querySelector('[data-toggle="reset-password"]');toggle.textContent="إظهار";toggle.setAttribute("aria-pressed","false");
+        show($("reset-dialog"),true);$("reset-password").focus();
+      }
+      function closeResetDialog(){show($("reset-dialog"),false);$("reset-form").reset();$("reset-password").value="";resetTarget=null;if(previousFocus&&typeof previousFocus.focus==="function")previousFocus.focus()}
+      $("login-form").addEventListener("submit",async event=>{
+        event.preventDefault();if(busy)return;
+        const button=$("login-submit");busy=true;setBusy(button,true,"دخول");message($("login-error"),"");
+        try{
+          const identity=await request("/api/system-admin/login",{method:"POST",body:{username:$("login-username").value.trim(),password:$("login-password").value}});
+          $("login-password").value="";
+          if(identity.maintenanceScope!=="system-admin")throw new Error("تعذر التحقق من صلاحية حساب المالك.");
+          await enterWorkspace(identity);
+        }catch(error){message($("login-error"),error.message,"error");$("login-password").value=""}
+        finally{busy=false;setBusy(button,false,"دخول")}
+      });
+      $("create-form").addEventListener("submit",async event=>{
+        event.preventDefault();if(busy)return;
+        const username=$("create-username").value.trim(),fullNameAr=$("create-name-ar").value.trim(),fullNameEn=$("create-name-en").value.trim(),passwordInput=$("create-password"),password=passwordInput.value;
+        if(!/^[A-Za-z0-9._-]{3,80}$/.test(username)){message($("page-error"),"اسم المستخدم يجب أن يتكون من 3–80 حرفًا لاتينيًا أو رقمًا أو . _ -","error");return}
+        if(password.length<12||password.length>256){message($("page-error"),"يجب أن تكون كلمة المرور بين 12 و256 حرفًا.","error");return}
+        clearTransientMessages();const button=$("create-submit");busy=true;setBusy(button,true,"إنشاء حساب الموارد البشرية");
+        try{
+          await request("/api/system-admin/hr-accounts",{method:"POST",body:{username,password,fullNameAr,fullNameEn:fullNameEn||undefined}});
+          $("create-form").reset();passwordInput.value="";
+          message($("page-success"),"تم إنشاء حساب الموارد البشرية. شارك كلمة المرور المؤقتة عبر قناة آمنة؛ لن تظهر مجددًا.","success");
+          await loadAccounts();
+        }catch(error){passwordInput.value="";message($("page-error"),error.message,"error")}
+        finally{busy=false;setBusy(button,false,"إنشاء حساب الموارد البشرية")}
+      });
+      $("logout").addEventListener("click",async()=>{
+        if(busy)return;busy=true;$("logout").disabled=true;clearTransientMessages();
+        try{await request("/api/system-admin/logout",{method:"POST",body:{}});clearPrivate();show(dashboard,false);show(loginView,true);message($("login-error"),"تم تسجيل الخروج.","success");$("login-username").focus()}
+        catch(error){if(!loginView.hidden){message($("login-error"),error.message,"error")}else message($("page-error"),error.message,"error")}
+        finally{busy=false;$("logout").disabled=false}
+      });
+      $("refresh").addEventListener("click",()=>{clearTransientMessages();loadAccounts()});
+      $("reset-form").addEventListener("submit",async event=>{
+        event.preventDefault();if(busy||!resetTarget)return;
+        const input=$("reset-password"),password=input.value;
+        if(password.length<12||password.length>256){input.setCustomValidity("يجب أن تتكون كلمة المرور من 12–256 حرفًا.");input.reportValidity();input.setCustomValidity("");return}
+        const account=resetTarget,button=$("reset-submit");busy=true;setBusy(button,true,"حفظ كلمة المرور الجديدة");
+        try{
+          await request("/api/system-admin/hr-accounts/"+encodeURIComponent(account.id),{method:"PATCH",body:{password}});
+          closeResetDialog();message($("page-success"),"تم تعيين كلمة المرور الجديدة. لن تُعرض كلمة المرور هنا.","success");
+        }catch(error){input.value="";message($("page-error"),error.message,"error")}
+        finally{busy=false;setBusy(button,false,"حفظ كلمة المرور الجديدة")}
+      });
+      $("reset-cancel").addEventListener("click",()=>{if(!busy)closeResetDialog()});
+      $("reset-dialog").addEventListener("click",event=>{if(event.target===$("reset-dialog")&&!busy)closeResetDialog()});
+      document.addEventListener("keydown",event=>{if(event.key==="Escape"&&!$("reset-dialog").hidden&&!busy)closeResetDialog()});
+      document.querySelectorAll("[data-toggle]").forEach(button=>button.addEventListener("click",()=>{
+        const input=$(button.dataset.toggle),revealed=input.type==="password";input.type=revealed?"text":"password";button.textContent=revealed?"إخفاء":"إظهار";button.setAttribute("aria-pressed",String(revealed));
+      }));
+      start();
+    })();
+  </script>
+</body>
+</html>

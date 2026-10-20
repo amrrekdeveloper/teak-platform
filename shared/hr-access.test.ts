@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isHrWorkspaceApi, isHrWorkspaceIdentity, isManagerApi } from "./hr-access";
+import { isHrWorkspaceApi, isHrWorkspaceIdentity, isManagerApi, isSystemAdminApi } from "./hr-access";
 describe("maintenance domain scope", () => {
   it("allows HR onboarding and preparation, not unrelated administration", () => {
     expect(isHrWorkspaceApi("POST", "/api/employees")).toBe(true);
@@ -21,5 +21,13 @@ describe("maintenance domain scope", () => {
     expect(isManagerApi("GET","/api/manager/workspace")).toBe(true);
     expect(isManagerApi("GET","/api/employees")).toBe(false);
     expect(isManagerApi("POST","/api/payroll/1/pay")).toBe(false);
+  });
+  it("system administrator can only provision HR accounts", () => {
+    expect(isSystemAdminApi("POST", "/api/system-admin/login")).toBe(true);
+    expect(isSystemAdminApi("POST", "/api/system-admin/hr-accounts")).toBe(true);
+    expect(isSystemAdminApi("PATCH", "/api/system-admin/hr-accounts/2")).toBe(true);
+    for (const path of ["/api/users", "/api/customers", "/api/payroll/1/pay", "/api/hr-access/login"])
+      expect(isSystemAdminApi("POST", path)).toBe(false);
+    expect(isSystemAdminApi("DELETE", "/api/system-admin/hr-accounts/2")).toBe(false);
   });
 });

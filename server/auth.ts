@@ -11,6 +11,7 @@ import { HR_WORKSPACE_PERMISSIONS } from "../shared/hr-access";
 import { enforceHrWorkspaceScope, hasManagerAssignment } from "./hr-access";
 import { takeLimit } from "./employee-portal/database";
 import { tokenHash } from "./employee-portal/security";
+import { isDesignatedSystemAdmin, registerSystemAdminRoutes } from "./system-admin";
 
 const scryptAsync = promisify(scrypt);
 
@@ -43,6 +44,7 @@ declare module "express-session" {
     adminAuthenticated?: boolean;
     hrWorkspace?: boolean;
     managerWorkspace?: boolean;
+    systemAdminWorkspace?: boolean;
   }
 }
 
@@ -71,10 +73,11 @@ export function setupAuth(app: Express) {
   );
   app.use(enforceHrWorkspaceScope);
 
-  app.post(["/api/auth/login", "/api/hr-access/login", "/api/manager-access/login"], async (req: Request, res: Response) => {
+  app.post(["/api/auth/login", "/api/hr-access/login", "/api/manager-access/login", "/api/system-admin/login"], async (req: Request, res: Response) => {
     try {
       const hrLogin = req.path === "/api/hr-access/login";
       const managerLogin = req.path === "/api/manager-access/login";
+      const systemAdminLogin = req.path === "/api/system-admin/login";
       const { username, password } = req.body;
       if (typeof username !== "string" || typeof password !== "string" ||
         !username.trim() || !password || username.length > 100 || password.length > 256) {
@@ -83,7 +86,7 @@ export function setupAuth(app: Express) {
           messageEn: "Username and password are required",
         });
       }
-      if ((hrLogin || managerLogin) && (!await takeLimit(`hr-login-ip:${tokenHash(req.ip || "unknown")}`, 30, 900) ||
+      if ((hrLogin || managerLogin || systemAdminLogin) && (!await takeLimit(`hr-login-ip:${tokenHash(req.ip || "unknown")}`, 30, 900) ||
         !await takeLimit(`hr-login-user:${tokenHash(username.trim().toLowerCase())}`, 10, 900)))
         return res.status(429).json({ message: "محاولات دخول متكررة. حاول بعد 15 دقيقة." });
 
@@ -105,6 +108,8 @@ export function setupAuth(app: Express) {
         return res.status(403).json({ message: "هذا المدخل مخصص لحسابات الموارد البشرية فقط." });
       if (managerLogin && !await hasManagerAssignment(user.id))
         return res.status(403).json({ message: "لا توجد علاقة مدير مباشر فعالة لهذا الحساب." });
+      if (systemAdminLogin && !await isDesignatedSystemAdmin(user))
+        return res.status(403).json({ message: "هذا المدخل مخصص لمدير النظام المعتمد فقط." });
 
       // New session ID prevents fixation. Existing unmarked PIN-created
       // sessions must authenticate again using administrative credentials.
@@ -113,10 +118,11 @@ export function setupAuth(app: Express) {
       req.session.adminAuthenticated = true;
       req.session.hrWorkspace = hrLogin;
       req.session.managerWorkspace = managerLogin;
+      req.session.systemAdminWorkspace = systemAdminLogin;
       const { password: _, employeePin: _pin, financePin: _financePin, ...safeUser } = user;
-      const permissions = managerLogin ? [] : hrLogin ? HR_WORKSPACE_PERMISSIONS : await getEffectivePermissionsForUser(user);
+      const permissions = (managerLogin || systemAdminLogin) ? [] : hrLogin ? HR_WORKSPACE_PERMISSIONS : await getEffectivePermissionsForUser(user);
       await new Promise<void>((resolve, reject) => req.session.save(err => err ? reject(err) : resolve()));
-      return res.json({ ...safeUser, permissions, ...(hrLogin ? { maintenanceScope: "hr" } : managerLogin ? { maintenanceScope: "manager" } : {}) });
+      return res.json({ ...safeUser, permissions, ...(systemAdminLogin ? { maintenanceScope: "system-admin" } : hrLogin ? { maintenanceScope: "hr" } : managerLogin ? { maintenanceScope: "manager" } : {}) });
     } catch (error) {
       console.error("Login error:", error);
       return res.status(500).json({
@@ -125,6 +131,8 @@ export function setupAuth(app: Express) {
       });
     }
   });
+
+  registerSystemAdminRoutes(app, { hashPassword });
 
   app.post("/api/auth/logout", (req: Request, res: Response) => {
     req.session.destroy((err) => {
