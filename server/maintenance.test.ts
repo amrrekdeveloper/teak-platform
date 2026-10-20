@@ -56,6 +56,18 @@ describe("maintenance mode", () => {
     expect(request("/__maintenance/logo.png").headers.type).toBe("png");
     expect(request("/assets/app.js").headers.type).toBe("html");
   });
+  it("allows only isolated employee pages/API, never administrative application paths", () => {
+    expect(request("/employee-self-service").headers.type).toBe("html");
+    expect(String(request("/employee-self-service").body)).toContain("otp-code");
+    expect(request("/technical-support").status).toBe(200);
+    expect(request("/api/employee-portal/me").passed).toBe(true);
+    expect(request("/api/employee-portal/otp/request", "POST").passed).toBe(true);
+    for (const url of ["/api/auth/login", "/api/employees", "/api/employee-auth/verify-pin"]) {
+      expect(request(url, "POST").status).toBe(503);
+      expect(request(url, "POST").passed).toBe(false);
+    }
+    expect(request("/system-admin").status).toBe(503);
+  });
   it("keeps maintenance active after expiry with the requested exact message", () => {
     const result = request("/", "GET", true, end + 1);
     expect(result.passed).toBe(false);

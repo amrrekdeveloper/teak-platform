@@ -36,11 +36,13 @@ export async function comparePasswords(
 declare module "express-session" {
   interface SessionData {
     userId: number;
+    adminAuthenticated?: boolean;
   }
 }
 
 export function setupAuth(app: Express) {
   const PgSession = connectPgSimple(session);
+  if (!process.env.SESSION_SECRET) throw new Error("SESSION_SECRET is required");
 
   app.use(
     session({
@@ -49,7 +51,7 @@ export function setupAuth(app: Express) {
         tableName: "user_sessions",
         createTableIfMissing: true,
       }),
-      secret: process.env.SESSION_SECRET || "teak-manufacturing-secret-key",
+      secret: process.env.SESSION_SECRET,
       resave: false,
       saveUninitialized: false,
       rolling: true,
@@ -87,8 +89,12 @@ export function setupAuth(app: Express) {
         });
       }
 
+      // New session ID prevents fixation. Existing unmarked PIN-created
+      // sessions must authenticate again using administrative credentials.
+      await new Promise<void>((resolve, reject) => req.session.regenerate(err => err ? reject(err) : resolve()));
       req.session.userId = user.id;
-      const { password: _, ...safeUser } = user;
+      req.session.adminAuthenticated = true;
+      const { password: _, employeePin: _pin, financePin: _financePin, ...safeUser } = user;
       const permissions = await getEffectivePermissionsForUser(user);
       return res.json({ ...safeUser, permissions });
     } catch (error) {
@@ -114,7 +120,7 @@ export function setupAuth(app: Express) {
   });
 
   app.get("/api/auth/me", async (req: Request, res: Response) => {
-    if (!req.session.userId) {
+    if (!req.session.userId || !req.session.adminAuthenticated) {
       return res.status(401).json({
         message: "غير مسجل الدخول",
         messageEn: "Not authenticated",
@@ -123,13 +129,13 @@ export function setupAuth(app: Express) {
 
     try {
       const user = await storage.getUser(req.session.userId);
-      if (!user) {
+      if (!user || !user.active) {
         return res.status(401).json({
           message: "المستخدم غير موجود",
           messageEn: "User not found",
         });
       }
-      const { password: _, ...safeUser } = user;
+      const { password: _, employeePin: _pin, financePin: _financePin, ...safeUser } = user;
       const permissions = await getEffectivePermissionsForUser(user);
       return res.json({ ...safeUser, permissions });
     } catch (error) {
@@ -142,7 +148,7 @@ export function setupAuth(app: Express) {
 }
 
 export function requireAuth(req: Request, res: Response, next: NextFunction) {
-  if (!req.session.userId) {
+  if (!req.session.userId || !req.session.adminAuthenticated) {
     return res.status(401).json({
       message: "يجب تسجيل الدخول أولاً",
       messageEn: "Authentication required",
@@ -187,7 +193,7 @@ async function hasModuleGrantForPath(user: User, method: string, path: string): 
 
 export function requireRole(...roles: string[]) {
   return async (req: Request, res: Response, next: NextFunction) => {
-    if (!req.session.userId) {
+    if (!req.session.userId || !req.session.adminAuthenticated) {
       return res.status(401).json({
         message: "يجب تسجيل الدخول أولاً",
         messageEn: "Authentication required",
@@ -196,7 +202,7 @@ export function requireRole(...roles: string[]) {
 
     try {
       const user = await storage.getUser(req.session.userId);
-      if (!user) {
+      if (!user || !user.active) {
         return res.status(401).json({
           message: "المستخدم غير موجود",
           messageEn: "User not found",

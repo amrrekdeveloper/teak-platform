@@ -30,13 +30,27 @@ export function createMaintenanceMiddleware(
   if (!enabled) return (_req, _res, next) => next();
   const template = readFileSync(path.join(publicDir, "maintenance.html"), "utf8");
   const logo = readFileSync(path.join(publicDir, "maintenance-logo.png"));
+  const employeePages = new Map([
+    ["/employee-self-service", readFileSync(path.join(publicDir, "employee-portal.html"), "utf8")],
+    ["/technical-support", readFileSync(path.join(publicDir, "technical-support.html"), "utf8")],
+  ]);
 
-  return (req, res) => {
+  return (req, res, next) => {
     res.set("Cache-Control", "no-store, max-age=0");
     res.set("X-Content-Type-Options", "nosniff");
+    res.set("X-Frame-Options", "SAMEORIGIN");
+    res.set("Referrer-Policy", "same-origin");
+    // This isolated API is the ONLY application surface available during
+    // maintenance. It never mounts administrative session middleware.
+    if (req.path.startsWith("/api/employee-portal/")) return next();
     // A short retry hint is not an automatic reopening promise.
     res.set("Retry-After", "3600");
     if (req.method === "GET" || req.method === "HEAD") {
+      const page = employeePages.get(req.path);
+      if (page) {
+        res.type("html").send(page);
+        return;
+      }
       if (req.path === "/__maintenance/logo.png") {
         res.type("png").send(logo);
         return;

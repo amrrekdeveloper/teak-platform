@@ -5,6 +5,8 @@ import { createServer } from "http";
 import { seedProductionDatabase } from "./db-seed";
 import path from "node:path";
 import { createMaintenanceMiddleware } from "./maintenance";
+import { createEmployeePortalRouter } from "./employee-portal/router";
+import { initializeEmployeePortal } from "./employee-portal/database";
 
 const app = express();
 const httpServer = createServer(app);
@@ -18,6 +20,10 @@ app.use(createMaintenanceMiddleware(
     ? path.resolve(__dirname, "public")
     : path.resolve(process.cwd(), "client/public"),
 ));
+
+// Isolated employee API: narrow body limit, no administrative cookies, and
+// mounted BEFORE response logging (which must never capture OTP/session data).
+app.use("/api/employee-portal", express.json({ limit: "8kb" }), createEmployeePortalRouter());
 
 declare module "http" {
   interface IncomingMessage {
@@ -75,6 +81,7 @@ app.use((req, res, next) => {
 
 (async () => {
   await seedProductionDatabase();
+  await initializeEmployeePortal();
 
   await registerRoutes(httpServer, app).catch(err => {
     console.error("Failed to register routes:", err);

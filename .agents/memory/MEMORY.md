@@ -21,3 +21,4 @@
 - [Recessed fixtures & drag planes](kitchen-recessed-fixtures.md) — countertop fixtures need shape-with-holes cutouts; drag planes at item elevation; island fit = max obstruction + clearance, reject I rooms.
 - [HR workflow engine invariants](hr-workflow-engine.md) — hr_actions steps advance via conditional UPDATE (409 on race); chained actions deduped by unique (linked_action_id, workflow); final step revalidates required formData.
 - [Maintenance reopening policy](maintenance-policy.md) — countdown expiry never reopens the platform; explicit owner request required, while preserving root health checks for publishing.
+- [Employee portal boundaries](employee-portal-boundaries.md) — existing HR identities only, independent employee sessions, Taqnyat/TEAKSA, and no administrative access during maintenance.

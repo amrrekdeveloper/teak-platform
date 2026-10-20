@@ -273,7 +273,14 @@ export async function registerRoutes(
 ): Promise<Server> {
   setupAuth(app);
 
-  // Employee OTP auth: check phone exists in users table (kept for compatibility)
+  // Retired PIN/user-account bridge. Employee identity is now established
+  // exclusively through /api/employee-portal OTP + independent device sessions.
+  app.use("/api/employee-auth", (_req, res) => res.status(410).json({
+    message: "تم إيقاف الدخول بالرمز الوظيفي. استخدم بوابة الخدمة الذاتية والتحقق برسالة SMS.",
+  }));
+
+  // Legacy handlers below cannot run; retained data fields remain compatible
+  // with administrative employee management while old client versions migrate.
   app.post("/api/employee-auth/check-phone", async (req: Request, res: Response) => {
     try {
       const { phone } = req.body;
@@ -320,18 +327,13 @@ export async function registerRoutes(
         return res.status(403).json({ message: "رقم الجوال غير مسجل كموظف", messageEn: "Phone number not registered as employee" });
       }
 
-      // Default PIN = last 4 digits of phone number
-      const phone10 = normalizePhone(String(phone));
-      const defaultPin = phone10.replace(/\D/g, "").slice(-4);
-      const expectedPin = user.employeePin || defaultPin;
+      const expectedPin = user.employeePin;
 
-      if (String(pin).trim() !== String(expectedPin).trim()) {
+      if (!expectedPin || String(pin).trim() !== String(expectedPin).trim()) {
         return res.status(401).json({ message: "الرمز غير صحيح", messageEn: "Incorrect PIN" });
       }
 
-      req.session.userId = user.id;
-      const { password: _, financePin: __, employeePin: ___, ...safeUser } = user;
-      return res.json(safeUser);
+      return res.status(410).json({ message: "استخدم بوابة الموظفين المستقلة." });
     } catch (error) {
       console.error("verify-pin error:", error);
       return res.status(500).json({ message: "حدث خطأ", messageEn: "An error occurred" });
@@ -351,11 +353,9 @@ export async function registerRoutes(
       const user = await storage.getUser(req.session.userId!);
       if (!user) return res.status(404).json({ message: "المستخدم غير موجود", messageEn: "User not found" });
 
-      const phone10 = normalizePhone(user.phone || "");
-      const defaultPin = phone10.replace(/\D/g, "").slice(-4);
-      const expectedPin = user.employeePin || defaultPin;
+      const expectedPin = user.employeePin;
 
-      if (String(currentPin).trim() !== String(expectedPin).trim()) {
+      if (!expectedPin || String(currentPin).trim() !== String(expectedPin).trim()) {
         return res.status(401).json({ message: "الرمز الحالي غير صحيح", messageEn: "Current PIN is incorrect" });
       }
       await storage.updateUser(req.session.userId!, { employeePin: String(newPin) });
@@ -8240,36 +8240,16 @@ export async function registerRoutes(
 
   // ============ ATTENDANCE SYSTEM ============
 
-  // In-memory rate limiter for attendance password endpoint
-  const attendanceRateLimit = new Map<string, { count: number; resetAt: number }>();
-  const ATTENDANCE_MAX_ATTEMPTS = 10;
   const ATTENDANCE_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 
   function requireAttendanceAuth(req: Request, res: Response, next: NextFunction) {
-    const session = (req as any).session;
-    if (session?.attendanceAuth) return next();
-    return res.status(401).json({ message: "يجب تسجيل الدخول لبوابة الدوام أولاً", messageEn: "You must sign in to the attendance portal first" });
+    // Old shared-password sessions are never identity proof. These legacy
+    // operations are administrative-only; employee actions use their own API.
+    return requireRole("owner", "it", "hr", "assistant")(req, res, next);
   }
 
-  app.post("/api/attendance/verify-password", async (req, res) => {
-    const ip = req.ip || "unknown";
-    const now = Date.now();
-    const limiter = attendanceRateLimit.get(ip) || { count: 0, resetAt: now + ATTENDANCE_WINDOW_MS };
-    if (now > limiter.resetAt) { limiter.count = 0; limiter.resetAt = now + ATTENDANCE_WINDOW_MS; }
-    if (limiter.count >= ATTENDANCE_MAX_ATTEMPTS) {
-      return res.status(429).json({ success: false, message: "تجاوزت عدد المحاولات المسموحة. حاول بعد 15 دقيقة.", messageEn: "Too many attempts. Try again in 15 minutes." });
-    }
-    limiter.count++;
-    attendanceRateLimit.set(ip, limiter);
-
-    const { password } = req.body;
-    const portalPassword = process.env.ATTENDANCE_PORTAL_PASSWORD || "1400";
-    if (password === portalPassword) {
-      (req as any).session.attendanceAuth = true;
-      limiter.count = 0;
-      return res.json({ success: true });
-    }
-    return res.status(401).json({ success: false, message: "كلمة المرور غير صحيحة", messageEn: "Incorrect password" });
+  app.post("/api/attendance/verify-password", (_req, res) => {
+    return res.status(410).json({ message: "تم إيقاف كلمة المرور المشتركة. استخدم بوابة الخدمة الذاتية." });
   });
 
   app.get("/api/attendance/employees-list", requireAttendanceAuth, async (_req, res) => {

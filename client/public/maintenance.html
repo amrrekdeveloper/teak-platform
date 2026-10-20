@@ -49,6 +49,13 @@
     .drawing { position: absolute; top: 50%; left: 50%; width: 115%; height: 64%; transform: translate(-50%, -44%); opacity: .24; pointer-events: none; }
     .brand-caption { position: relative; z-index: 1; margin: auto 0 0; text-align: center; font-size: 21px; font-weight: 300; letter-spacing: .02em; }
     .brand-caption::before { content: ""; display: block; width: 36px; height: 1px; background: #d9b8a5; margin: 0 auto 20px; }
+    .service-links { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
+    .service-link { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; padding: 8px 15px; border: 1px solid var(--line); border-radius: 3px; color: var(--brand); text-decoration: none; font-size: 17px; line-height: 1.3; transition: background .2s, color .2s, border-color .2s; }
+    .service-link:hover, .service-link:focus-visible { background: var(--brand); border-color: var(--brand); color: var(--paper); }
+    .service-link:focus-visible { outline: 3px solid #c98d72; outline-offset: 3px; }
+    .service-link span { color: var(--muted); font-size: 14px; }
+    .service-link svg { width: 20px; height: 20px; flex-shrink: 0; }
+    .service-link:hover span, .service-link:focus-visible span { color: inherit; }
     @keyframes arrive { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
     @media (min-width: 1450px) { main { margin-inline: auto; width: 100%; } }
     @media (max-width: 767px) {
@@ -100,6 +107,10 @@
             </div>
           </div>
           <p class="schedule-note text-[13px]">نحلم ونحقق، للدعم الفني لا تتردد بالتواصل</p>
+          <nav class="service-links" aria-label="خدمات تيك">
+            <a class="service-link" href="/employee-self-service"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="9" cy="7" r="3"/><path d="M3 20v-3a6 6 0 0 1 10-4M15 18l2 2 4-5"/></svg>الخدمة الذاتية والحضور <span>Employee Self-Service &amp; Attendance</span></a>
+            <a class="service-link" href="/technical-support"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4 14v-3a8 8 0 0 1 16 0v3M4 12H2v6h4v-6ZM20 12h2v6h-4v-6ZM20 18v1a3 3 0 0 1-3 3h-3"/></svg>الدعم الفني <span>Technical Support</span></a>
+          </nav>
           <noscript><p class="schedule-note">يمكنك متابعة الوقت المتبقي عند تفعيل JavaScript. تظل المنصة تحت الصيانة حتى اكتمال التحديثات.</p></noscript>
         </section>
       </main>
