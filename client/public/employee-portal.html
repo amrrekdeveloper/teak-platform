@@ -47,7 +47,7 @@
           <form id="phone-form" novalidate>
             <div class="form-row">
               <label for="login-phone">رقم الجوال</label>
-              <input id="login-phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="05xxxxxxxx" dir="auto" required data-testid="login-phone" aria-describedby="phone-hint">
+              <input id="login-phone" name="phone" type="tel" inputmode="numeric" autocomplete="tel-national" placeholder="05xxxxxxxx" dir="ltr" minlength="10" maxlength="10" pattern="05[0-9]{8}" required data-testid="login-phone" aria-describedby="phone-hint">
               <p id="phone-hint" class="hint">الرقم المسجل في ملفك الوظيفي.</p>
             </div>
             <button class="btn" id="send-otp" type="submit" data-testid="send-otp">إرسال رمز التحقق</button>
@@ -262,10 +262,21 @@
       document.querySelector(".tabs").addEventListener("keydown",event=>{
         if(!["ArrowLeft","ArrowRight","Home","End"].includes(event.key))return;const tabs=Array.from(document.querySelectorAll(".tab"));const current=tabs.indexOf(document.activeElement);let next=event.key==="Home"?0:event.key==="End"?tabs.length-1:(current+(event.key==="ArrowLeft"?1:-1)+tabs.length)%tabs.length;tabs[next].focus();tabs[next].click();
       });
+      function sanitizePhone(value){return normalizeDigits(value).replace(/[^0-9]/g,"").slice(0,10)}
+      $("login-phone").addEventListener("input",event=>{event.target.value=sanitizePhone(event.target.value)});
+      $("login-phone").addEventListener("paste",event=>{
+        event.preventDefault();
+        const input=event.target,start=input.selectionStart||0,end=input.selectionEnd??start;
+        const digits=normalizeDigits(event.clipboardData.getData("text")).replace(/[^0-9]/g,"");
+        const inserted=digits.slice(0,10-(input.value.length-(end-start)));
+        input.value=sanitizePhone(input.value.slice(0,start)+inserted+input.value.slice(end));
+        input.setSelectionRange(start+inserted.length,start+inserted.length);
+        input.dispatchEvent(new Event("input",{bubbles:true}));
+      });
       $("phone-form").addEventListener("submit",async event=>{
         event.preventDefault();message($("login-error"),"");message($("login-success"),"");
-        const phone=normalizeDigits($("login-phone").value).replace(/[\s\-()]/g,"");$("login-phone").value=phone;
-        if(!phone){$("login-phone").focus();errorText($("login-error"),new Error("أدخل رقم الجوال."));return;}
+        const phone=sanitizePhone($("login-phone").value);$("login-phone").value=phone;
+        if(!/^05[0-9]{8}$/.test(phone)){$("login-phone").focus();errorText($("login-error"),new Error("أدخل رقم جوال من 10 أرقام يبدأ بـ 05."));return;}
         setLoading(true);
         try{const data=await request("/otp/request",{method:"POST",body:{phone}});challengeId=data.challengeId;resendAt=Date.now()+Math.max(0,Number(data.resendAfter)||60)*1000;
           $("otp-instruction").textContent=developmentOtp?"أدخل رمز التحقق.":(data.message||"أدخل الرمز المرسل إلى جوالك.");show($("phone-form"),false);show($("otp-form"),true);$("otp-code").focus();startResendTimer();
