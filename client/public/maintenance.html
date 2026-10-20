@@ -71,18 +71,24 @@
       .domain { font-size: 17px; }
     }
     @media (prefers-reduced-motion: reduce) { main { animation: none; } }
+    [class~="text-[12px]"] { font-size: 12px; }
+    [class~="text-[14px]"] { font-size: 14px; }
+    [class~="text-[35px]"] { font-size: 35px; }
+    [class~="text-[25px]"] { font-size: 25px; }
+    [class~="text-[15px]"] { font-size: 15px; }
+    [class~="text-[13px]"] { font-size: 13px; }
   </style>
 </head>
 <body>
   <div class="page">
     <div class="content">
-      <div class="topline">تيك · مطابخ تُصمّم لك</div>
+      <div class="topline text-[12px]">تيك · مطابخ تُصمّم لك</div>
       <main>
-        <p class="eyebrow">وقفة قصيرة، وعناية مستمرة</p>
-        <h1>نعتني بالتفاصيل،<span>حتى هنا.</span></h1>
-        <p class="description">نعمل على تحديث منصة تيك لتكون تجربتك معنا أكثر وضوحًا وسهولة. الموقع متوقف مؤقتًا للصيانة، ونقدّر تفهّمك وانتظارك.</p>
+        <p class="eyebrow text-[14px]">وقفة قصيرة، وعناية مستمرة</p>
+        <h1 class="text-[35px]">نعتني بالتفاصيل،<span class="text-[25px]">حتى هنا.</span></h1>
+        <p class="description">إبداع، قوة، حماس.. بوصولك إلى هذه الصفحة فأنت من منسوبي تيك. تمتع بوصول غير محدود إلى خدمات الكترونية صممت لخدمتك. أنت مميز وحقك علينا كبير.</p>
         <section class="timing" aria-label="حالة المنصة وفترة الصيانة">
-          <p class="message" id="maintenance-message" role="status" aria-live="polite">__MAINTENANCE_INITIAL_MESSAGE__</p>
+          <p class="message text-[15px]" id="maintenance-message" role="status" aria-live="polite">__MAINTENANCE_INITIAL_MESSAGE__</p>
           <div class="countdown" id="countdown" hidden>
             <p class="counter-label" id="counter-label">الوقت المتبقي لفترة الصيانة المقررة</p>
             <div class="digits" role="group" aria-labelledby="counter-label" aria-live="off">
@@ -93,13 +99,13 @@
               <div class="unit"><span class="value" id="seconds">—</span><span class="unit-label">ثانية</span></div>
             </div>
           </div>
-          <p class="schedule-note">فترة الصيانة المقررة ٧٢ ساعة، وقد يستمر التطوير بعد انتهائها.</p>
+          <p class="schedule-note text-[13px]">نحلم ونحقق، للدعم الفني لا تتردد بالتواصل</p>
           <noscript><p class="schedule-note">يمكنك متابعة الوقت المتبقي عند تفعيل JavaScript. تظل المنصة تحت الصيانة حتى اكتمال التحديثات.</p></noscript>
         </section>
       </main>
       <footer>
-        <span>تفاصيل مدروسة. مطابخ تشبهك.</span>
-        <span class="domain" dir="ltr">teak-sa.com</span>
+        <span>جميع الحقوق محفوظة © 2026 </span>
+        <span class="domain" dir="ltr">teak</span>
       </footer>
     </div>
     <aside class="brand-panel" aria-label="تيك">
@@ -136,7 +142,7 @@
         if (remaining <= 0) {
           expired = true;
           countdown.hidden = true;
-          message.textContent = "لا زالت المنصة تحت التطوير";
+          message.textContent = "الخدمة الذاتية المتكاملة لموظفين تيك";
           if (interval !== undefined) clearInterval(interval);
           return;
         }

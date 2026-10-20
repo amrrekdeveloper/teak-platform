@@ -59,8 +59,8 @@ describe("maintenance mode", () => {
   it("keeps maintenance active after expiry with the requested exact message", () => {
     const result = request("/", "GET", true, end + 1);
     expect(result.passed).toBe(false);
-    expect(String(result.body)).toContain("لا زالت المنصة تحت التطوير");
-    expect(renderMaintenanceHtml("__MAINTENANCE_INITIAL_MESSAGE__", end)).toBe("لا زالت المنصة تحت التطوير");
+    expect(String(result.body)).toContain("الخدمة الذاتية المتكاملة لموظفين تيك");
+    expect(renderMaintenanceHtml("__MAINTENANCE_INITIAL_MESSAGE__", end)).toBe("الخدمة الذاتية المتكاملة لموظفين تيك");
   });
   it("restores original routing only when explicitly disabled", () => {
     expect(request("/", "GET", false).passed).toBe(true);
@@ -104,7 +104,7 @@ describe("browser countdown", () => {
     expect(timer.elements.countdown.hidden).toBe(false);
     timer.advance(1000);
     expect(timer.elements.countdown.hidden).toBe(true);
-    expect(timer.elements["maintenance-message"].textContent).toBe("لا زالت المنصة تحت التطوير");
+    expect(timer.elements["maintenance-message"].textContent).toBe("الخدمة الذاتية المتكاملة لموظفين تيك");
     timer.advance(-10000);
     expect(timer.elements.countdown.hidden).toBe(true);
     expect(countdownAt(end + 1).elements.countdown.hidden).toBe(true);

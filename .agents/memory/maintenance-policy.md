@@ -5,7 +5,7 @@ description: Owner-controlled maintenance expiry and publishing health constrain
 
 The maintenance countdown is informational, not authorization to reopen. Reopen the platform only on an explicit owner request, even after the deadline.
 
-**Why:** The owner explicitly requested that expiry continue to show «لا زالت المنصة تحت التطوير» rather than restoring access automatically.
+**Why:** The owner explicitly requested that expiry keep the platform closed rather than restoring access automatically. Later employee-facing copy changes do not authorize reopening.
 
 **How to apply:** Keep deadline handling separate from enabling/disabling maintenance. Disabling maintenance must be a deliberate change followed by republishing.
 

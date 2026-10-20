@@ -17,7 +17,7 @@ export function renderMaintenanceHtml(template: string, now = Date.now()) {
     .replaceAll("__MAINTENANCE_SERVER_NOW_MS__", String(now))
     .replaceAll(
       "__MAINTENANCE_INITIAL_MESSAGE__",
-      now >= endsAt ? "لا زالت المنصة تحت التطوير" : "نعمل على تطوير المنصة لتجربة أفضل",
+      "الخدمة الذاتية المتكاملة لموظفين تيك",
     );
 }
 
