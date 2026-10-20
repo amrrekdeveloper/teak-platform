@@ -10,6 +10,7 @@ import { registerManagerWorkspace } from "./hr-manager-workspace";
 import { setupAuth, requireAuth, requireRole, comparePasswords, hashPassword, getEffectivePermissionsForUser } from "./auth";
 import { initializeHrDataIntegrity, deleteUnusedEmployee } from "./hr-data-integrity";
 import { initializeSystemAdmin } from "./system-admin";
+import { recoverSystemAdminPassword } from "./system-admin-recovery";
 import { ensureAttendanceExtensions } from "./attendance-support";
 import { freezeCurrentAttendanceSchedules } from "./attendance-schedule-history";
 import { runAttendanceCatchup } from "./attendance-scheduler";
@@ -287,6 +288,8 @@ export async function registerRoutes(
   setupAuth(app);
   const systemAdminStatus = await initializeSystemAdmin({ hashPassword, comparePasswords });
   console.log(`System administrator setup: ${systemAdminStatus}`);
+  const recoveryStatus = await recoverSystemAdminPassword({ hashPassword });
+  if (recoveryStatus !== "disabled") console.log(`System administrator password recovery: ${recoveryStatus}`);
   await initializeHrDataIntegrity();
 
   // Retired PIN/user-account bridge. Employee identity is now established

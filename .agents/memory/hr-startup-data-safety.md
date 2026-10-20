@@ -14,3 +14,9 @@ Never use the absence of a historical default username as proof that an installa
 **Why:** A second bootstrap path used that assumption even when the main baseline seeder skipped populated databases; legitimate owner-selected account names could therefore trigger destructive setup.
 
 **How to apply:** Audit every startup entry point, not just the main seed guard. Production startup must not seed default credentials or clean business records. First-owner provisioning is a separate, narrowly authorized operation.
+
+Owner password recovery must be explicitly requested, production-only, and durably single-use. Bootstrap-secret edits alone must not silently overwrite an existing owner's password.
+
+**Why:** The owner can lose access after first provisioning; continuously applying a configured password would reintroduce startup identity repair and undo later password changes.
+
+**How to apply:** Require an operator-supplied recovery identifier and pending secret, match the existing active designated owner, and atomically hash/update the password, revoke only their administrative sessions, clear only their per-username login limit, and audit consumption. Reusing the identifier must never reapply recovery. Do not add a public secret-based login fallback.
