@@ -1,0 +1,37 @@
+We are starting the TEAK Employee Self-Service Portal development.
+
+**Scope: TEAK only. Work within the current project and its existing codebase. Do not mix it with any other project.**
+
+### Requirements
+
+1. **Preserve the existing public homepage exactly as it is**, including its visual identity, text, layout, and desktop/mobile responsiveness. Only add two elegant, matching entry icons:
+   - **Employee Self-Service & Attendance**
+   - **Technical Support** (entry placeholder only; functionality will be developed later).
+
+2. The employee portal must be **completely independent of the existing administrative username/password login**. Identify employees through their existing HR employee records and registered mobile numbers. Do not create duplicate employee records or administrative user accounts.
+
+3. Employee authentication will use **SMS OTP**, followed by a secure, revocable device session so employees do not need another SMS for every attendance transaction.
+
+4. **SMS integration does not exist yet.** When implementation reaches this step, ask me for:
+   - SMS provider name
+   - Approved Sender Name
+   - API credentials
+
+   Guide me to enter API secrets securely through **Replit Secrets**, never in chat, frontend code, GitHub, or logs. Do not invent a provider, credentials, or simulated OTP verification.
+
+5. Reuse the existing HR, attendance, leave, and permission-request functionality. Attendance must validate employee authorization, server-side time, and permitted GPS location. Do not present browser location verification as biometric fingerprint authentication.
+
+6. Inspect and address existing authentication risks, particularly shared attendance passwords, default PIN fallbacks, and any possibility of an employee portal session gaining administrative privileges.
+
+### First action — quick inspection only
+
+Inspect the relevant existing code and return a **short, practical report** covering:
+
+- What can be reused immediately.
+- What must be corrected or added.
+- The exact implementation sequence, keeping changes minimal.
+- Any essential information you need from me.
+
+**Do not modify code yet. Wait for my approval of your brief plan.**
+
+After approval, implement efficiently, test the complete employee journey on desktop and mobile, and preserve all existing administrative functionality.
