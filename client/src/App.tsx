@@ -351,7 +351,7 @@ function DashboardRoutes() {
         <Route path="/attendance-monitor" component={AttendanceMonitorPage} />
         <Route path="/settings/users" component={GuardedSettingsUsersPage} />
         <Route path="/settings/products" component={SettingsProductsPage} />
-        <Route path="/settings" component={SettingsPage} />
+        <Route path="/settings">{() => <SettingsPage />}</Route>
         <Route component={NotFound} />
       </Switch>
       </PermissionGate>

@@ -1,4 +1,5 @@
 import type { Express, Request, Response, NextFunction } from "express";
+import { parseInt, singleParam } from "./route-param";
 import { createServer, type Server } from "http";
 import { eq } from "drizzle-orm";
 import { storage } from "./storage";
@@ -9,7 +10,10 @@ import { registerManagerWorkspace } from "./hr-manager-workspace";
 import { setupAuth, requireAuth, requireRole, comparePasswords, hashPassword, getEffectivePermissionsForUser } from "./auth";
 import { initializeHrDataIntegrity, deleteUnusedEmployee } from "./hr-data-integrity";
 import { initializeSystemAdmin } from "./system-admin";
-import { ensureAttendanceExtensions, reconcileAttendance } from "./attendance-support";
+import { ensureAttendanceExtensions } from "./attendance-support";
+import { freezeCurrentAttendanceSchedules } from "./attendance-schedule-history";
+import { runAttendanceCatchup } from "./attendance-scheduler";
+import { registerAttendanceOverride } from "./attendance-override";
 import { withUniqueEmployeePhone } from "./employee-portal/hr-onboarding";
 import {
   isProtectedOwner,
@@ -381,7 +385,7 @@ export async function registerRoutes(
   // Verifies the requesting user has access to the survey that owns the file.
   app.get("/api/uploads/survey-files/:filename", requireAuth, async (req, res) => {
     try {
-      const filename = req.params.filename.replace(/[^a-zA-Z0-9._-]/g, "");
+      const filename = singleParam(req.params.filename).replace(/[^a-zA-Z0-9._-]/g, "");
       const urlPath = `/uploads/survey-files/${filename}`;
       // Lookup file and verify user has survey access
       const fileRow = await pool.query(
@@ -406,7 +410,7 @@ export async function registerRoutes(
   // Uses quotation.attached_design_files (source of truth) OR attach_to_quote flag as fallback.
   app.get("/api/customer/survey-files/:filename", requirePortalAuth, async (req, res) => {
     try {
-      const filename = req.params.filename.replace(/[^a-zA-Z0-9._-]/g, "");
+      const filename = singleParam(req.params.filename).replace(/[^a-zA-Z0-9._-]/g, "");
       const urlPath = `/uploads/survey-files/${filename}`;
       const portalCustomer = (req as any).portalCustomer;
       // Check by source-of-truth: file ID in quotation.attached_design_files, customer owns quote
@@ -483,7 +487,7 @@ export async function registerRoutes(
     console.warn("Kitchen pricing migration warning (non-fatal):", pricingMigrationError instanceof Error ? pricingMigrationError.message : String(pricingMigrationError));
   }
 
-  await seedDatabase();
+  if (process.env.NODE_ENV !== "production") await seedDatabase();
 
   // Ensure appointments table has all required columns (safe migration)
   try {
@@ -3807,7 +3811,7 @@ export async function registerRoutes(
 
   app.get("/uploads/hr-documents/:filename", requireRole("owner", "assistant", "hr"), async (req, res) => {
     try {
-      const filename = req.params.filename.replace(/[^a-zA-Z0-9._-]/g, "");
+      const filename = singleParam(req.params.filename).replace(/[^a-zA-Z0-9._-]/g, "");
       const served = await streamObjectFile(HR_DOCS_FOLDER, filename, res);
       if (!served) return res.status(404).json({ message: "الملف غير موجود" });
     } catch (error) {
@@ -4657,7 +4661,7 @@ export async function registerRoutes(
 
   app.get("/uploads/delivery-photos/:filename", requireRole("owner", "assistant", "delivery", "production", "installation"), async (req, res) => {
     try {
-      const filename = req.params.filename.replace(/[^a-zA-Z0-9._-]/g, "");
+      const filename = singleParam(req.params.filename).replace(/[^a-zA-Z0-9._-]/g, "");
       const photoPath = `/uploads/delivery-photos/${filename}`;
       // Verify that this photo path exists in at least one delivery record
       const allDeliveries = await storage.getDeliveries();
@@ -7381,12 +7385,8 @@ export async function registerRoutes(
   await ensureAttendanceExtensions();
   const reconcileRecent = async () => {
     try {
-      for (let days = 2; days >= 0; days--) {
-        const day = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh" })
-          .format(new Date(Date.now() - days * 86400000));
-        await reconcileAttendance(day);
-      }
-    } catch (error) { console.error("Attendance reconciliation failed", error); }
+      await runAttendanceCatchup();
+    } catch { console.error("Attendance reconciliation failed; will retry on next tick"); }
   };
   // Reconciliation must not mutate actual employee history in development.
   if (process.env.NODE_ENV === "production" && process.env.REPLIT_DEPLOYMENT === "1") {
@@ -8592,6 +8592,7 @@ export async function registerRoutes(
           (parsed.scopeType === "employee" && s.employeeId === parsed.employeeId))
       );
       if (dup) return res.status(409).json({ message: "يوجد إعداد لهذا النطاق مسبقاً — عدّله بدلاً من الإضافة" });
+      await freezeCurrentAttendanceSchedules();
       const setting = await storage.createWorkScheduleSetting(parsed);
       res.status(201).json(setting);
     } catch (e: any) {
@@ -8616,7 +8617,8 @@ export async function registerRoutes(
         }
         data.graceMinutes = g;
       }
-      const updated = await storage.updateWorkScheduleSetting(parseInt(req.params.id), data);
+      await freezeCurrentAttendanceSchedules();
+      const updated = await storage.updateWorkScheduleSetting(Number(req.params.id), data);
       if (!updated) return res.status(404).json({ message: "الإعداد غير موجود" });
       res.json(updated);
     } catch {
@@ -8632,6 +8634,7 @@ export async function registerRoutes(
       if (target.scopeType === "default") {
         return res.status(400).json({ message: "لا يمكن حذف الإعداد الافتراضي — يمكن تعديله فقط" });
       }
+      await freezeCurrentAttendanceSchedules();
       await storage.deleteWorkScheduleSetting(target.id);
       res.json({ success: true });
     } catch {
@@ -8704,37 +8707,7 @@ export async function registerRoutes(
   });
 
   // التدخل الإداري (المرحلة 6): عذر معتمد + Audit — بلا أثر مالي
-  const OVERRIDE_EXCUSES = ["forgot_fingerprint", "technical_issue", "emergency_leave", "medical_excuse"] as const;
-  app.post("/api/attendance/record/:id/override", requireRole("owner", "it", "hr"), async (req, res) => {
-    const id = parseInt(req.params.id);
-    const userId = (req as any).user?.id;
-    try {
-      const { excuseType, note, newCheckTime } = req.body || {};
-      if (!OVERRIDE_EXCUSES.includes(excuseType)) {
-        return res.status(400).json({ message: "نوع العذر غير صحيح" });
-      }
-      if (typeof note !== "string" || note.trim().length < 3 || note.length > 1000)
-        return res.status(400).json({ message: "سبب التصحيح مطلوب." });
-      if (excuseType === "medical_excuse") {
-        const attachment = await pool.query("SELECT id FROM attendance_medical_attachments WHERE record_id=$1 LIMIT 1", [id]);
-        if (!attachment.rowCount) return res.status(400).json({ message: "أرفق التقرير الطبي عبر رفع المرفقات الآمن قبل اعتماد العذر." });
-      }
-      const before = await storage.getAttendanceRecord(id);
-      if (!before) return res.status(404).json({ message: "السجل غير موجود" });
-
-      if (newCheckTime) {
-        if (!z.string().datetime({ offset: true }).safeParse(newCheckTime).success)
-          return res.status(400).json({ message: "وقت غير صحيح" });
-      }
-      const updated = await attendanceSupport.correctAttendanceRecord(id, userId, {
-        checkTime: newCheckTime, notes: note, reason: note, excuse: excuseType,
-      });
-
-      res.json(updated);
-    } catch {
-      res.status(500).json({ message: "حدث خطأ" });
-    }
-  });
+  registerAttendanceOverride(app, requireRole("owner", "it", "hr"));
 
   // سجل التدقيق + تقرير الأعذار الشهري
   app.get("/api/attendance/audit-log", requireRole("owner", "it", "hr"), async (req, res) => {
@@ -9226,7 +9199,7 @@ export async function registerRoutes(
 
   app.get("/uploads/finance-attachments/:filename", requireRole("owner", "assistant", "accountant"), async (req, res) => {
     try {
-      const filename = req.params.filename.replace(/[^a-zA-Z0-9._-]/g, "");
+      const filename = singleParam(req.params.filename).replace(/[^a-zA-Z0-9._-]/g, "");
       res.setHeader("X-Content-Type-Options", "nosniff");
       res.setHeader("Content-Security-Policy", "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'");
       const served = await streamObjectFile(FINANCE_DOCS_FOLDER, filename, res);
@@ -9260,7 +9233,7 @@ export async function registerRoutes(
 
   app.get("/uploads/inventory-images/:filename", requireAuth, async (req, res) => {
     try {
-      const filename = req.params.filename.replace(/[^a-zA-Z0-9._-]/g, "");
+      const filename = singleParam(req.params.filename).replace(/[^a-zA-Z0-9._-]/g, "");
       const served = await streamObjectFile(INVENTORY_IMAGES_FOLDER, filename, res);
       if (!served) return res.status(404).json({ message: "الصورة غير موجودة" });
     } catch (error) {

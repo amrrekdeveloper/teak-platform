@@ -22,6 +22,7 @@ const editSchema = z.object({
 // A durable one-time binding, NOT a recurring password/role reset. Only the
 // application reads these secrets; credentials are never returned or logged.
 export async function initializeSystemAdmin(tools: PasswordTools) {
+  await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS archived boolean NOT NULL DEFAULT false");
   await pool.query(`CREATE TABLE IF NOT EXISTS teak_system_admin (
     singleton boolean PRIMARY KEY DEFAULT true CHECK(singleton),
     user_id integer NOT NULL UNIQUE REFERENCES users(id),

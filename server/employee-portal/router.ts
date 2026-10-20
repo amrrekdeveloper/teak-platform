@@ -12,6 +12,7 @@ import { registerEmployeeServices } from "./services";
 import { registerEmployeeAcknowledgments } from "./acknowledgments";
 import { developmentOtpEnabled } from "./mode";
 import { toLatinDigits } from "../../shared/digits";
+import { registerEmployeeMedicalDocuments } from "./medical-documents";
 
 const production = process.env.NODE_ENV === "production";
 export const DEVICE_COOKIE = production ? "__Host-teak-employee" : "teak-employee";
@@ -27,8 +28,8 @@ export function readCookie(req: Request, name: string) {
 export function asyncRoute(fn: (req: Request, res: Response, next: NextFunction) => Promise<unknown>) {
   return (req: Request, res: Response, next: NextFunction) => { Promise.resolve(fn(req, res, next)).catch(next); };
 }
-export function portalError(status: number, message: string): never {
-  throw Object.assign(new Error(message), { status });
+export function portalError(status: number, message: string, retryAfter?: number): never {
+  throw Object.assign(new Error(message), { status, retryAfter });
 }
 export type PortalIdentity = { employee: PortalEmployee; sessionId: string };
 export const identity = (res: Response) => res.locals.employeePortal as PortalIdentity;
@@ -60,10 +61,13 @@ export function createEmployeePortalRouter() {
     if ((!developmentOtp && !process.env.TAQNYAT_API_KEY) || !process.env.SESSION_SECRET)
       portalError(503, "خدمة الدخول غير متاحة حاليًا. تواصل مع الدعم الفني.");
     const ipKey = tokenHash(req.ip || "unknown");
-    if (!await takeLimit(`otp-ip:${ipKey}`, 20, 900) ||
-      !await takeLimit(`otp-phone:${tokenHash(phone!)}`, 5, 900) ||
-      !await takeLimit(`otp-cooldown:${tokenHash(phone!)}`, 1, 60))
-      portalError(429, "يرجى الانتظار دقيقة قبل طلب رمز آخر. المحاولات المتكررة تتطلب الانتظار 15 دقيقة.");
+    // Shared workplace NAT must not lock all employees after a few logins.
+    // Keep strict recipient/challenge limits and a separate, bounded IP ceiling.
+    if (!await takeLimit(`otp-ip-v2:${ipKey}`, 300, 900) ||
+      !await takeLimit(`otp-phone:${tokenHash(phone!)}`, 5, 900))
+      portalError(429, "محاولات متكررة. حاول بعد 15 دقيقة.",900);
+    if (!await takeLimit(`otp-cooldown:${tokenHash(phone!)}`, 1, 60))
+      portalError(429, "يرجى الانتظار دقيقة قبل طلب رمز آخر.",60);
     const employee = resolveEligibleEmployee(await employeeDirectory(), phone!);
     // In the opted-in development environment, do not lead users into a
     // nonexistent challenge. Production keeps its non-enumerating response.
@@ -107,9 +111,11 @@ export function createEmployeePortalRouter() {
     }).strict().safeParse(req.body);
     if (!input.success) portalError(400, developmentOtp ? "أدخل رمز التطوير المكوّن من أربعة أرقام." : "أدخل رمز التحقق المكوّن من ستة أرقام.");
     const { challengeId, code, deviceName } = input.data!;
-    if (!await takeLimit(`verify-ip:${tokenHash(req.ip || "unknown")}`, 30, 900))
-      portalError(429, "تجاوزت محاولات التحقق. حاول بعد 15 دقيقة.");
     const browserToken = readCookie(req, CHALLENGE_COOKIE);
+    if (!browserToken) portalError(401,"الرمز غير صالح أو انتهت صلاحيته. اطلب رمزًا جديدًا.");
+    if (!await takeLimit(`verify-ip-v2:${tokenHash(req.ip || "unknown")}`,300,900) ||
+      !await takeLimit(`verify-browser:${tokenHash(browserToken)}`,30,900))
+      portalError(429, "تجاوزت محاولات التحقق. حاول بعد 15 دقيقة.",900);
     const client = await pool.connect();
     let deviceToken = "";
     try {
@@ -201,10 +207,15 @@ export function createEmployeePortalRouter() {
     res.json({ success: true });
   }));
   registerEmployeeServices(router);
+  registerEmployeeMedicalDocuments(router);
   registerEmployeeAcknowledgments(router);
   router.use((_req, res) => res.status(404).json({ message: "الخدمة غير موجودة." }));
   router.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err instanceof z.ZodError ? 400 : (err.status || 500);
+    if(status===429) res.set("Retry-After",String(err.retryAfter || 900));
+    if (status >= 500) console.error("Employee portal operation failed", {
+      code: typeof err.code === "string" && /^[A-Z0-9_]{1,40}$/.test(err.code) ? err.code : "INTERNAL",
+    });
     res.status(status).json({ message: status < 500 ? (err instanceof z.ZodError ? "تحقق من البيانات المدخلة." : err.message) : "تعذّر إتمام العملية. حاول لاحقًا أو تواصل مع الدعم الفني." });
   });
   return router;

@@ -1,4 +1,5 @@
 #!/bin/bash
 set -e
 npm run build
-npm run db:push --force
+# Building must not push, copy, or destructively reconcile a database.
+# Required additive migrations run at application startup.

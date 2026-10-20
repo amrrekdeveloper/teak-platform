@@ -2,7 +2,6 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
-import { seedProductionDatabase } from "./db-seed";
 import path from "node:path";
 import { createMaintenanceMiddleware } from "./maintenance";
 import { createEmployeePortalRouter } from "./employee-portal/router";
@@ -81,7 +80,6 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  await seedProductionDatabase();
   await initializeEmployeePortal();
 
   await registerRoutes(httpServer, app).catch(err => {

@@ -1,5 +1,7 @@
 # TEAK HR / attendance acceptance — 20 October 2026
 
+هذا التقرير يوثق مواصفة HR الكاملة ومراجعات سابقة؛ لا يعني أن كل بند مؤجل يمنع النطاق التشغيلي المحدود. نتيجة المرحلة الأولى الحالية موثقة بصورة مستقلة في [تقرير المرحلة الأولى](hr-phase1-acceptance.md)، مع [الفحص العام للأنواع](hr-phase1-typecheck.md) و[قائمة تشغيل المالك](hr-phase1-operations.md). لا تُعتبر نتائج التحقق القديمة دليلًا على تجربة إنتاج.
+
 ## Release gate
 
 **NOT RELEASE-APPROVED yet.** Implemented functionality and passing automated checks do not establish full compliance with the supplied 16-section specification. Missing implementation is reported as FAIL, not misrepresented as an external blocker. Production was not published or tested; no real SMS or production payments were sent.

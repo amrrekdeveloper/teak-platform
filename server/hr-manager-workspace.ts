@@ -23,7 +23,8 @@ export function registerManagerWorkspace(app: Express, requireAuth: RequestHandl
       const employees = (await storage.getEmployees()).filter(e => ids.includes(e.id))
         .map(e => ({ id:e.id, name:e.fullNameAr, number:e.employeeNumber, department:e.department, position:e.position }));
       const leaves = (await storage.getLeaveRequests()).filter(r => ids.includes(r.employeeId));
-      const permissions = (await storage.getAttendancePermissions()).filter(r => ids.includes(r.employeeId));
+      const permissions = (await storage.getAttendancePermissions()).filter(r => ids.includes(r.employeeId))
+        .map(r=>({...r,returnDate:r.formDetails?.returnDate || r.date}));
       const actions = (await storage.getHrActions()).filter(a => ids.includes(a.employeeId) &&
         ["wf04","wf06b","wf10"].includes(a.workflow));
       const history = (await pool.query(`SELECT * FROM hr_request_history WHERE employee_id=ANY($1::int[]) ORDER BY id DESC`, [ids])).rows;

@@ -3,14 +3,16 @@ import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { apiRequest } from "@/lib/queryClient";
+import { MedicalDocumentLinks } from "@/components/medical-document-links";
 import { riyadhDateKey, type AttendanceShift } from "@shared/attendance";
 
 type Report = { employeeName: string; configurationWarnings: string[]; unassignedLegacyRecords: number; rows: {
+  id?: number; recordId?: number; recordIds?: number[];
   day: string; shiftId: string; shiftLabel: string; status: string; checkIn: string | null; checkOut: string | null;
   lateMinutes: number; earlyDepartureMinutes: number; adminOverride: boolean;
 }[] };
 const labels: Record<string,string> = { present: "حاضر", late: "متأخر", absent: "غائب", pending: "لم تنته الوردية",
-  missing_checkin: "نقص دخول", missing_checkout: "نقص خروج", rest_day: "راحة أسبوعية", approved_leave: "إجازة معتمدة", not_started: "قبل المباشرة", out_of_zone: "خارج النطاق", admin_override: "مصحح إدارياً" };
+  missing_checkin: "نقص دخول", missing_checkout: "نقص خروج", rest_day: "راحة أسبوعية", approved_leave: "إجازة معتمدة", not_started: "قبل المباشرة", out_of_zone: "خارج النطاق", admin_override: "مصحح إدارياً", unverified_schedule: "جدول تاريخي غير موثق" };
 const escapeHtml = (value: unknown) => String(value ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]!));
 const time = (value: string | null) => value ? new Date(value).toLocaleTimeString("ar-SA", { timeZone: "Asia/Riyadh", hour: "2-digit", minute: "2-digit" }) : "—";
 
@@ -55,8 +57,12 @@ export function AttendanceShiftReview({ employees, employeeId }: { employees: {i
     <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">{rows.map(r=><article className="border rounded-lg p-3 space-y-1 text-sm" key={`${r.day}:${r.shiftId}`}>
       <div className="flex justify-between gap-2 font-medium"><span>{r.day} · {r.shiftLabel}</span><span>{labels[r.status]}</span></div>
       <p>الدخول: {time(r.checkIn)} · الخروج: {time(r.checkOut)}</p>
-      <p>تأخير: {r.lateMinutes} دقيقة · خروج مبكر: {r.earlyDepartureMinutes} دقيقة</p>
+      {r.status==="unverified_schedule" ? <p className="text-amber-700">تحتاج مراجعة جدول الدوام التاريخي.</p> : <p>تأخير: {r.lateMinutes} دقيقة · خروج مبكر: {r.earlyDepartureMinutes} دقيقة</p>}
       {r.adminOverride && <p className="text-violet-700">مصحح إدارياً</p>}
+      {(r.recordId != null || r.id != null) && <div className="border-t pt-2 space-y-1">
+        <strong className="text-xs">المرفقات الطبية</strong>
+        {(r.recordIds ?? [r.recordId ?? r.id!]).map(id=><MedicalDocumentLinks key={id} recordId={id} />)}
+      </div>}
     </article>)}</div>
   </section>;
 }
@@ -76,7 +82,7 @@ export function AttendanceShiftEditor({ settingId }: { settingId: number }) {
   };
   const save = async () => {
     setBusy(true); setMessage("");
-    try { await apiRequest("PUT",`/api/attendance/work-settings/${settingId}/shifts`,{shifts}); setMessage("تم حفظ الورديات؛ حدّث التقرير."); }
+    try { await apiRequest("PUT",`/api/attendance/work-settings/${settingId}/shifts`,{shifts}); setMessage("تم حفظ الورديات. تُطبّق التغييرات على الأيام المستقبلية غير الملتقطة؛ اليوم الحالي بعد بدء الرصد لا يُعاد احتسابه."); }
     catch (e) { setMessage((e as Error).message); } finally { setBusy(false); }
   };
   return <div className="w-full space-y-2"><Button size="sm" variant="outline" onClick={()=>open?setOpen(false):load()}>{open?"إغلاق":"ضبط نهاية الدوام / ورديتين"}</Button>

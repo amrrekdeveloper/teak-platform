@@ -24,3 +24,11 @@ causing 404s. This was a confirmed production data-loss incident.
   serve route must be `requireRole("owner","assistant","hr")`, same roles as the data API).
 - On upload, roll back the stored object if the follow-up DB write fails (avoid orphans).
 - Files uploaded to production BEFORE this fix are permanently lost and must be re-uploaded.
+
+## Clinical-file exception to general HR/attendance access
+
+Medical documents are restricted to the owning employee and owner/HR reviewers. General IT attendance access or broader personnel-document permissions do not grant medical access.
+
+**Why:** Attendance maintenance includes IT permissions, but health documents are a narrower sensitive-data category. Reusing the broader guard would disclose employee medical files.
+
+**How to apply:** Enforce the clinical role boundary on listing, upload and download, including legacy paths and medical-excuse approval. Exercise both the legacy and employee-upload storage paths through the final approval handler; a valid report in either authorized store must be recognized.

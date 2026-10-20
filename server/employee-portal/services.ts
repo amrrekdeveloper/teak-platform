@@ -9,7 +9,8 @@ import { employeePhone, publicEmployee, takeLimit, type PortalEmployee } from ".
 import { permittedZone, riyadhDay, validDate } from "./security";
 import { annualEntitlementAt, annualUsage } from "../hr-workflow-support";
 import { attendanceSchedules, recordAttendanceViolation } from "../attendance-support";
-import { resolveAttendanceShifts, riyadhMinutesOfDay } from "../../shared/attendance";
+import { riyadhMinutesOfDay } from "../../shared/attendance";
+import { scheduledShiftsForDay } from "../attendance-schedule-history";
 
 const dateInput = z.string().refine(validDate, "التاريخ غير صالح");
 const reasonInput = z.string().trim().min(3).max(1000);
@@ -17,6 +18,7 @@ const leaveInput = z.object({
   leaveType: z.enum(["annual", "sick", "unpaid", "emergency", "maternity", "other"]),
   startDate: dateInput, endDate: dateInput, reason: reasonInput,
   leaveFormData: leaveFormInputSchema.optional(),
+  medicalAttachmentId: z.number().int().positive().optional(),
 }).strict();
 const permissionInput = z.object({
   type: z.enum(["leave", "permission", "sick", "official", "remote", "late_arrival", "early_departure"]),
@@ -84,7 +86,7 @@ export function registerEmployeeServices(router: Router) {
     ]);
     res.json({
       employee: publicEmployee(employee), balance,
-      shifts: resolveAttendanceShifts(await attendanceSchedules(), employee),
+      shifts: await scheduledShiftsForDay(await attendanceSchedules(), employee),
       records: records.slice(0, 180).map(r => ({ id: r.id, type: r.type, checkTime: r.checkTime, locationName: r.locationName })),
       leaves: leaves.map(r => ({
         id: r.id, leaveType: r.leaveType, startDate: r.startDate, endDate: r.endDate,
@@ -92,10 +94,39 @@ export function registerEmployeeServices(router: Router) {
       })),
       permissions: permissions.map(r => ({
         id: r.id, type: r.type, date: r.date, startTime: r.startTime, endTime: r.endTime,
+        returnDate: r.formDetails?.returnDate || r.date,
         status: r.status, reason: r.reason, hoursRequested: r.hoursRequested,
       })),
       sessions: devices.rows.map(d => ({ ...d, current: d.id === sessionId })),
+      requestHistory: (await pool.query(`SELECT kind,request_id AS "requestId",decision,previous_status AS "previousStatus",
+        next_status AS "nextStatus",note,created_at AS "createdAt" FROM hr_request_history
+        WHERE employee_id=$1 ORDER BY id DESC LIMIT 100`, [employee.id])).rows,
     });
+  }));
+
+  router.post("/requests/:kind/:id/clarification", asyncRoute(async (req, res) => {
+    const { employee } = identity(res);
+    const kind = req.params.kind;
+    if (!["leave","permission"].includes(String(kind))) portalError(400, "نوع طلب غير صالح.");
+    const input = z.object({note:z.string().trim().min(3).max(2000)}).strict().parse(req.body);
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id <= 0) portalError(400, "طلب غير صالح.");
+    const table = kind === "leave" ? "leave_requests" : "attendance_permissions";
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const {rows:[row]} = await client.query(`SELECT id,status FROM ${table} WHERE id=$1 AND employee_id=$2 FOR UPDATE`, [id,employee.id]);
+      if (!row) portalError(404, "الطلب غير موجود.");
+      if (row.status !== "clarification_requested") portalError(409, "لا يوجد توضيح مطلوب لهذا الطلب.");
+      const managerApproved = (await client.query(`SELECT 1 FROM hr_request_history WHERE kind=$1 AND request_id=$2
+        AND next_status='manager_approved' LIMIT 1`, [kind,id])).rowCount;
+      const status = managerApproved ? "manager_approved" : "pending";
+      await client.query(`UPDATE ${table} SET status=$2 WHERE id=$1`, [id,status]);
+      await client.query(`INSERT INTO hr_request_history(kind,request_id,employee_id,actor_employee_id,decision,previous_status,next_status,note)
+        VALUES($1,$2,$3,$3,'clarification_response','clarification_requested',$4,$5)`, [kind,id,employee.id,status,input.note]);
+      await client.query("COMMIT");
+      res.json({success:true,message:"تم إرسال التوضيح للمراجعة."});
+    } catch(error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
   }));
 
   router.post("/attendance", asyncRoute(async (req, res) => {
@@ -107,7 +138,7 @@ export function registerEmployeeServices(router: Router) {
     const now = Date.now();
     if (now - input.locationTimestamp > 90000 || input.locationTimestamp - now > 10000)
       portalError(400, "قراءة الموقع قديمة أو غير قابلة للتحقق. حدّث وقت الجهاز وأعد تحديد الموقع.");
-    const shifts = resolveAttendanceShifts(await attendanceSchedules(), employee);
+    const shifts = await scheduledShiftsForDay(await attendanceSchedules(), employee);
     const minute = riyadhMinutesOfDay(new Date(now));
     const hhmm = `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
     const shift = input.shiftId ? shifts.find(s => s.id === input.shiftId)
@@ -175,16 +206,28 @@ export function registerEmployeeServices(router: Router) {
     if (days > 366) portalError(400, "مدة الإجازة طويلة جدًا. راجع الموارد البشرية.");
     if (!await takeLimit(`leave:${employee.id}`, 10, 900)) portalError(429, "طلبات متكررة. حاول لاحقًا.");
     // Reuse existing HR records and their manager/HR decision endpoints.
-    const existing = await storage.getLeaveRequests(employee.id);
-    if (existing.some(r => !["rejected", "cancelled"].includes(r.status) &&
-      r.startDate <= input.endDate && r.endDate >= input.startDate))
-      portalError(409, "يوجد طلب إجازة يتداخل مع الفترة المختارة.");
-    const created = await storage.createLeaveRequest({
-      employeeId: employee.id, ...input, days, status: "pending",
-      leaveFormData: await captureLeaveForm(employee.id, input.leaveFormData, { kind: "employee", employeeId: employee.id }, input.startDate),
-    });
+    if (input.leaveType === "sick" && !input.medicalAttachmentId)
+      portalError(400, "التقرير الطبي مطلوب للإجازة المرضية.");
+    const form = await captureLeaveForm(employee.id, input.leaveFormData, { kind: "employee", employeeId: employee.id }, input.startDate);
+    const client = await pool.connect();
+    let created: {id: number};
+    try {
+      await client.query("BEGIN");
+      await client.query("SELECT pg_advisory_xact_lock(51701,$1)", [employee.id]);
+      if ((await client.query(`SELECT id FROM leave_requests WHERE employee_id=$1
+        AND status::text NOT IN ('rejected','cancelled') AND start_date<=$3 AND end_date>=$2 LIMIT 1`,
+      [employee.id, input.startDate, input.endDate])).rowCount) portalError(409, "يوجد طلب إجازة يتداخل مع الفترة المختارة.");
+      if (input.medicalAttachmentId && !(await client.query(`SELECT id FROM hr_medical_documents
+        WHERE id=$1 AND employee_id=$2 AND kind='leave' AND leave_id IS NULL FOR UPDATE`,
+      [input.medicalAttachmentId, employee.id])).rowCount) portalError(400, "المرفق غير صالح أو مرتبط بطلب آخر.");
+      created = (await client.query(`INSERT INTO leave_requests(employee_id,leave_type,start_date,end_date,days,reason,status,leave_form_data)
+        VALUES($1,$2,$3,$4,$5,$6,'pending',$7) RETURNING id`,
+      [employee.id,input.leaveType,input.startDate,input.endDate,days,input.reason,JSON.stringify(form)])).rows[0];
+      if (input.medicalAttachmentId) await client.query("UPDATE hr_medical_documents SET leave_id=$2 WHERE id=$1", [input.medicalAttachmentId,created.id]);
+      await client.query("COMMIT");
+    } catch(error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
     await notifyApprovers(employee, "leave", created.id);
-    res.status(201).json({ success: true, message: "تم إرسال طلب الإجازة للاعتماد." });
+    res.status(201).json({ success: true, id: created.id, message: "تم إرسال طلب الإجازة للاعتماد." });
   }));
 
   router.post("/permissions", asyncRoute(async (req, res) => {
@@ -194,6 +237,8 @@ export function registerEmployeeServices(router: Router) {
     const end = Date.parse(`${input.returnDate}T${input.endTime}:00+03:00`);
     if (end <= start || input.date < riyadhDay())
       portalError(400, "اختر تاريخًا وفترة استئذان صحيحين.");
+    if ((end-start)/3600000 > 99.99)
+      portalError(400,"مدة الطلب تتجاوز الحد المتاح للاستئذان (أقل من 100 ساعة). راجع الموارد البشرية للمدد الأطول.");
     if (!await takeLimit(`permission:${employee.id}`, 10, 900)) portalError(429, "طلبات متكررة. حاول لاحقًا.");
     const legacy = input.type === "late_arrival" || input.type === "early_departure";
     const label = input.type === "late_arrival" ? "تأخر عن الحضور" : "انصراف مبكر";

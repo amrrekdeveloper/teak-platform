@@ -23,7 +23,7 @@
     @media(max-width:390px){.masthead{padding-inline:10px}.mast-right{font-size:11px}.brand-lockup{gap:7px}.main{width:calc(100% - 20px)}.profile-meta{gap:5px}.meta-item{font-size:12px}.panel{padding:10px}.balance-numbers b{font-size:15px}.balance-numbers div{padding-inline:6px}.session{align-items:flex-start;padding:8px}.login-card{padding:20px 16px}.attendance-actions{flex-direction:column}.attendance-actions .btn{width:100%}.section-head .btn{padding-inline:9px}}
     @media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
     .brand-lockup img{filter:brightness(0) saturate(100%) invert(11%) sepia(94%) saturate(3915%) hue-rotate(353deg) brightness(81%) contrast(111%)}
-    .layout-grid>*{min-width:0}.form-row{min-width:0}.form-row input,.form-row select,.form-row textarea{min-width:0;max-width:100%}
+    .layout-grid>*{min-width:0}.form-row{min-width:0}.form-row input,.form-row select,.form-row textarea{min-width:0;max-width:100%}.medical-docs{margin-top:10px;padding:10px;background:var(--soft);border:1px solid var(--line);overflow-wrap:anywhere}.medical-docs a{color:var(--brand);display:inline-block;padding:8px 4px;min-height:40px}.file-input{width:100%;padding:8px;border:1px solid var(--line);background:#fff}.request-history-card{min-width:0;margin-top:10px;padding:10px;border:1px solid var(--line);background:var(--soft);overflow-wrap:anywhere}.request-history-card p{margin:4px 0}.request-history-card a{color:var(--brand);text-underline-offset:3px}.request-history-card label{display:block;min-width:0}.request-history-card textarea{display:block;width:100%;max-width:100%;min-height:66px;margin:8px 0;padding:8px;border:1px solid #d8d4cf;border-radius:3px;resize:vertical}.request-history-card button{min-height:40px}
   </style>
 </head>
 <body>
@@ -100,6 +100,14 @@
             <article class="panel"><h3>تسجيل حركة</h3><p class="panel-intro">اسمح بالموقع وسجّل من نطاق العمل.</p>
               <label for="attendance-shift">الفترة</label><select id="attendance-shift"><option value="">تحديد تلقائي حسب الوقت الحالي</option></select>
               <div class="attendance-actions"><button class="btn" id="check-in" type="button" data-testid="check-in">تسجيل حضور</button><button class="btn secondary" id="check-out" type="button" data-testid="check-out">تسجيل انصراف</button></div>
+               <details class="medical-docs"><summary>إرفاق عذر طبي لسجل حضور</summary>
+                 <form id="attendance-excuse-form" novalidate>
+                   <div class="form-row"><label for="excuse-record">سجل الحضور</label><select id="excuse-record" required><option value="">اختر سجلًا من سجلاتك</option></select></div>
+                   <div class="form-row"><label for="excuse-reason">سبب العذر</label><textarea id="excuse-reason" required maxlength="1000"></textarea></div>
+                   <div class="form-row"><label for="excuse-file">المرفق الطبي</label><input class="file-input" id="excuse-file" type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" required><p class="hint">PDF أو PNG أو JPEG، بحد أقصى 5 ميغابايت.</p></div>
+                   <button class="btn" type="submit">إرسال العذر للمراجعة</button>
+                 </form><p id="excuse-message" class="live-message" role="status" aria-live="polite"></p>
+               </details>
               <p class="geo-note">وقت التسجيل حسب توقيت النظام.</p><p class="live-message" id="attendance-message" role="status" aria-live="polite"></p>
             </article>
             <article class="panel"><h3>آخر الحركات</h3><div id="attendance-history"></div></article>
@@ -114,6 +122,7 @@
                 <div class="form-row"><label for="leave-start">من تاريخ</label><input id="leave-start" name="startDate" type="date" required></div>
                 <div class="form-row"><label for="leave-end">إلى تاريخ</label><input id="leave-end" name="endDate" type="date" required></div>
                 <div class="form-row wide"><label for="leave-reason">سبب الطلب</label><textarea id="leave-reason" name="reason" required maxlength="1000"></textarea></div>
+                <div class="form-row wide" id="sick-attachment-row" hidden><label for="leave-medical-file">التقرير الطبي (إلزامي للإجازة المرضية)</label><input class="file-input" id="leave-medical-file" type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"><p class="hint">PDF أو PNG أو JPEG، بحد أقصى 5 ميغابايت.</p><p id="leave-attachment-state" class="hint" aria-live="polite"></p></div>
                 <details class="wide"><summary>تفاصيل نموذج الإجازة</summary>
                   <div class="form-row"><label for="leave-destination">الوجهة</label><input id="leave-destination" maxlength="200"></div>
                   <div class="form-row"><label for="leave-passport">رقم الجواز (عند الحاجة)</label><input id="leave-passport" maxlength="50"></div>
@@ -130,7 +139,7 @@
                 <div class="actions"><button class="btn" type="submit">إرسال طلب الإجازة</button></div>
               </form><p class="live-message" id="leave-message" role="status" aria-live="polite"></p>
             </article>
-            <article class="panel"><h3>سجل الإجازات</h3><div id="leave-history"></div></article>
+            <article class="panel"><h3>سجل الإجازات</h3><div id="leave-history"></div><div id="leave-request-history"></div><div id="employee-medical-documents" class="medical-docs"></div></article>
           </div>
         </section>
         <section class="tab-panel" id="panel-permissions" role="tabpanel" aria-labelledby="tab-permissions" hidden>
@@ -144,14 +153,15 @@
                 <div class="form-row"><label for="permission-return-date">تاريخ العودة</label><input id="permission-return-date" type="date" required></div>
                 <div class="form-row wide"><label for="permission-notes">ملاحظات</label><textarea id="permission-notes" maxlength="2000"></textarea></div>
                 <div class="form-row wide"><label><input id="permission-acknowledged" type="checkbox" required> أقر بصحة الطلب (إقرار إلكتروني عادي، ليس توقيعاً رقمياً مؤهلاً)</label></div>
-                <div class="form-row"><label for="permission-date">التاريخ</label><input id="permission-date" name="date" type="date" required></div>
+                <div class="form-row"><label for="permission-date">تاريخ المغادرة</label><input id="permission-date" name="date" type="date" required></div>
                 <div class="form-row"><label for="permission-start">من الساعة</label><input id="permission-start" name="startTime" type="time" required></div>
                 <div class="form-row"><label for="permission-end">إلى الساعة</label><input id="permission-end" name="endTime" type="time" required></div>
+                <p class="hint wide" id="permission-duration" role="status" aria-live="polite">اختر تاريخ ووقت المغادرة والعودة لحساب المدة.</p>
                 <div class="form-row wide"><label for="permission-reason">سبب الطلب</label><textarea id="permission-reason" name="reason" required maxlength="1000"></textarea></div>
                 <div class="actions"><button class="btn" type="submit">إرسال الطلب</button></div>
               </form><p class="live-message" id="permission-message" role="status" aria-live="polite"></p>
             </article>
-            <article class="panel"><h3>سجل الاستئذان</h3><div id="permission-history"></div></article>
+            <article class="panel"><h3>سجل الاستئذان</h3><div id="permission-history"></div><div id="permission-request-history"></div></article>
           </div>
         </section>
         <section class="tab-panel" id="panel-sessions" role="tabpanel" aria-labelledby="tab-sessions" hidden>
@@ -183,6 +193,8 @@
       const $=id=>document.getElementById(id);
       const loginView=$("login-view"),loadingView=$("loading-view"),dashboard=$("dashboard-view");
       let challengeId=null, resendAt=0, resendTimer=null, summary=null, sessionId=null, developmentOtp=false;
+      let leaveAttachmentId=null, leaveAttachmentFile=null;
+      const clarificationFeedback=new Map();
       const normalizeDigits=value=>String(value||"").replace(/[٠-٩۰-۹]/g,d=>String("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹".indexOf(d)%10));
       function show(el,visible){el.hidden=!visible}
       function message(el,text,kind){el.textContent=text||"";el.className=kind||"live-message";show(el,!!text)}
@@ -196,8 +208,34 @@
         let data={};
         try{data=await response.json();}catch(error){data={};}
         if(response.status===401&&!path.startsWith("/otp/")){clearPrivate();showLogin();throw new Error("انتهت جلستك. أدخل رقم جوالك للمتابعة.");}
-        if(!response.ok)throw new Error(typeof data.message==="string"?data.message:"تعذر إكمال الطلب. حاول مرة أخرى.");
+        if(!response.ok){
+          if(response.status===429&&path.startsWith("/otp/")){
+            const retry=Number(response.headers.get("Retry-After"))||900;
+            resendAt=Date.now()+Math.max(1,retry)*1000;startResendTimer();
+          }
+          throw new Error(typeof data.message==="string"?data.message:"تعذر إكمال الطلب. حاول مرة أخرى.");
+        }
         return data;
+      }
+      async function uploadMedical(file,fields){
+        if(!file)throw new Error("اختر المرفق الطبي أولاً.");
+        if(file.size>5*1024*1024)throw new Error("حجم الملف يتجاوز 5 ميغابايت.");
+        const allowed=/\.(pdf|png|jpe?g)$/i.test(file.name)&&["application/pdf","image/png","image/jpeg"].includes(file.type);
+        if(!allowed)throw new Error("نوع الملف غير مدعوم. استخدم PDF أو PNG أو JPEG.");
+        const formData=new FormData();formData.append("file",file);
+        Object.entries(fields).forEach(([key,value])=>formData.append(key,String(value)));
+        let response;
+        try{response=await fetch(API+"/medical-documents",{method:"POST",credentials:"same-origin",headers:{"X-Portal-Request":"1"},body:formData});}
+        catch(error){throw new Error("تعذر الاتصال بالخدمة. تحقق من اتصالك ثم حاول مجددًا.");}
+        let data={};try{data=await response.json();}catch(error){data={};}
+        if(response.status===401){clearPrivate();showLogin();throw new Error("انتهت جلستك. أدخل رقم جوالك للمتابعة.");}
+        if(!response.ok)throw new Error(typeof data.message==="string"?data.message:"تعذر رفع المرفق. حاول مرة أخرى.");
+        if(!Number.isInteger(Number(data.id)))throw new Error("تم الرفع لكن تعذر تأكيد رقم المرفق. أعد المحاولة.");
+        return Number(data.id);
+      }
+      function documentLink(item){
+        const link=document.createElement("a");link.href=API+"/medical-documents/"+encodeURIComponent(item.id)+"/download";
+        link.target="_blank";link.rel="noopener";link.textContent=item.name||("مرفق طبي #"+item.id);return link;
       }
       function showLogin(){
         show(loadingView,false);show(dashboard,false);show(loginView,true);
@@ -206,8 +244,12 @@
       }
       function clearPrivate(){
         summary=null;sessionId=null;dashboard.querySelectorAll("[id^='employee-'],#attendance-history,#leave-balance,#leave-history,#permission-history,#session-list").forEach(el=>el.textContent="");
-        ["attendance-message","leave-message","permission-message","session-message"].forEach(id=>message($(id),""));
-        ["attendance-history","leave-history","permission-history","session-list","ack-list","decision-history"].forEach(id=>$(id).replaceChildren());
+        ["attendance-message","leave-message","permission-message","session-message","excuse-message"].forEach(id=>message($(id),""));
+        leaveAttachmentId=null;leaveAttachmentFile=null;
+        $("leave-medical-file").value="";$("leave-medical-file").required=false;show($("sick-attachment-row"),false);
+        $("attendance-excuse-form").reset();
+        clarificationFeedback.clear();
+        ["attendance-history","leave-history","permission-history","leave-request-history","permission-request-history","session-list","ack-list","decision-history"].forEach(id=>$(id).replaceChildren());
       }
       function errorText(target,error){message(target,error.message||"حدث خطأ غير متوقع.","error");}
       function statusLabel(status){
@@ -225,26 +267,87 @@
         return new Intl.DateTimeFormat("ar-SA",withTime?{dateStyle:"medium",timeStyle:"short"}:{dateStyle:"medium"}).format(date);
       }
       function cell(text){const td=document.createElement("td");td.textContent=text==null||text===""?"—":String(text);return td}
-      function renderTable(container,headers,rows,emptyTitle,emptyText){
+      function renderTable(container,headers,rows,emptyTitle,emptyText,rowIds){
         container.replaceChildren();
         if(!Array.isArray(rows)||!rows.length){const empty=document.createElement("div");empty.className="empty";const strong=document.createElement("strong");strong.textContent=emptyTitle;const note=document.createElement("span");note.textContent=emptyText;empty.append(strong,note);container.append(empty);return;}
         const wrap=document.createElement("div");wrap.className="table-wrap";const table=document.createElement("table");const thead=document.createElement("thead"),hr=document.createElement("tr");
         headers.forEach(label=>{const th=document.createElement("th");th.scope="col";th.textContent=label;hr.append(th)});thead.append(hr);table.append(thead);
-        const tbody=document.createElement("tbody");rows.forEach(row=>{const tr=document.createElement("tr");row.forEach((value,index)=>{if(value&&value.statusPill){const td=document.createElement("td"),pill=document.createElement("span");pill.className="pill "+statusClass(value.value);pill.textContent=statusLabel(value.value);td.append(pill);tr.append(td)}else tr.append(cell(value))});tbody.append(tr)});
+        const tbody=document.createElement("tbody");rows.forEach((row,rowIndex)=>{const tr=document.createElement("tr");if(rowIds&&rowIds[rowIndex])tr.id=rowIds[rowIndex];row.forEach((value,index)=>{if(value&&value.statusPill){const td=document.createElement("td"),pill=document.createElement("span");pill.className="pill "+statusClass(value.value);pill.textContent=statusLabel(value.value);td.append(pill);tr.append(td)}else tr.append(cell(value))});tbody.append(tr)});
         table.append(tbody);wrap.append(table);container.append(wrap);
       }
       function renderAttendance(records){
         const rows=(Array.isArray(records)?records:[]).map(r=>[typeLabel(r.type),r.checkTime?dateText(r.checkTime,true):"—",r.locationName||"—"]);
         renderTable($("attendance-history"),["الحركة","الوقت","الموقع"],rows,"لا توجد حركات مسجلة","ستظهر حركاتك هنا بعد تسجيلها.");
+        const selector=$("excuse-record"),previous=selector.value;selector.replaceChildren();
+        const placeholder=document.createElement("option");placeholder.value="";placeholder.textContent="اختر سجلًا من سجلاتك";selector.append(placeholder);
+        (Array.isArray(records)?records:[]).filter(r=>r.id!=null).forEach(r=>{
+          const option=document.createElement("option");option.value=String(r.id);
+          option.textContent=`${dateText(r.checkTime,true)} · ${typeLabel(r.type)}`;selector.append(option);
+        });
+        if(Array.from(selector.options).some(o=>o.value===previous))selector.value=previous;
       }
       function renderLeaveHistory(leaves){
         const rows=(Array.isArray(leaves)?leaves:[]).map(r=>[typeLabel(r.leaveType),dateText(r.startDate),dateText(r.endDate),r.days==null?"—":String(r.days),{statusPill:true,value:r.status}]);
-        renderTable($("leave-history"),["النوع","من","إلى","الأيام","الحالة"],rows,"لا توجد طلبات إجازة","ستجد طلباتك السابقة هنا.");
+        renderTable($("leave-history"),["النوع","من","إلى","الأيام","الحالة"],rows,"لا توجد طلبات إجازة","ستجد طلباتك السابقة هنا.",(leaves||[]).map(r=>"leave-request-"+r.id));
       }
       function renderPermissionHistory(items){
-        const rows=(Array.isArray(items)?items:[]).map(r=>[typeLabel(r.type),dateText(r.date),[r.startTime,r.endTime].filter(Boolean).join(" – ")||"—",r.hoursRequested,{statusPill:true,value:r.status}]);
-        renderTable($("permission-history"),["النوع","التاريخ","الوقت","الساعات","الحالة"],rows,"لا توجد طلبات استئذان","ستظهر طلباتك السابقة هنا.");
+        const rows=(Array.isArray(items)?items:[]).map(r=>[typeLabel(r.type),dateText(r.date)+" · "+(r.startTime||"—"),dateText(r.returnDate||r.date)+" · "+(r.endTime||"—"),r.hoursRequested,{statusPill:true,value:r.status}]);
+        renderTable($("permission-history"),["النوع","المغادرة","العودة","الساعات","الحالة"],rows,"لا توجد طلبات استئذان","ستظهر طلباتك السابقة هنا.",(items||[]).map(r=>"permission-request-"+r.id));
         for(const item of items||[]){const link=document.createElement("a");link.href=API+"/permissions/"+item.id+"/document";link.target="_blank";link.rel="noopener";link.textContent="طباعة طلب #"+item.id;link.style.cssText="display:inline-block;margin:8px";$("permission-history").append(link);}
+      }
+      function renderRequestHistory(events,leaves,permissions){
+        const groups={leave:{items:Array.isArray(leaves)?leaves:[],container:$("leave-request-history"),label:"إجازة"},
+          permission:{items:Array.isArray(permissions)?permissions:[],container:$("permission-request-history"),label:"استئذان"}};
+        Object.entries(groups).forEach(([kind,group])=>{
+          const rows=group.items;
+          group.container.replaceChildren();
+          rows.forEach(item=>{
+            const related=(Array.isArray(events)?events:[]).filter(event=>event.kind===kind&&String(event.requestId)===String(item.id));
+            const responseFeedback=clarificationFeedback.get(kind+":"+item.id);
+            if(!related.length&&item.status!=="clarification_requested"&&!responseFeedback)return;
+            const card=document.createElement("article");card.className="request-history-card";
+            const title=document.createElement("p");title.className="m-0";
+            const link=document.createElement("a");link.href="#"+kind+"-request-"+item.id;
+            link.textContent=group.label+" #"+item.id+" · "+(kind==="leave"?typeLabel(item.leaveType):typeLabel(item.type));
+            title.append(link);card.append(title);
+            related.forEach(event=>{
+              const line=document.createElement("p");line.className="m-0 mt-2 text-sm";
+              const decisionLabels={approve:"اعتماد",approved:"اعتماد",manager_approved:"موافقة المدير",hr_approved:"موافقة الموارد البشرية",reject:"رفض",rejected:"رفض",clarify:"طلب توضيح",request_clarification:"طلب توضيح",requested_clarification:"طلب توضيح",clarification_requested:"طلب توضيح"};
+              const transition=[statusLabel(event.previousStatus),statusLabel(event.nextStatus)].filter(Boolean).join(" ← ");
+              line.textContent=(decisionLabels[event.decision]||event.decision||"تحديث")+" · "+transition+" · "+dateText(event.createdAt,true);
+              card.append(line);
+              if(event.note){const note=document.createElement("p");note.className="m-0 text-sm";note.textContent="الملاحظة: "+event.note;card.append(note);}
+            });
+            if(responseFeedback&&item.status!=="clarification_requested"){
+              const responseNote=document.createElement("p");responseNote.className="success";responseNote.setAttribute("role","status");responseNote.textContent=responseFeedback;card.append(responseNote);
+            }
+            if(item.status==="clarification_requested"){
+              const notice=document.createElement("p");notice.className="notice";notice.setAttribute("role","status");notice.textContent="مطلوب توضيح لهذا الطلب. أرسل ردك أدناه.";
+              card.append(notice);
+              const form=document.createElement("form");form.noValidate=true;
+              const label=document.createElement("label");label.textContent="رد الموظف على طلب التوضيح";
+              const textarea=document.createElement("textarea");textarea.required=true;textarea.maxLength=1000;textarea.setAttribute("aria-label",label.textContent);
+              const button=document.createElement("button");button.type="submit";button.className="btn";button.textContent="إرسال الرد";
+              const feedback=document.createElement("p");feedback.className="live-message";feedback.setAttribute("role","status");feedback.setAttribute("aria-live","polite");
+              const feedbackText=clarificationFeedback.get(kind+":"+item.id);if(feedbackText)message(feedback,feedbackText,"success");
+              label.append(textarea);form.append(label,button,feedback);
+              form.addEventListener("submit",async event=>{
+                event.preventDefault();
+                if(!textarea.value.trim()){textarea.focus();errorText(feedback,new Error("اكتب ردك قبل الإرسال."));return;}
+                button.disabled=true;message(feedback,"جارٍ إرسال الرد…");
+                try{
+                  const result=await request(`/requests/${kind}/${item.id}/clarification`,{method:"POST",body:{note:textarea.value.trim()}});
+                  if(result.success===false)throw new Error(result.message||"تعذر إرسال الرد. حاول مرة أخرى.");
+                  const responseMessage=result.message||"تم إرسال ردك.";
+                  clarificationFeedback.set(kind+":"+item.id,responseMessage);
+                  await loadSummary();
+                }catch(error){errorText(feedback,error);}finally{button.disabled=false;}
+              });
+              card.append(form);
+            }
+            group.container.append(card);
+          });
+        });
       }
       function renderBalance(balance){
         const box=$("leave-balance");box.replaceChildren();const card=document.createElement("div");card.className="balance-card";
@@ -272,8 +375,24 @@
         $("employee-name").textContent=employee.fullNameAr||"مرحبًا";$("employee-number").textContent=employee.employeeNumber||"—";
         $("employee-department").textContent=employee.department||"—";$("employee-position").textContent=employee.position||"—";
         $("today-date").textContent=new Intl.DateTimeFormat("ar-SA",{weekday:"long",day:"numeric",month:"long",year:"numeric"}).format(new Date());
-        renderAttendance(data.records);renderBalance(data.balance||{});renderLeaveHistory(data.leaves);renderPermissionHistory(data.permissions);renderSessions(data.sessions);
+        renderAttendance(data.records);renderBalance(data.balance||{});renderLeaveHistory(data.leaves);renderPermissionHistory(data.permissions);
+        renderRequestHistory(data.requestHistory,data.leaves,data.permissions);renderSessions(data.sessions);
+        loadMedicalDocuments();
         show(loginView,false);show(loadingView,false);show(dashboard,true);selectTab(activeTab);
+      }
+      async function loadMedicalDocuments(){
+        const host=$("employee-medical-documents");host.replaceChildren();
+        try{
+          const docs=await request("/medical-documents");
+          if(!Array.isArray(docs)||!docs.length){host.textContent="لا توجد مرفقات طبية محفوظة.";return;}
+          const title=document.createElement("h3");title.textContent="المرفقات الطبية";host.append(title);
+          docs.forEach(item=>{const row=document.createElement("p");row.append(documentLink(item));host.append(row);});
+        }catch(error){
+          if(!loginView.hidden)return;
+          host.replaceChildren();const note=document.createElement("p");note.textContent="تعذر تحميل المرفقات الطبية.";
+          const retry=document.createElement("button");retry.type="button";retry.className="text-button";retry.textContent="إعادة المحاولة";retry.addEventListener("click",loadMedicalDocuments);
+          host.append(note,retry);
+        }
       }
       async function loadSummary(){
         show(loginView,false);show(loadingView,true);
@@ -311,14 +430,22 @@
           }
           if(!data.pending.length){const p=document.createElement("p");p.textContent="لا توجد إقرارات بانتظارك.";box.append(p);}
           for(const record of data.evidence){const p=document.createElement("p");p.style.overflowWrap="anywhere";p.textContent="إقرار محفوظ #"+record.action_id+" · "+record.acknowledged_at+" · "+record.document_hash;box.append(p);}
-          for(const item of data.clarifications||[]){const p=document.createElement("p");p.textContent=item.title+" #"+item.id+" · "+item.note;const button=document.createElement("button");button.className="btn secondary";button.textContent="الرد على التوضيح";
-            button.onclick=async()=>{const note=prompt("اكتب توضيحك");if(!note)return;try{await request("/workflow-requests/"+item.id+"/clarification",{method:"POST",body:{note}});await loadAcknowledgments();}catch(e){errorText($("ack-message"),e);}};box.append(p,button);}
-          const latest=new Set();
-          for(const event of events){const p=document.createElement("p");p.textContent=`${event.kind==="leave"?"إجازة":"استئذان"} #${event.request_id} · ${event.next_status} · ${event.note||""} · ${event.created_at}`;history.append(p);
-            const key=event.kind+event.request_id;if(!latest.has(key)&&event.next_status==="clarification_requested"){
-              const b=document.createElement("button");b.className="btn secondary";b.textContent="إرسال التوضيح";b.onclick=async()=>{const note=prompt("اكتب توضيحك");if(!note)return;try{await request(`/requests/${event.kind}/${event.request_id}/clarification`,{method:"POST",body:{note}});await loadSummary();}catch(e){errorText($("ack-message"),e);}};history.append(b);}
-            latest.add(key);
+          for(const item of data.clarifications||[]){
+            const card=document.createElement("article");card.className="request-history-card";
+            const title=document.createElement("p");title.textContent=item.title+" #"+item.id+" · "+item.note;
+            const form=document.createElement("form");form.noValidate=true;
+            const label=document.createElement("label");label.textContent="رد على توضيح الإجراء";
+            const textarea=document.createElement("textarea");textarea.required=true;textarea.maxLength=1000;textarea.setAttribute("aria-label",label.textContent);label.append(textarea);
+            const button=document.createElement("button");button.type="submit";button.className="btn secondary";button.textContent="إرسال الرد";
+            form.addEventListener("submit",async event=>{
+              event.preventDefault();if(!textarea.value.trim()){textarea.focus();errorText($("ack-message"),new Error("اكتب ردك قبل الإرسال."));return;}
+              button.disabled=true;
+              try{await request("/workflow-requests/"+item.id+"/clarification",{method:"POST",body:{note:textarea.value.trim()}});message($("ack-message"),"تم إرسال الرد.","success");await loadAcknowledgments();}
+              catch(e){errorText($("ack-message"),e);}finally{button.disabled=false;}
+            });
+            form.append(label,button);card.append(title,form);box.append(card);
           }
+          for(const event of events){const p=document.createElement("p");p.textContent=`${event.kind==="leave"?"إجازة":"استئذان"} #${event.request_id} · ${event.next_status} · ${event.note||""} · ${event.created_at}`;history.append(p);}
         }catch(e){errorText($("ack-message"),e);}
       }
       $("workflow-request-form").addEventListener("submit",async event=>{
@@ -398,6 +525,13 @@
         },{enableHighAccuracy:true,maximumAge:0,timeout:20000});
       }
       $("check-in").addEventListener("click",()=>attendance("check_in"));$("check-out").addEventListener("click",()=>attendance("check_out"));
+      $("leave-type").addEventListener("change",()=>{
+        const sick=$("leave-type").value==="sick";show($("sick-attachment-row"),sick);
+        $("leave-medical-file").required=sick;
+      });
+      $("leave-medical-file").addEventListener("change",()=>{
+        if(leaveAttachmentFile!==$("leave-medical-file").files[0]){leaveAttachmentId=null;leaveAttachmentFile=null;$("leave-attachment-state").textContent="";}
+      });
       $("leave-form").addEventListener("submit",async event=>{
         event.preventDefault();const form=event.currentTarget;if(!form.reportValidity())return;
         const body={leaveType:$("leave-type").value,startDate:$("leave-start").value,endDate:$("leave-end").value,reason:$("leave-reason").value.trim()};
@@ -406,10 +540,47 @@
           const value=$(id).value.trim();if(value)body.leaveFormData[key]=value;
         }
         if(body.endDate<body.startDate){errorText($("leave-message"),new Error("تاريخ نهاية الإجازة يجب أن يكون في يوم البداية أو بعده."));return;}
+        const file=$("leave-medical-file").files[0];
+        if(body.leaveType==="sick"&&!file&&!leaveAttachmentId){errorText($("leave-message"),new Error("أرفق التقرير الطبي للإجازة المرضية."));$("leave-medical-file").focus();return;}
         const button=form.querySelector("button[type=submit]");button.disabled=true;message($("leave-message"),"جارٍ إرسال الطلب…");
-        try{const data=await request("/leaves",{method:"POST",body});message($("leave-message"),data.message||"تم إرسال طلب الإجازة.","success");form.reset();await loadSummary();}
+        try{
+          if(body.leaveType==="sick"&&!leaveAttachmentId){
+            leaveAttachmentId=await uploadMedical(file,{kind:"leave"});
+            leaveAttachmentFile=file;$("leave-attachment-state").textContent="تم رفع المرفق؛ سيبقى محفوظًا عند إعادة المحاولة.";
+          }
+          if(leaveAttachmentId)body.medicalAttachmentId=leaveAttachmentId;
+          const data=await request("/leaves",{method:"POST",body});
+          message($("leave-message"),data.message||"تم إرسال طلب الإجازة.","success");form.reset();
+          leaveAttachmentId=null;leaveAttachmentFile=null;$("leave-attachment-state").textContent="";show($("sick-attachment-row"),false);$("leave-medical-file").required=false;
+          await loadSummary();
+        }
         catch(error){errorText($("leave-message"),error);}finally{button.disabled=false;}
       });
+      $("attendance-excuse-form").addEventListener("submit",async event=>{
+        event.preventDefault();const form=event.currentTarget;if(!form.reportValidity())return;
+        const recordId=$("excuse-record").value,reason=$("excuse-reason").value.trim(),file=$("excuse-file").files[0];
+        if(!recordId||!reason||!file){errorText($("excuse-message"),new Error("اختر سجل الحضور واكتب السبب وأرفق الملف."));return;}
+        const button=form.querySelector("button[type=submit]");button.disabled=true;message($("excuse-message"),"جارٍ رفع المرفق…");
+        try{
+          await uploadMedical(file,{kind:"attendance",recordId,reason});
+          message($("excuse-message"),"تم إرسال العذر للمراجعة. لا يعني ذلك اعتماده تلقائيًا.","success");
+          form.reset();await loadMedicalDocuments();
+        }catch(error){errorText($("excuse-message"),error);}finally{button.disabled=false;}
+      });
+      function updatePermissionDuration(){
+        const from=$("permission-date").value,to=$("permission-return-date").value;
+        const start=$("permission-start").value,end=$("permission-end").value;
+        const hours=(Date.parse(to+"T"+end+":00+03:00")-Date.parse(from+"T"+start+":00+03:00"))/3600000;
+        $("permission-duration").textContent=Number.isFinite(hours)&&hours>0
+          ? "المدة: "+hours.toFixed(2)+" ساعة"+(from!==to?" · العودة في يوم آخر":"")
+          : "اختر تاريخ ووقت مغادرة وعودة صحيحين.";
+      }
+      ["permission-date","permission-return-date","permission-start","permission-end"].forEach(id=>$(id).addEventListener("input",updatePermissionDuration));
+      $("permission-date").addEventListener("change",()=>{
+        if(!$("permission-return-date").value||$("permission-return-date").value<$("permission-date").value)$("permission-return-date").value=$("permission-date").value;
+        updatePermissionDuration();
+      });
+      $("permission-form").addEventListener("reset",()=>setTimeout(updatePermissionDuration,0));
       $("permission-form").addEventListener("submit",async event=>{
         event.preventDefault();const form=event.currentTarget;if(!form.reportValidity())return;
         const body={type:$("permission-type").value,date:$("permission-date").value,returnDate:$("permission-return-date").value,period:$("permission-period").value,purpose:$("permission-purpose").value,notes:$("permission-notes").value,acknowledged:$("permission-acknowledged").checked,startTime:$("permission-start").value,endTime:$("permission-end").value,reason:$("permission-reason").value.trim()};

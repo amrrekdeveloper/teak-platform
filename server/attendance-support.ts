@@ -5,6 +5,10 @@ import { storage } from "./storage";
 import { resolveAttendanceShifts, riyadhDateKey, riyadhDayBounds, shiftAttendanceStatus, validateShifts, isRiyadhWeekend, type WorkScheduleLike } from "../shared/attendance";
 import { validDate } from "./employee-portal/security";
 import multer from "multer";
+import { randomUUID } from "node:crypto";
+import { saveObjectFile, streamObjectFile, deleteObjectFile } from "./objectFileStore";
+import { initMedicalDocuments, registerHrMedicalDocuments, medicalDocumentRole } from "./employee-portal/medical-documents";
+import { initAttendanceScheduleHistory, scheduledShiftsForDay, freezeCurrentAttendanceSchedules } from "./attendance-schedule-history";
 
 /** Additive only. Call during startup after existing attendance tables have been initialized. */
 export async function ensureAttendanceExtensions() {
@@ -29,6 +33,10 @@ export async function ensureAttendanceExtensions() {
       calculated_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(employee_id,period)
     );
   `);
+  await pool.query(`ALTER TABLE attendance_medical_attachments ADD COLUMN IF NOT EXISTS object_key text;
+    ALTER TABLE attendance_medical_attachments ALTER COLUMN content DROP NOT NULL`);
+  await initMedicalDocuments();
+  await initAttendanceScheduleHistory();
 }
 
 export async function attendanceSchedules(): Promise<WorkScheduleLike[]> {
@@ -45,13 +53,15 @@ export async function correctAttendanceRecord(id: number, actor: number, input: 
   try {
     await client.query("BEGIN");
     const initial = await client.query("SELECT employee_id FROM attendance_records WHERE id=$1", [id]);
-    if (!initial.rowCount) throw new Error("السجل غير موجود");
+    if (!initial.rowCount) throw Object.assign(new Error("السجل غير موجود"),{status:404});
     // Same employee lock as portal; serialize leave creation across different records.
     await client.query("SELECT pg_advisory_xact_lock(51701,$1)", [initial.rows[0].employee_id || 0]);
     const before = (await client.query("SELECT *,check_time AT TIME ZONE 'UTC' AS check_time FROM attendance_records WHERE id=$1 FOR UPDATE", [id])).rows[0];
     if (input.excuse === "medical_excuse" && !(await client.query(
-      "SELECT id FROM attendance_medical_attachments WHERE record_id=$1 LIMIT 1", [id])).rowCount)
-      throw new Error("التقرير الطبي مطلوب قبل اعتماد العذر");
+      `SELECT id FROM attendance_medical_attachments WHERE record_id=$1
+        UNION ALL SELECT id FROM hr_medical_documents WHERE record_id=$1 AND employee_id=$2 AND kind='attendance' LIMIT 1`,
+      [id,before.employee_id])).rowCount)
+      throw Object.assign(new Error("التقرير الطبي مطلوب قبل اعتماد العذر"),{status:400});
     const changed = await client.query(`UPDATE attendance_records SET
       check_time=COALESCE($2::timestamptz AT TIME ZONE 'UTC',check_time),
       notes=$3,is_manual_edit=true,edited_by=$4,
@@ -71,7 +81,7 @@ export async function correctAttendanceRecord(id: number, actor: number, input: 
         (employee_id,leave_type,start_date,end_date,days,reason,status,approved_by,approved_date)
         SELECT $1,$2,$3,$3,1,$4,'approved',$5,$6
         WHERE NOT EXISTS (SELECT 1 FROM leave_requests WHERE employee_id=$1
-          AND status NOT IN ('rejected','cancelled') AND start_date<=$3::date AND end_date>=$3::date)`,
+          AND status::text NOT IN ('rejected','cancelled') AND start_date<=$3::date AND end_date>=$3::date)`,
       [before.employee_id,input.excuse === "medical_excuse" ? "sick" : "emergency",day,input.notes,actor,riyadhDateKey(new Date())]);
     }
     await client.query("COMMIT");
@@ -109,18 +119,22 @@ export async function recordAttendanceViolation(employeeId: number, day: string,
 export async function employeeAttendanceReport(employeeId: number, from: string, to: string, now = new Date()) {
   const employee = await storage.getEmployee(employeeId);
   if (!employee) throw new Error("الموظف غير موجود");
-  const shifts = resolveAttendanceShifts(await attendanceSchedules(), employee);
-  const result = await pool.query(`SELECT type,check_time AT TIME ZONE 'UTC' AS "checkTime",shift_key AS "shiftKey",
+  const settings = await attendanceSchedules();
+  const currentShifts = resolveAttendanceShifts(settings, employee);
+  const result = await pool.query(`SELECT id,type,check_time AT TIME ZONE 'UTC' AS "checkTime",shift_key AS "shiftKey",
     is_manual_edit AS "isManualEdit",location_name AS "locationName",is_out_of_zone AS "isOutOfZone"
     FROM attendance_records WHERE employee_id=$1 AND check_time >= $2::timestamptz AT TIME ZONE 'UTC'
     AND check_time <= $3::timestamptz AT TIME ZONE 'UTC' ORDER BY check_time,id`,
   [employeeId, riyadhDayBounds(from).from, riyadhDayBounds(to).to]);
   const rows = [];
+  const savedDays = new Set((await pool.query("SELECT business_day FROM attendance_day_schedules WHERE employee_id=$1 AND business_day BETWEEN $2 AND $3",
+    [employeeId,from,to])).rows.map(r => r.business_day));
   const leaves = (await storage.getLeaveRequests(employeeId)).filter(l => l.status === "approved");
   const violations = await pool.query(`SELECT business_day,shift_key,violation_type FROM attendance_violations
     WHERE employee_id=$1 AND business_day BETWEEN $2 AND $3`, [employeeId,from,to]);
   for (let time = +new Date(riyadhDayBounds(from).from); time <= +new Date(riyadhDayBounds(to).to); time += 86400000) {
     const day = riyadhDateKey(new Date(time));
+    const shifts = await scheduledShiftsForDay(settings, employee, day);
     for (const shift of shifts) {
       // Legacy unassigned records are safe only for a single shift; never guess morning/evening.
       const events = result.rows.filter(r => riyadhDateKey(new Date(r.checkTime)) === day &&
@@ -128,17 +142,28 @@ export async function employeeAttendanceReport(employeeId: number, from: string,
       const state = shiftAttendanceStatus(day, shift, events, now);
       const attempts = violations.rows.filter(v => v.business_day === day && v.shift_key === shift.id);
       const leave = leaves.some(l => l.startDate <= day && l.endDate >= day);
-      const status = events.length ? state.status : day < employee.contractStart ? "not_started"
+      let status = events.length ? state.status : day < employee.contractStart ? "not_started"
         : leave ? "approved_leave" : isRiyadhWeekend(new Date(time)) ? "rest_day"
         : attempts.some(v => v.violation_type === "missing_checkin") ? "missing_checkin" : state.status;
+      const scheduleVerified = savedDays.has(day) || day === riyadhDateKey(new Date());
+      if (!scheduleVerified && !["not_started","approved_leave","rest_day"].includes(status)) status="unverified_schedule";
       rows.push({ day, shiftId: shift.id, shiftLabel: shift.label, ...state, status,
+        recordId: events[0]?.id ?? null,
+        recordIds: events.map(event=>event.id),
+        scheduleVerified,
         locationNames: Array.from(new Set(events.map(r => r.locationName).filter(Boolean))),
         outOfZone: events.some(r => r.isOutOfZone) || attempts.some(v => v.violation_type === "out_of_zone") });
     }
   }
   return { employeeId, employeeName: employee.fullNameAr, from, to, rows,
-    configurationWarnings: shifts.some(s => !s.end) ? ["لم يُضبط وقت نهاية الدوام؛ لا يُحتسب نقص الخروج أو الغياب حتى ضبطه."] : [],
-    unassignedLegacyRecords: shifts.length > 1 ? result.rows.filter(r => !r.shiftKey).length : 0 };
+    configurationWarnings: [
+      ...(currentShifts.some(s => !s.end) ? ["لم يُضبط وقت نهاية الدوام؛ لا يُحتسب نقص الخروج أو الغياب حتى ضبطه."] : []),
+      ...((await pool.query(`SELECT 1 FROM generate_series($2::date,$3::date,'1 day') d
+        WHERE d::date< (now() AT TIME ZONE 'Asia/Riyadh')::date AND NOT EXISTS(
+          SELECT 1 FROM attendance_day_schedules WHERE employee_id=$1 AND business_day=to_char(d,'YYYY-MM-DD')) LIMIT 1`,
+      [employeeId,from,to])).rowCount ? ["أيام تاريخية بلا نسخة معتمدة من جدولها: لا تُعتمد حالة الحضور أو دقائق التأخير دون مراجعة HR."] : []),
+    ],
+    unassignedLegacyRecords: currentShifts.length > 1 ? result.rows.filter(r => !r.shiftKey).length : 0 };
 }
 
 /** Retry-safe worker. Host should invoke every five minutes; reports also reconcile explicitly. */
@@ -147,12 +172,13 @@ export async function reconcileAttendance(day = riyadhDateKey(new Date())) {
   for (const employee of await storage.getEmployees()) {
     if (employee.status !== "active" || !employee.attendanceEnabled) continue;
     const report = await employeeAttendanceReport(employee.id, day, day);
-    for (const row of report.rows) if (row.status === "missing_checkout")
+    for (const row of report.rows) if (row.scheduleVerified && row.status === "missing_checkout")
       await recordAttendanceViolation(employee.id, day, row.shiftId, "missing_checkout");
   }
 }
 
 export function registerAttendanceSupport(app: Express, authorize: RequestHandler) {
+  registerHrMedicalDocuments(app, authorize);
   app.get("/api/attendance/shift-monitor", authorize, async (req, res) => {
     const from = String(req.query.from || riyadhDateKey(new Date()));
     const to = String(req.query.to || from);
@@ -174,7 +200,7 @@ export function registerAttendanceSupport(app: Express, authorize: RequestHandle
     } catch { res.status(500).json({ message: "تعذّر تحميل مراقبة الورديات." }); }
   });
   const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024, files: 1 } });
-  app.post("/api/attendance/record/:id/medical-attachment", authorize, (req, res, next) => {
+  app.post("/api/attendance/record/:id/medical-attachment", authorize, medicalDocumentRole, (req, res, next) => {
     upload.single("file")(req, res, error => error ? res.status(400).json({ message: "ملف واحد فقط، بحد أقصى 5 ميغابايت." }) : next());
   }, async (req, res) => {
     const file = req.file;
@@ -187,19 +213,28 @@ export function registerAttendanceSupport(app: Express, authorize: RequestHandle
     try {
       const record = await storage.getAttendanceRecord(Number(req.params.id));
       if (!record) return res.status(404).json({ message: "السجل غير موجود." });
-      const result = await pool.query(`INSERT INTO attendance_medical_attachments(record_id,uploaded_by,mime_type,content)
-        VALUES($1,$2,$3,$4) RETURNING id`, [record.id, (req as any).user.id, mime, file.buffer]);
+      const key = randomUUID();
+      await saveObjectFile("hr-medical-private",key,file.buffer,mime);
+      let result;
+      try {
+        result = await pool.query(`INSERT INTO attendance_medical_attachments(record_id,uploaded_by,mime_type,object_key)
+          VALUES($1,$2,$3,$4) RETURNING id`, [record.id, (req as any).user.id, mime, key]);
+      } catch(error) { await deleteObjectFile("hr-medical-private",key); throw error; }
       res.status(201).json({ id: result.rows[0].id });
     } catch { res.status(500).json({ message: "تعذّر حفظ التقرير الطبي." }); }
   });
-  app.get("/api/attendance/medical-attachments/:id", authorize, async (req, res) => {
+  app.get("/api/attendance/medical-attachments/:id", authorize, medicalDocumentRole, async (req, res) => {
     try {
-      const result = await pool.query("SELECT mime_type,content FROM attendance_medical_attachments WHERE id=$1", [Number(req.params.id)]);
+      const result = await pool.query("SELECT mime_type,content,object_key FROM attendance_medical_attachments WHERE id=$1", [Number(req.params.id)]);
       const file = result.rows[0];
       if (!file) return res.status(404).json({ message: "المرفق غير موجود." });
       res.set({ "Content-Type": file.mime_type, "Content-Disposition": 'attachment; filename="medical-report"',
         "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "default-src 'none'; sandbox" });
-      res.send(file.content);
+      if (file.object_key) {
+        if(!await streamObjectFile("hr-medical-private",file.object_key,res,{
+          contentType:file.mime_type,disposition:'attachment; filename="medical-report"',
+        })) res.status(404).json({message:"المرفق غير موجود."});
+      } else res.send(file.content);
     } catch { res.status(500).json({ message: "تعذّر قراءة التقرير الطبي." }); }
   });
   app.get("/api/attendance/employees/:employeeId/report", authorize, async (req, res) => {
@@ -221,6 +256,7 @@ export function registerAttendanceSupport(app: Express, authorize: RequestHandle
     const parsed = schema.safeParse(req.body.shifts);
     if (!parsed.success || !validateShifts(parsed.data)) return res.status(400).json({ message: "حدد وردية أو ورديتين بلا تداخل. الدوام العابر لمنتصف الليل يحتاج سياسة معتمدة." });
     try {
+      await freezeCurrentAttendanceSchedules();
       const result = await pool.query(`UPDATE work_schedule_settings SET shifts=$2::jsonb,
         work_start_time=$3,work_end_time=$4,grace_minutes=$5 WHERE id=$1 RETURNING id`,
       [Number(req.params.id), JSON.stringify(parsed.data), parsed.data[0].start, parsed.data[0].end, parsed.data[0].graceMinutes]);

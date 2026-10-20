@@ -5,6 +5,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { HrDueTerminations } from "@/components/hr-action-panel";
 import { HrLeaveFormFields } from "@/components/hr-leave-form-fields";
+import { MedicalDocumentLinks } from "@/components/medical-document-links";
 import type { LeaveFormInput } from "@shared/hr-leave-form";
 import type { LeaveRequest, Employee, AttendancePermission } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -50,7 +51,7 @@ function ReviewerHistory({history}:{history:ReviewHistory}) {
     <summary className="cursor-pointer underline">{t("مراجعة السجل الكامل والقرارات", "Review full history and decisions")}</summary>
     <div className="space-y-2 max-h-64 overflow-auto py-2">
       {history.leaves?.map(r=><p key={`l${r.id}`}>#{r.id} · {r.leaveType} · {r.startDate} — {r.endDate} · {r.status} · {r.reason}</p>)}
-      {history.permissions?.map(r=><p key={`p${r.id}`}>#{r.id} · {r.type} · {r.date} · {r.startTime} — {r.endTime} · {r.hoursRequested} {t("ساعة","hours")} · {r.status} · {r.reason}</p>)}
+      {history.permissions?.map(r=><p key={`p${r.id}`}>#{r.id} · {r.type} · {r.date} {r.startTime} — {r.formDetails?.returnDate || r.date} {r.endTime} · {r.hoursRequested} {t("ساعة","hours")} · {r.status} · {r.reason}</p>)}
       {history.decisions?.map(r=><p key={`d${r.id}`}>{r.kind} #{r.request_id} · {r.decision} · {r.note} · {r.created_at}</p>)}
     </div>
   </details>;
@@ -70,6 +71,7 @@ export default function LeavesPage() {
   const [balanceEmp, setBalanceEmp] = useState("");
   const [decisionTarget, setDecisionTarget] = useState<{ kind: "leave" | "permission"; id: number } | null>(null);
   const [decisionNote, setDecisionNote] = useState("");
+  const [selectedMedicalLeaveId, setSelectedMedicalLeaveId] = useState<number | null>(null);
   const [reportMonth, setReportMonth] = useState(() => new Date().toISOString().slice(0, 7));
 
   const { data: leaves = [], isLoading } = useQuery<LeaveRequest[]>({ queryKey: ["/api/leaves"] });
@@ -249,14 +251,21 @@ export default function LeavesPage() {
                       <ReviewerHistory history={l.history} />
                     </td>
                     <td className="p-3">{statusBadge(l.status)}</td>
-                    <td className="p-3">{decisionButtons("leave", l.id)}</td>
+                    <td className="p-3 space-y-2">
+                      {decisionButtons("leave", l.id)}
+                      <Button size="sm" variant="ghost" aria-expanded={selectedMedicalLeaveId === l.id}
+                        onClick={() => setSelectedMedicalLeaveId(current => current === l.id ? null : l.id)}>
+                        {t("المرفقات الطبية", "Medical documents")}
+                      </Button>
+                      {selectedMedicalLeaveId === l.id && <MedicalDocumentLinks leaveId={l.id} />}
+                    </td>
                   </tr>
                 ))}
                 {pending?.permissions.map(p => (
                   <tr key={`p-${p.id}`} className="border-b last:border-0" data-testid={`row-pending-perm-${p.id}`}>
                     <td className="p-3 font-medium">{p.employee?.nameAr || empName(p.employeeId)}</td>
                     <td className="p-3">{t("استئذان", "Permission")} — {PERM_TYPES[p.type] ? t(PERM_TYPES[p.type].ar, PERM_TYPES[p.type].en) : p.type}</td>
-                    <td className="p-3" dir="ltr">{p.date}{p.startTime ? ` ${p.startTime}-${p.endTime || ""}` : ""}</td>
+                    <td className="p-3" dir="ltr"><div>{p.date} {p.startTime || ""}</div><div>— {p.formDetails?.returnDate || p.date} {p.endTime || ""}</div></td>
                     <td className="p-3 max-w-48 truncate">{p.reason || "—"}</td>
                     <td className="p-3 text-xs text-muted-foreground">
                       {t(`إجازات: ${p.history.totalLeaves} | استئذانات: ${p.history.totalPermissions} | مقبول: ${p.history.approved} | مرفوض: ${p.history.rejected}`,
@@ -322,6 +331,13 @@ export default function LeavesPage() {
                     <td className="p-3">{statusBadge(l.status)}</td>
                     <td className="p-3">
                       {(l.status === "pending" || l.status === "manager_approved" || l.status === "clarification_requested") && decisionButtons("leave", l.id)}
+                      <div className="mt-2">
+                        <Button size="sm" variant="ghost" aria-expanded={selectedMedicalLeaveId === l.id}
+                          onClick={() => setSelectedMedicalLeaveId(current => current === l.id ? null : l.id)}>
+                          {t("المرفقات الطبية", "Medical documents")}
+                        </Button>
+                        {selectedMedicalLeaveId === l.id && <MedicalDocumentLinks leaveId={l.id} />}
+                      </div>
                     </td>
                   </tr>
                 ))}

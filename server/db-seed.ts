@@ -48,19 +48,9 @@ const CORE_PRODUCTS = [
 ];
 
 export async function seedProductionDatabase() {
-  if (process.env.NODE_ENV !== "production") return;
-
-  console.log("[seed] Starting production database initialization...");
-
-  try {
-    await cleanTestData();
-    await seedUsers();
-    await seedCompanySettings();
-    await seedProducts();
-    console.log("[seed] Production database initialization complete.");
-  } catch (err) {
-    console.error("[seed] Error during initialization:", err);
-  }
+  // Retired: production startup must never delete business data or replay
+  // hardcoded identities/passwords. Provision only through initializeSystemAdmin.
+  return;
 }
 
 async function cleanTestData() {

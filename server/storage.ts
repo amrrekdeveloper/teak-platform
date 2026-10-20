@@ -1390,11 +1390,6 @@ export class DatabaseStorage implements IStorage {
     return (result.rows?.length ?? 0) > 0;
   }
 
-  async getAttendanceRecord(id: number): Promise<AttendanceRecord | undefined> {
-    const [record] = await db.select().from(attendanceRecords).where(eq(attendanceRecords.id, id));
-    return record;
-  }
-
   async createAttendanceAuditLog(data: InsertAttendanceAuditLog): Promise<AttendanceAuditLog> {
     const [created] = await db.insert(attendanceAuditLog).values(data).returning();
     return created;

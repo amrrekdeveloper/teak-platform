@@ -157,6 +157,28 @@ export async function decideHrRequest(kind: "leave" | "permission", id: number, 
     if (stage === "manager" ? employee?.manager_user_id !== userId : !["owner", "assistant", "hr"].includes(user?.role))
       workflowError(403, stage === "manager" ? "يلزم قرار المدير المباشر أولاً" : "القرار النهائي للموارد البشرية");
     const status = decision === "clarify" ? "clarification_requested" : decision === "reject" ? "rejected" : stage === "manager" ? "manager_approved" : "approved";
+    if (kind === "leave" && status === "approved") {
+      await client.query("SELECT pg_advisory_xact_lock(51701,$1)", [row.employee_id]);
+      const overlaps = await client.query(`SELECT id FROM leave_requests WHERE employee_id=$1 AND id<>$2
+        AND status='approved' AND start_date<=$4 AND end_date>=$3 LIMIT 1`, [row.employee_id,id,row.start_date,row.end_date]);
+      if (overlaps.rowCount) workflowError(409, "توجد إجازة معتمدة متداخلة.");
+      if (row.leave_type === "annual") {
+        const profile = (await client.query("SELECT contract_start FROM employees WHERE id=$1", [row.employee_id])).rows[0];
+        const approved = (await client.query(`SELECT start_date::text AS "startDate",end_date::text AS "endDate",
+          leave_type AS "leaveType",status FROM leave_requests WHERE employee_id=$1 AND status='approved'`, [row.employee_id])).rows;
+        const start = row.start_date instanceof Date ? row.start_date.toISOString().slice(0,10) : String(row.start_date);
+        const end = row.end_date instanceof Date ? row.end_date.toISOString().slice(0,10) : String(row.end_date);
+        for (let year=Number(start.slice(0,4)); year<=Number(end.slice(0,4)); year++) {
+          const contract = profile?.contract_start instanceof Date ? profile.contract_start.toISOString().slice(0,10) : profile?.contract_start;
+          if (annualUsage([...approved,{startDate:start,endDate:end,leaveType:"annual",status:"approved"}],year) >
+            annualEntitlementAt(contract, year===Number(start.slice(0,4)) ? start : `${year}-01-01`))
+              workflowError(409, "رصيد الإجازة السنوية غير كافٍ.");
+        }
+      }
+    }
+    if (kind === "leave" && row.leave_type === "sick" && status === "approved" &&
+      !(await client.query("SELECT id FROM hr_medical_documents WHERE leave_id=$1 AND employee_id=$2 LIMIT 1", [id,row.employee_id])).rowCount)
+      workflowError(400, "التقرير الطبي مطلوب قبل اعتماد الإجازة المرضية.");
     if (kind === "leave") {
       await client.query(`UPDATE leave_requests SET status=$2,
         manager_approved_by=CASE WHEN $3 THEN $4 ELSE manager_approved_by END,

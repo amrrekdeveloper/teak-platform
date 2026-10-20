@@ -14,6 +14,7 @@ vi.mock("./db",()=>({
       if(text.includes("SELECT e.manager_id"))return {rows:[state.employee]};
       if(text.startsWith("SELECT role"))return {rows:[{role:state.role}]};
       if(text.includes("SELECT 1 FROM hr_request_history"))return {rows:[],rowCount:state.approved?1:0};
+      if(text.startsWith("SELECT id FROM leave_requests WHERE employee_id"))return {rows:[],rowCount:0};
       if(text.startsWith("UPDATE "))state.status=values[1];
       return {rows:[],rowCount:1};
     },

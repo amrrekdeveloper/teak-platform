@@ -1380,13 +1380,16 @@ export const attendancePermissions = pgTable("attendance_permissions", {
   startTime: text("start_time"),
   endTime: text("end_time"),
   hoursRequested: decimal("hours_requested", { precision: 4, scale: 2 }),
+  formDetails: jsonb("form_details").$type<{ returnDate?: string; [key: string]: unknown }>(),
   reason: text("reason"),
   status: attendancePermissionStatusEnum("status").notNull().default("pending"),
   reviewedBy: integer("reviewed_by").references(() => users.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-export const insertAttendancePermissionSchema = createInsertSchema(attendancePermissions).omit({
+export const insertAttendancePermissionSchema = createInsertSchema(attendancePermissions, {
+  formDetails: z.object({returnDate:z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()}).catchall(z.unknown()).nullable().optional(),
+}).omit({
   id: true,
   createdAt: true,
 });
