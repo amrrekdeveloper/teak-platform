@@ -1,0 +1,316 @@
+TEAK — Complete Phase 1 Operational Release Readiness
+
+Repository: amrrekdeveloper/teak-platform
+Branch: main
+Execution: Replit Agent MAX
+
+1. Resume from the actual current state
+
+The previous task was interrupted because some of its requirements had already been implemented.
+
+I have now synchronized the GitHub source code. Resume from the latest Replit workspace and preserve all completed changes.
+
+Do not rebuild or recreate completed features.
+
+The following are already implemented:
+
+* Public TEAK maintenance homepage.
+* HR shield entry and HR workspace.
+* Employee Self-Service portal.
+* Manager portal.
+* Existing employee onboarding and HR modules.
+* Attendance, GPS validation, configurable shifts and monitoring.
+* Leave and permission workflows.
+* Dedicated system administrator entry at /system-admin.
+* Secure HR account management by the designated system administrator.
+
+The system administrator feature is documented in docs/system-admin-access.md and implemented in server/system-admin.ts.
+
+Do not create another system administrator mechanism, login page, role, or account-management module.
+
+Preserve the existing administrator account and all existing owner accounts.
+
+2. Confirm system administrator and HR access
+
+The designated system administrator already uses:
+
+* /system-admin
+* TEAK_SYSTEM_ADMIN_USERNAME
+* TEAK_SYSTEM_ADMIN_PASSWORD
+
+These secrets have already been entered for development.
+
+Do not request or display their values.
+
+Verify the existing functionality:
+
+1. System administrator signs in.
+2. Creates an HR manager account.
+3. Activates or disables that account.
+4. Resets its password when authorized.
+5. HR manager signs in through /hr/login.
+6. HR manager can access authorized HR functions.
+7. HR manager cannot access system-administrator or unrelated ERP functions.
+
+Preserve one-time provisioning and the existing protection against resetting or replacing owner accounts.
+
+Production setup: The owner will configure the same two secret names in Replit Deployment Secrets before republishing. Do not assume development secrets automatically transfer to production.
+
+Explain clearly that development HR accounts do not automatically transfer to the production database.
+
+Do not create default credentials.
+
+3. Scope: make these systems production-ready
+
+The owner has approved operating the following systems first:
+
+* Employee registration and attendance configuration.
+* Employee Self-Service.
+* GPS check-in and check-out.
+* Attendance monitoring and corrections.
+* Leave requests.
+* Permission requests.
+* Direct-manager approvals.
+* HR final approvals.
+* Employee request history and notifications.
+
+Other unfinished HR enhancements are deferred to Phase 2.
+
+Do not remove or damage existing functionality in deferred modules.
+
+4. Fix operational blockers
+
+Review the actual current code and the existing reports:
+
+* docs/hr-release-acceptance.md
+* docs/hr-attendance-validation.md
+* docs/system-admin-access.md
+
+Resolve the remaining operational defects, especially:
+
+4.1 TypeScript and build
+
+The previous acceptance report recorded 161 repository-wide TypeScript diagnostics.
+
+Re-run the current check and identify the actual remaining errors.
+
+Correct errors that affect production reliability, application startup, authentication, HR, employee self-service, attendance, leave, permissions, and their shared dependencies.
+
+Do not hide errors through global suppression or unsafe type changes.
+
+Aim for a clean repository-wide typecheck. If unrelated legacy errors remain, document them individually and demonstrate that they cannot affect the Phase 1 release. Do not misrepresent an incomplete check as PASS.
+
+Run the production build and verify actual server startup, not just bundling.
+
+4.2 Permission approval
+
+Complete browser-level testing of:
+
+Employee permission request → Manager approval → HR final approval → Employee notification and final status.
+
+Also test:
+
+* HR rejection.
+* Request for clarification.
+* No assigned manager.
+* Unauthorized approval attempts.
+* Duplicate approval attempts.
+* Correct duration and historical records.
+
+Do the same for leave requests.
+
+Verify leave balances update correctly and only once.
+
+4.3 Medical attachments
+
+Complete employee-side medical attachment upload for applicable leave and attendance-excuse requests.
+
+Reuse the protected attachment infrastructure already implemented.
+
+Ensure:
+
+* Employee identity is session-bound.
+* Correct request and employee ownership.
+* Safe file-type and size validation.
+* Secure storage and download.
+* HR access to the correct attachment.
+* Required attachment validation where applicable.
+* No public exposure of private medical documents.
+
+4.4 Attendance and schedules
+
+Verify the existing implementation rather than rebuilding it.
+
+Test:
+
+* GPS permission and accuracy.
+* In-zone attendance.
+* Out-of-zone rejection.
+* Missing coordinates.
+* Duplicate check-in and checkout.
+* Checkout without check-in.
+* Correct missing-checkout detection after the configured shift end.
+* Late arrival and grace period.
+* Separate morning/evening shifts.
+* Asia/Riyadh date calculations.
+* Attendance corrections and audit logs.
+* Notifications without duplication.
+
+Ensure the attendance reconciliation scheduler and startup catch-up are actually connected and operational in the deployed server process.
+
+Verify that historical attendance remains accurate when HR changes work schedules.
+
+Use effective-dated or equivalent reliable historical schedule information, preserving existing records.
+
+Do not invent overnight-shift policies. Keep unsupported overnight configurations safely disabled until approved.
+
+4.5 Employee onboarding
+
+Verify:
+
+* Unique normalized Saudi mobile numbers.
+* Active employee status.
+* Attendance eligibility.
+* Work schedule assignment.
+* Attendance geofence assignment.
+* Optional direct manager.
+* Employee self-service without an administrative user account.
+* Safe employee deletion/deactivation rules.
+
+Test creation using isolated development fixtures.
+
+5. Mobile and desktop design acceptance
+
+This is mandatory, not optional.
+
+Test the complete Phase 1 operational experience on actual browser viewports:
+
+Mobile: 360px, 390px, 430px.
+Desktop: 1366px, 1920px.
+
+Test these screens:
+
+* Public maintenance homepage.
+* System administrator login and HR account management.
+* HR login and HR workspace.
+* Employee creation and employee details.
+* Attendance settings and monitoring.
+* Employee Self-Service login and dashboard.
+* GPS check-in/out.
+* Leave and permission forms.
+* Manager approval portal.
+* HR final approval.
+* Attendance reports and print views.
+
+Correct Arabic RTL alignment, clipping, horizontal overflow, overlapping buttons, small touch targets, unusable dialogs, desktop layout issues, and broken navigation.
+
+Preserve the approved TEAK branding and existing visual design.
+
+Use appropriate mobile-specific and desktop-specific layouts.
+
+Capture and inspect browser screenshots of the important journeys before declaring visual acceptance.
+
+6. Security and production configuration
+
+Preserve maintenance mode.
+
+Only the explicitly authorized system-administrator, HR, manager, and employee services may remain accessible.
+
+Verify role separation and server-side authorization.
+
+Ensure:
+
+* No employee can access another employee’s records.
+* No manager can review unrelated employees.
+* HR cannot access system-administrator functions.
+* The system administrator remains limited to the designated administrative scope during maintenance.
+* Employee OTP sessions cannot become administrative sessions.
+* Development OTP 1111 is impossible to use in production.
+* No credentials, OTPs, or protected documents appear in logs.
+* Taqnyat integration remains configured for TEAKSA.
+* Production SMS fails safely if provider configuration is missing.
+* No real SMS is sent during automated tests.
+* No production payroll or accounting action is executed.
+* No genuine production employee records are altered during tests.
+
+Check all relevant Replit deployment secrets by name and configuration presence without displaying their values.
+
+7. Database and deployment readiness
+
+Verify all required additive migrations and startup initializers.
+
+Confirm that:
+
+* Existing employee records are preserved.
+* Existing owner accounts are preserved.
+* The system administrator is not recreated on each restart.
+* HR account changes are durable.
+* Attendance history is preserved.
+* Session handling works after restart.
+* Required scheduler jobs start correctly.
+* Startup does not silently rewrite employee identities or account relationships.
+* Deployment health checks succeed while maintenance is enabled.
+
+Test safe restart behavior and rollback considerations.
+
+Do not access or modify production data during development testing.
+
+8. Complete end-to-end browser acceptance
+
+Run the following full journey using isolated development test records:
+
+System Administrator → Create HR account → HR login → Create employee → Configure attendance → Employee OTP login → GPS attendance → Submit leave → Manager decision → HR final decision → Employee sees result.
+
+Repeat for permission requests.
+
+Also verify logout, expired sessions, invalid credentials, invalid GPS, duplicate transactions, and unauthorized access.
+
+Do not claim a scenario passed unless it was actually executed.
+
+Clean up temporary test records without deleting the retained development employee or any genuine data.
+
+9. Deferred to Phase 2
+
+Do not delay Phase 1 for:
+
+* Missing official confidentiality agreements.
+* Complete settlement and entitlement documents.
+* Candidate acceptance before employee creation.
+* Non-operational HR workflow enhancements.
+* Additional payroll and advance features.
+* Government licenses.
+* Unapproved overnight-shift rules.
+* Other unrelated ERP development.
+
+Document these items separately.
+
+10. Final release report
+
+Update docs/hr-release-acceptance.md with a Phase 1 operational release section.
+
+Provide the final report in Arabic, including:
+
+1. Features verified as operational.
+2. Actual automated test results.
+3. TypeScript and production build results.
+4. Actual browser acceptance results.
+5. Mobile and desktop screenshots/verification.
+6. Security and role-isolation results.
+7. Remaining blockers, classified by severity.
+8. Exact Preview URLs.
+9. System administrator and HR login instructions without exposing credentials.
+10. Production Deployment Secrets checklist.
+11. Database migration and restart verification.
+12. Exact steps for my personal acceptance test.
+13. GitHub synchronization and working-tree status.
+14. Deferred Phase 2 backlog.
+
+Release gate: Do not declare Phase 1 ready while a critical operational journey, authorization check, database initialization, or production startup remains unverified.
+
+If a blocker is found, fix it within the approved scope and rerun the affected tests.
+
+Do not publish or republish production.
+
+I will configure production secrets, republish, create the production HR account, and perform the final live SMS/GPS acceptance after your verified delivery.
+
+Proceed now. Complete Phase 1 operational readiness without duplicating previously completed development.
