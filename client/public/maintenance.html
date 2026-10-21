@@ -44,11 +44,13 @@
     .schedule-note { margin: 20px 0 0; color: var(--muted); font-size: 16px; line-height: 1.6; }
     footer { border-top: 1px solid var(--line); padding-top: 19px; display: flex; align-items: center; justify-content: space-between; gap: 16px; font-size: 16px; color: var(--muted); }
     .domain { font-family: var(--font); color: var(--brand); font-size: 19px; letter-spacing: .06em; }
-     .hr-footer-brand { display: inline-flex; align-items: center; gap: 5px; }
+     .hr-footer-brand { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; }
      .hr-footer-shield { width: 44px; height: 44px; display: inline-grid; place-items: center; color: var(--brand); text-decoration: none; border-radius: 4px; }
      .hr-footer-shield:hover, .hr-footer-shield:focus-visible { background: #eee5da; }
      .hr-footer-shield:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
      .hr-footer-shield svg { width: 18px; height: 18px; }
+     .system-footer-shield { color: #737373; }
+     .system-footer-shield:focus-visible { outline-color: #737373; }
     .brand-panel { position: relative; overflow: hidden; background: var(--brand); color: var(--paper); display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding: 58px 36px 38px; min-height: 100%; }
     .logo { width: clamp(125px, 13vw, 185px); height: auto; display: block; position: relative; z-index: 1; }
     .drawing { position: absolute; top: 50%; left: 50%; width: 115%; height: 64%; transform: translate(-50%, -44%); opacity: .24; pointer-events: none; }
@@ -125,7 +127,11 @@
       </main>
       <footer>
         <span>جميع الحقوق محفوظة © 2026 </span>
-        <span class="hr-footer-brand"><span class="domain" dir="ltr">teak</span><a class="hr-footer-shield" href="/hr/login" aria-label="دخول إدارة الموارد البشرية" title="دخول إدارة الموارد البشرية"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false"><path d="M12 3.2 19 6v5.3c0 4.4-2.9 7.8-7 9.5-4.1-1.7-7-5.1-7-9.5V6l7-2.8Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="m9 11.9 2 2 4.2-4.2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></a></span>
+        <span class="hr-footer-brand">
+          <span class="domain" dir="ltr">teak</span>
+          <a class="hr-footer-shield" href="/hr/login" aria-label="دخول إدارة الموارد البشرية" title="دخول إدارة الموارد البشرية"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false"><path d="M12 3.2 19 6v5.3c0 4.4-2.9 7.8-7 9.5-4.1-1.7-7-5.1-7-9.5V6l7-2.8Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="m9 11.9 2 2 4.2-4.2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+          <a class="hr-footer-shield system-footer-shield" href="/system-admin" aria-label="لوحة تحكم مدير النظام" title="لوحة تحكم مدير النظام"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false"><path d="m12 2 8 3v6c0 5-5 9-8 11-3-2-8-6-8-11V5l8-3Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><circle cx="12" cy="10" r="2" stroke="currentColor" stroke-width="1.7"/><path d="M12 12v4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></a>
+        </span>
       </footer>
     </div>
     <aside class="brand-panel" aria-label="تيك">
