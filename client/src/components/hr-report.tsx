@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useLanguage } from "@/components/language-provider";
-import { Maximize2, Minimize2, Printer } from "lucide-react";
+import { Printer } from "lucide-react";
 
 export type ReportData = { title: string; subtitle?: string; headings: string[]; rows: (string | number)[][] };
 
@@ -28,7 +28,6 @@ export function printReport(report: ReportData) {
   const button = doc.createElement("button"); button.textContent = "طباعة / حفظ PDF"; button.onclick = () => popup.print(); doc.body.append(button);
   popup.focus(); popup.print();
 }
-
 export function ReportPreview({ report, onClose }: { report: ReportData | null; onClose: () => void }) {
   const { t } = useLanguage();
   const [error, setError] = useState("");
@@ -43,23 +42,10 @@ export function ReportPreview({ report, onClose }: { report: ReportData | null; 
   </Dialog>;
 }
 
+/** Kept as a layout wrapper for existing HR screens; expansion controls were removed. */
 export function HrExpandedWorkspace({ children }: { children: ReactNode }) {
-  const { t } = useLanguage();
-  const [expanded, setExpanded] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!expanded) return;
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    const close = (event: KeyboardEvent) => { if (event.key === "Escape") setExpanded(false); };
-    window.addEventListener("keydown", close);
-    return () => { document.body.style.overflow = previous; window.removeEventListener("keydown", close); };
-  }, [expanded]);
-  return <div ref={ref} className={expanded ? "fixed inset-0 z-40 bg-background overflow-y-auto p-3 sm:p-6" : "min-w-0"}>
+  return <div className="min-w-0">
     <style>{`@media(max-width:639px){table.hr-responsive,table.hr-responsive tbody{display:block;width:100%}table.hr-responsive thead{display:none}table.hr-responsive tr{display:block;border:1px solid hsl(var(--border));border-radius:12px;margin:10px;padding:6px}table.hr-responsive td{display:flex;align-items:center;justify-content:space-between;gap:12px;max-width:none;white-space:normal;padding:8px;overflow-wrap:anywhere}table.hr-responsive td::before{content:attr(data-label);font-size:12px;color:hsl(var(--muted-foreground));flex-shrink:0}table.hr-responsive input{min-height:40px}}`}</style>
-    <div className="flex justify-end mb-3"><Button variant="outline" size="sm" aria-pressed={expanded} onClick={() => setExpanded(!expanded)}>
-      {expanded ? <Minimize2 className="w-4 h-4 me-2" /> : <Maximize2 className="w-4 h-4 me-2" />}
-      {expanded ? t("إغلاق العرض الموسع", "Exit expanded view") : t("توسيع مساحة العمل", "Expand workspace")}
-    </Button></div>{children}
+    {children}
   </div>;
 }

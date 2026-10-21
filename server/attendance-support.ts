@@ -9,6 +9,7 @@ import { randomUUID } from "node:crypto";
 import { saveObjectFile, streamObjectFile, deleteObjectFile } from "./objectFileStore";
 import { initMedicalDocuments, registerHrMedicalDocuments, medicalDocumentRole } from "./employee-portal/medical-documents";
 import { initAttendanceScheduleHistory, scheduledShiftsForDay, freezeCurrentAttendanceSchedules } from "./attendance-schedule-history";
+import { applyAttendanceCorrection, attendanceCorrections, registerHrCorrections } from "./attendance-corrections";
 
 /** Additive only. Call during startup after existing attendance tables have been initialized. */
 export async function ensureAttendanceExtensions() {
@@ -35,13 +36,16 @@ export async function ensureAttendanceExtensions() {
   `);
   await pool.query(`ALTER TABLE attendance_medical_attachments ADD COLUMN IF NOT EXISTS object_key text;
     ALTER TABLE attendance_medical_attachments ALTER COLUMN content DROP NOT NULL`);
+  const { initAttendanceWorkspace } = await import("./attendance-workspace");
+  await initAttendanceWorkspace();
   await initMedicalDocuments();
   await initAttendanceScheduleHistory();
 }
 
 export async function attendanceSchedules(): Promise<WorkScheduleLike[]> {
   const result = await pool.query(`SELECT id,scope_type AS "scopeType",department,employee_id AS "employeeId",
-    work_start_time AS "workStartTime",grace_minutes AS "graceMinutes",work_end_time AS "workEndTime",shifts
+    work_start_time AS "workStartTime",grace_minutes AS "graceMinutes",work_end_time AS "workEndTime",shifts,
+    location_zone_id AS "locationZoneId",label_ar AS "labelAr"
     FROM work_schedule_settings ORDER BY id`);
   return result.rows;
 }
@@ -127,14 +131,18 @@ export async function employeeAttendanceReport(employeeId: number, from: string,
     AND check_time <= $3::timestamptz AT TIME ZONE 'UTC' ORDER BY check_time,id`,
   [employeeId, riyadhDayBounds(from).from, riyadhDayBounds(to).to]);
   const rows = [];
-  const savedDays = new Set((await pool.query("SELECT business_day FROM attendance_day_schedules WHERE employee_id=$1 AND business_day BETWEEN $2 AND $3",
-    [employeeId,from,to])).rows.map(r => r.business_day));
+  const savedSchedules = new Map<string,import("../shared/attendance").AttendanceShift[]>(
+    (await pool.query("SELECT business_day,shifts FROM attendance_day_schedules WHERE employee_id=$1 AND business_day BETWEEN $2 AND $3",
+    [employeeId,from,to])).rows.map(r => [r.business_day,r.shifts]));
+  const savedDays = new Set(savedSchedules.keys());
   const leaves = (await storage.getLeaveRequests(employeeId)).filter(l => l.status === "approved");
   const violations = await pool.query(`SELECT business_day,shift_key,violation_type FROM attendance_violations
     WHERE employee_id=$1 AND business_day BETWEEN $2 AND $3`, [employeeId,from,to]);
+  const corrections = await attendanceCorrections(employeeId,from,to);
   for (let time = +new Date(riyadhDayBounds(from).from); time <= +new Date(riyadhDayBounds(to).to); time += 86400000) {
     const day = riyadhDateKey(new Date(time));
-    const shifts = await scheduledShiftsForDay(settings, employee, day);
+    const shifts = savedSchedules.get(day) ?? (day===riyadhDateKey(new Date())
+      ? await scheduledShiftsForDay(settings,employee,day) : currentShifts);
     for (const shift of shifts) {
       // Legacy unassigned records are safe only for a single shift; never guess morning/evening.
       const events = result.rows.filter(r => riyadhDateKey(new Date(r.checkTime)) === day &&
@@ -147,7 +155,8 @@ export async function employeeAttendanceReport(employeeId: number, from: string,
         : attempts.some(v => v.violation_type === "missing_checkin") ? "missing_checkin" : state.status;
       const scheduleVerified = savedDays.has(day) || day === riyadhDateKey(new Date());
       if (!scheduleVerified && !["not_started","approved_leave","rest_day"].includes(status)) status="unverified_schedule";
-      rows.push({ day, shiftId: shift.id, shiftLabel: shift.label, ...state, status,
+      const correction=corrections.find(c=>c.businessDay===day&&c.shiftKey===shift.id);
+      rows.push(applyAttendanceCorrection({ day, shiftId: shift.id, shiftLabel: shift.label, ...state, status,
         // Current settings cannot establish historical schedule-dependent facts.
         late: scheduleVerified ? state.late : null,
         lateMinutes: scheduleVerified ? state.lateMinutes : null,
@@ -157,7 +166,7 @@ export async function employeeAttendanceReport(employeeId: number, from: string,
         recordIds: events.map(event=>event.id),
         scheduleVerified,
         locationNames: Array.from(new Set(events.map(r => r.locationName).filter(Boolean))),
-        outOfZone: events.some(r => r.isOutOfZone) || attempts.some(v => v.violation_type === "out_of_zone") });
+        outOfZone: events.some(r => r.isOutOfZone) || attempts.some(v => v.violation_type === "out_of_zone") },correction));
     }
   }
   return { employeeId, employeeName: employee.fullNameAr, from, to, rows,
@@ -183,6 +192,7 @@ export async function reconcileAttendance(day = riyadhDateKey(new Date())) {
 }
 
 export function registerAttendanceSupport(app: Express, authorize: RequestHandler) {
+  registerHrCorrections(app,authorize);
   registerHrMedicalDocuments(app, authorize);
   app.get("/api/attendance/shift-monitor", authorize, async (req, res) => {
     const from = String(req.query.from || riyadhDateKey(new Date()));
@@ -191,15 +201,21 @@ export function registerAttendanceSupport(app: Express, authorize: RequestHandle
       return res.status(400).json({ message: "اختر فترة صحيحة لا تتجاوز سنة." });
     try {
       const employees = (await storage.getEmployees()).filter(e => e.attendanceEnabled && e.status === "active");
+      const zones=await storage.getLocationZones();
       const rows = [];
       const warnings: string[] = [];
-      for (const employee of employees) {
-        const report = await employeeAttendanceReport(employee.id, from, to);
+      for(let offset=0;offset<employees.length;offset+=4) {
+        const group=employees.slice(offset,offset+4);
+        const reports=await Promise.all(group.map(employee=>employeeAttendanceReport(employee.id,from,to)));
+        for(let i=0;i<group.length;i++){
+        const employee=group[i],report=reports[i];
         for (const row of report.rows) rows.push({ ...row, employeeId: employee.id,
           employeeName: employee.fullNameAr || employee.employeeNumber, department: employee.department,
-          homeLocation: employee.fingerprintLocation || employee.fingerScanLocation || "غير محدد" });
+          employeeNumber:employee.employeeNumber,
+          homeLocation: zones.find(z=>z.id===employee.attendanceZoneId)?.nameAr || employee.fingerprintLocation || employee.fingerScanLocation || "غير محدد" });
         if (report.configurationWarnings.length) warnings.push(`${report.employeeName}: ${report.configurationWarnings.join(" ")}`);
         if (report.unassignedLegacyRecords) warnings.push(`${report.employeeName}: ${report.unassignedLegacyRecords} حركة تاريخية تحتاج نسبة لوردية.`);
+        }
       }
       res.json({ rows, warnings });
     } catch { res.status(500).json({ message: "تعذّر تحميل مراقبة الورديات." }); }

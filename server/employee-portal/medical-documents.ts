@@ -5,15 +5,21 @@ import { pool } from "../db";
 import { deleteObjectFile, saveObjectFile, streamObjectFile } from "../objectFileStore";
 import { asyncRoute, identity, portalError } from "./router";
 import { takeLimit } from "./database";
+import { storage } from "../storage";
 
 const folder = "hr-medical-private";
 export const canReviewMedicalDocuments = (role?: string) => role === "owner" || role === "hr";
 /** Additional clinical-data boundary, even when the caller's attendance guard admits IT. */
-export const medicalDocumentRole: RequestHandler = (req,res,next) => {
-  const user=(req as any).user;
-  if(!user)return res.status(401).json({message:"سجل الدخول أولاً."});
-  if(!canReviewMedicalDocuments(user.role))return res.status(403).json({message:"المرفقات الطبية متاحة للمالك والموارد البشرية فقط."});
-  next();
+export const medicalDocumentRole: RequestHandler = async (req,res,next) => {
+  try {
+    // The administrative app uses server-side sessions, not req.user.
+    // Always resolve that session afresh; retain adapters for isolated tests.
+    const user=req.session?.userId?await storage.getUser(req.session.userId):(req as any).user;
+    if(!user)return res.status(401).json({message:"سجل الدخول أولاً."});
+    if(user.active===false||user.archived||!canReviewMedicalDocuments(user.role))
+      return res.status(403).json({message:"المرفقات الطبية متاحة للمالك والموارد البشرية فقط."});
+    next();
+  }catch{res.status(500).json({message:"تعذّر التحقق من صلاحية مراجعة المرفقات."});}
 };
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5242880, files: 1, fields: 4 } });
 const receive: RequestHandler = (req, res, next) => upload.single("file")(req, res, err =>

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Route, Switch, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   ArrowLeft, CalendarDays, ChevronLeft, CircleDollarSign,
-  ClipboardCheck, Clock3, DoorOpen, LoaderCircle, LockKeyhole, Maximize, Menu, Minimize,
+  ClipboardCheck, Clock3, DoorOpen, LoaderCircle, LockKeyhole, Menu,
   ShieldCheck, UsersRound, X,
 } from "lucide-react";
 
@@ -83,7 +83,7 @@ function HrLogin({ sessionUser }: { sessionUser: HrUser | null }) {
     <main className="hr-login-page" dir="rtl">
       <div className="hr-login-frame">
         <section className="hr-login-copy">
-          <div className="hr-wordmark"><span className="hr-wordmark-seal"><ShieldCheck size={21} /></span><span>teak</span></div>
+          <div className="hr-wordmark"><img src="/__maintenance/logo.png" alt="TEAK" /><span>إدارة الموارد البشرية</span></div>
           <div className="hr-login-title">
             <span className="hr-kicker">مساحة الموارد البشرية</span>
             <h1>تسجيل الدخول</h1>
@@ -130,9 +130,7 @@ function HrLayout() {
   const [location, setLocation] = useLocation();
   const { user, isLoading, logout, isLoggingOut } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
-  const [fullscreen, setFullscreen] = useState(false);
   const [logoutError, setLogoutError] = useState("");
-  const ownsFullscreen = useRef(false);
   const currentPath = location.replace(/^\/hr/, "") || "/";
   const active = navItems.find(item => currentPath === item.href || currentPath.startsWith(`${item.href}/`));
   const hrUser = user as HrUser | null;
@@ -142,42 +140,8 @@ function HrLayout() {
     if (!isLoading && !authorized) setLocation("/login");
   }, [isLoading, authorized, setLocation]);
 
-  useEffect(() => {
-    const syncFullscreen = () => {
-      setFullscreen(!!document.fullscreenElement);
-      if (!document.fullscreenElement) ownsFullscreen.current = false;
-    };
-    document.addEventListener("fullscreenchange", syncFullscreen);
-    return () => {
-      document.removeEventListener("fullscreenchange", syncFullscreen);
-      if (ownsFullscreen.current && document.fullscreenElement) {
-        void document.exitFullscreen().catch(() => {});
-      }
-    };
-  }, []);
-
   if (isLoading) return <WorkspaceLoading />;
   if (!hrUser || !authorized) return <WorkspaceLoading />;
-
-  const toggleFullscreen = async () => {
-    setMenuOpen(false);
-    if (fullscreen) {
-      setFullscreen(false);
-      if (ownsFullscreen.current && document.fullscreenElement) {
-        await document.exitFullscreen().catch(() => {});
-      }
-      ownsFullscreen.current = false;
-      return;
-    }
-    setFullscreen(true);
-    // Fullscreen the document so existing portalled HR dialogs remain visible.
-    // On mobile browsers without the API, the same control expands the shell.
-    if (document.documentElement.requestFullscreen) {
-      ownsFullscreen.current = true;
-      try { await document.documentElement.requestFullscreen(); }
-      catch { ownsFullscreen.current = false; }
-    }
-  };
 
   const handleLogout = async () => {
     if (isLoggingOut) return;
@@ -194,19 +158,19 @@ function HrLayout() {
   };
 
   return (
-    <div className={`hr-workspace${fullscreen ? " hr-is-fullscreen" : ""}`} dir="rtl">
+    <div className="hr-workspace" dir="rtl">
       <header className="hr-mobile-header">
         <button type="button" className="hr-icon-button" aria-label={menuOpen ? "إغلاق القائمة" : "فتح القائمة"} aria-expanded={menuOpen} onClick={() => setMenuOpen(v => !v)}>
           {menuOpen ? <X size={21} /> : <Menu size={21} />}
         </button>
-        <div className="hr-mobile-brand"><span className="hr-brand-mark"><ShieldCheck size={17} /></span><span>teak <b>HR</b></span></div>
+        <div className="hr-mobile-brand"><img src="/__maintenance/logo.png" alt="TEAK" /><span>الموارد البشرية</span></div>
         <span className="hr-avatar">{(hrUser.fullNameAr || hrUser.username || "HR").slice(0, 1)}</span>
       </header>
       {menuOpen && <button type="button" className="hr-mobile-scrim" aria-label="إغلاق القائمة" onClick={() => setMenuOpen(false)} />}
       <aside className={`hr-sidebar ${menuOpen ? "is-open" : ""}`}>
         <div className="hr-brand-lockup">
-          <span className="hr-brand-mark"><ShieldCheck size={19} /></span>
-          <div><strong>teak</strong><small>إدارة الموارد البشرية</small></div>
+          <img src="/__maintenance/logo.png" alt="TEAK" />
+          <div><strong>تيك</strong><small>إدارة الموارد البشرية</small></div>
         </div>
         <div className="hr-side-label">مساحة العمل</div>
         <nav className="hr-nav" aria-label="التنقل في الموارد البشرية">
@@ -228,12 +192,7 @@ function HrLayout() {
         <header className="hr-topbar">
           <div><span className="hr-breadcrumb-root">تيك</span><span className="hr-breadcrumb-slash">/</span><span>{active?.label || "الموظف"}</span></div>
           <div className="hr-topbar-actions">
-            {fullscreen && <button type="button" className="hr-fullscreen-button hr-fullscreen-menu" aria-label="قائمة الموارد البشرية" aria-expanded={menuOpen} onClick={() => setMenuOpen(v => !v)}><Menu size={17} /><span>القائمة</span></button>}
             <div className="hr-topbar-state"><span className="hr-topbar-dot" /> مساحة الموارد البشرية</div>
-            <button type="button" className="hr-fullscreen-button" onClick={toggleFullscreen} aria-pressed={fullscreen} aria-label={fullscreen ? "إنهاء ملء الشاشة" : "ملء الشاشة"} title={fullscreen ? "إنهاء ملء الشاشة" : "ملء الشاشة"}>
-              {fullscreen ? <Minimize size={17} /> : <Maximize size={17} />}
-              <span>{fullscreen ? "إنهاء ملء الشاشة" : "ملء الشاشة"}</span>
-            </button>
           </div>
         </header>
         <main className="hr-content">
@@ -278,6 +237,8 @@ export default function HrWorkspace() {
         .hr-workspace { min-height:100dvh; width:100%;max-width:100%;overflow-x:clip;display:flex; background:var(--hr-paper); }
         .hr-sidebar { position:fixed; inset-block:0; inset-inline-start:0; z-index:30; width:258px; background:var(--hr-ivory); border-inline-end:1px solid var(--hr-line); display:flex; flex-direction:column; padding:28px 17px 18px;overflow-y:auto;overscroll-behavior:contain; }
         .hr-brand-lockup { display:flex; align-items:center; gap:11px; padding:0 9px 28px; border-bottom:1px solid var(--hr-line); }
+        .hr-brand-lockup img { width:54px;height:38px;object-fit:contain; }
+        .hr-brand-lockup img,.hr-wordmark img,.hr-mobile-brand img { filter:brightness(0) saturate(100%) invert(11%) sepia(94%) saturate(3915%) hue-rotate(353deg) brightness(81%) contrast(111%); }
         .hr-brand-mark,.hr-wordmark-seal { width:38px;height:38px;display:grid;place-items:center;color:var(--hr-red);background:#f6e9e5;border-radius:12px; }
         .hr-brand-lockup strong { display:block;font-size:23px;line-height:1.05;letter-spacing:-.04em; }
         .hr-brand-lockup small { display:block;margin-top:4px;font-size:13px;color:var(--hr-muted); }
@@ -302,9 +263,7 @@ export default function HrWorkspace() {
         .hr-breadcrumb-root,.hr-breadcrumb-slash { color:#a2968e;font-weight:400; }
         .hr-topbar-state { display:flex;align-items:center;gap:8px;color:var(--hr-muted);font-size:13px; }
         .hr-topbar-actions { display:flex;align-items:center;gap:14px;flex-shrink:0; }
-        .hr-fullscreen-button { display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:44px;padding:0 10px;border:1px solid var(--hr-line);border-radius:8px;background:var(--hr-ivory);color:var(--hr-ink);font:inherit;font-size:13px;cursor:pointer; }
-        .hr-fullscreen-button:hover { color:var(--hr-red);border-color:#d9b4aa; }
-        .hr-fullscreen-button:focus-visible,.hr-icon-button:focus-visible,.hr-nav-link:focus-visible,.hr-logout:focus-visible { outline:2px solid var(--hr-red);outline-offset:3px; }
+        .hr-icon-button:focus-visible,.hr-nav-link:focus-visible,.hr-logout:focus-visible { outline:2px solid var(--hr-red);outline-offset:3px; }
         .hr-session-error { margin:10px 0 0;color:var(--hr-red);font-size:13px;line-height:1.5; }
         .hr-topbar-dot,.hr-status-dot { width:7px;height:7px;border-radius:50%;background:#708268; }
         .hr-content { width:100%;max-width:1500px;margin:0 auto;padding:29px 34px 42px;min-width:0;overflow-x:auto; }
@@ -312,18 +271,12 @@ export default function HrWorkspace() {
         .hr-content :where(.grid,.flex) { min-width:0; }
         .hr-content .grid > * { min-width:0; }
         .hr-content .hr-loading { min-height:50dvh; }
-        .hr-is-fullscreen .hr-main-column { width:100%;margin-inline-start:0; }
-        .hr-is-fullscreen .hr-content { max-width:none; }
-        @media(min-width:768px) {
-          .hr-is-fullscreen .hr-sidebar { display:none; }
-          .hr-is-fullscreen .hr-sidebar.is-open { display:flex;box-shadow:-12px 0 30px #382a2728; }
-          .hr-is-fullscreen .hr-mobile-scrim { position:fixed;inset:0;z-index:29;display:block;width:100%;border:0;background:#251b1766; }
-        }
         .hr-mobile-header,.hr-mobile-scrim { display:none; }
         .hr-login-page { min-height:100dvh;display:grid;place-items:center;padding:26px;background:var(--hr-paper); }
         .hr-login-frame { width:min(100%,970px);min-height:610px;display:grid;grid-template-columns:minmax(0,1fr) 39%;overflow:hidden;background:var(--hr-ivory);border:1px solid #e8ded2;border-radius:16px;box-shadow:0 22px 70px #49352b12; }
         .hr-login-copy { display:flex;flex-direction:column;padding:clamp(30px,6vw,64px); }
-        .hr-wordmark { display:flex;align-items:center;gap:10px;color:var(--hr-red);font-family:Georgia,serif;font-weight:700;font-size:26px;letter-spacing:-.05em; }
+        .hr-wordmark { display:flex;align-items:center;gap:10px;color:var(--hr-red);font-weight:700;font-size:18px; }
+        .hr-wordmark img { width:62px;height:42px;object-fit:contain; }
         .hr-wordmark-seal { width:34px;height:34px;border-radius:10px; }
         .hr-login-title { margin:auto 0 29px; }
         .hr-kicker { display:inline-block;margin-bottom:12px;color:var(--hr-red);font-size:15px;font-weight:700; }
@@ -366,8 +319,8 @@ export default function HrWorkspace() {
         @media(max-width:767px) {
           .hr-workspace { display:block;padding-top:58px; }
           .hr-mobile-header { position:fixed;z-index:40;inset-block-start:0;inset-inline:0;height:58px;display:flex;align-items:center;justify-content:space-between;padding-inline:13px;border-bottom:1px solid var(--hr-line);background:var(--hr-ivory); }
-          .hr-mobile-brand { display:flex;align-items:center;gap:8px;color:var(--hr-red);font-family:Georgia,serif;font-weight:700;font-size:21px; }
-          .hr-mobile-brand b { padding:3px 5px;border-radius:4px;background:#f6e9e5;font:700 10px Tahoma,sans-serif;letter-spacing:.06em; }
+          .hr-mobile-brand { display:flex;align-items:center;gap:8px;color:var(--hr-red);font-weight:700;font-size:15px; }
+          .hr-mobile-brand img { width:44px;height:34px;object-fit:contain; }
           .hr-mobile-header .hr-brand-mark { width:30px;height:30px;border-radius:9px; }
           .hr-icon-button { width:42px;height:42px;display:grid;place-items:center;border:0;border-radius:8px;background:transparent;color:var(--hr-ink); }
           .hr-mobile-scrim { position:fixed;z-index:29;inset:58px 0 0;display:block;width:100%;border:0;background:#251b17a1; }
@@ -379,9 +332,6 @@ export default function HrWorkspace() {
           .hr-topbar>div:first-child>span:last-child { overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
           .hr-topbar-actions { gap:0; }
           .hr-topbar-state { display:none; }
-          .hr-fullscreen-button { min-width:44px;padding:0 8px; }
-          .hr-fullscreen-button span { display:none; }
-          .hr-fullscreen-menu { display:none; }
           .hr-content { padding:6px 12px 24px; }
           .hr-content :where(h1.text-2xl) { font-size:1.25rem; }
           .hr-login-page { padding:0;place-items:stretch; }

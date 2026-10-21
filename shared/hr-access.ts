@@ -4,6 +4,10 @@ export const HR_WORKSPACE_PERMISSIONS = [
 ];
 
 const rules: [string[], RegExp][] = [
+  [["GET","POST"], /^\/api\/hr\/departments$/],
+  [["DELETE"], /^\/api\/hr\/departments\/\d+$/],
+  [["GET"], /^\/api\/attendance\/corrections(?:\/\d+\/attachment)?$/],
+  [["POST"], /^\/api\/attendance\/corrections\/\d+\/decision$/],
   [["GET"], /^\/uploads\/hr-documents\/[a-zA-Z0-9._-]+$/],
   [["POST"], /^\/api\/hr-access\/login$/],
   [["GET"], /^\/api\/auth\/me$/],

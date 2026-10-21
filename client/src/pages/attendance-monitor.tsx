@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { useLanguage } from "@/components/language-provider";
 import AttendanceZonesMap from "@/components/attendance-zones-map";
+import AttendanceZoneSchedules from "@/components/attendance-zone-schedules";
 import { resolveWorkSchedule, isLateCheckIn, riyadhDateKey, riyadhDayBounds } from "@shared/attendance";
 import { attendanceStatusLabels, type AttendanceReportRow } from "@shared/attendance-report";
 import { loadMapsLibrary } from "@/lib/maps-loader";
@@ -99,6 +100,19 @@ interface LocationZone {
   type: string;
   isActive: boolean;
 }
+
+type DailyMonitorRow = AttendanceReportRow & {
+  employeeId: number;
+  employeeName?: string;
+  employeeNumber?: string;
+  department?: string | null;
+  homeLocation?: string | null;
+  locationNames?: string[];
+  ended?: boolean | null;
+  started?: boolean | null;
+  shiftStartTime?: string | null;
+  startTime?: string | null;
+};
 
 function formatTime(ts: string) {
   return new Date(ts).toLocaleTimeString("ar-SA", { timeZone: "Asia/Riyadh", hour: "2-digit", minute: "2-digit", hour12: true });
@@ -186,12 +200,15 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export default function AttendanceMonitorPage() {
-  const [expandedWorkspace, setExpandedWorkspace] = useState(false);
   const { t } = useLanguage();
   const { toast } = useToast();
   const qc = useQueryClient();
   const [dateRange, setDateRange] = useState(getTodayRange());
+  const [monitorDay, setMonitorDay] = useState(() => riyadhDateKey(new Date()));
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [liveSearch, setLiveSearch] = useState("");
+  const [liveStatus, setLiveStatus] = useState("all");
+  const [liveLocation, setLiveLocation] = useState("all");
   const [locationFilter, setLocationFilter] = useState("all");
   const [outOfZoneOnly, setOutOfZoneOnly] = useState(false);
   const [expandedEmployees, setExpandedEmployees] = useState<Set<number>>(new Set());
@@ -243,7 +260,7 @@ export default function AttendanceMonitorPage() {
     },
     refetchInterval: 60000,
   });
-  const exportEvidence=useQuery<{rows:(AttendanceReportRow&{employeeId:number})[]}>({
+  const exportEvidence=useQuery<{rows:(AttendanceReportRow&{employeeId:number;ended?:boolean|null})[]}>({
     queryKey:["attendance-shift-monitor",dateRange.from,dateRange.to],
     queryFn:async()=>{
       const params=new URLSearchParams({from:riyadhDateKey(new Date(dateRange.from)),to:riyadhDateKey(new Date(dateRange.to))});
@@ -252,6 +269,30 @@ export default function AttendanceMonitorPage() {
       return response.json();
     },
     refetchInterval:60000,
+  });
+  const todayKey = riyadhDateKey(new Date());
+  const todayEvidence = useQuery<{ rows: DailyMonitorRow[]; warnings?: string[] }>({
+    queryKey: ["attendance-shift-monitor-today", monitorDay],
+    queryFn: async () => {
+      const params = new URLSearchParams({ from: monitorDay, to: monitorDay });
+      const response = await fetch(`/api/attendance/shift-monitor?${params}`);
+      if (!response.ok) throw new Error("تعذر تحميل ملخص دوام اليوم.");
+      return response.json();
+    },
+    refetchInterval: monitorDay === todayKey ? 60000 : false,
+  });
+  const { data: correctionQueue = [], isLoading: correctionsLoading, isError: correctionsError, refetch: refetchCorrections } = useQuery<any[]>({ queryKey: ["/api/attendance/corrections"] });
+  const correctionDecision = useMutation({
+    mutationFn: ({id,decision,note}:{id:number;decision:"approved"|"rejected";note:string}) =>
+      apiRequest("POST", `/api/attendance/corrections/${id}/decision`, {decision,note}),
+    onSuccess: () => {
+      qc.invalidateQueries({queryKey:["/api/attendance/corrections"]});
+      qc.invalidateQueries({queryKey:["/api/attendance/risk-scores"]});
+      qc.invalidateQueries({queryKey:["attendance-shift-monitor"]});
+      todayEvidence.refetch(); exportEvidence.refetch();
+      toast({title:"تم حفظ قرار المعالجة"});
+    },
+    onError: (error:Error) => toast({title:error.message||"تعذر حفظ القرار",variant:"destructive"}),
   });
   const exportStatus=(employeeId:number,day:Date)=>{
     const evidence=exportEvidence.data?.rows.filter(r=>r.employeeId===employeeId&&r.day===riyadhDateKey(day))||[];
@@ -544,7 +585,7 @@ export default function AttendanceMonitorPage() {
   };
 
   return (
-    <div className={expandedWorkspace ? "fixed inset-0 z-50 bg-background overflow-auto p-3 md:p-6 space-y-5" : "p-3 md:p-6 space-y-5 max-w-7xl mx-auto min-w-0"} dir="rtl">
+    <div className="p-3 md:p-6 space-y-5 max-w-7xl mx-auto min-w-0" dir="rtl">
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
@@ -552,23 +593,113 @@ export default function AttendanceMonitorPage() {
           <p className="text-muted-foreground text-sm">{t("تتبع حضور وانصراف الموظفين", "Track employee attendance")}</p>
         </div>
         <div className="flex gap-2 flex-wrap">
-          <Button variant="outline" size="sm" onClick={() => setExpandedWorkspace(v => !v)}>{expandedWorkspace ? "إغلاق العرض الموسع" : "عرض موسع"}</Button>
-          <Button variant="outline" size="sm" onClick={() => refetch()} data-testid="button-refresh-attendance">
+          <Button variant="outline" size="sm" onClick={async () => {
+            await Promise.all([
+              todayEvidence.refetch(),
+              refetch(),
+              exportEvidence.refetch(),
+              qc.invalidateQueries({ queryKey: ["attendance-shift-monitor"] }),
+              qc.invalidateQueries({ queryKey: ["attendance-shift-monitor-today"] }),
+              qc.invalidateQueries({ queryKey: ["/api/attendance/corrections"] }),
+            ]);
+          }} data-testid="button-refresh-attendance">
             <RefreshCw className="w-4 h-4 me-1" />
             {t("تحديث", "Refresh")}
           </Button>
-          <Button variant="outline" size="sm" onClick={exportCSV} disabled={!exportEvidence.data||exportEvidence.isFetching||exportEvidence.isError} data-testid="button-export-attendance">
-            <Download className="w-4 h-4 me-1" />
-            {t("Excel — الملخص القديم", "Excel — legacy summary")}
-          </Button>
-          <Button variant="outline" size="sm" onClick={exportPDF} disabled={!exportEvidence.data||exportEvidence.isFetching||exportEvidence.isError} data-testid="button-export-attendance-pdf">
-            <FileText className="w-4 h-4 me-1" />
-            {t("PDF — الملخص القديم", "PDF — legacy summary")}
-          </Button>
         </div>
       </div>
-
-      <AttendanceShiftReview employees={employees} />
+      <section className="space-y-3" aria-label="مراقبة دوام اليوم">
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
+          <div><h2 className="text-lg font-bold">{monitorDay===todayKey?"ملخص اليوم":monitorDay===riyadhDateKey(new Date(Date.now()-86400000))?"ملخص أمس":"ملخص الدوام"}</h2><p className="text-xs text-muted-foreground">{new Intl.DateTimeFormat("ar-SA",{weekday:"long",day:"numeric",month:"long",year:"numeric",timeZone:"Asia/Riyadh"}).format(new Date(`${monitorDay}T12:00:00+03:00`))} · مصدر الحالة: تقرير الورديات المعتمد</p></div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 w-full sm:w-auto">
+            <div className="col-span-2 sm:col-span-3 flex flex-wrap items-center gap-2">
+              <Button size="sm" variant={monitorDay===todayKey?"default":"outline"} onClick={()=>setMonitorDay(todayKey)}>اليوم</Button>
+              <Button size="sm" variant={monitorDay===riyadhDateKey(new Date(Date.now()-86400000))?"default":"outline"} onClick={()=>setMonitorDay(riyadhDateKey(new Date(Date.now()-86400000)))}>أمس</Button>
+              <Input type="date" aria-label="تاريخ تقرير الدوام" value={monitorDay} onChange={e=>{if(e.target.value)setMonitorDay(e.target.value)}} className="h-9 w-40" dir="ltr"/>
+            </div>
+            <Input aria-label="بحث بالموظف" placeholder="اسم أو رقم الموظف" value={liveSearch} onChange={e=>setLiveSearch(e.target.value)} className="h-9 min-w-0 sm:w-52"/>
+            <Select value={liveStatus} onValueChange={setLiveStatus}><SelectTrigger className="h-9"><SelectValue placeholder="كل الحالات"/></SelectTrigger><SelectContent>
+              <SelectItem value="all">كل الحالات</SelectItem><SelectItem value="working">على رأس العمل</SelectItem><SelectItem value="completed">أنهى ورديته</SelectItem><SelectItem value="pending">لم يسجل الوصول بعد</SelectItem><SelectItem value="future">لم تبدأ الوردية بعد</SelectItem><SelectItem value="not_started">قبل تاريخ المباشرة</SelectItem><SelectItem value="absent">غياب بعد نهاية الوردية</SelectItem><SelectItem value="approved_leave">إجازة معتمدة</SelectItem><SelectItem value="out_of_zone">خارج النطاق</SelectItem><SelectItem value="unverified_schedule">جدول غير موثق</SelectItem>
+            </SelectContent></Select>
+            <Select value={liveLocation} onValueChange={setLiveLocation}><SelectTrigger className="h-9 col-span-2 sm:col-span-1"><SelectValue placeholder="جميع المواقع"/></SelectTrigger><SelectContent><SelectItem value="all">جميع المواقع</SelectItem>{Array.from(new Set((todayEvidence.data?.rows||[]).flatMap(r=>[...(r.locationNames||[]),r.homeLocation||""]).filter(Boolean))).map(location=><SelectItem key={location} value={location}>{location}</SelectItem>)}</SelectContent></Select>
+          </div>
+        </div>
+        {(() => {
+          const rows=todayEvidence.data?.rows||[];
+          const currentMinutes=(()=>{const parts=new Intl.DateTimeFormat("en-GB",{timeZone:"Asia/Riyadh",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).format(new Date()).split(":").map(Number);return parts[0]*60+parts[1]})();
+          const rowState=(r:DailyMonitorRow)=>{
+            if(r.status==="approved_leave")return "approved_leave";
+            if(r.status==="not_started")return "not_started";
+            if(monitorDay===todayKey&&r.started===false)return "future";
+            const start=r.shiftStartTime||r.startTime;
+            if(monitorDay===todayKey&&!r.checkIn&&start){const [h,m]=start.split(":").map(Number);if(Number.isFinite(h)&&Number.isFinite(m)&&currentMinutes<h*60+m)return "future"}
+            if(r.status==="pending")return "pending";
+            if(r.status==="absent"&&r.ended===true)return "absent";
+            if(r.outOfZone)return "out_of_zone";
+            if(r.checkIn&&!r.checkOut&&r.ended===false)return "working";
+            if(r.checkIn&&r.checkOut)return "completed";
+            return r.status;
+          };
+          const byEmployee=new globalThis.Map<number, DailyMonitorRow[]>();
+          rows.forEach(r=>byEmployee.set(r.employeeId,[...(byEmployee.get(r.employeeId)||[]),r]));
+          const employeeHas=(predicate:(r:DailyMonitorRow)=>boolean)=>Array.from(byEmployee.values()).filter(group=>group.some(predicate)).length;
+          const counts={
+            punched:employeeHas(r=>!!r.checkIn||!!r.checkOut),
+            waiting:employeeHas(r=>rowState(r)==="pending"),
+            future:employeeHas(r=>rowState(r)==="future"),
+            notStarted:employeeHas(r=>rowState(r)==="not_started"),
+            working:employeeHas(r=>rowState(r)==="working"),
+            completed:employeeHas(r=>rowState(r)==="completed"),
+            absent:employeeHas(r=>rowState(r)==="absent"),
+            leave:employeeHas(r=>rowState(r)==="approved_leave"),
+          };
+          const normalizedSearch=liveSearch.trim().toLocaleLowerCase("ar");
+          const visibleRows=rows.filter(r=>{
+            const state=rowState(r),location=(r.locationNames||[]).join("، ")||r.homeLocation||"";
+            return (!normalizedSearch||`${r.employeeName||""} ${r.employeeNumber||""} ${r.department||""}`.toLocaleLowerCase("ar").includes(normalizedSearch))
+              &&(liveStatus==="all"||(liveStatus==="out_of_zone"?r.outOfZone:state===liveStatus))
+              &&(liveLocation==="all"||location.includes(liveLocation));
+          });
+          const statusText=(r:DailyMonitorRow)=>{
+            const state=rowState(r);
+            if(state==="working")return "على رأس العمل";
+            if(state==="completed")return "أنهى ورديته";
+            if(state==="pending")return "لم يسجل الوصول بعد";
+            if(state==="future")return "لم تبدأ الوردية بعد";
+            if(state==="not_started")return "قبل تاريخ المباشرة";
+            return attendanceStatusLabels[r.status]||r.status||"—";
+          };
+          const metrics=[["سجّلوا حركة",counts.punched],["بانتظار الوصول",counts.waiting],["لم تبدأ الوردية",counts.future],["قبل مباشرة الموظف",counts.notStarted],["على رأس العمل",counts.working],["أنهوا الوردية",counts.completed],["غياب بعد النهاية",counts.absent],["إجازة",counts.leave]];
+          const cells=(r:DailyMonitorRow)=>[
+            r.employeeName||`#${r.employeeId}`,r.employeeNumber||"—",r.shiftLabel||r.shiftId||"—",
+            r.checkIn?formatTime(String(r.checkIn)):"—",r.checkOut?formatTime(String(r.checkOut)):"—",
+            statusText(r),(r.locationNames||[]).join("، ")||r.homeLocation||"—",r.outOfZone?"خارج النطاق":"—",
+          ];
+          return <>
+            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-8 gap-2">
+              {metrics.map(([label,value])=><Card key={String(label)}><CardContent className="p-3"><p className="text-xl font-bold tabular-nums">{todayEvidence.isLoading?"—":value}</p><p className="text-xs text-muted-foreground">{label}</p></CardContent></Card>)}
+            </div>
+            {todayEvidence.isError?<div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 flex items-center justify-between text-sm" role="alert"><span>تعذر تحميل تقرير دوام اليوم.</span><Button variant="outline" size="sm" onClick={()=>todayEvidence.refetch()}>إعادة المحاولة</Button></div>:
+              todayEvidence.isLoading?<div className="space-y-2 rounded-lg border bg-card p-4" aria-label="تحميل بيانات اليوم"><div className="h-4 w-1/4 animate-pulse rounded bg-muted"/><div className="h-10 animate-pulse rounded bg-muted"/><div className="h-10 animate-pulse rounded bg-muted"/></div>:
+              <Card><CardHeader className="pb-2"><CardTitle className="text-base flex items-center justify-between"><span>سجل الموظفين اليوم</span><Badge variant="outline">{visibleRows.length} وردية معروضة</Badge></CardTitle></CardHeader><CardContent className="p-0">
+                {!visibleRows.length?<div className="p-8 text-center text-sm text-muted-foreground">{rows.length?"لا توجد نتائج مطابقة للتصفية.":"لا توجد ورديات مجدولة اليوم."}</div>:
+                  <><div className="hidden md:block overflow-x-auto"><table className="w-full min-w-[980px] text-sm"><thead><tr className="border-y bg-muted/40 text-muted-foreground">{["الموظف","الرقم الوظيفي","الوردية","الحضور","الانصراف","الحالة","الموقع","النطاق"].map(x=><th key={x} className="p-3 text-start font-medium">{x}</th>)}</tr></thead><tbody>{visibleRows.map((r,i)=><tr key={`${r.employeeId}-${r.day}-${r.shiftId}-${i}`} className="border-b last:border-0">{cells(r).map((value,j)=><td key={j} className="p-3">{j===5?<Badge variant={rowState(r)==="absent"?"destructive":rowState(r)==="working"?"default":"outline"}>{value}</Badge>:value}</td>)}</tr>)}</tbody></table></div>
+                    <div className="divide-y md:hidden">{visibleRows.map((r,i)=><article key={`${r.employeeId}-${r.day}-${r.shiftId}-${i}`} className="p-4"><header className="flex items-start justify-between gap-2"><div><strong>{r.employeeName||`#${r.employeeId}`}</strong><p className="text-xs text-muted-foreground">{r.employeeNumber||"—"} · {r.shiftLabel||r.shiftId}</p></div><Badge variant={rowState(r)==="absent"?"destructive":rowState(r)==="working"?"default":"outline"}>{statusText(r)}</Badge></header><dl className="mt-3 grid grid-cols-2 gap-3 text-sm"><div><dt className="text-xs text-muted-foreground">الحضور</dt><dd>{r.checkIn?formatTime(String(r.checkIn)):"—"}</dd></div><div><dt className="text-xs text-muted-foreground">الانصراف</dt><dd>{r.checkOut?formatTime(String(r.checkOut)):"—"}</dd></div><div><dt className="text-xs text-muted-foreground">الموقع</dt><dd>{(r.locationNames||[]).join("، ")||r.homeLocation||"—"}</dd></div><div><dt className="text-xs text-muted-foreground">النطاق</dt><dd>{r.outOfZone?"خارج النطاق":"داخل/غير محدد"}</dd></div></dl></article>)}</div></>}
+              </CardContent></Card>}
+          </>;
+        })()}
+      </section>
+      <details className="rounded-lg border bg-card px-4 py-3">
+        <summary className="cursor-pointer text-sm font-semibold">التقارير والإعدادات المتقدمة وسجلات الدوام</summary>
+      <div className="flex flex-wrap gap-2 mt-3">
+        <Button variant="outline" size="sm" onClick={exportCSV} disabled={!exportEvidence.data||exportEvidence.isFetching||exportEvidence.isError}>
+          <Download className="w-4 h-4 me-1" />تصدير Excel للتقرير التفصيلي
+        </Button>
+        <Button variant="outline" size="sm" onClick={exportPDF} disabled={!exportEvidence.data||exportEvidence.isFetching||exportEvidence.isError}>
+          <FileText className="w-4 h-4 me-1" />تصدير PDF للتقرير التفصيلي
+        </Button>
+      </div>
+      <div className="mt-4"><AttendanceShiftReview employees={employees} /></div>
       {/* Filters */}
       <div className="flex gap-2 flex-wrap items-center bg-muted/30 rounded-xl p-3">
         <Filter className="w-4 h-4 text-muted-foreground" />
@@ -650,8 +781,8 @@ export default function AttendanceMonitorPage() {
         </Button>
       </div>
 
-      <details className="border rounded-lg p-2">
-      <summary className="text-sm cursor-pointer">ملخص قديم حسب اليوم — مراجعة السجلات التاريخية فقط</summary>
+      <div className="mt-4">
+      <p className="mb-2 text-xs font-medium text-muted-foreground">ملخص قديم حسب اليوم — مراجعة السجلات التاريخية فقط</p>
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <Card
@@ -732,8 +863,23 @@ export default function AttendanceMonitorPage() {
       </div>
 
       {/* Main Content */}
+      </div>
       </details>
-      <Tabs defaultValue="shifts">
+      <Card><CardHeader className="pb-2"><CardTitle className="text-base flex justify-between items-center"><span>طلبات معالجة التقصير</span><Badge variant="outline">{correctionsLoading?"جارٍ التحميل":correctionsError?"غير متاح":`${correctionQueue.filter((c:any)=>c.status==="pending").length} قيد المراجعة`}</Badge></CardTitle></CardHeader>
+        <CardContent className="space-y-2">
+          {correctionsError?<div className="flex items-center justify-between text-sm text-destructive"><span>تعذر تحميل الطلبات.</span><Button size="sm" variant="outline" onClick={()=>refetchCorrections()}>إعادة المحاولة</Button></div>:correctionsLoading?<div className="h-12 animate-pulse rounded bg-muted"/>:
+            correctionQueue.filter((c:any)=>c.status==="pending").length===0?<p className="text-sm text-muted-foreground">لا توجد طلبات معلقة.</p>:
+            correctionQueue.filter((c:any)=>c.status==="pending").map((item:any)=><div key={item.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border rounded-lg p-3">
+              <div className="min-w-0"><strong>{item.employeeName||"موظف"} · {item.employeeNumber||"—"}</strong><p className="text-xs text-muted-foreground">{item.businessDay} · {item.shiftKey} · {item.reason}</p>
+                {item.hasAttachment&&<a className="text-xs text-primary underline" href={`/api/attendance/corrections/${item.id}/attachment`} target="_blank" rel="noreferrer">عرض المرفق</a>}
+              </div>
+              <div className="flex gap-2 shrink-0"><Button size="sm" variant="outline" disabled={correctionDecision.isPending} onClick={()=>{const note=window.prompt("ملاحظة الاعتماد (اختيارية)","")??null;if(note!==null)correctionDecision.mutate({id:item.id,decision:"approved",note})}}>اعتماد</Button><Button size="sm" variant="destructive" disabled={correctionDecision.isPending} onClick={()=>{const note=window.prompt("سبب الرفض");if(note!==null){if(!note.trim()){toast({title:"اكتب سبب الرفض",variant:"destructive"});return}correctionDecision.mutate({id:item.id,decision:"rejected",note:note.trim()})}}}>رفض</Button></div>
+            </div>)}
+        </CardContent>
+      </Card>
+      <details className="rounded-lg border bg-card px-4 py-3" open={new URLSearchParams(window.location.search).get("tab")==="zones"}>
+        <summary className="cursor-pointer text-sm font-semibold">تقارير وسجلات وإعدادات إضافية</summary>
+      <Tabs defaultValue={new URLSearchParams(window.location.search).get("tab")==="zones"?"zones":"shifts"}>
         <TabsList className="mb-4 flex-wrap h-auto gap-1">
           <TabsTrigger value="shifts">مراقبة الورديات</TabsTrigger>
           <TabsTrigger value="daily" data-testid="tab-daily">
@@ -1090,6 +1236,7 @@ export default function AttendanceMonitorPage() {
           <Card>
             <CardContent className="p-4 md:p-6">
               <AttendanceZonesMap />
+              <AttendanceZoneSchedules />
             </CardContent>
           </Card>
         </TabsContent>
@@ -1183,6 +1330,7 @@ export default function AttendanceMonitorPage() {
           </TabsContent>
         )}
       </Tabs>
+      </details>
 
       {/* Location Mini-Map Popup */}
       <Dialog open={!!locationPopup} onOpenChange={open => !open && setLocationPopup(null)}>

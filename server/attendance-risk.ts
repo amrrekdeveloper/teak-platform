@@ -17,7 +17,7 @@ export async function employeeMonthlyAttendanceRisk(employee:Employee,period:str
       leaves.some(l=>l.startDate<=row.day&&l.endDate>=row.day))continue;
     if(row.scheduleVerified!==true){unverified.add(row.day);continue;}
     verified.add(row.day);
-    if(row.adminOverride)continue;
+    if(row.adminOverride||row.status==="excused")continue;
     const missing=attempts.some(v=>v.business_day===row.day&&v.shift_key===row.shiftId);
     if(row.late===true)late++;
     if(missing||row.status==="missing_checkin"||row.status==="missing_checkout")incomplete++;

@@ -23,6 +23,8 @@
     @media(max-width:390px){.masthead{padding-inline:10px}.mast-right{font-size:11px}.brand-lockup{gap:7px}.main{width:calc(100% - 20px)}.profile-meta{gap:5px}.meta-item{font-size:12px}.panel{padding:10px}.balance-numbers b{font-size:15px}.balance-numbers div{padding-inline:6px}.session{align-items:flex-start;padding:8px}.login-card{padding:20px 16px}.attendance-actions{flex-direction:column}.attendance-actions .btn{width:100%}.section-head .btn{padding-inline:9px}}
     @media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
     .brand-lockup img{filter:brightness(0) saturate(100%) invert(11%) sepia(94%) saturate(3915%) hue-rotate(353deg) brightness(81%) contrast(111%)}
+    .profile-date{color:#fff;font-size:12px;white-space:nowrap}.logout-icon{width:36px;height:36px;display:grid;place-items:center;border:1px solid #ffffff70;border-radius:50%;background:transparent;color:#fff;font-size:19px}.assigned-zone{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:13px;margin-top:8px}.attendance-report{margin-top:12px}.attendance-cards{display:none}.attendance-mobile-card{border:1px solid var(--line);background:#fff;padding:12px;margin:8px 0}.attendance-mobile-card header{display:flex;justify-content:space-between;gap:8px;font-weight:700}.attendance-mobile-card dl{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0}.attendance-mobile-card dt{font-size:11px;color:var(--muted)}.attendance-mobile-card dd{margin:0;font-size:13px}.correction-dialog,.permission-dialog{position:fixed;z-index:100;inset:0;background:#211b18a8;display:grid;place-items:center;padding:16px}.correction-card{width:min(100%,460px);max-height:92dvh;overflow:auto;background:#fff;padding:20px;border-top:3px solid var(--brand);box-shadow:var(--shadow)}.correction-card h3{margin:0 0 8px}.correction-card textarea{width:100%;min-height:100px;padding:10px;border:1px solid var(--line)}.correction-card .actions{justify-content:flex-start;margin-top:12px}.tab[hidden]{display:none}
+    @media(max-width:760px){.attendance-table-wrap{display:none}.attendance-cards{display:block}.profile-date{width:100%;order:4}.logout{margin-inline-start:auto}.date-chip{display:none}}
     .layout-grid>*{min-width:0}.form-row{min-width:0}.form-row input,.form-row select,.form-row textarea{min-width:0;max-width:100%}.medical-docs{margin-top:10px;padding:10px;background:var(--soft);border:1px solid var(--line);overflow-wrap:anywhere}.medical-docs a{color:var(--brand);display:inline-block;padding:8px 4px;min-height:40px}.file-input{width:100%;padding:8px;border:1px solid var(--line);background:#fff}.request-history-card{min-width:0;margin-top:10px;padding:10px;border:1px solid var(--line);background:var(--soft);overflow-wrap:anywhere}.request-history-card p{margin:4px 0}.request-history-card a{color:var(--brand);text-underline-offset:3px}.request-history-card label{display:block;min-width:0}.request-history-card textarea{display:block;width:100%;max-width:100%;min-height:66px;margin:8px 0;padding:8px;border:1px solid #d8d4cf;border-radius:3px;resize:vertical}.request-history-card button{min-height:40px}
   </style>
 </head>
@@ -33,7 +35,7 @@
         <img src="/__maintenance/logo.png" alt="تيك — TEAK" width="782" height="511">
         <span class="brand-rule" aria-hidden="true"></span><span>بوابة الموظفين</span>
       </a>
-      <div class="mast-right"><span class="status-dot" aria-hidden="true"></span><span>الخدمة الذاتية</span></div>
+      <div class="mast-right"><span class="status-dot" aria-hidden="true"></span><span>الخدمة الذاتية</span><button class="logout-icon" id="logout" type="button" aria-label="تسجيل الخروج" title="تسجيل الخروج" hidden>↗</button></div>
     </header>
     <main class="main">
       <section id="login-view" class="login-wrap" aria-labelledby="login-title">
@@ -73,10 +75,6 @@
       </section>
       <section id="dashboard-view" class="dashboard" hidden>
         <div id="dashboard-error" class="error" role="alert" hidden></div>
-        <header class="intro">
-          <div><p class="eyebrow">الخدمة الذاتية</p><h1>بيانات وخدمات الموظف</h1></div>
-          <div class="date-chip" id="today-date"></div>
-        </header>
         <section class="profile-strip" aria-label="معلومات الموظف">
           <div class="profile-copy"><h2 id="employee-name"></h2><p>الملف الشخصي</p></div>
           <div class="profile-meta">
@@ -84,37 +82,27 @@
             <div class="meta-item"><small>القسم</small><strong id="employee-department"></strong></div>
             <div class="meta-item"><small>المسمى الوظيفي</small><strong id="employee-position"></strong></div>
           </div>
-          <button class="logout" id="logout" type="button" data-testid="logout">تسجيل الخروج</button>
+          <div class="profile-date" id="today-date"></div>
         </section>
         <nav class="tabs" role="tablist" aria-label="خدمات الموظف">
           <button class="tab" id="tab-attendance" role="tab" aria-selected="true" aria-controls="panel-attendance" type="button">الحضور والانصراف</button>
           <button class="tab" id="tab-leaves" role="tab" aria-selected="false" aria-controls="panel-leaves" type="button">الإجازات</button>
-          <button class="tab" id="tab-permissions" role="tab" aria-selected="false" aria-controls="panel-permissions" type="button">الاستئذان</button>
-          <button class="tab" id="tab-acknowledgments" role="tab" aria-selected="false" aria-controls="panel-acknowledgments" type="button">الإقرارات والقرارات</button>
+          <button class="tab" id="tab-acknowledgments" role="tab" aria-selected="false" aria-controls="panel-acknowledgments" type="button">القرارات والتعاميم</button>
           <button class="tab" id="tab-sessions" role="tab" aria-selected="false" aria-controls="panel-sessions" type="button">أجهزتي</button>
           <button class="tab" id="tab-support" role="tab" aria-selected="false" aria-controls="panel-support" type="button">الدعم الفني</button>
         </nav>
         <section class="tab-panel" id="panel-attendance" role="tabpanel" aria-labelledby="tab-attendance">
-          <div class="section-head"><div><h2>الحضور والانصراف</h2><p>سجّل حضورك وتابع سجلك.</p></div></div>
           <div class="layout-grid">
-            <article class="panel"><h3>تسجيل حركة</h3><p class="panel-intro">اسمح بالموقع وسجّل من نطاق العمل.</p>
+            <article class="panel"><div id="assigned-zone" class="assigned-zone"></div>
               <label for="attendance-shift">الفترة</label><select id="attendance-shift"><option value="">تحديد تلقائي حسب الوقت الحالي</option></select>
               <div class="attendance-actions"><button class="btn" id="check-in" type="button" data-testid="check-in">تسجيل حضور</button><button class="btn secondary" id="check-out" type="button" data-testid="check-out">تسجيل انصراف</button></div>
-               <details class="medical-docs"><summary>إرفاق عذر طبي لسجل حضور</summary>
-                 <form id="attendance-excuse-form" novalidate>
-                   <div class="form-row"><label for="excuse-record">سجل الحضور</label><select id="excuse-record" required><option value="">اختر سجلًا من سجلاتك</option></select></div>
-                   <div class="form-row"><label for="excuse-reason">سبب العذر</label><textarea id="excuse-reason" required maxlength="1000"></textarea></div>
-                   <div class="form-row"><label for="excuse-file">المرفق الطبي</label><input class="file-input" id="excuse-file" type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" required><p class="hint">PDF أو PNG أو JPEG، بحد أقصى 5 ميغابايت.</p></div>
-                   <button class="btn" type="submit">إرسال العذر للمراجعة</button>
-                 </form><p id="excuse-message" class="live-message" role="status" aria-live="polite"></p>
-               </details>
               <p class="geo-note">وقت التسجيل حسب توقيت النظام.</p><p class="live-message" id="attendance-message" role="status" aria-live="polite"></p>
             </article>
-            <article class="panel"><h3>آخر الحركات</h3><div id="attendance-history"></div></article>
+            <article class="panel"><div class="section-head"><h3>سجل الحضور</h3><button type="button" class="text-button" id="refresh-attendance">تحديث</button></div><div id="attendance-history"></div></article>
           </div>
         </section>
         <section class="tab-panel" id="panel-leaves" role="tabpanel" aria-labelledby="tab-leaves" hidden>
-          <div class="section-head"><div><h2>الإجازات</h2><p>راجع رصيدك وقدم طلبًا جديدًا.</p></div></div>
+          <div class="section-head"><div><h2>الإجازات</h2><p>راجع رصيدك وقدم طلبًا جديدًا.</p></div><button type="button" class="btn secondary" id="open-permission-leave">طلب استئذان</button></div>
           <div class="layout-grid">
             <article class="panel"><h3>رصيد الإجازات</h3><div id="leave-balance"></div>
               <form id="leave-form" class="request-form" novalidate data-testid="leave-form">
@@ -142,8 +130,8 @@
             <article class="panel"><h3>سجل الإجازات</h3><div id="leave-history"></div><div id="leave-request-history"></div><div id="employee-medical-documents" class="medical-docs"></div></article>
           </div>
         </section>
-        <section class="tab-panel" id="panel-permissions" role="tabpanel" aria-labelledby="tab-permissions" hidden>
-          <div class="section-head"><div><h2>طلبات الاستئذان</h2><p>أرسل طلب تأخر أو انصراف مبكر.</p></div></div>
+        <section class="permission-dialog" id="panel-permissions" hidden role="dialog" aria-modal="true" aria-labelledby="permission-title">
+          <div class="correction-card"><div class="section-head"><div><h2 id="permission-title">طلب استئذان</h2><p>أرسل طلب تأخر أو انصراف مبكر.</p></div><button type="button" class="btn secondary" id="close-permission">إغلاق</button></div>
           <div class="layout-grid">
             <article class="panel"><h3>طلب استئذان جديد</h3>
               <form id="permission-form" class="request-form" novalidate data-testid="permission-form">
@@ -162,6 +150,7 @@
               </form><p class="live-message" id="permission-message" role="status" aria-live="polite"></p>
             </article>
             <article class="panel"><h3>سجل الاستئذان</h3><div id="permission-history"></div><div id="permission-request-history"></div></article>
+          </div>
           </div>
         </section>
         <section class="tab-panel" id="panel-sessions" role="tabpanel" aria-labelledby="tab-sessions" hidden>
@@ -182,6 +171,13 @@
           <div class="section-head"><div><h2>الدعم الفني</h2><p>نحن هنا لمساعدتك.</p></div></div>
           <div class="support-note"><strong>قريبًا</strong>خدمة الدعم الفني عبر البوابة قيد التجهيز. للاستفسارات العاجلة، تواصل مع القنوات الداخلية المعتمدة لدى تيك.</div>
         </section>
+        <section class="correction-dialog" id="correction-dialog" hidden role="dialog" aria-modal="true" aria-labelledby="correction-title">
+          <form class="correction-card" id="correction-form"><h3 id="correction-title">معالجة التقصير</h3><p id="correction-context" class="hint"></p>
+            <div class="form-row"><label for="correction-reason">سبب التقصير <span aria-hidden="true">*</span></label><textarea id="correction-reason" required maxlength="1000"></textarea></div>
+            <div class="form-row"><label for="correction-file">مرفق اختياري</label><input id="correction-file" class="file-input" type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"><p class="hint">PDF أو PNG أو JPEG، حتى 5 ميغابايت.</p></div>
+            <p id="correction-message" class="live-message" role="status" aria-live="polite"></p><div class="actions"><button class="btn" type="submit">إرسال للمراجعة</button><button class="btn secondary" type="button" id="close-correction">إلغاء</button></div>
+          </form>
+        </section>
       </section>
     </main>
     <footer class="footer"><span>تيك · لكل بيت، تفاصيله.</span><a href="/">العودة إلى الصفحة الرئيسية</a></footer>
@@ -193,7 +189,8 @@
       const $=id=>document.getElementById(id);
       const loginView=$("login-view"),loadingView=$("loading-view"),dashboard=$("dashboard-view");
       let challengeId=null, resendAt=0, resendTimer=null, summary=null, sessionId=null, developmentOtp=false;
-      let leaveAttachmentId=null, leaveAttachmentFile=null;
+      let leaveAttachmentId=null, leaveAttachmentFile=null, attendanceReport=null, correctionDraft=null;
+      const correctionDrafts=new Map();
       const clarificationFeedback=new Map();
       const normalizeDigits=value=>String(value||"").replace(/[٠-٩۰-۹]/g,d=>String("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹".indexOf(d)%10));
       function show(el,visible){el.hidden=!visible}
@@ -239,15 +236,16 @@
       }
       function showLogin(){
         show(loadingView,false);show(dashboard,false);show(loginView,true);
+        $("logout").hidden=true;
         $("phone-form").hidden=false;$("otp-form").hidden=true;$("login-error").textContent="";show($("login-error"),false);
         $("login-success").textContent="";show($("login-success"),false);$("login-phone").focus();
       }
       function clearPrivate(){
-        summary=null;sessionId=null;dashboard.querySelectorAll("[id^='employee-'],#attendance-history,#leave-balance,#leave-history,#permission-history,#session-list").forEach(el=>el.textContent="");
-        ["attendance-message","leave-message","permission-message","session-message","excuse-message"].forEach(id=>message($(id),""));
+        summary=null;sessionId=null;attendanceReport=null;correctionDraft=null;correctionDrafts.clear();dashboard.querySelectorAll("[id^='employee-'],#attendance-history,#leave-balance,#leave-history,#permission-history,#session-list").forEach(el=>el.textContent="");
+        ["attendance-message","leave-message","permission-message","session-message","correction-message"].forEach(id=>message($(id),""));
         leaveAttachmentId=null;leaveAttachmentFile=null;
         $("leave-medical-file").value="";$("leave-medical-file").required=false;show($("sick-attachment-row"),false);
-        $("attendance-excuse-form").reset();
+        show($("correction-dialog"),false);show($("panel-permissions"),false);
         clarificationFeedback.clear();
         ["attendance-history","leave-history","permission-history","leave-request-history","permission-request-history","session-list","ack-list","decision-history"].forEach(id=>$(id).replaceChildren());
       }
@@ -264,7 +262,7 @@
       function dateText(value,withTime){
         if(!value)return "—";
         const date=new Date(value);if(Number.isNaN(date.getTime()))return String(value);
-        return new Intl.DateTimeFormat("ar-SA",withTime?{dateStyle:"medium",timeStyle:"short"}:{dateStyle:"medium"}).format(date);
+        return new Intl.DateTimeFormat("ar-SA",withTime?{dateStyle:"medium",timeStyle:"short",timeZone:"Asia/Riyadh"}:{dateStyle:"medium",timeZone:"Asia/Riyadh"}).format(date);
       }
       function cell(text){const td=document.createElement("td");td.textContent=text==null||text===""?"—":String(text);return td}
       function renderTable(container,headers,rows,emptyTitle,emptyText,rowIds){
@@ -275,16 +273,55 @@
         const tbody=document.createElement("tbody");rows.forEach((row,rowIndex)=>{const tr=document.createElement("tr");if(rowIds&&rowIds[rowIndex])tr.id=rowIds[rowIndex];row.forEach((value,index)=>{if(value&&value.statusPill){const td=document.createElement("td"),pill=document.createElement("span");pill.className="pill "+statusClass(value.value);pill.textContent=statusLabel(value.value);td.append(pill);tr.append(td)}else tr.append(cell(value))});tbody.append(tr)});
         table.append(tbody);wrap.append(table);container.append(wrap);
       }
-      function renderAttendance(records){
-        const rows=(Array.isArray(records)?records:[]).map(r=>[typeLabel(r.type),r.checkTime?dateText(r.checkTime,true):"—",r.locationName||"—"]);
-        renderTable($("attendance-history"),["الحركة","الوقت","الموقع"],rows,"لا توجد حركات مسجلة","ستظهر حركاتك هنا بعد تسجيلها.");
-        const selector=$("excuse-record"),previous=selector.value;selector.replaceChildren();
-        const placeholder=document.createElement("option");placeholder.value="";placeholder.textContent="اختر سجلًا من سجلاتك";selector.append(placeholder);
-        (Array.isArray(records)?records:[]).filter(r=>r.id!=null).forEach(r=>{
-          const option=document.createElement("option");option.value=String(r.id);
-          option.textContent=`${dateText(r.checkTime,true)} · ${typeLabel(r.type)}`;selector.append(option);
+      function reportStatus(status){return ({present:"مكتمل",late:"متأخر",absent:"غياب",missing_checkin:"نقص حضور",missing_checkout:"نقص انصراف",pending:"لم ينتهِ الدوام",approved_leave:"إجازة معتمدة",rest_day:"يوم راحة",not_started:"قبل المباشرة",unverified_schedule:"جدول تاريخي غير موثق",unverified:"غير موثق",excused:"معذور"})[status]||status||"—"}
+      function renderAttendanceRows(report,corrections){
+        const host=$("attendance-history");host.replaceChildren();
+        const rows=Array.isArray(report?.rows)?report.rows:[];
+        if(!rows.length){const empty=document.createElement("div");empty.className="empty";empty.innerHTML="<strong>لا توجد سجلات للفترة</strong><span>ستظهر حركات الحضور والانصراف هنا.</span>";host.append(empty);return;}
+        const correctionItems=Array.isArray(corrections)&&corrections.length?corrections:rows.filter(r=>r.correctionId).map(r=>({id:r.correctionId,businessDay:r.day,shiftKey:r.shiftId,status:r.correctionStatus,reason:r.correctionReason,reviewNote:r.reviewNote}));
+        const correctionByKey=new Map();
+        correctionItems.forEach(c=>{const key=`${c.businessDay}|${c.shiftKey}`;if(!correctionByKey.has(key))correctionByKey.set(key,c)});
+        const header=["اليوم","التاريخ","الفترة","الحضور الفعلي","الانصراف الفعلي","الحالة","دقائق التقصير","معالجة التقصير"];
+        const tableWrap=document.createElement("div");tableWrap.className="table-wrap attendance-table-wrap";const table=document.createElement("table");
+        const thead=document.createElement("thead"),trh=document.createElement("tr");header.forEach(x=>{const th=document.createElement("th");th.textContent=x;trh.append(th)});thead.append(trh);table.append(thead);
+        const tbody=document.createElement("tbody"),cards=document.createElement("div");cards.className="attendance-cards";
+        rows.forEach(row=>{
+          const correction=correctionByKey.get(`${row.day}|${row.shiftId}`);
+          const lateKnown=row.late===true||row.late===false;
+          const deficiencyKnown=row.scheduleVerified!==false&&lateKnown&&typeof row.earlyDepartureMinutes==="number"&&(row.late!==true||typeof row.lateMinutes==="number");
+          const rawMinutes=deficiencyKnown?(row.late===true?row.lateMinutes:0)+row.earlyDepartureMinutes:null;
+          const minutes=correction?.status==="approved"||row.excused?0:rawMinutes;
+          const minutesText=minutes===null?"غير متاح":String(minutes);
+          const values=[new Intl.DateTimeFormat("ar-SA",{weekday:"long"}).format(new Date(`${row.day}T12:00:00+03:00`)),dateText(row.day),row.shiftLabel||row.shiftId||"—",row.checkIn?dateText(row.checkIn,true):"—",row.checkOut?dateText(row.checkOut,true):"—",reportStatus(row.status),minutesText];
+          const tr=document.createElement("tr");values.forEach(v=>tr.append(cell(v)));
+          const actionCell=document.createElement("td");
+          const requiresProcessing=minutes>0||["absent","missing_checkin","missing_checkout","out_of_zone"].includes(row.status)||row.outOfZone===true;
+          if(requiresProcessing&&correction?.status!=="pending"&&correction?.status!=="approved"){
+            const action=document.createElement("button");action.className="text-button";action.textContent=correction?.status==="rejected"?"إعادة التقديم":"معالجة التقصير";action.type="button";
+            action.onclick=()=>openCorrection(row,correction);actionCell.append(action);
+          } else if(correction){const pill=document.createElement("span");pill.className="pill "+(correction.status==="approved"?"ok":"wait");pill.textContent=correction.status==="approved"?"تم الاعتماد":correction.status==="pending"?"قيد المراجعة":correction.status==="rejected"?"مرفوض":"—";actionCell.append(pill);if(correction.reviewNote){const note=document.createElement("small");note.textContent=" · "+correction.reviewNote;actionCell.append(note)}}
+          else actionCell.textContent="—";
+          tr.append(actionCell);tbody.append(tr);
+          const card=document.createElement("article");card.className="attendance-mobile-card";const heading=document.createElement("header");const day=document.createElement("span");day.textContent=values[0]+" · "+values[1];const status=document.createElement("span");status.className="pill "+(row.status==="present"?"ok":"");status.textContent=reportStatus(row.status);heading.append(day,status);
+          const dl=document.createElement("dl");[["الفترة",values[2]],["الحضور الفعلي",values[3]],["الانصراف الفعلي",values[4]],["دقائق التقصير",minutesText]].forEach(([label,value])=>{const wrap=document.createElement("div"),dt=document.createElement("dt"),dd=document.createElement("dd");dt.textContent=label;dd.textContent=value;wrap.append(dt,dd);dl.append(wrap)});
+          card.append(heading,dl);
+          if(requiresProcessing&&correction?.status!=="pending"&&correction?.status!=="approved"){const b=document.createElement("button");b.className="btn secondary";b.textContent=correction?.status==="rejected"?"إعادة التقديم":"معالجة التقصير";b.onclick=()=>openCorrection(row,correction);card.append(b)}
+          else if(correction){const note=document.createElement("p");note.className="hint";note.textContent=(correction.status==="approved"?"تم اعتماد معالجة التقصير":correction.status==="pending"?"طلبك قيد المراجعة":correction.status==="rejected"?"رُفض الطلب":"")+(correction.reviewNote?" · "+correction.reviewNote:"");card.append(note)}
+          cards.append(card);
         });
-        if(Array.from(selector.options).some(o=>o.value===previous))selector.value=previous;
+        table.append(tbody);tableWrap.append(table);host.append(tableWrap,cards);
+      }
+      function openCorrection(row,existing){
+        const key=`${row.day}|${row.shiftId}`;
+        correctionDraft=existing?.status==="rejected"?{row,id:null,file:null,attachmentUploaded:false}:correctionDrafts.get(key)||{row,id:existing?.id||null,file:null,attachmentUploaded:!!existing?.hasAttachment};
+        $("correction-context").textContent=`${row.day} · ${row.shiftLabel||row.shiftId||"الفترة"}`;
+        $("correction-reason").value=existing?.status==="rejected"?"":existing?.reason||"";
+        $("correction-file").value="";message($("correction-message"),correctionDraft.file?"المرفق السابق محفوظ لإعادة المحاولة. اختر ملفًا جديدًا لاستبداله.":"");show($("correction-dialog"),true);$("correction-reason").focus();
+      }
+      async function loadAttendanceHistory(from,to){
+        const params=new URLSearchParams({from,to});
+        const data=await request("/attendance/history?"+params.toString());
+        attendanceReport=data;renderAttendanceRows(data,data.corrections||[]);
       }
       function renderLeaveHistory(leaves){
         const rows=(Array.isArray(leaves)?leaves:[]).map(r=>[typeLabel(r.leaveType),dateText(r.startDate),dateText(r.endDate),r.days==null?"—":String(r.days),{statusPill:true,value:r.status}]);
@@ -373,9 +410,14 @@
         const activeTab=document.querySelector(".tab[aria-selected='true']")?.id.slice(4)||"attendance";
         summary=data;const employee=data.employee||{};
         $("employee-name").textContent=employee.fullNameAr||"مرحبًا";$("employee-number").textContent=employee.employeeNumber||"—";
-        $("employee-department").textContent=employee.department||"—";$("employee-position").textContent=employee.position||"—";
+        $("employee-department").textContent=employee.departmentNameAr||employee.department||"—";$("employee-position").textContent=employee.position||"—";
         $("today-date").textContent=new Intl.DateTimeFormat("ar-SA",{weekday:"long",day:"numeric",month:"long",year:"numeric"}).format(new Date());
-        renderAttendance(data.records);renderBalance(data.balance||{});renderLeaveHistory(data.leaves);renderPermissionHistory(data.permissions);
+        const zone=(data.assignedZones||[]).find(z=>String(z.id)===String(employee.attendanceZoneId));
+        $("assigned-zone").textContent=zone?`${zone.nameAr} · نطاق ${zone.radiusMeters||50} متر`:"لم يتم تحديد موقع بصمة مخصص";
+        $("logout").hidden=false;
+        attendanceReport=data.attendanceReport||{rows:[]};
+        renderAttendanceRows(attendanceReport,data.corrections||attendanceReport.corrections||[]);
+        renderBalance(data.balance||{});renderLeaveHistory(data.leaves);renderPermissionHistory(data.permissions);
         renderRequestHistory(data.requestHistory,data.leaves,data.permissions);renderSessions(data.sessions);
         loadMedicalDocuments();
         show(loginView,false);show(loadingView,false);show(dashboard,true);selectTab(activeTab);
@@ -556,17 +598,46 @@
         }
         catch(error){errorText($("leave-message"),error);}finally{button.disabled=false;}
       });
-      $("attendance-excuse-form").addEventListener("submit",async event=>{
-        event.preventDefault();const form=event.currentTarget;if(!form.reportValidity())return;
-        const recordId=$("excuse-record").value,reason=$("excuse-reason").value.trim(),file=$("excuse-file").files[0];
-        if(!recordId||!reason||!file){errorText($("excuse-message"),new Error("اختر سجل الحضور واكتب السبب وأرفق الملف."));return;}
-        const button=form.querySelector("button[type=submit]");button.disabled=true;message($("excuse-message"),"جارٍ رفع المرفق…");
-        try{
-          await uploadMedical(file,{kind:"attendance",recordId,reason});
-          message($("excuse-message"),"تم إرسال العذر للمراجعة. لا يعني ذلك اعتماده تلقائيًا.","success");
-          form.reset();await loadMedicalDocuments();
-        }catch(error){errorText($("excuse-message"),error);}finally{button.disabled=false;}
-      });
+       async function uploadCorrectionAttachment(id,file){
+         const form=new FormData();form.append("file",file);
+         let response;try{response=await fetch(API+`/attendance/corrections/${encodeURIComponent(id)}/attachment`,{method:"POST",credentials:"same-origin",headers:{"X-Portal-Request":"1"},body:form});}
+         catch(error){throw new Error("تعذر الاتصال بالخدمة. الملف ما زال محفوظًا ويمكن إعادة المحاولة.");}
+         let data={};try{data=await response.json()}catch(error){}
+         if(response.status===401){clearPrivate();showLogin();throw new Error("انتهت جلستك. أدخل رقم جوالك للمتابعة.")}
+         if(!response.ok)throw new Error(data.message||"تعذر رفع المرفق. أعد المحاولة؛ لن يُعاد إنشاء الطلب.");
+       }
+       $("correction-form").addEventListener("submit",async event=>{
+         event.preventDefault();const form=event.currentTarget;if(!form.reportValidity())return;
+         const reason=$("correction-reason").value.trim(),file=$("correction-file").files[0]||correctionDraft?.file,button=form.querySelector("button[type=submit]");
+         if(!reason){$("correction-reason").focus();errorText($("correction-message"),new Error("سبب التقصير مطلوب."));return}
+         if(file&&(file.size>5*1024*1024||!/\.(pdf|png|jpe?g)$/i.test(file.name)||!["application/pdf","image/png","image/jpeg"].includes(file.type))){errorText($("correction-message"),new Error("استخدم ملف PDF أو PNG أو JPEG حتى 5 ميغابايت."));return}
+         button.disabled=true;message($("correction-message"),correctionDraft?.id?"جارٍ استكمال الطلب…":"جارٍ إرسال الطلب…");
+         try{
+           if(!correctionDraft.id){
+             const result=await request("/attendance/corrections",{method:"POST",body:{businessDay:correctionDraft.row.day,shiftKey:correctionDraft.row.shiftId,reason}});
+             if(!result?.id)throw new Error("تم إرسال الطلب لكن تعذر تأكيد رقمه. حدّث الصفحة قبل إعادة المحاولة.");
+             correctionDraft.id=result.id;
+             correctionDrafts.set(`${correctionDraft.row.day}|${correctionDraft.row.shiftId}`,correctionDraft);
+           }
+           if(file){correctionDraft.file=file;if(!correctionDraft.attachmentUploaded){await uploadCorrectionAttachment(correctionDraft.id,file);correctionDraft.attachmentUploaded=true}}
+           message($("correction-message"),"تم إرسال طلب المعالجة إلى الموارد البشرية.","success");
+           await loadAttendanceHistory(attendanceReport?.from||correctionDraft.row.day,attendanceReport?.to||correctionDraft.row.day);
+           correctionDrafts.delete(`${correctionDraft.row.day}|${correctionDraft.row.shiftId}`);
+           setTimeout(()=>{show($("correction-dialog"),false);correctionDraft=null},450);
+         }catch(error){errorText($("correction-message"),error)}finally{button.disabled=false}
+       });
+       $("close-correction").addEventListener("click",()=>{if(correctionDraft?.id)correctionDrafts.set(`${correctionDraft.row.day}|${correctionDraft.row.shiftId}`,correctionDraft);show($("correction-dialog"),false);correctionDraft=null});
+       $("correction-file").addEventListener("change",()=>{if(correctionDraft){correctionDraft.file=$("correction-file").files[0]||null;correctionDraft.attachmentUploaded=false;if(correctionDraft.id)correctionDrafts.set(`${correctionDraft.row.day}|${correctionDraft.row.shiftId}`,correctionDraft)}});
+       $("refresh-attendance").addEventListener("click",async()=>{const end=new Date(),start=new Date(end.getTime()-13*86400000);const key=d=>new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Riyadh",year:"numeric",month:"2-digit",day:"2-digit"}).format(d);try{await loadAttendanceHistory(key(start),key(end))}catch(e){errorText($("attendance-message"),e)}});
+        $("panel-leaves").append($("panel-permissions"));
+        $("panel-permissions").classList.remove("tab-panel");
+        $("panel-permissions").setAttribute("role","region");
+        $("panel-permissions").removeAttribute("aria-labelledby");
+        $("panel-permissions").setAttribute("aria-label","طلب استئذان");
+        const openPermissions=()=>show($("panel-permissions"),true);
+        $("open-permission-leave").addEventListener("click",openPermissions);
+       $("close-permission").addEventListener("click",()=>show($("panel-permissions"),false));
+       $("panel-permissions").addEventListener("click",e=>{if(e.target===$("panel-permissions"))show($("panel-permissions"),false)});
       function updatePermissionDuration(){
         const from=$("permission-date").value,to=$("permission-return-date").value;
         const start=$("permission-start").value,end=$("permission-end").value;

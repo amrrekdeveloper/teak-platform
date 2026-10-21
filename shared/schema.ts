@@ -118,7 +118,7 @@ export const employees = pgTable("employees", {
   fullNameEn: text("full_name_en"),
   nationality: nationalityEnum("nationality").notNull(),
   position: text("position").notNull(),
-  department: departmentEnum("department").notNull(),
+  department: departmentEnum("department").$type<string>().notNull(),
   monthlySalary: decimal("monthly_salary", { precision: 10, scale: 2 }).notNull(),
   iqamaNumber: text("iqama_number"),
   dateOfBirth: date("date_of_birth"),
@@ -134,6 +134,8 @@ export const employees = pgTable("employees", {
   email: text("email"),
   documents: jsonb("documents").$default(() => []),
   attendanceEnabled: boolean("attendance_enabled").notNull().default(true),
+  attendanceZoneId: integer("attendance_zone_id"),
+  attendanceScheduleId: integer("attendance_schedule_id"),
   managerId: integer("manager_id"), // المدير المباشر (اختياري) — بدونه يذهب الاعتماد لـ HR/المالك
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
@@ -141,7 +143,7 @@ export const employees = pgTable("employees", {
 export const insertEmployeeSchema = createInsertSchema(employees).omit({
   id: true,
   createdAt: true,
-});
+}).extend({ department: z.string().trim().min(1).max(80) });
 export type InsertEmployee = z.infer<typeof insertEmployeeSchema>;
 export type Employee = typeof employees.$inferSelect;
 
@@ -1421,11 +1423,17 @@ export const workScheduleSettings = pgTable("work_schedule_settings", {
   employeeId: integer("employee_id").references(() => employees.id), // when scopeType = employee
   workStartTime: text("work_start_time").notNull().default("08:00"), // HH:mm (Asia/Riyadh)
   graceMinutes: integer("grace_minutes").notNull().default(15),
+  workEndTime: text("work_end_time"),
+  shifts: jsonb("shifts").$type<import("./attendance").AttendanceShift[]>(),
+  locationZoneId: integer("location_zone_id"),
+  labelAr: text("label_ar"),
 });
 
 export const insertWorkScheduleSettingSchema = createInsertSchema(workScheduleSettings).omit({
   id: true,
-});
+}).extend({shifts:z.array(z.object({
+  id:z.string(),label:z.string(),start:z.string(),end:z.string(),graceMinutes:z.number(),
+})).nullable().optional()});
 export type InsertWorkScheduleSetting = z.infer<typeof insertWorkScheduleSettingSchema>;
 export type WorkScheduleSetting = typeof workScheduleSettings.$inferSelect;
 

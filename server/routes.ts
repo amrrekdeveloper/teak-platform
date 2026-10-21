@@ -15,6 +15,8 @@ import { ensureAttendanceExtensions } from "./attendance-support";
 import { freezeCurrentAttendanceSchedules } from "./attendance-schedule-history";
 import { runAttendanceCatchup } from "./attendance-scheduler";
 import { registerAttendanceOverride } from "./attendance-override";
+import { registerDepartmentCatalog, validateEmployeeAttendanceAssignment, validateAttendanceZone } from "./attendance-workspace";
+import { validateShifts } from "../shared/attendance";
 import { employeeMonthlyAttendanceRisk, notifyMonthlyAttendanceRisk } from "./attendance-risk";
 import { withUniqueEmployeePhone } from "./employee-portal/hr-onboarding";
 import {
@@ -3667,6 +3669,7 @@ export async function registerRoutes(
   });
 
   // ==================== EMPLOYEES ====================
+  registerDepartmentCatalog(app,requireRole("owner","hr"));
 
   app.get("/api/employees", requireRole("owner", "assistant", "hr", "it"), async (_req, res) => {
     try {
@@ -3697,6 +3700,7 @@ export async function registerRoutes(
       const num = String(parsed.employeeNumber || "").trim();
       if (!num) return res.status(400).json({ message: "رقم الموظف مطلوب", messageEn: "Employee number is required" });
       parsed.employeeNumber = num;
+      await validateEmployeeAttendanceAssignment(parsed);
       const dup = (await storage.getEmployees()).find(e => e.employeeNumber === num);
       if (dup) return res.status(409).json({ message: `رقم الموظف ${num} مستخدم لموظف آخر`, messageEn: `Employee number ${num} is already in use` });
       const emp = await withUniqueEmployeePhone(parsed, undefined, () => storage.createEmployee(parsed));
@@ -3724,6 +3728,9 @@ export async function registerRoutes(
         if (existing) return res.status(409).json({ message: `رقم الموظف ${num} مستخدم لموظف آخر`, messageEn: `Employee number ${num} is already in use` });
       }
       const empId = parseInt(req.params.id);
+      await validateEmployeeAttendanceAssignment(req.body,empId);
+      if (["department","attendanceZoneId","attendanceScheduleId"].some(key=>key in req.body))
+        await freezeCurrentAttendanceSchedules();
       const updated = await withUniqueEmployeePhone(req.body, empId, () => storage.updateEmployee(empId, req.body));
       if (!updated) return res.status(404).json({ message: "الموظف غير موجود", messageEn: "Employee not found" });
       res.json(updated);
@@ -8499,7 +8506,7 @@ export async function registerRoutes(
   app.post("/api/attendance/work-settings", requireRole("owner", "it", "hr"), async (req, res) => {
     try {
       const parsed = insertWorkScheduleSettingSchema.parse(req.body);
-      if (!["default", "department", "employee"].includes(parsed.scopeType)) {
+      if (!["default", "department", "employee", "location"].includes(parsed.scopeType)) {
         return res.status(400).json({ message: "نوع النطاق غير صالح" });
       }
       if (parsed.scopeType === "department" && !parsed.department) {
@@ -8507,6 +8514,17 @@ export async function registerRoutes(
       }
       if (parsed.scopeType === "employee" && !parsed.employeeId) {
         return res.status(400).json({ message: "حدد الموظف" });
+      }
+      if (parsed.scopeType === "location" && (!parsed.locationZoneId || !parsed.labelAr?.trim() ||
+        !parsed.shifts || !validateShifts(parsed.shifts) ||
+        !(await pool.query("SELECT 1 FROM location_zones WHERE id=$1 AND is_active=true",[parsed.locationZoneId])).rowCount)) {
+        return res.status(400).json({message:"حدد موقع البصمة واسم الجدول وفترة أو فترتين صحيحتين دون تداخل."});
+      }
+      if(parsed.shifts?.length) {
+        if(!validateShifts(parsed.shifts)) return res.status(400).json({message:"فترات الدوام غير صحيحة أو متداخلة."});
+        parsed.workStartTime=parsed.shifts[0].start;
+        parsed.workEndTime=parsed.shifts[0].end;
+        parsed.graceMinutes=parsed.shifts[0].graceMinutes;
       }
       if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(parsed.workStartTime || "08:00")) {
         return res.status(400).json({ message: "صيغة الوقت غير صحيحة (HH:mm)" });
@@ -8517,6 +8535,7 @@ export async function registerRoutes(
         s.scopeType === parsed.scopeType &&
         (parsed.scopeType === "default" ||
           (parsed.scopeType === "department" && s.department === parsed.department) ||
+          (parsed.scopeType === "location" && s.locationZoneId === parsed.locationZoneId && s.labelAr === parsed.labelAr) ||
           (parsed.scopeType === "employee" && s.employeeId === parsed.employeeId))
       );
       if (dup) return res.status(409).json({ message: "يوجد إعداد لهذا النطاق مسبقاً — عدّله بدلاً من الإضافة" });
@@ -8532,18 +8551,31 @@ export async function registerRoutes(
     try {
       const { workStartTime, graceMinutes } = req.body || {};
       const data: Record<string, unknown> = {};
+      if (req.body.shifts !== undefined) {
+        if(!Array.isArray(req.body.shifts)||!validateShifts(req.body.shifts))
+          return res.status(400).json({message:"حدد فترة أو فترتين صحيحتين دون تداخل."});
+        data.shifts=req.body.shifts;
+        data.workStartTime=req.body.shifts[0].start;
+        data.workEndTime=req.body.shifts[0].end;
+        data.graceMinutes=req.body.shifts[0].graceMinutes;
+      }
+      if(req.body.labelAr!==undefined) {
+        if(typeof req.body.labelAr!=="string"||!req.body.labelAr.trim()||req.body.labelAr.length>80)
+          return res.status(400).json({message:"أدخل اسمًا صحيحًا لجدول الدوام."});
+        data.labelAr=req.body.labelAr.trim();
+      }
       if (workStartTime !== undefined) {
         if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(workStartTime)) {
           return res.status(400).json({ message: "صيغة الوقت غير صحيحة (HH:mm)" });
         }
-        data.workStartTime = workStartTime;
+        if(!data.shifts)data.workStartTime = workStartTime;
       }
       if (graceMinutes !== undefined) {
         const g = Number(graceMinutes);
         if (!Number.isInteger(g) || g < 0 || g > 240) {
           return res.status(400).json({ message: "مدة السماح يجب أن تكون بين 0 و 240 دقيقة" });
         }
-        data.graceMinutes = g;
+        if(!data.shifts)data.graceMinutes = g;
       }
       await freezeCurrentAttendanceSchedules();
       const updated = await storage.updateWorkScheduleSetting(Number(req.params.id), data);
@@ -8562,6 +8594,8 @@ export async function registerRoutes(
       if (target.scopeType === "default") {
         return res.status(400).json({ message: "لا يمكن حذف الإعداد الافتراضي — يمكن تعديله فقط" });
       }
+      if((await pool.query("SELECT 1 FROM employees WHERE attendance_schedule_id=$1 LIMIT 1",[target.id])).rowCount)
+        return res.status(409).json({message:"غيّر جداول الموظفين المرتبطين بهذا الجدول قبل حذفه."});
       await freezeCurrentAttendanceSchedules();
       await storage.deleteWorkScheduleSetting(target.id);
       res.json({ success: true });
@@ -8694,19 +8728,22 @@ export async function registerRoutes(
 
   app.post("/api/attendance/zones", requireRole("owner", "it", "hr"), async (req, res) => {
     try {
-      const zone = await storage.createLocationZone(req.body);
+      const zone = await storage.createLocationZone(validateAttendanceZone(req.body));
       res.json(zone);
-    } catch {
-      res.status(500).json({ message: "حدث خطأ" });
+    } catch(error:any) {
+      res.status(400).json({ message:error.status===400?error.message:"بيانات موقع البصمة غير صحيحة." });
     }
   });
 
   app.patch("/api/attendance/zones/:id", requireRole("owner", "it", "hr"), async (req, res) => {
     try {
-      const zone = await storage.updateLocationZone(parseInt(req.params.id), req.body);
+      const id=parseInt(req.params.id);
+      const current=(await storage.getLocationZones()).find(z=>z.id===id);
+      if(!current)return res.status(404).json({message:"موقع البصمة غير موجود."});
+      const zone = await storage.updateLocationZone(id,validateAttendanceZone({...current,...req.body}));
       res.json(zone);
-    } catch {
-      res.status(500).json({ message: "حدث خطأ" });
+    } catch(error:any) {
+      res.status(400).json({message:error.status===400?error.message:"بيانات موقع البصمة غير صحيحة."});
     }
   });
 
@@ -8714,8 +8751,8 @@ export async function registerRoutes(
     try {
       await storage.deleteLocationZone(parseInt(req.params.id));
       res.json({ success: true });
-    } catch {
-      res.status(500).json({ message: "حدث خطأ" });
+    } catch(error:any) {
+      res.status(error.code==="23503"?409:500).json({message:error.code==="23503"?"انقل الموظفين واحذف جداول الموقع المرتبطة قبل حذفه.":"تعذّر حذف موقع البصمة."});
     }
   });
 

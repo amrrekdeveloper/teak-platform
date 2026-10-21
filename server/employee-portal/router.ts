@@ -13,6 +13,7 @@ import { registerEmployeeAcknowledgments } from "./acknowledgments";
 import { developmentOtpEnabled } from "./mode";
 import { toLatinDigits } from "../../shared/digits";
 import { registerEmployeeMedicalDocuments } from "./medical-documents";
+import { registerEmployeeCorrections } from "../attendance-corrections";
 
 const production = process.env.NODE_ENV === "production";
 export const DEVICE_COOKIE = production ? "__Host-teak-employee" : "teak-employee";
@@ -207,6 +208,7 @@ export function createEmployeePortalRouter() {
     res.json({ success: true });
   }));
   registerEmployeeServices(router);
+  registerEmployeeCorrections(router);
   registerEmployeeMedicalDocuments(router);
   registerEmployeeAcknowledgments(router);
   router.use((_req, res) => res.status(404).json({ message: "الخدمة غير موجودة." }));

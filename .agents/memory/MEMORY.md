@@ -24,4 +24,6 @@
 - [Employee portal boundaries](employee-portal-boundaries.md) — HR identities only, independent employee sessions, Taqnyat/TEAKSA; see maintenance policy for narrow HR/manager exceptions.
 - [HR startup data safety](hr-startup-data-safety.md) — existing-account seeds and legacy identity repairs must not replay on startup.
 - [Attendance history evidence](attendance-history-safety.md) — freeze observed days; missing legacy schedules require explicit review, not fabricated history or automatic violations.
+- [Attendance operations policy](attendance-operations-policy.md) — assigned workplace/schedule alternatives, period-end deficiency approval, and department deletion prerequisites.
+- [Development verification](development-verification.md) — resets can stop workflows/remove temporary files; mocked auth and SQL do not prove real-session/PostgreSQL compatibility.
 - [Employee auth rate limits](employee-auth-rate-limits.md) — protect phone/browser/challenge independently; shared NAT and protocol-test counters must not lock fresh employee logins.

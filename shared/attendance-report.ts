@@ -10,6 +10,7 @@ export const attendanceStatusLabels:Record<string,string>={
   missing_checkin:"نقص دخول",missing_checkout:"نقص خروج",rest_day:"راحة أسبوعية",
   approved_leave:"إجازة معتمدة",not_started:"قبل المباشرة",out_of_zone:"خارج النطاق",
   admin_override:"مصحح إدارياً",unverified_schedule:"جدول تاريخي غير موثق",
+  excused:"تمت معالجة التقصير",
 };
 export function attendanceMinutes(row:Pick<AttendanceReportRow,"scheduleVerified"|"lateMinutes"|"earlyDepartureMinutes">,
   key:"lateMinutes"|"earlyDepartureMinutes"):number|string {

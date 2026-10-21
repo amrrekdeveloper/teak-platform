@@ -5,7 +5,7 @@ import { useLanguage } from "@/components/language-provider";
 import { useAuth } from "@/hooks/use-auth";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { toLatinDigits } from "@shared/digits";
-import { HrExpandedWorkspace, ReportPreview, type ReportData } from "@/components/hr-report";
+import { ReportPreview, type ReportData } from "@/components/hr-report";
 import { exportEmployeeWorkbook, employeeExportRow, employeeHeadings } from "@/lib/hr-employee-export";
 import { useToast } from "@/hooks/use-toast";
 import type { Employee, EmployeeAsset, HrAction } from "@shared/schema";
@@ -24,7 +24,7 @@ import {
   Loader2, Plus, Search, UserCog, Pencil, DollarSign,
   Users, UserCheck, ChevronUp, ChevronDown, ChevronsUpDown,
   FileText, Upload, Trash2, AlertTriangle, Download, Lock, UserX, UserCheck2, ClipboardList, X,
-  Calculator, Package, CheckCircle2, RotateCcw, Eye, Image as ImageIcon, ExternalLink
+  Calculator, Package, CheckCircle2, RotateCcw, Eye, Image as ImageIcon, ExternalLink, MapPin
 } from "lucide-react";
 
 const departmentLabels: Record<string, { ar: string; en: string }> = {
@@ -122,6 +122,8 @@ interface EmployeeForm {
   email: string;
   attendanceEnabled: boolean;
   managerId: string;
+  attendanceZoneId: string;
+  attendanceScheduleId: string;
 }
 
 const emptyForm: EmployeeForm = {
@@ -146,6 +148,8 @@ const emptyForm: EmployeeForm = {
   email: "",
   attendanceEnabled: true,
   managerId: "",
+  attendanceZoneId: "",
+  attendanceScheduleId: "",
 };
 
 type SortKey = "employeeNumber" | "position" | "department" | "nationality" | "monthlySalary" | "contractStart" | "status";
@@ -185,6 +189,9 @@ function FormFields({ data, onChange, users, jobTitlesList }: {
 }) {
   const { t } = useLanguage();
   const { data: allEmployees = [] } = useQuery<Employee[]>({ queryKey: ["/api/employees"] });
+  const { data: departments = [] } = useQuery<{ id: number; code: string; nameAr: string }[]>({ queryKey: ["/api/hr/departments"] });
+  const { data: zones = [] } = useQuery<{ id: number; nameAr: string; radiusMeters?: number }[]>({ queryKey: ["/api/attendance/zones"] });
+  const { data: schedules = [] } = useQuery<any[]>({ queryKey: ["/api/attendance/work-settings"] });
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
       <div className="space-y-1">
@@ -219,6 +226,8 @@ function FormFields({ data, onChange, users, jobTitlesList }: {
           <Select value={data.position} onValueChange={v => onChange({ ...data, position: v })}>
             <SelectTrigger data-testid="select-position"><SelectValue placeholder={t("اختر المسمى", "Select title")} /></SelectTrigger>
             <SelectContent>
+              {data.position && !jobTitlesList.some((jt:any)=>jt.active&&jt.nameAr===data.position) &&
+                <SelectItem value={data.position}>{data.position}</SelectItem>}
               {jobTitlesList.filter((jt: any) => jt.active).map((jt: any) => (
                 <SelectItem key={jt.id} value={jt.nameAr}>{t(jt.nameAr, jt.nameEn)}</SelectItem>
               ))}
@@ -234,8 +243,8 @@ function FormFields({ data, onChange, users, jobTitlesList }: {
         <Select value={data.department} onValueChange={v => onChange({ ...data, department: v })}>
           <SelectTrigger data-testid="select-department"><SelectValue /></SelectTrigger>
           <SelectContent>
-            {Object.entries(departmentLabels).map(([k, v]) => (
-              <SelectItem key={k} value={k}>{t(v.ar, v.en)}</SelectItem>
+            {departments.map((d: any) => (
+              <SelectItem key={d.code} value={d.code}>{d.nameAr}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -274,9 +283,24 @@ function FormFields({ data, onChange, users, jobTitlesList }: {
           placeholder="employee@example.com" data-testid="input-email" dir="ltr" className="text-start" />
       </div>
       <div className="space-y-1">
-        <Label>{t("موقع البصمة", "Fingerprint Location")}</Label>
+        <Label>{t("موقع البصمة المخصص", "Assigned attendance zone")}</Label>
+        <Select value={data.attendanceZoneId || "none"} onValueChange={v => onChange({ ...data, attendanceZoneId: v === "none" ? "" : v, attendanceScheduleId: "" })}>
+          <SelectTrigger><SelectValue placeholder="اختر موقع البصمة" /></SelectTrigger><SelectContent>
+            <SelectItem value="none">بدون موقع مخصص</SelectItem>{zones.map(z=><SelectItem key={z.id} value={String(z.id)}>{z.nameAr} · نطاق {z.radiusMeters||50}م</SelectItem>)}
+          </SelectContent>
+        </Select>
+        {data.attendanceZoneId && <div className="mt-2"><Label>خيار جدول الدوام</Label>
+          <Select value={data.attendanceScheduleId || "none"} onValueChange={v=>onChange({...data,attendanceScheduleId:v==="none"?"":v})}>
+            <SelectTrigger><SelectValue placeholder="اختر الجدول" /></SelectTrigger><SelectContent>
+              <SelectItem value="none">تحديد تلقائي</SelectItem>{schedules.filter((s:any)=>s.scopeType==="location"&&String(s.locationZoneId)===data.attendanceZoneId).map((s:any)=><SelectItem key={s.id} value={String(s.id)}>{s.labelAr||s.label||`جدول ${s.id}`}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>}
+      </div>
+      <div className="space-y-1">
+        <Label>{t("موقع السكن / الملاحظة (نص)", "Home location / note (text)")}</Label>
         <Input value={data.fingerScanLocation} onChange={e => onChange({ ...data, fingerScanLocation: e.target.value })}
-          placeholder={t("مثال: المقر الرئيسي", "e.g. Main Office")} data-testid="input-finger-scan" />
+          placeholder={t("اختياري، لا يُستخدم كنطاق بصمة", "Optional; not used as attendance zone")} data-testid="input-finger-scan" />
       </div>
       <div className="space-y-1">
         <Label>{t("حساب إداري مرتبط (اختياري)", "Linked admin account (optional)")}</Label>
@@ -1084,6 +1108,8 @@ function EmployeeDetailDialog({ emp, users, onClose }: { emp: Employee; users: a
     email: (emp as any).email || "",
     attendanceEnabled: emp.attendanceEnabled !== false,
     managerId: (emp as any).managerId?.toString() || "",
+    attendanceZoneId: (emp as any).attendanceZoneId?.toString() || "",
+    attendanceScheduleId: (emp as any).attendanceScheduleId?.toString() || "",
   });
 
   const { data: jobTitlesList = [] } = useQuery<any[]>({ queryKey: ["/api/job-titles"] });
@@ -1127,6 +1153,8 @@ function EmployeeDetailDialog({ emp, users, onClose }: { emp: Employee; users: a
       dateOfBirth: editForm.dateOfBirth || null,
       email: editForm.email || null,
       attendanceEnabled: editForm.attendanceEnabled,
+      attendanceZoneId: editForm.attendanceZoneId ? Number(editForm.attendanceZoneId) : null,
+      attendanceScheduleId: editForm.attendanceScheduleId ? Number(editForm.attendanceScheduleId) : null,
     };
     if (editForm.userId && editForm.userId !== "none") data.userId = parseInt(editForm.userId);
     else data.userId = null;
@@ -1286,10 +1314,23 @@ export default function EmployeesPage() {
   const [sortKey, setSortKey] = useState<SortKey>("employeeNumber");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [jobTitlesOpen, setJobTitlesOpen] = useState(false);
+  const [departmentsOpen, setDepartmentsOpen] = useState(false);
+  const [newDepartmentName, setNewDepartmentName] = useState("");
 
   const { data: employees = [], isLoading } = useQuery<Employee[]>({ queryKey: ["/api/employees"] });
   const { data: users = [] } = useQuery<any[]>({ queryKey: ["/api/users"] });
   const { data: jobTitlesList = [] } = useQuery<any[]>({ queryKey: ["/api/job-titles"] });
+  const { data: departments = [] } = useQuery<{id:number;code:string;nameAr:string}[]>({ queryKey: ["/api/hr/departments"] });
+  const addDepartmentMutation = useMutation({
+    mutationFn: (nameAr: string) => apiRequest("POST", "/api/hr/departments", { nameAr }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/hr/departments"] }); setNewDepartmentName(""); toast({title:"تمت إضافة القسم"}); },
+    onError: (err: Error) => toast({title:err.message||"تعذرت إضافة القسم",variant:"destructive"}),
+  });
+  const deleteDepartmentMutation = useMutation({
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/hr/departments/${id}`),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/hr/departments"] }); toast({title:"تم حذف القسم"}); },
+    onError: (err: Error) => toast({title:err.message||"تعذر حذف القسم؛ قد يكون مرتبطًا بموظفين",variant:"destructive"}),
+  });
 
   const createMutation = useMutation({
     mutationFn: (data: any) => apiRequest("POST", "/api/employees", data),
@@ -1401,6 +1442,8 @@ export default function EmployeesPage() {
       dateOfBirth: form.dateOfBirth || null,
       email: form.email || null,
       attendanceEnabled: form.attendanceEnabled,
+      attendanceZoneId: form.attendanceZoneId ? Number(form.attendanceZoneId) : null,
+      attendanceScheduleId: form.attendanceScheduleId ? Number(form.attendanceScheduleId) : null,
     };
     if (form.userId && form.userId !== "none") data.userId = parseInt(form.userId);
     if (form.managerId) data.managerId = parseInt(form.managerId);
@@ -1417,7 +1460,6 @@ export default function EmployeesPage() {
   const thCls = "px-3 py-2.5 text-start text-xs font-semibold text-muted-foreground uppercase tracking-wide cursor-pointer select-none whitespace-nowrap hover:text-foreground transition-colors";
 
   return (
-    <HrExpandedWorkspace>
     <div className="space-y-5">
       {insuranceAlerts.length > 0 && (
         <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg p-3 flex items-start gap-3" data-testid="alert-insurance-expiry">
@@ -1440,6 +1482,7 @@ export default function EmployeesPage() {
           <Button variant="outline" size="sm" onClick={() => setJobTitlesOpen(true)} data-testid="button-manage-job-titles">
             <ClipboardList className="w-4 h-4 me-1" />{t("المسميات الوظيفية", "Job Titles")}
           </Button>
+          <Link href="/hr/attendance-monitor?tab=zones" className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm hover:bg-muted"><MapPin className="h-4 w-4" />إدارة مواقع البصمة</Link>
           <Dialog open={createOpen} onOpenChange={open => { setCreateOpen(open); if (!open) setForm(emptyForm); }}>
             <DialogTrigger asChild>
               <Button data-testid="button-new-employee">
@@ -1458,14 +1501,30 @@ export default function EmployeesPage() {
         </div>
       </div>
 
+      <Dialog open={departmentsOpen} onOpenChange={setDepartmentsOpen}>
+        <DialogContent dir="rtl" className="max-w-lg">
+          <DialogHeader><DialogTitle>إدارة الأقسام</DialogTitle></DialogHeader>
+          <form className="flex gap-2" onSubmit={e=>{e.preventDefault();if(newDepartmentName.trim())addDepartmentMutation.mutate(newDepartmentName.trim())}}>
+            <Input value={newDepartmentName} onChange={e=>setNewDepartmentName(e.target.value)} placeholder="اسم القسم بالعربية" required />
+            <Button type="submit" disabled={!newDepartmentName.trim()||addDepartmentMutation.isPending}><Plus className="h-4 w-4 me-1"/>إضافة</Button>
+          </form>
+          <div className="divide-y rounded-md border max-h-72 overflow-auto">
+            {departments.map(d=><div key={d.id} className="flex items-center justify-between px-3 py-2"><span>{d.nameAr}<small className="ms-2 text-muted-foreground" dir="ltr">{d.code}</small></span><Button size="icon" variant="ghost" aria-label={`حذف ${d.nameAr}`} onClick={()=>{if(window.confirm(`حذف قسم ${d.nameAr}؟`))deleteDepartmentMutation.mutate(d.id)}} disabled={deleteDepartmentMutation.isPending}><Trash2 className="h-4 w-4 text-destructive"/></Button></div>)}
+            {!departments.length&&<p className="p-5 text-sm text-muted-foreground">لا توجد أقسام مخصصة.</p>}
+          </div>
+          <p className="text-xs text-muted-foreground">الأقسام المرتبطة بموظفين لا يمكن حذفها.</p>
+        </DialogContent>
+      </Dialog>
+
       <PrehireSection />
       <div className="flex flex-wrap items-center gap-2">
         <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
           <SelectTrigger className="w-full sm:w-64" aria-label={t("القسم", "Department")}><SelectValue /></SelectTrigger>
           <SelectContent><SelectItem value="all">{t("كل الأقسام", "All departments")} ({employees.length})</SelectItem>
-            {Array.from(new Set(employees.map(e => e.department || ""))).sort().map(d => <SelectItem key={d} value={d || "__none"}>{departmentLabels[d] ? t(departmentLabels[d].ar, departmentLabels[d].en) : d || t("غير محدد", "Unassigned")} ({employees.filter(e => (e.department || "") === d).length})</SelectItem>)}
+            {Array.from(new Set(employees.map(e => e.department || ""))).sort().map(d => <SelectItem key={d} value={d || "__none"}>{departments.find(x=>x.code===d)?.nameAr || departmentLabels[d]?.ar || d || t("غير محدد", "Unassigned")} ({employees.filter(e => (e.department || "") === d).length})</SelectItem>)}
           </SelectContent>
         </Select>
+        <Button variant="outline" size="sm" onClick={() => setDepartmentsOpen(true)}><Users className="w-4 h-4 me-1" />إدارة الأقسام</Button>
         <Button variant="outline" disabled={exporting || isLoading} onClick={async () => {
           setExporting(true);
           try { await exportEmployeeWorkbook(employees, departmentFilter === "all" ? undefined : departmentFilter === "__none" ? "" : departmentFilter); }
@@ -1553,7 +1612,7 @@ export default function EmployeesPage() {
                   </td>
                 </tr>
               ) : filtered.map(emp => {
-                const dept = departmentLabels[emp.department] || { ar: emp.department, en: emp.department };
+                const dept = { ar: departments.find(x=>x.code===emp.department)?.nameAr || departmentLabels[emp.department]?.ar || emp.department, en: departmentLabels[emp.department]?.en || emp.department };
                 const status = statusConfig[emp.status] || statusConfig.active;
                 const salary = parseFloat(emp.monthlySalary?.toString() || "0");
                 const userName = getEmployeeName(emp);
@@ -1679,7 +1738,7 @@ export default function EmployeesPage() {
         </DialogContent>
       </Dialog>
     </div>
-    </HrExpandedWorkspace>
+
   );
 }
 

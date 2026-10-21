@@ -43,6 +43,7 @@ export default function AttendanceZonesMap() {
   const qc = useQueryClient();
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   // أداة DrawingManager أُزيلت من Maps API (v3.65+) — نرسم يدوياً بنقرات على الخريطة
   const [drawMode, setDrawMode] = useState<"circle" | "rect" | null>(null);
   const drawModeRef = useRef<"circle" | "rect" | null>(null);
@@ -63,11 +64,12 @@ export default function AttendanceZonesMap() {
     nameAr: "",
     nameEn: "",
     type: "factory" as "factory" | "showroom" | "other",
-    radiusMeters: 200,
+    radiusMeters: 50,
   });
   const [pendingCenter, setPendingCenter] = useState<{ lat: number; lng: number } | null>(null);
-  const [pendingRadius, setPendingRadius] = useState<number>(200);
+  const [pendingRadius, setPendingRadius] = useState<number>(50);
   const [pendingBounds, setPendingBounds] = useState<{ north: number; south: number; east: number; west: number } | null>(null);
+  const [placeSearchReady, setPlaceSearchReady] = useState(false);
 
   const { data: zones = [], isLoading } = useQuery<LocationZone[]>({
     queryKey: ["/api/attendance/zones"],
@@ -90,7 +92,7 @@ export default function AttendanceZonesMap() {
       setDrawingRect(null);
       setPendingCenter(null);
       setPendingBounds(null);
-      setFormData({ nameAr: "", nameEn: "", type: "factory", radiusMeters: 200 });
+      setFormData({ nameAr: "", nameEn: "", type: "factory", radiusMeters: 50 });
       toast({ title: "تم إضافة المنطقة بنجاح" });
     },
     onError: () => toast({ title: "خطأ", description: "تعذّر إضافة المنطقة", variant: "destructive" }),
@@ -136,12 +138,12 @@ export default function AttendanceZonesMap() {
       mapInstanceRef.current = map;
 
       const shapeOptions = {
-        fillColor: "#3b82f6",
+        fillColor: "#9e0a0a",
         fillOpacity: 0.2,
         strokeWeight: 2,
-        strokeColor: "#3b82f6",
+        strokeColor: "#9e0a0a",
         clickable: false,
-        editable: true,
+        editable: false,
         zIndex: 1,
       };
 
@@ -168,7 +170,7 @@ export default function AttendanceZonesMap() {
         const pos = { lat: e.latLng.lat(), lng: e.latLng.lng() };
 
         if (mode === "circle") {
-          const circle = new google.maps.Circle({ ...shapeOptions, map, center: pos, radius: 200 });
+          const circle = new google.maps.Circle({ ...shapeOptions, map, center: pos, radius: 50 });
           drawingCircleRef.current = circle;
           setDrawingCircle(circle);
           setPendingBounds(null);
@@ -243,6 +245,29 @@ export default function AttendanceZonesMap() {
   }, [initMap]);
 
   useEffect(() => {
+    if (!mapLoaded || !searchInputRef.current || !MAPS_KEY) return;
+    let listener: google.maps.MapsEventListener | undefined;
+    let autocomplete: google.maps.places.Autocomplete | undefined;
+    loadMapsLibrary<google.maps.PlacesLibrary>("places").then(places => {
+      if (!searchInputRef.current || !mapInstanceRef.current) return;
+      autocomplete = new places.Autocomplete(searchInputRef.current, { fields: ["geometry", "name", "formatted_address"] });
+      autocomplete.bindTo("bounds", mapInstanceRef.current);
+      listener = autocomplete.addListener("place_changed", () => {
+        const place = autocomplete?.getPlace(), point = place?.geometry?.location;
+        if (!point || !mapInstanceRef.current) return;
+        const center = { lat: point.lat(), lng: point.lng() };
+        mapInstanceRef.current.setCenter(center); mapInstanceRef.current.setZoom(16);
+        setPendingCenter(center); setPendingRadius(formData.radiusMeters); setPendingBounds(null);
+        setFormData(prev => ({ ...prev, nameAr: place?.name || prev.nameAr, nameEn: place?.name || prev.nameEn }));
+        const circle = new google.maps.Circle({ map: mapInstanceRef.current, center, radius: formData.radiusMeters, fillColor: "#9e0a0a", fillOpacity: .12, strokeColor: "#9e0a0a", strokeWeight: 2, clickable: false });
+        drawingCircleRef.current?.setMap(null); drawingCircleRef.current = circle; setDrawingCircle(circle); setAddDialog(true);
+      });
+      setPlaceSearchReady(true);
+    }).catch(err => setMapError(describeMapsError(err)));
+    return () => { listener?.remove(); autocomplete?.unbindAll(); };
+  }, [mapLoaded, formData.radiusMeters]);
+
+  useEffect(() => {
     if (!mapInstanceRef.current || !mapLoaded || isLoading) return;
 
     circleRefs.current.forEach(c => c.setMap(null));
@@ -259,10 +284,15 @@ export default function AttendanceZonesMap() {
       const polyCoords = Array.isArray(zone.polygonCoords) ? zone.polygonCoords as { lat: number; lng: number }[] : [];
       const isRect = polyCoords.length === 4 && !zone.radiusMeters;
 
-      const infoContent = `<div style="direction:rtl;padding:4px 8px;font-family:sans-serif">
-        <strong>${zone.nameAr}</strong><br/>
-        <span style="color:#666;font-size:12px">${ZONE_TYPE_LABELS[zone.type] || zone.type}${isRect ? " · مستطيل" : ` · ${zone.radiusMeters || 200}م`}</span>
-      </div>`;
+      const infoContent = document.createElement("div");
+      infoContent.dir = "rtl";
+      infoContent.style.cssText = "padding:4px 8px;font-family:sans-serif";
+      const title = document.createElement("strong");
+      title.textContent = zone.nameAr;
+      const detail = document.createElement("span");
+      detail.style.cssText = "display:block;color:#666;font-size:12px";
+      detail.textContent = `${ZONE_TYPE_LABELS[zone.type] || zone.type}${isRect ? " · مستطيل" : ` · ${zone.radiusMeters || 200}م`}`;
+      infoContent.append(title, detail);
       const infoWindow = new google.maps.InfoWindow({ content: infoContent });
 
       if (isRect) {
@@ -408,6 +438,9 @@ export default function AttendanceZonesMap() {
           className="relative w-full rounded-xl border overflow-hidden bg-muted/20"
           style={{ height: "440px" }}
         >
+          <div className="absolute z-10 top-3 inset-x-3 md:inset-x-auto md:right-3 md:w-80">
+            <Input ref={searchInputRef} placeholder={placeSearchReady ? "ابحث عن عنوان أو مكان" : "جارٍ تجهيز البحث عن الأماكن…"} aria-label="البحث عن موقع بصمة" className="bg-white shadow-md" />
+          </div>
           <div
             ref={mapRef}
             className="absolute inset-0 w-full h-full"
@@ -423,7 +456,7 @@ export default function AttendanceZonesMap() {
 
       {mapLoaded && !mapError && (
         <div className="flex flex-wrap items-center gap-2">
-          <Button
+            <Button
             size="sm"
             variant={drawMode === "circle" ? "default" : "outline"}
             className="h-8 text-xs"
@@ -431,26 +464,10 @@ export default function AttendanceZonesMap() {
             data-testid="btn-draw-circle"
           >
             <Plus className="w-3.5 h-3.5 me-1" />
-            رسم دائرة
-          </Button>
-          <Button
-            size="sm"
-            variant={drawMode === "rect" ? "default" : "outline"}
-            className="h-8 text-xs"
-            onClick={() => toggleDrawMode("rect")}
-            data-testid="btn-draw-rect"
-          >
-            <Plus className="w-3.5 h-3.5 me-1" />
-            رسم مستطيل
+              تحديد مركز بالنقر
           </Button>
           <p className="text-xs text-muted-foreground">
-            {drawMode === "circle"
-              ? "انقر على الخريطة في مركز الموقع — تُرسم دائرة نصف قطرها 200م ويمكنك تعديلها بالسحب"
-              : drawMode === "rect"
-                ? rectAwaitingSecond
-                  ? "انقر على الزاوية المقابلة لإكمال المستطيل"
-                  : "انقر على الزاوية الأولى للمستطيل"
-                : "اختر «رسم دائرة» أو «رسم مستطيل» ثم انقر على الخريطة لتحديد موقع الدوام"}
+            {drawMode === "circle" ? "انقر على مركز الموقع؛ اضبط نصف القطر من النموذج." : "ابحث عن مكان أو اختر «تحديد مركز بالنقر» ثم اختر الموقع."}
           </p>
         </div>
       )}
@@ -581,7 +598,7 @@ export default function AttendanceZonesMap() {
                   min={50}
                   max={5000}
                   value={pendingRadius}
-                  onChange={e => setPendingRadius(parseInt(e.target.value) || 200)}
+                  onChange={e => { const radius=parseInt(e.target.value)||50;setPendingRadius(radius);drawingCircleRef.current?.setRadius(radius); }}
                   data-testid="input-zone-radius"
                 />
               </div>

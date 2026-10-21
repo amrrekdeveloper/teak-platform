@@ -17,6 +17,7 @@ import { employeeMonthlyAttendanceRisk, notifyMonthlyAttendanceRisk } from "../a
 import { storage } from "../storage";
 import { riyadhDateKey, isRiyadhWeekend } from "../../shared/attendance";
 import { registerAttendanceOverride } from "../attendance-override";
+import { freezeCurrentAttendanceSchedules } from "../attendance-schedule-history";
 import { initHrLeaveForm } from "../hr-leave-form";
 import { initHrWorkflowSupport, decideHrRequest } from "../hr-workflow-support";
 
@@ -87,11 +88,15 @@ beforeAll(async () => {
     if(!id)return res.status(401).json({message:"Fixture authentication required"});
     req.user=(await pool.query("SELECT id,role FROM users WHERE id=$1 AND active=true",[id])).rows[0];
     if(!req.user)return res.status(401).json({message:"Fixture disabled"});
+    req.session={userId:id};
     next();
   };
   registerAttendanceSupport(app,fixtureAdmin);
   registerAttendanceOverride(app,fixtureAdmin);
   app.use(createEmployeePortalRouter());
+  app.use((error:any,_req:express.Request,res:express.Response,_next:express.NextFunction)=>{
+    res.status(error.status || (error.name==="ZodError"?400:500)).json({message:error.message});
+  });
   await new Promise<void>(resolve => { server = app.listen(0, "127.0.0.1", resolve); });
   const address = server.address() as { port: number };
   base = `http://127.0.0.1:${address.port}`;
@@ -103,6 +108,11 @@ beforeAll(async () => {
 afterAll(async () => {
   if (server) await new Promise<void>(resolve => { server.close(() => resolve()); server.closeAllConnections(); });
   for (const id of [employeeId, secondId].filter(Boolean)) {
+    await pool.query(`DELETE FROM notifications WHERE related_entity='attendance_correction'
+      AND related_id IN(SELECT id FROM attendance_corrections WHERE employee_id=$1)`,[id]);
+    await pool.query(`DELETE FROM attendance_correction_history WHERE correction_id IN
+      (SELECT id FROM attendance_corrections WHERE employee_id=$1)`,[id]);
+    await pool.query("DELETE FROM attendance_corrections WHERE employee_id=$1",[id]);
     await pool.query("DELETE FROM employee_portal_otps WHERE employee_id=$1", [id]);
     await pool.query("DELETE FROM employee_portal_devices WHERE employee_id=$1", [id]);
     await pool.query(`DELETE FROM notifications WHERE related_entity='leave_request' AND related_id IN
@@ -234,6 +244,11 @@ describe.sequential("isolated employee protocol", () => {
     sessionId = me.data.sessionId;
     expect((await call("/summary")).data.employee.id).toBe(employeeId);
   });
+  it("runs the real schedule-freezing query with enum-backed departments in a rollback-only transaction",async()=>{
+    const client=await pool.connect();
+    try{await client.query("BEGIN");await freezeCurrentAttendanceSchedules(client);}
+    finally{await client.query("ROLLBACK");client.release();}
+  });
   it("rejects employee ID spoofing and unverifiable GPS without saving attendance", async () => {
     const baseline=(await pool.query("SELECT count(*)::int AS n FROM attendance_records WHERE employee_id=$1",[employeeId])).rows[0].n;
     const valid = { type: "check_in", latitude: 0, longitude: 0, accuracy: 10, locationTimestamp: Date.now() };
@@ -243,6 +258,42 @@ describe.sequential("isolated employee protocol", () => {
     expect((await call("/attendance", "POST", valid)).status).toBe(403);
     const { rows } = await pool.query("SELECT count(*)::int AS n FROM attendance_records WHERE employee_id=$1", [employeeId]);
     expect(rows[0].n).toBe(baseline);
+  });
+  it("routes deficiency explanations to HR once and preserves punches on approval", async () => {
+    let date=new Date(Date.now()-8*86400000);
+    while(isRiyadhWeekend(date))date=new Date(+date-86400000);
+    const day=riyadhDateKey(date),shiftKey="correction-test";
+    await pool.query(`INSERT INTO attendance_day_schedules(employee_id,business_day,shifts) VALUES($1,$2,$3)
+      ON CONFLICT(employee_id,business_day) DO UPDATE SET shifts=excluded.shifts`,
+    [employeeId,day,JSON.stringify([{id:shiftKey,label:"اختبار معالجة",start:"07:30",end:"14:30",graceMinutes:0}])]);
+    for(const [type,time] of [["check_in","08:00"],["check_out","14:00"]])await pool.query(`INSERT INTO attendance_records
+      (employee_id,type,check_time,shift_key) VALUES($1,$2,$3::timestamptz AT TIME ZONE 'UTC',$4)`,
+    [employeeId,type,`${day}T${time}:00+03:00`,shiftKey]);
+    const before=(await employeeAttendanceReport(employeeId,day,day)).rows[0];
+    const body={businessDay:day,shiftKey,reason:"تأخر بسبب ظرف موثق للاختبار"};
+    expect((await call("/attendance/corrections","POST",{...body,employeeId:secondId})).status).toBe(400);
+    const submitted=await call("/attendance/corrections","POST",body);
+    expect(submitted.status).toBe(201);
+    const id=submitted.data.id;
+    expect((await call("/attendance/corrections","POST",body)).data.id).toBe(id);
+    expect((await employeeAttendanceReport(employeeId,day,day)).rows[0].lateMinutes).toBe(30);
+    expect((await call("/api/attendance/corrections","GET",undefined,deviceCookie,{"X-Fixture-Role":"it"})).status).toBe(403);
+    expect((await call(`/api/attendance/corrections/${id}/decision`,"POST",{decision:"rejected",note:""},
+      deviceCookie,{"X-Fixture-Role":"hr"})).status).toBe(400);
+    const decision=await call(`/api/attendance/corrections/${id}/decision`,"POST",
+      {decision:"approved",note:"عذر مقبول للاختبار"},deviceCookie,{"X-Fixture-Role":"hr"});
+    expect(decision.status).toBe(200);
+    expect((await call(`/api/attendance/corrections/${id}/decision`,"POST",
+      {decision:"rejected",note:"طلب مكرر"},deviceCookie,{"X-Fixture-Role":"hr"})).status).toBe(409);
+    const after=(await employeeAttendanceReport(employeeId,day,day)).rows[0];
+    expect(after).toMatchObject({status:"excused",late:false,lateMinutes:0,earlyDepartureMinutes:0,
+      checkIn:before.checkIn,checkOut:before.checkOut});
+    expect((await pool.query("SELECT count(*)::int AS n FROM attendance_correction_history WHERE correction_id=$1 AND decision='approved'",[id])).rows[0].n).toBe(1);
+    const {rows:[openPeriod]}=await pool.query(`INSERT INTO attendance_corrections(employee_id,business_day,shift_key,reason)
+      VALUES($1,$2,'single','طلب فترة لم تكتمل للاختبار') RETURNING id`,[employeeId,riyadhDateKey(new Date())]);
+    expect((await call(`/api/attendance/corrections/${openPeriod.id}/decision`,"POST",
+      {decision:"approved",note:"محاولة اعتماد مبكر"},deviceCookie,{"X-Fixture-Role":"hr"})).status).toBe(409);
+    expect((await pool.query("SELECT status FROM attendance_corrections WHERE id=$1",[openPeriod.id])).rows[0].status).toBe("pending");
   });
   it("cannot revoke another employee's device or query their private records", async () => {
     const foreignId = randomUUID();

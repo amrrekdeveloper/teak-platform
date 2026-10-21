@@ -1,5 +1,7 @@
 import type { Router } from "express";
 import { z } from "zod";
+import { employeeAttendanceReport } from "../attendance-support";
+import { attendanceCorrections } from "../attendance-corrections";
 import { pool } from "../db";
 import { storage } from "../storage";
 import { captureLeaveForm } from "../hr-leave-form";
@@ -86,6 +88,10 @@ export function registerEmployeeServices(router: Router) {
     ]);
     res.json({
       employee: publicEmployee(employee), balance,
+      assignedZones: (await storage.getLocationZones()).filter(z=>z.isActive&&z.id===employee.attendanceZoneId)
+        .map(z=>({id:z.id,nameAr:z.nameAr,radiusMeters:z.radiusMeters})),
+      attendanceReport: await employeeAttendanceReport(employee.id,riyadhDay(new Date(Date.now()-29*86400000)),riyadhDay()),
+      corrections: await attendanceCorrections(employee.id),
       shifts: await scheduledShiftsForDay(await attendanceSchedules(), employee),
       records: records.slice(0, 180).map(r => ({ id: r.id, type: r.type, checkTime: r.checkTime, locationName: r.locationName })),
       leaves: leaves.map(r => ({
@@ -138,6 +144,7 @@ export function registerEmployeeServices(router: Router) {
     const now = Date.now();
     if (now - input.locationTimestamp > 90000 || input.locationTimestamp - now > 10000)
       portalError(400, "قراءة الموقع قديمة أو غير قابلة للتحقق. حدّث وقت الجهاز وأعد تحديد الموقع.");
+    if (!employee.attendanceZoneId) portalError(403, "لم يحدد موقع بصمتك. راجع الموارد البشرية لتحديد موقع البصمة والدوام.");
     const shifts = await scheduledShiftsForDay(await attendanceSchedules(), employee);
     const minute = riyadhMinutesOfDay(new Date(now));
     const hhmm = `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
@@ -149,7 +156,7 @@ export function registerEmployeeServices(router: Router) {
     if (!await takeLimit(`attendance:${employee.id}`, 20, 900))
       portalError(429, "محاولات متكررة. انتظر قليلًا ثم أعد المحاولة.");
     const zones = await storage.getLocationZones();
-    const zone = permittedZone(zones, { lat: input.latitude, lng: input.longitude }, input.accuracy);
+    const zone = permittedZone(zones.filter(z=>z.id===employee.attendanceZoneId), { lat: input.latitude, lng: input.longitude }, input.accuracy);
     if (!zone) {
       await recordAttendanceViolation(employee.id, riyadhDay(new Date(now)), shift!.id, "out_of_zone", input.type);
       portalError(403, "أنت خارج نطاق الحضور المسموح أو دقة الموقع غير كافية. انتقل إلى مقر العمل وأعد المحاولة.");

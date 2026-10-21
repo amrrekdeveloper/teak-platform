@@ -1,6 +1,9 @@
 // حساب موحّد لحالة «متأخر» بين الواجهة والـ backend — توقيت السعودية UTC+3
 
 export interface WorkScheduleLike {
+  id?: number;
+  locationZoneId?: number | null;
+  labelAr?: string | null;
   scopeType: string; // default | department | employee
   department?: string | null;
   employeeId?: number | null;
@@ -12,8 +15,14 @@ export interface WorkScheduleLike {
 
 export interface AttendanceShift { id: string; label: string; start: string; end: string; graceMinutes: number }
 
-export function resolveAttendanceShifts(settings: WorkScheduleLike[], employee: { id: number; department?: string | null }): AttendanceShift[] {
-  const selected = settings.find(s => s.scopeType === "employee" && s.employeeId === employee.id)
+export interface AttendanceEmployeeAssignment {
+  id: number; department?: string | null; attendanceZoneId?: number | null; attendanceScheduleId?: number | null;
+}
+export function resolveAttendanceShifts(settings: WorkScheduleLike[], employee: AttendanceEmployeeAssignment): AttendanceShift[] {
+  const selected = (employee.attendanceScheduleId
+    ? settings.find(s => s.id === employee.attendanceScheduleId && s.locationZoneId === employee.attendanceZoneId)
+    : undefined)
+    || settings.find(s => s.scopeType === "employee" && s.employeeId === employee.id)
     || settings.find(s => s.scopeType === "department" && !!employee.department && s.department === employee.department)
     || settings.find(s => s.scopeType === "default");
   if (selected?.shifts?.length) return selected.shifts;
@@ -59,8 +68,10 @@ export function shiftAttendanceStatus(
 // أولوية التخصيص: موظف > قسم > افتراضي
 export function resolveWorkSchedule(
   settings: WorkScheduleLike[],
-  employee: { id: number; department?: string | null },
+  employee: AttendanceEmployeeAssignment,
 ): { workStartTime: string; graceMinutes: number } {
+  const assigned = employee.attendanceScheduleId && settings.find(s => s.id === employee.attendanceScheduleId && s.locationZoneId === employee.attendanceZoneId);
+  if (assigned) return { workStartTime: assigned.shifts?.[0]?.start || assigned.workStartTime, graceMinutes: assigned.shifts?.[0]?.graceMinutes ?? assigned.graceMinutes };
   const byEmployee = settings.find(s => s.scopeType === "employee" && s.employeeId === employee.id);
   if (byEmployee) return { workStartTime: byEmployee.workStartTime, graceMinutes: byEmployee.graceMinutes };
   if (employee.department) {
