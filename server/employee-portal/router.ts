@@ -186,6 +186,26 @@ export function createEmployeePortalRouter() {
     const current = identity(res);
     res.json({ employee: publicEmployee(current.employee), sessionId: current.sessionId });
   });
+  router.get("/profile", asyncRoute(async (_req, res) => {
+    const { employee } = identity(res);
+    const { rows: [details] } = await pool.query(`
+      SELECT e.full_name_en,e.email,e.contract_end::text,e.contract_type,
+        manager.full_name_ar AS manager_name
+      FROM employees e LEFT JOIN employees manager ON manager.id=e.manager_id
+      WHERE e.id=$1`, [employee.id]);
+    if (!details) portalError(404, "تعذّر العثور على ملفك الوظيفي. راجع الموارد البشرية.");
+    res.set("Cache-Control", "no-store").json({
+      employee: {
+        ...publicEmployee(employee),
+        fullNameEn: details.full_name_en ?? null,
+        phone: employee.phone, email: details.email ?? null,
+        contractStart: employee.contract_start, contractEnd: details.contract_end ?? null,
+        contractType: details.contract_type ?? null, status: employee.status,
+        managerName: details.manager_name ?? null,
+      },
+      authentication: { method: "mobile_otp", canChangePassword: false },
+    });
+  }));
   router.post("/logout", asyncRoute(async (_req, res) => {
     await pool.query("UPDATE employee_portal_devices SET revoked_at=now() WHERE id=$1", [identity(res).sessionId]);
     res.clearCookie(DEVICE_COOKIE, cookieOptions);

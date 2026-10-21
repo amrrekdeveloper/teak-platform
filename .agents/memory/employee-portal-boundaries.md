@@ -9,6 +9,12 @@ Employee self-service must use existing eligible HR employees and their register
 
 **How to apply:** Keep employee sessions independently revocable and derive employee identity from the authenticated session, never browser-supplied employee IDs. Reuse HR attendance, leave, permission, and approval records.
 
+Ending an employee session must also invalidate pending client responses, not just hide the current dashboard.
+
+**Why:** In-flight private-data requests can finish after logout or an identity change; rendering them would make logout appear ineffective and could expose the previous employee's data.
+
+**How to apply:** New asynchronous employee panels must participate in the shared identity-change guard and clear their private state on logout. Do not let a late response reopen a closed account panel or restore the dashboard.
+
 The HR employee mobile is the sole login identifier; do not fall back to an administrative user's phone or credentials.
 
 **Why:** The owner reiterated that employee login must be independent of administrative accounts after being unable to log in during development.

@@ -1,4 +1,5 @@
 import type { Express, Request, Response, NextFunction } from "express";
+import { registerAttendanceEvents } from "./attendance-live";
 import { parseInt, singleParam } from "./route-param";
 import { createServer, type Server } from "http";
 import { eq } from "drizzle-orm";
@@ -288,6 +289,7 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
   setupAuth(app);
+  registerAttendanceEvents(app, requireRole("owner", "it", "hr"));
   const systemAdminStatus = await initializeSystemAdmin({ hashPassword, comparePasswords });
   console.log(`System administrator setup: ${systemAdminStatus}`);
   const recoveryStatus = await recoverSystemAdminPassword({ hashPassword });

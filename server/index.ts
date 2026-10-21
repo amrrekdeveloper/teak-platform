@@ -6,9 +6,12 @@ import path from "node:path";
 import { createMaintenanceMiddleware } from "./maintenance";
 import { createEmployeePortalRouter } from "./employee-portal/router";
 import { initializeEmployeePortal } from "./employee-portal/database";
+import { notifyAttendanceChanges, closeAttendanceEvents } from "./attendance-live";
 
 const app = express();
 const httpServer = createServer(app);
+app.use(notifyAttendanceChanges);
+httpServer.once("close", closeAttendanceEvents);
 
 // Trust Replit's reverse proxy so that req.secure = true in production
 // Without this, express-session won't set cookies when secure: true

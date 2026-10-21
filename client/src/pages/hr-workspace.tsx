@@ -14,13 +14,24 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  ArrowLeft, CalendarDays, ChevronLeft, CircleDollarSign,
+  ArrowLeft, CalendarDays, ChevronLeft, CircleDollarSign, Eye, EyeOff,
   ClipboardCheck, Clock3, DoorOpen, LoaderCircle, LockKeyhole, Menu,
   ShieldCheck, UsersRound, X,
 } from "lucide-react";
 
 type HrUser = { role?: string; maintenanceScope?: string; fullNameAr?: string; fullNameEn?: string; username?: string };
 type HrPage = "employees" | "attendance-monitor" | "leaves" | "payroll" | "advances" | "evaluations";
+type RememberedLogin = { username: string; rememberMe: boolean };
+const HR_REMEMBER_KEY = "teak.auth.remember.hr";
+function readRememberedHrLogin(): RememberedLogin {
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(HR_REMEMBER_KEY) || "null");
+    return { username: typeof saved?.username === "string" ? saved.username : "", rememberMe: saved?.rememberMe === true };
+  } catch { return { username: "", rememberMe: false }; }
+}
+function saveRememberedHrLogin(username: string, rememberMe: boolean) {
+  try { window.localStorage.setItem(HR_REMEMBER_KEY, JSON.stringify({ username: rememberMe ? username : "", rememberMe })); } catch { /* Storage may be blocked; authentication still works. */ }
+}
 
 const navItems: { href: string; key: HrPage; label: string; icon: typeof UsersRound }[] = [
   { href: "/employees", key: "employees", label: "الموظفون", icon: UsersRound },
@@ -42,8 +53,9 @@ function WorkspaceLoading() {
 
 function HrLogin({ sessionUser }: { sessionUser: HrUser | null }) {
   const [, setLocation] = useLocation();
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
+  const [savedLogin] = useState(readRememberedHrLogin);
+  const [rememberMe, setRememberMe] = useState(savedLogin.rememberMe);
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
 
@@ -51,12 +63,22 @@ function HrLogin({ sessionUser }: { sessionUser: HrUser | null }) {
     event.preventDefault();
     if (pending) return;
     setError("");
+    const formData = new FormData(event.currentTarget);
+    const submittedUsername = String(formData.get("username") || "").trim();
+    const submittedPassword = String(formData.get("password") || "");
+    const submittedRemember = formData.get("rememberMe") === "on";
+    setRememberMe(submittedRemember);
+    saveRememberedHrLogin(submittedUsername, submittedRemember);
+    if (!submittedUsername || !submittedPassword) {
+      setError("أدخل اسم المستخدم وكلمة المرور.");
+      return;
+    }
     setPending(true);
     try {
       await queryClient.cancelQueries();
       queryClient.setQueryData(["/api/auth/me"], null);
       queryClient.clear();
-      const response = await apiRequest("POST", "/api/hr-access/login", { username, password });
+      const response = await apiRequest("POST", "/api/hr-access/login", { username: submittedUsername, password: submittedPassword, rememberMe: submittedRemember });
       const user = await response.json() as HrUser;
       if (user?.role !== "hr" || user?.maintenanceScope !== "hr") {
         setError("تعذّر التحقق من صلاحية حساب الموارد البشرية.");
@@ -67,7 +89,7 @@ function HrLogin({ sessionUser }: { sessionUser: HrUser | null }) {
       queryClient.setQueryData(["/api/auth/me"], user);
       setLocation("/employees");
     } catch (cause: any) {
-      let message = "تعذّر تسجيل الدخول. تحقق من البيانات وحاول مرة أخرى.";
+      let message = typeof cause?.message==="string" ? cause.message : "تعذّر تسجيل الدخول. تحقق من البيانات وحاول مرة أخرى.";
       try {
         const body = await cause?.json?.();
         if (body?.message) message = body.message;
@@ -89,21 +111,28 @@ function HrLogin({ sessionUser }: { sessionUser: HrUser | null }) {
             <h1>تسجيل الدخول</h1>
             <p>استخدم حساب الموارد البشرية المعتمد.</p>
           </div>
-          <form className="hr-login-form" onSubmit={submit} noValidate>
+          <form className="hr-login-form" onSubmit={submit} noValidate autoComplete="on">
             <div className="hr-field">
               <Label htmlFor="hr-username">اسم المستخدم</Label>
-              <Input id="hr-username" autoComplete="username" value={username} onChange={e => setUsername(e.target.value)} required disabled={pending} />
+              <Input id="hr-username" name="username" type="text" autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false} defaultValue={savedLogin.username} onChange={e => { if (rememberMe) saveRememberedHrLogin(e.target.value, true); }} required disabled={pending} />
             </div>
             <div className="hr-field">
               <Label htmlFor="hr-password">كلمة المرور</Label>
-              <Input id="hr-password" type="password" autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} required disabled={pending} />
+              <div className="hr-password-wrap">
+                <Input id="hr-password" name="password" type={showPassword ? "text" : "password"} autoComplete="current-password" autoCapitalize="none" autoCorrect="off" spellCheck={false} defaultValue="" required disabled={pending} />
+                <button type="button" className="hr-password-toggle" aria-label={showPassword ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"} aria-pressed={showPassword} onClick={() => setShowPassword(value => !value)} disabled={pending}>{showPassword ? <EyeOff size={17} /> : <Eye size={17} />}</button>
+              </div>
+            </div>
+            <div className="hr-remember">
+              <label><input type="checkbox" name="rememberMe" checked={rememberMe} onChange={e => { setRememberMe(e.target.checked); const form=e.currentTarget.form; saveRememberedHrLogin(e.target.checked && form ? String(new FormData(form).get("username") || "") : "", e.target.checked); }} disabled={pending} /> تذكرني على هذا الجهاز</label>
+              <p>لا تفعّل التذكر على جهاز مشترك.</p>
             </div>
             {(error || wrongRole) && (
               <p className="hr-login-error" role="alert">
                 {error || "هذا الحساب لا يملك صلاحية الدخول إلى مساحة الموارد البشرية."}
               </p>
             )}
-            <Button type="submit" disabled={pending || !username.trim() || !password} className="hr-login-submit">
+            <Button type="submit" disabled={pending} className="hr-login-submit">
               {pending ? <LoaderCircle size={17} className="hr-spinning" /> : <LockKeyhole size={17} />}
               <span>{pending ? "جارٍ التحقق…" : "دخول آمن"}</span>
               <ArrowLeft size={17} />
@@ -163,7 +192,7 @@ function HrLayout() {
         <button type="button" className="hr-icon-button" aria-label={menuOpen ? "إغلاق القائمة" : "فتح القائمة"} aria-expanded={menuOpen} onClick={() => setMenuOpen(v => !v)}>
           {menuOpen ? <X size={21} /> : <Menu size={21} />}
         </button>
-        <div className="hr-mobile-brand"><img src="/__maintenance/logo.png" alt="TEAK" /><span>الموارد البشرية</span></div>
+         <div className="hr-mobile-brand"><img src="/__maintenance/logo.png" alt="TEAK" /><span>تيك</span></div>
         <span className="hr-avatar">{(hrUser.fullNameAr || hrUser.username || "HR").slice(0, 1)}</span>
       </header>
       {menuOpen && <button type="button" className="hr-mobile-scrim" aria-label="إغلاق القائمة" onClick={() => setMenuOpen(false)} />}
@@ -189,7 +218,7 @@ function HrLayout() {
         </div>
       </aside>
       <section className="hr-main-column">
-        <header className="hr-topbar">
+        <header className="hr-topbar" data-page={active?.key}>
           <div><span className="hr-breadcrumb-root">تيك</span><span className="hr-breadcrumb-slash">/</span><span>{active?.label || "الموظف"}</span></div>
           <div className="hr-topbar-actions">
             <div className="hr-topbar-state"><span className="hr-topbar-dot" /> مساحة الموارد البشرية</div>
@@ -287,6 +316,14 @@ export default function HrWorkspace() {
         .hr-field label { color:#564740;font-size:14px;font-weight:700; }
         .hr-field input { height:46px;border-color:#e4d9ce;border-radius:8px;background:#fff;font-family:inherit;font-size:16px; }
         .hr-field input:focus-visible { border-color:var(--hr-red);box-shadow:0 0 0 2px #9e0a0a14; }
+        .hr-password-wrap { position:relative; }
+        .hr-password-wrap input { padding-inline-end:48px; }
+        .hr-password-toggle { position:absolute;inset-inline-end:10px;top:50%;transform:translateY(-50%);display:grid;place-items:center;width:32px;height:32px;border:0;border-radius:6px;background:transparent;color:var(--hr-red);cursor:pointer; }
+        .hr-password-toggle:focus-visible,.hr-remember input:focus-visible { outline:2px solid var(--hr-red);outline-offset:2px; }
+        .hr-remember { display:grid;gap:3px;margin-top:-4px; }
+        .hr-remember label { display:flex;align-items:center;gap:8px;color:#564740;font-size:14px;font-weight:600;cursor:pointer; }
+        .hr-remember input { width:17px;height:17px;margin:0;accent-color:var(--hr-red); }
+        .hr-remember p { margin:0;color:var(--hr-muted);font-size:12px; }
         .hr-login-submit { height:48px;margin-top:4px;display:flex;gap:10px;border-radius:8px;background:var(--hr-red);font-family:inherit;font-size:16px; }
         .hr-login-submit:hover { background:var(--hr-red-deep); }
         .hr-login-submit span { flex:1; }
@@ -328,6 +365,7 @@ export default function HrWorkspace() {
           .hr-sidebar.is-open { transform:translateX(0); }
           .hr-main-column { width:100%;margin:0; }
           .hr-topbar { min-height:52px;padding:0 12px;background:transparent;border-bottom:0; }
+           .hr-topbar[data-page="employees"],.hr-topbar[data-page="attendance-monitor"] { display:none; }
           .hr-topbar>div:first-child { min-width:0;gap:7px;font-size:13px; }
           .hr-topbar>div:first-child>span:last-child { overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
           .hr-topbar-actions { gap:0; }

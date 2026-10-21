@@ -12,6 +12,7 @@ import { enforceHrWorkspaceScope, hasManagerAssignment } from "./hr-access";
 import { takeLimit } from "./employee-portal/database";
 import { tokenHash } from "./employee-portal/security";
 import { isDesignatedSystemAdmin, registerSystemAdminRoutes } from "./system-admin";
+import { setLoginPersistence } from "./login-session";
 
 const scryptAsync = promisify(scrypt);
 
@@ -45,6 +46,7 @@ declare module "express-session" {
     hrWorkspace?: boolean;
     managerWorkspace?: boolean;
     systemAdminWorkspace?: boolean;
+    rememberMe?: boolean;
   }
 }
 
@@ -86,6 +88,8 @@ export function setupAuth(app: Express) {
           messageEn: "Username and password are required",
         });
       }
+      if(req.body.rememberMe!==undefined&&typeof req.body.rememberMe!=="boolean")
+        return res.status(400).json({message:"خيار تذكّر الدخول غير صالح."});
       if ((hrLogin || managerLogin || systemAdminLogin) && (!await takeLimit(`hr-login-ip:${tokenHash(req.ip || "unknown")}`, 30, 900) ||
         !await takeLimit(`hr-login-user:${tokenHash(username.trim().toLowerCase())}`, 10, 900)))
         return res.status(429).json({ message: "محاولات دخول متكررة. حاول بعد 15 دقيقة." });
@@ -119,6 +123,7 @@ export function setupAuth(app: Express) {
       req.session.hrWorkspace = hrLogin;
       req.session.managerWorkspace = managerLogin;
       req.session.systemAdminWorkspace = systemAdminLogin;
+      setLoginPersistence(req.session,req.body.rememberMe===true);
       const { password: _, employeePin: _pin, financePin: _financePin, ...safeUser } = user;
       const permissions = (managerLogin || systemAdminLogin) ? [] : hrLogin ? HR_WORKSPACE_PERMISSIONS : await getEffectivePermissionsForUser(user);
       await new Promise<void>((resolve, reject) => req.session.save(err => err ? reject(err) : resolve()));
@@ -132,7 +137,7 @@ export function setupAuth(app: Express) {
     }
   });
 
-  registerSystemAdminRoutes(app, { hashPassword });
+  registerSystemAdminRoutes(app, { hashPassword, comparePasswords });
 
   app.post("/api/auth/logout", (req: Request, res: Response) => {
     req.session.destroy((err) => {

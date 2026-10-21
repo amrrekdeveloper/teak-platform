@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from "react";
+import { Link, useLocation, useSearch } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -22,6 +23,16 @@ import { resolveWorkSchedule, isLateCheckIn, riyadhDateKey, riyadhDayBounds } fr
 import { attendanceStatusLabels, type AttendanceReportRow } from "@shared/attendance-report";
 import { loadMapsLibrary } from "@/lib/maps-loader";
 import { AttendanceShiftReview, AttendanceShiftEditor, CollectiveShiftReview } from "@/components/attendance-shift-review";
+import { useAttendanceLive } from "@/hooks/use-attendance-live";
+
+const MONITOR_TABS = ["daily", "zones", "work-settings", "assignments", "shifts", "daily-report", "records", "risk", "violations", "devices"] as const;
+type MonitorTab = typeof MONITOR_TABS[number];
+const ADVANCED_MONITOR_TABS: readonly MonitorTab[] = ["shifts", "daily-report", "records", "risk", "violations", "devices"];
+const isAdvancedMonitorTab = (tab: MonitorTab) => ADVANCED_MONITOR_TABS.includes(tab);
+function monitorTabFromSearch(search: string): MonitorTab {
+  const requested = new URLSearchParams(search).get("tab");
+  return MONITOR_TABS.includes(requested as MonitorTab) ? requested as MonitorTab : "daily";
+}
 
 interface AttendanceRecord {
   id: number;
@@ -203,6 +214,11 @@ export default function AttendanceMonitorPage() {
   const { t } = useLanguage();
   const { toast } = useToast();
   const qc = useQueryClient();
+  const [pagePath, setPagePath] = useLocation();
+  const routeSearch = useSearch();
+  const [activeTab, setActiveTab] = useState<MonitorTab>(() => monitorTabFromSearch(window.location.search));
+  const [advancedTabsOpen, setAdvancedTabsOpen] = useState(() => isAdvancedMonitorTab(monitorTabFromSearch(window.location.search)));
+  const { connected, lastUpdated } = useAttendanceLive();
   const [dateRange, setDateRange] = useState(getTodayRange());
   const [monitorDay, setMonitorDay] = useState(() => riyadhDateKey(new Date()));
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -223,6 +239,21 @@ export default function AttendanceMonitorPage() {
   const [medicalAttachmentId, setMedicalAttachmentId] = useState<number | null>(null);
   const [locationPopup, setLocationPopup] = useState<{ lat: string; lng: string; name: string | null; isOutOfZone: boolean } | null>(null);
   const miniMapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const requestedTab = monitorTabFromSearch(routeSearch);
+    setActiveTab(requestedTab);
+    if (isAdvancedMonitorTab(requestedTab)) setAdvancedTabsOpen(true);
+  }, [routeSearch]);
+
+  const handleMonitorTabChange = (value: string) => {
+    if (!MONITOR_TABS.includes(value as MonitorTab)) return;
+    const params = new URLSearchParams(routeSearch);
+    params.set("tab", value);
+    setActiveTab(value as MonitorTab);
+    if (isAdvancedMonitorTab(value as MonitorTab)) setAdvancedTabsOpen(true);
+    setPagePath(`${pagePath}?${params.toString()}`);
+  };
 
   useEffect(() => {
     if (!locationPopup || !miniMapRef.current) return;
@@ -279,7 +310,7 @@ export default function AttendanceMonitorPage() {
       if (!response.ok) throw new Error("تعذر تحميل ملخص دوام اليوم.");
       return response.json();
     },
-    refetchInterval: monitorDay === todayKey ? 60000 : false,
+    refetchInterval: monitorDay === todayKey ? 15000 : false,
   });
   const { data: correctionQueue = [], isLoading: correctionsLoading, isError: correctionsError, refetch: refetchCorrections } = useQuery<any[]>({ queryKey: ["/api/attendance/corrections"] });
   const correctionDecision = useMutation({
@@ -587,13 +618,16 @@ export default function AttendanceMonitorPage() {
   return (
     <div className="p-3 md:p-6 space-y-5 max-w-7xl mx-auto min-w-0" dir="rtl">
       {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-bold">{t("مراقبة الدوام", "Attendance Monitor")}</h1>
-          <p className="text-muted-foreground text-sm">{t("تتبع حضور وانصراف الموظفين", "Track employee attendance")}</p>
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          <Button variant="outline" size="sm" onClick={async () => {
+      <div className="flex items-center justify-between gap-2">
+        <h1 className="text-lg md:text-2xl font-bold">{t("مراقبة الدوام", "Attendance Monitor")}</h1>
+        <div className="flex shrink-0 items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground sm:min-h-10 sm:rounded-md sm:border sm:bg-card sm:px-3" role="status" aria-live="polite" data-testid="attendance-live-status">
+            <span className={`h-2 w-2 rounded-full ${connected ? "bg-green-600" : "bg-amber-500"}`} aria-hidden="true" />
+            <span className="sm:hidden">{connected ? "مباشر" : monitorDay === todayKey ? "تلقائي" : "غير مباشر"}</span>
+            <span className="hidden sm:inline">{connected ? "مباشر" : monitorDay === todayKey ? "تحديث تلقائي كل 15 ثانية" : "تحديث يدوي للتاريخ المحدد"}</span>
+            {lastUpdated > 0 && <span className="hidden sm:inline tabular-nums">· {new Intl.DateTimeFormat("ar-SA", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Riyadh" }).format(new Date(lastUpdated))}</span>}
+          </span>
+          <Button variant="outline" size="sm" className="h-11 w-11 p-0 sm:w-auto sm:px-3" title="تحديث البيانات" aria-label="تحديث البيانات" onClick={async () => {
             await Promise.all([
               todayEvidence.refetch(),
               refetch(),
@@ -603,25 +637,78 @@ export default function AttendanceMonitorPage() {
               qc.invalidateQueries({ queryKey: ["/api/attendance/corrections"] }),
             ]);
           }} data-testid="button-refresh-attendance">
-            <RefreshCw className="w-4 h-4 me-1" />
-            {t("تحديث", "Refresh")}
+            <RefreshCw className="w-4 h-4 sm:me-1" />
+            <span className="hidden sm:inline">{t("تحديث", "Refresh")}</span>
           </Button>
         </div>
       </div>
+      <Tabs value={activeTab} onValueChange={handleMonitorTabChange}>
+        <TabsList className="mb-3 flex h-auto w-full flex-wrap gap-1">
+          <TabsTrigger value="daily" className="min-h-11 whitespace-nowrap" data-testid="tab-daily"><Users className="w-4 h-4 me-1" />الحضور اليومي</TabsTrigger>
+          <TabsTrigger value="zones" className="min-h-11 whitespace-nowrap" data-testid="tab-zones"><Map className="w-4 h-4 me-1" />المواقع والورديات</TabsTrigger>
+          <TabsTrigger value="work-settings" className="min-h-11 whitespace-nowrap" data-testid="tab-work-settings"><Settings className="w-4 h-4 me-1" />أوقات الدوام</TabsTrigger>
+          <TabsTrigger value="assignments" className="min-h-11 whitespace-nowrap" data-testid="tab-employee-assignments"><Users className="w-4 h-4 me-1" />تعيينات الموظفين</TabsTrigger>
+        </TabsList>
+        <details className="mb-3 rounded-md border bg-card px-3" open={advancedTabsOpen} onToggle={event => setAdvancedTabsOpen(event.currentTarget.open)}>
+          <summary className="flex min-h-11 cursor-pointer items-center text-sm font-medium">تقارير وسجلات متقدمة</summary>
+          <TabsList className="mb-2 flex h-auto w-full flex-wrap gap-1 border-t pt-2">
+            <TabsTrigger value="shifts" className="min-h-11 whitespace-nowrap"><Clock className="w-4 h-4 me-1" />سجل الورديات</TabsTrigger>
+            <TabsTrigger value="daily-report" className="min-h-11 whitespace-nowrap"><CalendarDays className="w-4 h-4 me-1" />تقرير يومي تفصيلي</TabsTrigger>
+            <TabsTrigger value="records" className="min-h-11 whitespace-nowrap" data-testid="tab-records"><Clock className="w-4 h-4 me-1" />السجلات التفصيلية</TabsTrigger>
+            <TabsTrigger value="risk" className="min-h-11 whitespace-nowrap" data-testid="tab-risk"><AlertTriangle className="w-4 h-4 me-1" />مؤشر الخطر</TabsTrigger>
+            <TabsTrigger value="violations" className="min-h-11 whitespace-nowrap" data-testid="tab-violations">
+              <AlertTriangle className="w-4 h-4 me-1" />المخالفات
+              {violations.length > 0 && <span className="ms-1 rounded-full bg-amber-500 px-1.5 text-white text-[9px]">{violations.length}</span>}
+            </TabsTrigger>
+            {(deviceReport.length > 0 || activeTab === "devices") && (
+              <TabsTrigger value="devices" className="min-h-11 whitespace-nowrap" data-testid="tab-devices">
+                <Monitor className="w-4 h-4 me-1" />أجهزة مشتركة
+                {deviceReport.length > 0 && <span className="ms-1 rounded-full bg-red-500 px-1.5 text-white text-[9px]">{deviceReport.length}</span>}
+              </TabsTrigger>
+            )}
+          </TabsList>
+        </details>
+        <TabsContent value="zones">
+          <Card><CardContent className="space-y-5 p-4 md:p-6">
+            <AttendanceZonesMap />
+            <AttendanceZoneSchedules />
+          </CardContent></Card>
+        </TabsContent>
+        <TabsContent value="work-settings">
+          <WorkScheduleSettingsTab employees={employees} />
+        </TabsContent>
+        <TabsContent value="assignments">
+          <Card>
+            <CardHeader className="pb-2"><CardTitle className="text-base">تعيينات مواقع البصمة وجداول الموظفين</CardTitle></CardHeader>
+            <CardContent className="flex flex-col items-start gap-3 pt-0">
+              <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
+                اختر الموظف ثم عدّل موقع البصمة وخيار جدول الدوام من نموذج الموظف الحالي. تبقى صلاحيات الحفظ وقواعد التحقق كما هي.
+              </p>
+              <Button asChild className="min-h-11">
+                <Link href="/employees?tab=attendance"><Users className="me-2 h-4 w-4" />اختيار موظف وتعديل التعيين</Link>
+              </Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      <TabsContent value="daily">
       <section className="space-y-3" aria-label="مراقبة دوام اليوم">
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
-          <div><h2 className="text-lg font-bold">{monitorDay===todayKey?"ملخص اليوم":monitorDay===riyadhDateKey(new Date(Date.now()-86400000))?"ملخص أمس":"ملخص الدوام"}</h2><p className="text-xs text-muted-foreground">{new Intl.DateTimeFormat("ar-SA",{weekday:"long",day:"numeric",month:"long",year:"numeric",timeZone:"Asia/Riyadh"}).format(new Date(`${monitorDay}T12:00:00+03:00`))} · مصدر الحالة: تقرير الورديات المعتمد</p></div>
+          <p className="text-sm font-medium text-muted-foreground">
+            {monitorDay===todayKey?"اليوم":monitorDay===riyadhDateKey(new Date(Date.now()-86400000))?"أمس":"التاريخ المحدد"}
+            {" · "}
+            {new Intl.DateTimeFormat("ar-SA",{weekday:"long",day:"numeric",month:"long",year:"numeric",timeZone:"Asia/Riyadh"}).format(new Date(`${monitorDay}T12:00:00+03:00`))}
+          </p>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 w-full sm:w-auto">
             <div className="col-span-2 sm:col-span-3 flex flex-wrap items-center gap-2">
-              <Button size="sm" variant={monitorDay===todayKey?"default":"outline"} onClick={()=>setMonitorDay(todayKey)}>اليوم</Button>
-              <Button size="sm" variant={monitorDay===riyadhDateKey(new Date(Date.now()-86400000))?"default":"outline"} onClick={()=>setMonitorDay(riyadhDateKey(new Date(Date.now()-86400000)))}>أمس</Button>
-              <Input type="date" aria-label="تاريخ تقرير الدوام" value={monitorDay} onChange={e=>{if(e.target.value)setMonitorDay(e.target.value)}} className="h-9 w-40" dir="ltr"/>
+              <Button size="sm" className="min-h-11" variant={monitorDay===todayKey?"default":"outline"} onClick={()=>setMonitorDay(todayKey)}>اليوم</Button>
+              <Button size="sm" className="min-h-11" variant={monitorDay===riyadhDateKey(new Date(Date.now()-86400000))?"default":"outline"} onClick={()=>setMonitorDay(riyadhDateKey(new Date(Date.now()-86400000)))}>أمس</Button>
+              <Input type="date" aria-label="تاريخ تقرير الدوام" value={monitorDay} onChange={e=>{if(e.target.value)setMonitorDay(e.target.value)}} className="min-h-11 w-40" dir="ltr"/>
             </div>
-            <Input aria-label="بحث بالموظف" placeholder="اسم أو رقم الموظف" value={liveSearch} onChange={e=>setLiveSearch(e.target.value)} className="h-9 min-w-0 sm:w-52"/>
-            <Select value={liveStatus} onValueChange={setLiveStatus}><SelectTrigger className="h-9"><SelectValue placeholder="كل الحالات"/></SelectTrigger><SelectContent>
+            <Input aria-label="بحث بالموظف" placeholder="اسم أو رقم الموظف" value={liveSearch} onChange={e=>setLiveSearch(e.target.value)} className="min-h-11 min-w-0 sm:w-52"/>
+            <Select value={liveStatus} onValueChange={setLiveStatus}><SelectTrigger className="min-h-11"><SelectValue placeholder="كل الحالات"/></SelectTrigger><SelectContent>
               <SelectItem value="all">كل الحالات</SelectItem><SelectItem value="working">على رأس العمل</SelectItem><SelectItem value="completed">أنهى ورديته</SelectItem><SelectItem value="pending">لم يسجل الوصول بعد</SelectItem><SelectItem value="future">لم تبدأ الوردية بعد</SelectItem><SelectItem value="not_started">قبل تاريخ المباشرة</SelectItem><SelectItem value="absent">غياب بعد نهاية الوردية</SelectItem><SelectItem value="approved_leave">إجازة معتمدة</SelectItem><SelectItem value="out_of_zone">خارج النطاق</SelectItem><SelectItem value="unverified_schedule">جدول غير موثق</SelectItem>
             </SelectContent></Select>
-            <Select value={liveLocation} onValueChange={setLiveLocation}><SelectTrigger className="h-9 col-span-2 sm:col-span-1"><SelectValue placeholder="جميع المواقع"/></SelectTrigger><SelectContent><SelectItem value="all">جميع المواقع</SelectItem>{Array.from(new Set((todayEvidence.data?.rows||[]).flatMap(r=>[...(r.locationNames||[]),r.homeLocation||""]).filter(Boolean))).map(location=><SelectItem key={location} value={location}>{location}</SelectItem>)}</SelectContent></Select>
+            <Select value={liveLocation} onValueChange={setLiveLocation}><SelectTrigger className="min-h-11 col-span-2 sm:col-span-1"><SelectValue placeholder="جميع المواقع"/></SelectTrigger><SelectContent><SelectItem value="all">جميع المواقع</SelectItem>{Array.from(new Set((todayEvidence.data?.rows||[]).flatMap(r=>[...(r.locationNames||[]),r.homeLocation||""]).filter(Boolean))).map(location=><SelectItem key={location} value={location}>{location}</SelectItem>)}</SelectContent></Select>
           </div>
         </div>
         {(() => {
@@ -676,12 +763,12 @@ export default function AttendanceMonitorPage() {
             statusText(r),(r.locationNames||[]).join("، ")||r.homeLocation||"—",r.outOfZone?"خارج النطاق":"—",
           ];
           return <>
-            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-8 gap-2">
-              {metrics.map(([label,value])=><Card key={String(label)}><CardContent className="p-3"><p className="text-xl font-bold tabular-nums">{todayEvidence.isLoading?"—":value}</p><p className="text-xs text-muted-foreground">{label}</p></CardContent></Card>)}
+            <div className="grid grid-cols-4 sm:grid-cols-4 xl:grid-cols-8 gap-1.5 sm:gap-2">
+              {metrics.map(([label,value])=><Card key={String(label)}><CardContent className="min-h-[62px] p-2 sm:p-3"><p className="text-base sm:text-xl font-bold tabular-nums">{todayEvidence.isLoading?"—":value}</p><p className="text-[9px] sm:text-xs leading-tight text-muted-foreground">{label}</p></CardContent></Card>)}
             </div>
             {todayEvidence.isError?<div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 flex items-center justify-between text-sm" role="alert"><span>تعذر تحميل تقرير دوام اليوم.</span><Button variant="outline" size="sm" onClick={()=>todayEvidence.refetch()}>إعادة المحاولة</Button></div>:
               todayEvidence.isLoading?<div className="space-y-2 rounded-lg border bg-card p-4" aria-label="تحميل بيانات اليوم"><div className="h-4 w-1/4 animate-pulse rounded bg-muted"/><div className="h-10 animate-pulse rounded bg-muted"/><div className="h-10 animate-pulse rounded bg-muted"/></div>:
-              <Card><CardHeader className="pb-2"><CardTitle className="text-base flex items-center justify-between"><span>سجل الموظفين اليوم</span><Badge variant="outline">{visibleRows.length} وردية معروضة</Badge></CardTitle></CardHeader><CardContent className="p-0">
+              <Card><CardHeader className="pb-2"><CardTitle className="text-base flex items-center justify-between gap-2"><span className="truncate">سجل الموظفين · {monitorDay===todayKey?"اليوم":monitorDay===riyadhDateKey(new Date(Date.now()-86400000))?"أمس":new Intl.DateTimeFormat("ar-SA",{day:"numeric",month:"short",timeZone:"Asia/Riyadh"}).format(new Date(`${monitorDay}T12:00:00+03:00`))}</span><Badge variant="outline" className="shrink-0">{visibleRows.length} وردية معروضة</Badge></CardTitle></CardHeader><CardContent className="p-0">
                 {!visibleRows.length?<div className="p-8 text-center text-sm text-muted-foreground">{rows.length?"لا توجد نتائج مطابقة للتصفية.":"لا توجد ورديات مجدولة اليوم."}</div>:
                   <><div className="hidden md:block overflow-x-auto"><table className="w-full min-w-[980px] text-sm"><thead><tr className="border-y bg-muted/40 text-muted-foreground">{["الموظف","الرقم الوظيفي","الوردية","الحضور","الانصراف","الحالة","الموقع","النطاق"].map(x=><th key={x} className="p-3 text-start font-medium">{x}</th>)}</tr></thead><tbody>{visibleRows.map((r,i)=><tr key={`${r.employeeId}-${r.day}-${r.shiftId}-${i}`} className="border-b last:border-0">{cells(r).map((value,j)=><td key={j} className="p-3">{j===5?<Badge variant={rowState(r)==="absent"?"destructive":rowState(r)==="working"?"default":"outline"}>{value}</Badge>:value}</td>)}</tr>)}</tbody></table></div>
                     <div className="divide-y md:hidden">{visibleRows.map((r,i)=><article key={`${r.employeeId}-${r.day}-${r.shiftId}-${i}`} className="p-4"><header className="flex items-start justify-between gap-2"><div><strong>{r.employeeName||`#${r.employeeId}`}</strong><p className="text-xs text-muted-foreground">{r.employeeNumber||"—"} · {r.shiftLabel||r.shiftId}</p></div><Badge variant={rowState(r)==="absent"?"destructive":rowState(r)==="working"?"default":"outline"}>{statusText(r)}</Badge></header><dl className="mt-3 grid grid-cols-2 gap-3 text-sm"><div><dt className="text-xs text-muted-foreground">الحضور</dt><dd>{r.checkIn?formatTime(String(r.checkIn)):"—"}</dd></div><div><dt className="text-xs text-muted-foreground">الانصراف</dt><dd>{r.checkOut?formatTime(String(r.checkOut)):"—"}</dd></div><div><dt className="text-xs text-muted-foreground">الموقع</dt><dd>{(r.locationNames||[]).join("، ")||r.homeLocation||"—"}</dd></div><div><dt className="text-xs text-muted-foreground">النطاق</dt><dd>{r.outOfZone?"خارج النطاق":"داخل/غير محدد"}</dd></div></dl></article>)}</div></>}
@@ -689,7 +776,8 @@ export default function AttendanceMonitorPage() {
           </>;
         })()}
       </section>
-      <details className="rounded-lg border bg-card px-4 py-3">
+      </TabsContent>
+      <details className="rounded-lg border bg-card px-4 py-3" hidden={activeTab !== "daily" && !isAdvancedMonitorTab(activeTab)}>
         <summary className="cursor-pointer text-sm font-semibold">التقارير والإعدادات المتقدمة وسجلات الدوام</summary>
       <div className="flex flex-wrap gap-2 mt-3">
         <Button variant="outline" size="sm" onClick={exportCSV} disabled={!exportEvidence.data||exportEvidence.isFetching||exportEvidence.isError}>
@@ -865,7 +953,7 @@ export default function AttendanceMonitorPage() {
       {/* Main Content */}
       </div>
       </details>
-      <Card><CardHeader className="pb-2"><CardTitle className="text-base flex justify-between items-center"><span>طلبات معالجة التقصير</span><Badge variant="outline">{correctionsLoading?"جارٍ التحميل":correctionsError?"غير متاح":`${correctionQueue.filter((c:any)=>c.status==="pending").length} قيد المراجعة`}</Badge></CardTitle></CardHeader>
+      <Card hidden={activeTab !== "daily"}><CardHeader className="pb-2"><CardTitle className="text-base flex justify-between items-center"><span>طلبات معالجة التقصير</span><Badge variant="outline">{correctionsLoading?"جارٍ التحميل":correctionsError?"غير متاح":`${correctionQueue.filter((c:any)=>c.status==="pending").length} قيد المراجعة`}</Badge></CardTitle></CardHeader>
         <CardContent className="space-y-2">
           {correctionsError?<div className="flex items-center justify-between text-sm text-destructive"><span>تعذر تحميل الطلبات.</span><Button size="sm" variant="outline" onClick={()=>refetchCorrections()}>إعادة المحاولة</Button></div>:correctionsLoading?<div className="h-12 animate-pulse rounded bg-muted"/>:
             correctionQueue.filter((c:any)=>c.status==="pending").length===0?<p className="text-sm text-muted-foreground">لا توجد طلبات معلقة.</p>:
@@ -877,54 +965,9 @@ export default function AttendanceMonitorPage() {
             </div>)}
         </CardContent>
       </Card>
-      <details className="rounded-lg border bg-card px-4 py-3" open={new URLSearchParams(window.location.search).get("tab")==="zones"}>
-        <summary className="cursor-pointer text-sm font-semibold">تقارير وسجلات وإعدادات إضافية</summary>
-      <Tabs defaultValue={new URLSearchParams(window.location.search).get("tab")==="zones"?"zones":"shifts"}>
-        <TabsList className="mb-4 flex-wrap h-auto gap-1">
-          <TabsTrigger value="shifts">مراقبة الورديات</TabsTrigger>
-          <TabsTrigger value="daily" data-testid="tab-daily">
-            <Users className="w-4 h-4 me-1" />
-            الحضور اليومي
-          </TabsTrigger>
-          <TabsTrigger value="records" data-testid="tab-records">
-            <Clock className="w-4 h-4 me-1" />
-            السجلات التفصيلية
-          </TabsTrigger>
-          <TabsTrigger value="zones" data-testid="tab-zones">
-            <Map className="w-4 h-4 me-1" />
-            مناطق الدوام
-          </TabsTrigger>
-          <TabsTrigger value="work-settings" data-testid="tab-work-settings">
-            <Settings className="w-4 h-4 me-1" />
-            إعدادات الدوام
-          </TabsTrigger>
-          <TabsTrigger value="risk" data-testid="tab-risk">
-            <AlertTriangle className="w-4 h-4 me-1" />
-            مؤشر الخطر
-          </TabsTrigger>
-          <TabsTrigger value="violations" data-testid="tab-violations">
-            <AlertTriangle className="w-4 h-4 me-1" />
-            المخالفات
-            {violations.length > 0 && (
-              <span className="ms-1 w-4 h-4 rounded-full bg-amber-500 text-white text-[9px] flex items-center justify-center">
-                {violations.length}
-              </span>
-            )}
-          </TabsTrigger>
-          {deviceReport.length > 0 && (
-            <TabsTrigger value="devices" data-testid="tab-devices">
-              <Monitor className="w-4 h-4 me-1" />
-              أجهزة مشتركة
-              <span className="ms-1 w-4 h-4 rounded-full bg-red-500 text-white text-[9px] flex items-center justify-center">
-                {deviceReport.length}
-              </span>
-            </TabsTrigger>
-          )}
-        </TabsList>
-
         <TabsContent value="shifts"><CollectiveShiftReview from={dateRange.from} to={dateRange.to} location={locationFilter} outOfZoneOnly={outOfZoneOnly} /></TabsContent>
         {/* Daily Summary Tab */}
-        <TabsContent value="daily">
+        <TabsContent value="daily-report">
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2">
@@ -1231,21 +1274,6 @@ export default function AttendanceMonitorPage() {
           </Card>
         </TabsContent>
 
-        {/* Zones Management Tab */}
-        <TabsContent value="zones">
-          <Card>
-            <CardContent className="p-4 md:p-6">
-              <AttendanceZonesMap />
-              <AttendanceZoneSchedules />
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Work Schedule Settings Tab */}
-        <TabsContent value="work-settings">
-          <WorkScheduleSettingsTab employees={employees} />
-        </TabsContent>
-
         {/* Risk Score Tab */}
         <TabsContent value="risk">
           <RiskScoresTab />
@@ -1330,7 +1358,6 @@ export default function AttendanceMonitorPage() {
           </TabsContent>
         )}
       </Tabs>
-      </details>
 
       {/* Location Mini-Map Popup */}
       <Dialog open={!!locationPopup} onOpenChange={open => !open && setLocationPopup(null)}>

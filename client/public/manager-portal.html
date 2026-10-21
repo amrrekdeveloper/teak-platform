@@ -3,12 +3,13 @@
 <title>تيك — مساحة المدير</title><style>
 body{font-family:system-ui;background:#f7f6f2;color:#243a35;margin:0}main{max-width:1040px;margin:auto;padding:20px}
 header{display:flex;justify-content:space-between;align-items:center}article,details,form{background:white;border:1px solid #ddd;border-radius:12px;padding:16px;margin:12px 0}
-button,input,select,textarea{font:inherit;padding:9px;border:1px solid #bbb;border-radius:7px;margin:4px;max-width:100%;box-sizing:border-box}button{cursor:pointer;background:#244e42;color:white}pre{white-space:pre-wrap;overflow-wrap:anywhere}#error{color:#a12d2d}label{display:block}a{color:inherit}.muted{color:#667}
+button,input,select,textarea{font:inherit;padding:9px;border:1px solid #bbb;border-radius:7px;margin:4px;max-width:100%;box-sizing:border-box}button{cursor:pointer;background:#244e42;color:white}pre{white-space:pre-wrap;overflow-wrap:anywhere}#error{color:#a12d2d}label{display:block}a{color:inherit}.muted{color:#667}.remember-row{display:flex;align-items:center;gap:8px}.remember-row input{margin:4px 0;accent-color:#244e42}.remember-note{margin:0 4px 8px;font-size:.88rem;color:#667}
 </style></head><body><main><header><h1>مساحة المدير</h1><a href="/employee-portal">بوابة الموظف المستقلة</a></header>
 <p class="muted">طلبات فريقك فقط · راجع السجل قبل القرار · الاعتماد النهائي للموارد البشرية</p>
-<form id="login"><h2>دخول المدير المباشر</h2><p>استخدم حسابك الإداري المخصص، لا رمز بوابة الموظف.</p>
-<label>اسم المستخدم<input id="username" autocomplete="username" required></label>
-<label>كلمة المرور<input id="password" type="password" autocomplete="current-password" required></label><button>دخول مساحة المدير</button></form>
+<form id="login" autocomplete="on"><h2>دخول المدير المباشر</h2><p>استخدم حسابك الإداري المخصص، لا رمز بوابة الموظف.</p>
+<label for="username">اسم المستخدم<input id="username" name="username" type="text" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" required></label>
+<label for="password">كلمة المرور<input id="password" name="password" type="password" autocomplete="current-password" required></label>
+<label class="remember-row" for="manager-remember"><input id="manager-remember" name="rememberMe" type="checkbox"><span>تذكرني على هذا الجهاز</span></label><p class="remember-note">لا تفعّل التذكر على جهاز مشترك.</p><button type="submit">دخول مساحة المدير</button></form>
 <p id="error" role="alert"></p><button id="refresh">تحديث</button><div id="workspace"></div>
 <form id="warning"><h2>رفع مخالفة</h2><label>الموظف<select id="employee" required></select></label>
 <label>نوع المخالفة<select id="violation"><option value="attendance">حضور وانصراف</option><option value="conduct">سلوك</option><option value="performance">أداء</option><option value="safety">سلامة</option><option value="other">أخرى</option></select></label>
@@ -16,6 +17,12 @@ button,input,select,textarea{font:inherit;padding:9px;border:1px solid #bbb;bord
 <label>التاريخ<input id="incident" type="date" required></label><label>الوصف<textarea id="description" required></textarea></label><button>رفع إلى الموارد البشرية</button></form>
 </main><script>
 const $=id=>document.getElementById(id);
+const REMEMBER_KEY="teak.auth.remember.manager";
+function readRememberedLogin(){try{const saved=JSON.parse(localStorage.getItem(REMEMBER_KEY)||"null");return{username:typeof saved?.username==="string"?saved.username:"",rememberMe:saved?.rememberMe===true}}catch(e){return{username:"",rememberMe:false}}}
+function saveRememberedLogin(username,rememberMe){try{localStorage.setItem(REMEMBER_KEY,JSON.stringify({username:rememberMe?username:"",rememberMe}))}catch(e){/* Storage may be blocked; authentication still works. */}}
+const savedLogin=readRememberedLogin();$("username").value=savedLogin.username;$("manager-remember").checked=savedLogin.rememberMe;
+$("username").addEventListener("input",()=>{if($("manager-remember").checked)saveRememberedLogin($("username").value,true)});
+$("manager-remember").addEventListener("change",()=>saveRememberedLogin($("username").value,$("manager-remember").checked));
 async function api(path,body){const r=await fetch(path,{credentials:"same-origin",headers:{"Content-Type":"application/json"},...(body?{method:"POST",body:JSON.stringify(body)}:{})});const data=await r.json();if(!r.ok){if(r.status===401||r.status===403){$("login").hidden=false;$("warning").hidden=true;$("workspace").replaceChildren()}throw Error(data.message||"تعذر تحميل البيانات. سجّل الدخول بحسابك الإداري.")}return data}
 function node(tag,text){const n=document.createElement(tag);n.textContent=text;return n}
 function detail(title,data){const d=node("details","");d.append(node("summary",title));const labels={status:"الحالة",reason:"السبب",notes:"الملاحظات",note:"الملاحظة",date:"تاريخ المغادرة",returnDate:"تاريخ العودة",startDate:"من",endDate:"إلى",startTime:"وقت المغادرة",endTime:"وقت العودة",hoursRequested:"الساعات",workflow:"المسار",decision:"القرار",previous_status:"الحالة السابقة",next_status:"الحالة الجديدة",created_at:"وقت القرار",days:"الأيام",leaveType:"نوع الإجازة",type:"النوع"};const states={pending:"قيد المراجعة",manager_approved:"اعتمد المدير",approved:"معتمد",rejected:"مرفوض",clarification_requested:"مطلوب توضيح",approve:"موافقة",reject:"رفض",clarify:"طلب توضيح",annual:"سنوية",permission:"استئذان"};for(const item of Array.isArray(data)?data:[data]){const list=node("dl","");for(const [key,label]of Object.entries(labels)){if(item?.[key]===undefined||item[key]===null)continue;list.append(node("dt",label),node("dd",states[item[key]]||String(item[key])))}d.append(list)}return d}
@@ -33,7 +40,7 @@ if(["pending","in_progress"].includes(action.status)&&((["wf04","wf06b"].include
 $("workspace").append(section)}if(!data.employees.length)$("workspace").append(node("p","لا يوجد موظفون مرتبطون بك كمدير مباشر."))}
 catch(e){$("error").textContent=e.message}}
 $("warning").onsubmit=async e=>{e.preventDefault();try{await api("/api/manager/warnings",{employeeId:Number($("employee").value),formData:{violationType:$("violation").value,level:$("level").value,incidentDate:$("incident").value,description:$("description").value}});$("warning").reset();await load()}catch(err){$("error").textContent=err.message}};
-$("login").onsubmit=async e=>{e.preventDefault();const button=e.currentTarget.querySelector("button");button.disabled=true;try{await api("/api/manager-access/login",{username:$("username").value,password:$("password").value});$("password").value="";await load()}catch(err){$("error").textContent=err.message}finally{button.disabled=false}};
+$("login").onsubmit=async e=>{e.preventDefault();const formData=new FormData(e.currentTarget),username=String(formData.get("username")||"").trim(),password=String(formData.get("password")||""),rememberMe=formData.get("rememberMe")==="on";$("username").value=username;$("password").value=password;$("manager-remember").checked=rememberMe;saveRememberedLogin(username,rememberMe);if(!username||!password){$("error").textContent="أدخل اسم المستخدم وكلمة المرور.";return}const button=e.currentTarget.querySelector("button");button.disabled=true;try{await api("/api/manager-access/login",{username,password,rememberMe});$("password").value="";await load()}catch(err){$("error").textContent=err.message}finally{button.disabled=false}};
 $("warning").hidden=true;
 $("refresh").onclick=load;load();
 </script></body></html>

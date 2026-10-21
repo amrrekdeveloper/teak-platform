@@ -2,6 +2,8 @@ import type { Express, RequestHandler } from "express";
 import { z } from "zod";
 import { pool } from "./db";
 import { isProtectedOwner } from "../shared/permissions";
+import { HR_PASSWORD_MESSAGE,isValidHrPassword } from "../shared/hr-password-policy";
+import { takeLimit } from "./employee-portal/database";
 
 type PasswordTools = {
   hashPassword: (password: string) => Promise<string>;
@@ -10,14 +12,19 @@ type PasswordTools = {
 
 const username = z.string().trim().regex(/^[a-zA-Z0-9._-]{3,80}$/);
 const password = z.string().min(12).max(256);
+const hrPassword=z.string().refine(isValidHrPassword,{message:HR_PASSWORD_MESSAGE});
 const name = z.string().trim().min(1).max(120);
 const createSchema = z.object({
-  username, password, fullNameAr: name, fullNameEn: name.optional(),
+  username, password:hrPassword, fullNameAr: name, fullNameEn: name.optional(),
 }).strict();
 const editSchema = z.object({
   fullNameAr: name.optional(), fullNameEn: name.optional(),
-  active: z.boolean().optional(), password: password.optional(),
+  active: z.boolean().optional(), password: hrPassword.optional(),
 }).strict().refine(value => Object.keys(value).length > 0);
+const ownPasswordSchema = z.object({
+  currentPassword: z.string().min(1).max(256),
+  newPassword: hrPassword,
+}).strict();
 
 // A durable one-time binding, NOT a recurring password/role reset. Only the
 // application reads these secrets; credentials are never returned or logged.
@@ -81,7 +88,7 @@ const publicAccount = (row: any) => ({
   fullNameEn: row.full_name_en, active: row.active, createdAt: row.created_at,
 });
 
-export function registerSystemAdminRoutes(app: Express, tools: Pick<PasswordTools, "hashPassword">) {
+export function registerSystemAdminRoutes(app: Express, tools: PasswordTools) {
   // Scope middleware already validates this session and re-reads its owner.
   // Defense in depth here keeps the endpoints secure if maintenance is removed.
   const requireOwner: RequestHandler = async (req, res, next) => {
@@ -103,13 +110,56 @@ export function registerSystemAdminRoutes(app: Express, tools: Pick<PasswordTool
       res.json({ message: "تم تسجيل الخروج." });
     });
   });
+  app.post("/api/system-admin/password", requireOwner, async (req, res) => {
+    const input = ownPasswordSchema.safeParse(req.body);
+    if (!input.success)
+      return res.status(400).json({ message: "أدخل كلمة المرور الحالية. الجديدة: " + HR_PASSWORD_MESSAGE });
+    const ownerId = req.session.userId;
+    let client;
+    try {
+      if (!await takeLimit(`system-admin-password:${ownerId}`, 8, 900))
+        return res.status(429).json({ message: "محاولات متكررة. حاول تغيير كلمة المرور بعد 15 دقيقة." });
+      client = await pool.connect();
+      await client.query("BEGIN");
+      // Lock and revalidate the designated actor; no client-supplied account ID.
+      const { rows: [owner] } = await client.query(`SELECT u.id,u.password,u.role,u.active,u.archived
+        FROM teak_system_admin a JOIN users u ON u.id=a.user_id
+        WHERE a.singleton=true AND u.id=$1 FOR UPDATE OF a,u`, [ownerId]);
+      if (!owner || owner.role !== "owner" || !owner.active || owner.archived) {
+        await client.query("ROLLBACK");
+        return res.status(403).json({ message: "هذا الإجراء متاح لمدير النظام المعتمد فقط." });
+      }
+      if (!await tools.comparePasswords(input.data.currentPassword, owner.password)) {
+        await client.query("ROLLBACK");
+        return res.status(403).json({ message: "كلمة المرور الحالية غير صحيحة." });
+      }
+      const hash = await tools.hashPassword(input.data.newPassword);
+      const changed = await client.query(`UPDATE users SET password=$2
+        WHERE id=$1 AND role='owner' AND active=true AND archived=false RETURNING id`, [ownerId, hash]);
+      if (changed.rowCount !== 1) throw new Error("Owner changed");
+      await client.query("DELETE FROM user_sessions WHERE sess->>'userId'=$1", [String(ownerId)]);
+      await client.query("INSERT INTO teak_system_admin_audit(actor_id,target_id,action) VALUES($1,$1,'change_own_password')", [ownerId]);
+      await client.query("COMMIT");
+    } catch {
+      try { await client?.query("ROLLBACK"); } catch { /* Never expose credentials or SQL parameters. */ }
+      return res.status(500).json({ message: "تعذّر تأكيد تغيير كلمة المرور. أعد تسجيل الدخول إذا انتهت جلستك." });
+    } finally {
+      client?.release();
+    }
+    // All persisted sessions were deleted in the same transaction as the hash.
+    // Destroy this request's session too, so response middleware cannot re-save it.
+    req.session.destroy(() => {
+      res.clearCookie("connect.sid");
+      res.json({ message: "تم تغيير كلمة المرور. سجّل الدخول بالكلمة الجديدة.", reloginRequired: true });
+    });
+  });
   app.get("/api/system-admin/hr-accounts", requireOwner, async (_req, res) => {
     const { rows } = await pool.query("SELECT id,username,full_name_ar,full_name_en,active,created_at FROM users WHERE role='hr' AND archived=false ORDER BY id");
     res.json(rows.map(publicAccount));
   });
   app.post("/api/system-admin/hr-accounts", requireOwner, async (req, res) => {
     const parsed = createSchema.safeParse(req.body);
-    if (!parsed.success) return res.status(400).json({ message: "أدخل الاسم واسم مستخدم صحيحًا (3–80 حرفًا إنجليزيًا أو رقمًا أو . _ -) وكلمة مرور من 12 حرفًا على الأقل." });
+    if (!parsed.success) return res.status(400).json({ message: "أدخل الاسم واسم مستخدم صحيحًا (3–80 حرفًا إنجليزيًا أو رقمًا أو . _ -). كلمة المرور: "+HR_PASSWORD_MESSAGE });
     const data = parsed.data;
     const client = await pool.connect();
     try {
@@ -130,7 +180,7 @@ export function registerSystemAdminRoutes(app: Express, tools: Pick<PasswordTool
     const id = Number(req.params.id);
     const parsed = editSchema.safeParse(req.body);
     if (!Number.isSafeInteger(id) || id <= 0 || !parsed.success)
-      return res.status(400).json({ message: "بيانات غير صالحة. الحد الأدنى لكلمة المرور 12 حرفًا." });
+      return res.status(400).json({ message: "بيانات غير صالحة. كلمة المرور: "+HR_PASSWORD_MESSAGE });
     const data = parsed.data;
     const client = await pool.connect();
     try {

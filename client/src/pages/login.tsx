@@ -16,6 +16,17 @@ import {
 } from "lucide-react";
 import teakLogo from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
 
+const ERP_REMEMBER_KEY = "teak.auth.remember.erp";
+function readRememberedErpLogin() {
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(ERP_REMEMBER_KEY) || "null");
+    return { username: typeof saved?.username === "string" ? saved.username : "", rememberMe: saved?.rememberMe === true };
+  } catch { return { username: "", rememberMe: false }; }
+}
+function saveRememberedErpLogin(username: string, rememberMe: boolean) {
+  try { window.localStorage.setItem(ERP_REMEMBER_KEY, JSON.stringify({ username: rememberMe ? username : "", rememberMe })); } catch { /* Storage may be blocked; authentication still works. */ }
+}
+
 const lifecycleStages = [
   {
     icon: "📋",
@@ -251,8 +262,10 @@ export default function LoginPage() {
   const { login, isLoggingIn } = useAuth();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
+  const [savedLogin] = useState(readRememberedErpLogin);
+  const usernameInputRef = useRef<HTMLInputElement>(null);
+  const passwordInputRef = useRef<HTMLInputElement>(null);
+  const [rememberMe, setRememberMe] = useState(savedLogin.rememberMe);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [selectedUser, setSelectedUser] = useState<string | null>(null);
@@ -265,11 +278,21 @@ export default function LoginPage() {
   const [forgotLoading, setForgotLoading] = useState(false);
   const [forgotSent, setForgotSent] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError("");
+    const formData = new FormData(e.currentTarget);
+    const submittedUsername = String(formData.get("username") || "").trim();
+    const submittedPassword = String(formData.get("password") || "");
+    const submittedRemember = formData.get("rememberMe") === "on";
+    setRememberMe(submittedRemember);
+    saveRememberedErpLogin(submittedUsername, submittedRemember);
+    if (!submittedUsername || !submittedPassword) {
+      setError(t("أدخل اسم المستخدم وكلمة المرور.", "Enter your username and password."));
+      return;
+    }
     try {
-      await login({ username, password });
+      await login({ username: submittedUsername, password: submittedPassword, rememberMe: submittedRemember });
       setFailedAttempts(0);
       await startTransition(
         t("جاري التحقق من البيانات...", "Verifying credentials..."),
@@ -291,8 +314,9 @@ export default function LoginPage() {
   const fillCredentials = (username: string) => {
     const account = getStaffAccount(username);
     if (!account) return;
-    setUsername(account.username);
-    setPassword("14001400");
+    if(usernameInputRef.current)usernameInputRef.current.value=account.username;
+    if(passwordInputRef.current)passwordInputRef.current.value="";
+    saveRememberedErpLogin(account.username,rememberMe);
     setError("");
     setSelectedUser(account.username);
     setTimeout(() => {
@@ -467,7 +491,7 @@ export default function LoginPage() {
             </p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4" autoComplete="on">
             {error && (
               <div className="p-3 rounded-lg bg-destructive/10 text-destructive text-sm text-center" data-testid="text-login-error">
                 {error}
@@ -480,12 +504,17 @@ export default function LoginPage() {
               </Label>
               <Input
                 id="username"
+                name="username"
                 type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                ref={usernameInputRef}
+                defaultValue={savedLogin.username}
+                onChange={(e) => { if (rememberMe) saveRememberedErpLogin(e.target.value, true); }}
                 placeholder={t("أدخل اسم المستخدم", "Enter username")}
                 required
                 autoComplete="username"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
                 className="h-11"
                 data-testid="input-username"
               />
@@ -498,9 +527,13 @@ export default function LoginPage() {
               <div className="relative">
                 <Input
                   id="password"
+                  name="password"
                   type={showPassword ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  ref={passwordInputRef}
+                  defaultValue=""
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
                   placeholder={t("أدخل كلمة المرور", "Enter password")}
                   required
                   autoComplete="current-password"
@@ -517,6 +550,14 @@ export default function LoginPage() {
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
+            </div>
+
+            <div className="space-y-1">
+              <label htmlFor="login-remember" className="flex items-center gap-2 text-sm cursor-pointer">
+                <input id="login-remember" name="rememberMe" type="checkbox" checked={rememberMe} onChange={(e) => { setRememberMe(e.target.checked); saveRememberedErpLogin(e.target.checked ? usernameInputRef.current?.value || "" : "", e.target.checked); }} className="h-4 w-4 accent-primary" />
+                <span>{t("تذكرني على هذا الجهاز", "Remember me on this device")}</span>
+              </label>
+              <p className="text-xs text-muted-foreground">{t("لا تفعّل التذكر على جهاز مشترك.", "Do not enable this on a shared device.")}</p>
             </div>
 
             <Button

@@ -38,7 +38,7 @@ const attendanceInput = z.object({
   type: z.enum(["check_in", "check_out"]),
   latitude: z.number().finite().min(-90).max(90),
   longitude: z.number().finite().min(-180).max(180),
-  accuracy: z.number().finite().positive().max(50),
+  accuracy: z.number().finite().positive(),
   locationTimestamp: z.number().finite(),
   shiftId: z.string().max(30).optional(),
 }).strict();
@@ -139,8 +139,9 @@ export function registerEmployeeServices(router: Router) {
     const { employee, sessionId } = identity(res);
     if (!employee.attendance_enabled) portalError(403, "الحضور غير مفعّل لك. راجع الموارد البشرية.");
     const parsed = attendanceInput.safeParse(req.body);
-    if (!parsed.success) portalError(400, "تعذّر التحقق من موقع دقيق. فعّل GPS واسمح بالموقع ثم أعد المحاولة.");
+    if (!parsed.success) portalError(400, "تعذّر قراءة بيانات الموقع. أعد تحديد موقع الجوال ثم حاول مجددًا.");
     const input = parsed.data!;
+    if(input.accuracy>50)portalError(400,`دقة موقع الجوال الحالية نحو ${Math.ceil(input.accuracy)} متر، والمطلوب 50 متر أو أقل. اسمح باستخدام «الموقع الدقيق» ثم أعد المحاولة.`);
     const now = Date.now();
     if (now - input.locationTimestamp > 90000 || input.locationTimestamp - now > 10000)
       portalError(400, "قراءة الموقع قديمة أو غير قابلة للتحقق. حدّث وقت الجهاز وأعد تحديد الموقع.");
@@ -150,7 +151,7 @@ export function registerEmployeeServices(router: Router) {
     const hhmm = `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
     const shift = input.shiftId ? shifts.find(s => s.id === input.shiftId)
       : shifts.length === 1 ? shifts[0] : shifts.find(s => hhmm >= s.start && hhmm <= s.end);
-    if (!shift) portalError(400, "حدد الوردية الصحيحة؛ لا يمكن خلط حضور الصباح والمساء.");
+    if (!shift) portalError(400, "لا توجد فترة دوام مسندة تغطي الوقت الحالي. راجع الموارد البشرية.");
     if (shifts.length > 1 && (hhmm < shift!.start || hhmm > shift!.end))
       portalError(400, "أنت خارج وقت الوردية المحددة. راجع الموارد البشرية لتصحيح الحركة.");
     if (!await takeLimit(`attendance:${employee.id}`, 20, 900))

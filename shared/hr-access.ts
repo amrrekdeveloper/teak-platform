@@ -4,6 +4,7 @@ export const HR_WORKSPACE_PERMISSIONS = [
 ];
 
 const rules: [string[], RegExp][] = [
+  [["GET"], /^\/api\/attendance\/events$/],
   [["GET","POST"], /^\/api\/hr\/departments$/],
   [["DELETE"], /^\/api\/hr\/departments\/\d+$/],
   [["GET"], /^\/api\/attendance\/corrections(?:\/\d+\/attachment)?$/],
@@ -62,7 +63,7 @@ export function isManagerApi(method: string, path: string) {
 }
 
 export function isSystemAdminApi(method: string, path: string) {
-  return (method === "POST" && /^\/api\/system-admin\/(?:login|logout|hr-accounts)$/.test(path)) ||
+  return (method === "POST" && /^\/api\/system-admin\/(?:login|logout|password|hr-accounts)$/.test(path)) ||
     (method === "GET" && /^\/api\/system-admin\/(?:me|hr-accounts)$/.test(path)) ||
     (method === "PATCH" && /^\/api\/system-admin\/hr-accounts\/\d+$/.test(path));
 }

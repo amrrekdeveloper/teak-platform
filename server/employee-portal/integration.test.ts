@@ -249,11 +249,23 @@ describe.sequential("isolated employee protocol", () => {
     try{await client.query("BEGIN");await freezeCurrentAttendanceSchedules(client);}
     finally{await client.query("ROLLBACK");client.release();}
   });
+  it("returns only the authenticated employee's employment profile, never administrative credentials",async()=>{
+    expect((await call("/profile","GET",undefined,"")).status).toBe(401);
+    const profile=await call(`/profile?employeeId=${secondId}`);
+    expect(profile.status).toBe(200);
+    expect(profile.data.employee).toMatchObject({
+      id:employeeId,phone:registeredPhone,contractStart:"2025-01-01",status:"active",
+    });
+    expect(profile.data.authentication).toEqual({method:"mobile_otp",canChangePassword:false});
+    for(const field of["password","employeePin","financePin","userId","user_id","monthlySalary","monthly_salary","documents"])
+      expect(profile.data.employee).not.toHaveProperty(field);
+  });
   it("rejects employee ID spoofing and unverifiable GPS without saving attendance", async () => {
     const baseline=(await pool.query("SELECT count(*)::int AS n FROM attendance_records WHERE employee_id=$1",[employeeId])).rows[0].n;
     const valid = { type: "check_in", latitude: 0, longitude: 0, accuracy: 10, locationTimestamp: Date.now() };
     expect((await call("/attendance", "POST", { ...valid, employeeId: secondId })).status).toBe(400);
-    expect((await call("/attendance", "POST", { ...valid, accuracy: 1000 })).status).toBe(400);
+    const coarse=await call("/attendance", "POST", { ...valid, accuracy: 1000 });
+    expect(coarse.status).toBe(400);expect(coarse.data.message).toMatch(/1000.*50/);
     expect((await call("/attendance", "POST", { ...valid, locationTimestamp: Date.now() - 300000 })).status).toBe(400);
     expect((await call("/attendance", "POST", valid)).status).toBe(403);
     const { rows } = await pool.query("SELECT count(*)::int AS n FROM attendance_records WHERE employee_id=$1", [employeeId]);

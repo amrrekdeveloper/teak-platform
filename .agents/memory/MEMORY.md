@@ -27,3 +27,4 @@
 - [Attendance operations policy](attendance-operations-policy.md) — assigned workplace/schedule alternatives, period-end deficiency approval, and department deletion prerequisites.
 - [Development verification](development-verification.md) — resets can stop workflows/remove temporary files; mocked auth and SQL do not prove real-session/PostgreSQL compatibility.
 - [Employee auth rate limits](employee-auth-rate-limits.md) — protect phone/browser/challenge independently; shared NAT and protocol-test counters must not lock fresh employee logins.
+- [Administrative login policy](administrative-login-policy.md) — owner/HR passwords managed in the owner panel; six-character policy and safe remembered sign-in.

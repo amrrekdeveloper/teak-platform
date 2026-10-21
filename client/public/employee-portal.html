@@ -26,6 +26,88 @@
     .profile-date{color:#fff;font-size:12px;white-space:nowrap}.logout-icon{width:36px;height:36px;display:grid;place-items:center;border:1px solid #ffffff70;border-radius:50%;background:transparent;color:#fff;font-size:19px}.assigned-zone{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:13px;margin-top:8px}.attendance-report{margin-top:12px}.attendance-cards{display:none}.attendance-mobile-card{border:1px solid var(--line);background:#fff;padding:12px;margin:8px 0}.attendance-mobile-card header{display:flex;justify-content:space-between;gap:8px;font-weight:700}.attendance-mobile-card dl{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0}.attendance-mobile-card dt{font-size:11px;color:var(--muted)}.attendance-mobile-card dd{margin:0;font-size:13px}.correction-dialog,.permission-dialog{position:fixed;z-index:100;inset:0;background:#211b18a8;display:grid;place-items:center;padding:16px}.correction-card{width:min(100%,460px);max-height:92dvh;overflow:auto;background:#fff;padding:20px;border-top:3px solid var(--brand);box-shadow:var(--shadow)}.correction-card h3{margin:0 0 8px}.correction-card textarea{width:100%;min-height:100px;padding:10px;border:1px solid var(--line)}.correction-card .actions{justify-content:flex-start;margin-top:12px}.tab[hidden]{display:none}
     @media(max-width:760px){.attendance-table-wrap{display:none}.attendance-cards{display:block}.profile-date{width:100%;order:4}.logout{margin-inline-start:auto}.date-chip{display:none}}
     .layout-grid>*{min-width:0}.form-row{min-width:0}.form-row input,.form-row select,.form-row textarea{min-width:0;max-width:100%}.medical-docs{margin-top:10px;padding:10px;background:var(--soft);border:1px solid var(--line);overflow-wrap:anywhere}.medical-docs a{color:var(--brand);display:inline-block;padding:8px 4px;min-height:40px}.file-input{width:100%;padding:8px;border:1px solid var(--line);background:#fff}.request-history-card{min-width:0;margin-top:10px;padding:10px;border:1px solid var(--line);background:var(--soft);overflow-wrap:anywhere}.request-history-card p{margin:4px 0}.request-history-card a{color:var(--brand);text-underline-offset:3px}.request-history-card label{display:block;min-width:0}.request-history-card textarea{display:block;width:100%;max-width:100%;min-height:66px;margin:8px 0;padding:8px;border:1px solid #d8d4cf;border-radius:3px;resize:vertical}.request-history-card button{min-height:40px}
+    /* Desktop attendance history gets the full content width; mobile cards retain their existing layout. */
+    .attendance-layout{grid-template-columns:minmax(0,1fr)}
+    .attendance-table-wrap table{min-width:860px;table-layout:fixed}
+    .attendance-table-wrap th,.attendance-table-wrap td{padding:8px 9px;line-height:1.3}
+    .attendance-table-wrap th:nth-child(1),.attendance-table-wrap td:nth-child(1){width:10%}
+    .attendance-table-wrap th:nth-child(2),.attendance-table-wrap td:nth-child(2){width:11%}
+    .attendance-table-wrap th:nth-child(3),.attendance-table-wrap td:nth-child(3){width:12%}
+    .attendance-table-wrap th:nth-child(4),.attendance-table-wrap td:nth-child(4),.attendance-table-wrap th:nth-child(5),.attendance-table-wrap td:nth-child(5){width:11%}
+    .attendance-table-wrap th:nth-child(6),.attendance-table-wrap td:nth-child(6){width:13%}
+    .attendance-table-wrap th:nth-child(7),.attendance-table-wrap td:nth-child(7){width:12%}
+    .attendance-table-wrap th:nth-child(8),.attendance-table-wrap td:nth-child(8){width:20%}
+    .attendance-table-wrap td.attendance-ltr{direction:ltr;text-align:left;unicode-bidi:isolate;white-space:nowrap;font-variant-numeric:tabular-nums}
+    .attendance-table-wrap td.attendance-ltr bdi{direction:ltr;unicode-bidi:isolate;display:inline-block}
+    .attendance-table-wrap td:nth-child(6){overflow-wrap:anywhere}
+    .attendance-table-wrap td:nth-child(8) .text-button{white-space:normal;text-align:right}
+    .workflow-request-form{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 16px;align-items:start}
+    .workflow-request-form h3,.workflow-request-form .workflow-copy,.workflow-request-form .workflow-note-row,.workflow-request-form .workflow-actions{grid-column:1/-1}
+    .workflow-request-form .workflow-copy{margin:0 0 12px}
+    .workflow-request-form .form-row{margin:0 0 12px}
+    .workflow-request-form .form-row label{display:block;margin-bottom:4px;font-weight:600}
+    .workflow-request-form select,.workflow-request-form input,.workflow-request-form textarea{display:block;width:100%;min-height:42px;padding:8px 10px;border:1px solid #d8d4cf;border-radius:3px;background:#fff;color:var(--ink)}
+    .workflow-request-form textarea{min-height:86px;resize:vertical}
+    .workflow-request-form input[type="date"],.ack-date-control{direction:ltr;text-align:left;unicode-bidi:isolate;font-variant-numeric:tabular-nums;color-scheme:light}
+    .workflow-request-form .workflow-actions{margin-top:2px}
+    .workflow-request-form .workflow-actions .btn{min-width:min(100%,220px)}
+    #ack-list{display:grid;gap:10px;margin-top:10px;min-width:0}
+    .acknowledgment-card{display:grid;gap:9px;min-width:0;overflow-wrap:anywhere}
+    .acknowledgment-card h3{margin:0;font-size:16px;line-height:1.35}
+    .ack-document{direction:ltr;text-align:left;unicode-bidi:isolate;white-space:pre-wrap;overflow-wrap:anywhere;word-break:normal;font:inherit;line-height:1.55;margin:0;padding:12px;background:#faf9f7;border:1px solid var(--line);max-height:420px;overflow:auto}
+    .ack-version{margin:0;font-size:12px;color:var(--muted);direction:rtl;text-align:right;overflow-wrap:anywhere}
+    .ack-version bdi{direction:ltr;unicode-bidi:isolate;display:inline-block;font-variant-numeric:tabular-nums}
+    .ack-date-field{display:grid;gap:5px;max-width:340px;font-weight:600}
+    .ack-date-control{width:100%;min-width:0;min-height:42px;padding:8px 10px;border:1px solid #d8d4cf;border-radius:3px;background:#fff}
+    .ack-save{justify-self:start;max-width:100%;white-space:normal}
+    .ack-evidence,.decision-history-item{margin:0;padding:11px 12px;border:1px solid var(--line);background:var(--soft);line-height:1.45;overflow-wrap:anywhere}
+    .ack-section{margin-top:18px;min-width:0}
+    .ack-section>h3{font-size:15px;margin:0 0 8px}
+    .ack-section:has(#decision-history:empty){display:none}
+    #decision-history{display:grid;gap:8px;margin-top:10px;min-width:0}
+    #ack-list:empty,#decision-history:empty{display:none}
+    #panel-acknowledgments .request-history-card form{display:grid;gap:7px}
+    #panel-acknowledgments .request-history-card form label{font-weight:600}
+    #panel-acknowledgments .request-history-card form button{justify-self:start}
+    @media(max-width:760px){.workflow-request-form{grid-template-columns:minmax(0,1fr);gap:0}.workflow-request-form h3,.workflow-request-form .workflow-copy,.workflow-request-form .workflow-note-row,.workflow-request-form .workflow-actions{grid-column:1}.workflow-request-form .workflow-actions .btn{width:100%}.ack-date-field{max-width:100%}.ack-save{width:100%}#panel-acknowledgments .request-history-card form button{width:100%}.attendance-table-wrap table{min-width:860px}}
+    .logout-icon,.profile-settings,.account-settings-close{width:44px;height:44px;min-width:44px;min-height:44px;display:grid;place-items:center;border:1px solid #e3c9c4;border-radius:50%;background:#fff;color:var(--brand);padding:0}
+    .logout-icon svg,.profile-settings svg,.account-settings-close svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+    .logout-icon:hover:not(:disabled),.profile-settings:hover:not(:disabled),.account-settings-close:hover:not(:disabled){background:#f7efed;border-color:#bd8a82}
+    .logout-icon:focus-visible,.profile-settings:focus-visible,.account-settings-close:focus-visible,#settings-devices:focus-visible{outline:2px solid #fff;outline-offset:2px;box-shadow:0 0 0 4px var(--brand)}
+    .logout-icon:disabled{opacity:.6;cursor:wait}
+    .profile-strip{display:grid;grid-template-columns:minmax(0,1fr);gap:9px;padding:13px 16px}
+    .profile-heading{display:flex;align-items:center;justify-content:space-between;gap:14px;min-width:0}
+    .profile-copy{min-width:0}
+    .profile-copy h2{overflow-wrap:anywhere}
+    .profile-settings{flex:0 0 auto;border-color:#ffffff99;background:#ffffff12;color:#fff}
+    .profile-settings:hover:not(:disabled){background:#ffffff24;border-color:#fff}
+    .profile-settings:focus-visible{outline-color:var(--brand);box-shadow:0 0 0 3px #fff}
+    .profile-date{display:block;font-size:12px;color:#f4dfdc;white-space:normal}
+    .profile-meta{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0;min-width:0}
+    .meta-item{min-width:0;padding:2px 13px;border-right:1px solid #ffffff4d}
+    .meta-item:first-child{padding-right:0}
+    .meta-item:last-child{padding-left:0}
+    .meta-item small{font-size:11px}
+    .meta-item strong{display:block;overflow-wrap:anywhere;line-height:1.35}
+    .account-settings-dialog{position:fixed;z-index:120;inset:0;background:#211b18a8;display:grid;place-items:center;padding:16px}
+    .account-settings-card{width:min(100%,680px);max-height:92dvh;overflow:auto;background:var(--paper);padding:19px;border-top:3px solid var(--brand);box-shadow:var(--shadow)}
+    .account-settings-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px}
+    .account-settings-header h2{margin:0;font-size:19px;line-height:1.3}
+    .account-settings-header p{margin:3px 0 0;color:var(--muted);font-size:13px}
+    .account-settings-close{flex:0 0 auto}
+    .settings-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+    .settings-field{min-width:0;padding:10px 11px;background:#fff;border:1px solid var(--line);overflow-wrap:anywhere}
+    .settings-field dt{margin:0 0 3px;color:var(--muted);font-size:12px}
+    .settings-field dd{margin:0;font-size:14px;font-weight:600;line-height:1.4}
+    .settings-field dd[dir="ltr"]{text-align:left;unicode-bidi:isolate;font-variant-numeric:tabular-nums}
+    .account-security{margin-top:14px;padding:13px;background:var(--soft);border-right:2px solid var(--brand)}
+    .account-security h3{margin:0 0 4px;font-size:15px}
+    .account-security p{margin:0 0 10px;color:var(--muted);font-size:13px;line-height:1.5}
+    .account-security .btn{min-height:44px}
+    .settings-message{padding:13px;background:#fff;border:1px solid var(--line);line-height:1.5}
+    .settings-message.error{border-color:#e6c8c4}
+    @media(max-width:760px){.profile-strip{padding:11px;gap:7px}.profile-heading{align-items:flex-start}.profile-meta{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 0}.profile-meta .meta-item{padding:2px 8px;border:0;border-right:1px solid #ffffff4d}.profile-meta .meta-item:nth-child(odd){padding-right:0}.profile-meta .meta-item:last-child{grid-column:1/-1;padding-left:0}.account-settings-card{padding:15px}.settings-fields{gap:6px}.settings-field{padding:9px}.account-settings-header h2{font-size:17px}}
+    @media(max-width:390px){.settings-fields{grid-template-columns:minmax(0,1fr)}.settings-field{display:grid;grid-template-columns:42% minmax(0,1fr);gap:8px;align-items:start}.settings-field dt{margin:0}.account-security .btn{width:100%}.logout-icon,.profile-settings,.account-settings-close{width:44px;height:44px}}
   </style>
 </head>
 <body>
@@ -35,7 +117,7 @@
         <img src="/__maintenance/logo.png" alt="تيك — TEAK" width="782" height="511">
         <span class="brand-rule" aria-hidden="true"></span><span>بوابة الموظفين</span>
       </a>
-      <div class="mast-right"><span class="status-dot" aria-hidden="true"></span><span>الخدمة الذاتية</span><button class="logout-icon" id="logout" type="button" aria-label="تسجيل الخروج" title="تسجيل الخروج" hidden>↗</button></div>
+      <div class="mast-right"><span class="status-dot" aria-hidden="true"></span><span>الخدمة الذاتية</span><button class="logout-icon" id="logout" type="button" aria-label="تسجيل الخروج" title="تسجيل الخروج" hidden><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M10 17l5-5-5-5M15 12H3"/><path d="M12 3h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-6"/></svg></button></div>
     </header>
     <main class="main">
       <section id="login-view" class="login-wrap" aria-labelledby="login-title">
@@ -76,13 +158,18 @@
       <section id="dashboard-view" class="dashboard" hidden>
         <div id="dashboard-error" class="error" role="alert" hidden></div>
         <section class="profile-strip" aria-label="معلومات الموظف">
-          <div class="profile-copy"><h2 id="employee-name"></h2><p>الملف الشخصي</p></div>
+          <div class="profile-heading">
+            <div class="profile-copy"><h2 id="employee-name"></h2><p>الملف الشخصي</p></div>
+            <button type="button" class="profile-settings" id="open-account-settings" aria-label="إعدادات الحساب ومعلوماتي" title="إعدادات الحساب ومعلوماتي">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z"/><path d="m19.4 15 .1.1a1.8 1.8 0 1 1-2.5 2.5l-.1-.1a1.8 1.8 0 0 0-3 .9v.2a1.8 1.8 0 1 1-3.6 0v-.2a1.8 1.8 0 0 0-3-.9l-.1.1a1.8 1.8 0 1 1-2.5-2.5l.1-.1a1.8 1.8 0 0 0-.9-3H3.7a1.8 1.8 0 1 1 0-3.6h.2a1.8 1.8 0 0 0 .9-3l-.1-.1a1.8 1.8 0 1 1 2.5-2.5l.1.1a1.8 1.8 0 0 0 3-.9v-.2a1.8 1.8 0 1 1 3.6 0v.2a1.8 1.8 0 0 0 3 .9l.1-.1a1.8 1.8 0 1 1 2.5 2.5l-.1.1a1.8 1.8 0 0 0 .9 3h.2a1.8 1.8 0 1 1 0 3.6h-.2a1.8 1.8 0 0 0-.9 3Z"/></svg>
+            </button>
+          </div>
+          <div class="profile-date" id="today-date"></div>
           <div class="profile-meta">
             <div class="meta-item"><small>الرقم الوظيفي</small><strong id="employee-number"></strong></div>
             <div class="meta-item"><small>القسم</small><strong id="employee-department"></strong></div>
             <div class="meta-item"><small>المسمى الوظيفي</small><strong id="employee-position"></strong></div>
           </div>
-          <div class="profile-date" id="today-date"></div>
         </section>
         <nav class="tabs" role="tablist" aria-label="خدمات الموظف">
           <button class="tab" id="tab-attendance" role="tab" aria-selected="true" aria-controls="panel-attendance" type="button">الحضور والانصراف</button>
@@ -92,11 +179,11 @@
           <button class="tab" id="tab-support" role="tab" aria-selected="false" aria-controls="panel-support" type="button">الدعم الفني</button>
         </nav>
         <section class="tab-panel" id="panel-attendance" role="tabpanel" aria-labelledby="tab-attendance">
-          <div class="layout-grid">
+          <div class="layout-grid attendance-layout">
             <article class="panel"><div id="assigned-zone" class="assigned-zone"></div>
-              <label for="attendance-shift">الفترة</label><select id="attendance-shift"><option value="">تحديد تلقائي حسب الوقت الحالي</option></select>
               <div class="attendance-actions"><button class="btn" id="check-in" type="button" data-testid="check-in">تسجيل حضور</button><button class="btn secondary" id="check-out" type="button" data-testid="check-out">تسجيل انصراف</button></div>
               <p class="geo-note">وقت التسجيل حسب توقيت النظام.</p><p class="live-message" id="attendance-message" role="status" aria-live="polite"></p>
+              <details id="location-help" class="hint" hidden><summary>المساعدة في تحديد موقع الجوال</summary><p>فعّل خدمات الموقع في الجوال، واسمح للمتصفح باستخدام «الموقع الدقيق». ثم اسمح لهذه الصفحة باستخدام موقعك. إذا بقيت الدقة ضعيفة، جرّب الاقتراب من نافذة أو مكان مفتوح داخل مقر العمل.</p><a href="/employee-self-service" target="_blank" rel="noopener">فتح البوابة في صفحة مستقلة</a></details>
             </article>
             <article class="panel"><div class="section-head"><h3>سجل الحضور</h3><button type="button" class="text-button" id="refresh-attendance">تحديث</button></div><div id="attendance-history"></div></article>
           </div>
@@ -159,13 +246,17 @@
         </section>
         <section class="tab-panel" id="panel-acknowledgments" role="tabpanel" aria-labelledby="tab-acknowledgments" hidden>
           <div class="section-head"><div><h2>الإقرارات والقرارات</h2><p>راجع نسخة الإجراء قبل الإقرار. الإقرار يخص السجل المعروض فقط، لا مرفقات غير معروضة. هذا إقرار إلكتروني عادي وليس توقيعاً رقمياً مؤهلاً.</p></div></div>
-          <form id="workflow-request-form" class="panel"><h3>طلب إجراء</h3>
-            <label for="workflow-kind">الإجراء</label><select id="workflow-kind"><option value="wf04">عودة من إجازة</option><option value="wf06b">طلب عدم تجديد العقد</option></select>
-            <label for="workflow-date">تاريخ العودة / انتهاء العقد</label><input id="workflow-date" type="date" required>
-            <label for="workflow-note">ملاحظات</label><textarea id="workflow-note" maxlength="2000"></textarea>
-            <button class="btn" type="submit">إنشاء للمراجعة والإقرار</button>
+          <form id="workflow-request-form" class="panel workflow-request-form">
+            <h3>طلب إجراء</h3>
+            <p class="panel-intro workflow-copy">اختر الإجراء وأدخل التاريخ المطلوب. سيُعرض الطلب للمراجعة قبل أي إقرار.</p>
+            <div class="form-row"><label for="workflow-kind">الإجراء</label><select id="workflow-kind"><option value="wf04">عودة من إجازة</option><option value="wf06b">طلب عدم تجديد العقد</option></select></div>
+            <div class="form-row"><label for="workflow-date">تاريخ العودة / انتهاء العقد</label><input id="workflow-date" type="date" required></div>
+            <div class="form-row workflow-note-row"><label for="workflow-note">ملاحظات</label><textarea id="workflow-note" maxlength="2000"></textarea></div>
+            <div class="actions workflow-actions"><button class="btn" type="submit">إنشاء للمراجعة والإقرار</button></div>
           </form>
-          <p id="ack-message" class="live-message" role="status"></p><div id="ack-list"></div><div id="decision-history"></div>
+          <p id="ack-message" class="live-message" role="status"></p>
+          <section class="ack-section" aria-labelledby="ack-section-title"><h3 id="ack-section-title">الإقرارات والمستندات</h3><div id="ack-list"></div></section>
+          <section class="ack-section" aria-labelledby="decision-section-title"><h3 id="decision-section-title">آخر تحديثات الطلبات</h3><div id="decision-history"></div></section>
         </section>
         <section class="tab-panel" id="panel-support" role="tabpanel" aria-labelledby="tab-support" hidden>
           <div class="section-head"><div><h2>الدعم الفني</h2><p>نحن هنا لمساعدتك.</p></div></div>
@@ -178,17 +269,72 @@
             <p id="correction-message" class="live-message" role="status" aria-live="polite"></p><div class="actions"><button class="btn" type="submit">إرسال للمراجعة</button><button class="btn secondary" type="button" id="close-correction">إلغاء</button></div>
           </form>
         </section>
+        <section class="account-settings-dialog" id="account-settings-dialog" hidden role="dialog" aria-modal="true" aria-labelledby="account-settings-title" tabindex="-1">
+          <div class="account-settings-card">
+            <header class="account-settings-header">
+              <div><h2 id="account-settings-title">إعدادات الحساب ومعلوماتي</h2><p>معلومات وظيفية وبيانات التواصل المسجلة.</p></div>
+              <button type="button" class="account-settings-close" id="close-account-settings" aria-label="إغلاق إعدادات الحساب" title="إغلاق"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+            </header>
+            <div id="account-settings-content" aria-live="polite"></div>
+            <div class="account-security">
+              <h3>أمان الحساب</h3>
+              <p>تدخل إلى بوابة الموظف برمز التحقق على جوالك، ولا توجد كلمة مرور لهذا الحساب.</p>
+              <button type="button" class="btn secondary" id="settings-devices">إدارة أجهزتي المسجلة</button>
+            </div>
+          </div>
+        </section>
       </section>
     </main>
     <footer class="footer"><span>تيك · لكل بيت، تفاصيله.</span><a href="/">العودة إلى الصفحة الرئيسية</a></footer>
   </div>
+  <script id="employee-location-helper">
+    (function(root){
+      root.TeakLocation={getAccuratePosition:function(options={}){
+        const geo=options.geolocation||navigator.geolocation;
+        const limit=options.maxAccuracy||50,timeout=options.timeoutMs||35000;
+        return new Promise((resolve,reject)=>{
+          if(!geo||typeof geo.watchPosition!=="function"){reject(new Error("خدمة تحديد الموقع غير متاحة في هذا المتصفح. افتح البوابة بمتصفح الجوال."));return;}
+          let watchId=null,finished=false,best=null,sawInvalidTime=false;
+          const finish=(error,position)=>{
+            if(finished)return;finished=true;clearTimeout(timer);
+            if(watchId!==null)geo.clearWatch(watchId);
+            if(error)reject(error);else resolve(position);
+          };
+          const timer=setTimeout(()=>{
+            const text=best
+              ?`دقة موقع الجوال الحالية نحو ${Math.ceil(best.coords.accuracy)} متر، والمطلوب ${limit} متر أو أقل. اسمح باستخدام «الموقع الدقيق» ثم أعد المحاولة من مكان أوضح داخل مقر العمل.`
+              :sawInvalidTime?"وقت قراءة الموقع غير صحيح. فعّل ضبط وقت الجوال تلقائيًا ثم أعد المحاولة."
+              :"لم يتمكن الجوال من تحديد موقعك خلال المهلة. تحقق من خدمات الموقع وإذن المتصفح ثم أعد المحاولة.";
+            finish(new Error(text));
+          },timeout);
+          try{
+            watchId=geo.watchPosition(position=>{
+              if(finished)return;
+              const c=position.coords||{},age=Date.now()-position.timestamp;
+              if(!Number.isFinite(position.timestamp)||age>90000||age< -10000){sawInvalidTime=true;return;}
+              if(!Number.isFinite(c.latitude)||Math.abs(c.latitude)>90||!Number.isFinite(c.longitude)||Math.abs(c.longitude)>180||!Number.isFinite(c.accuracy)||c.accuracy<=0)return;
+              if(!best||c.accuracy<best.coords.accuracy){
+                best=position;
+                if(options.onProgress)options.onProgress(c.accuracy);
+              }
+              if(c.accuracy<=limit)finish(null,position);
+            },error=>{
+              if(error.code===1)finish(new Error("لم يُسمح للصفحة باستخدام موقعك. اسمح للمتصفح ولهذا الموقع باستخدام «الموقع الدقيق» ثم أعد المحاولة. إذا كنت داخل معاينة، افتح البوابة في صفحة مستقلة."));
+              // A temporarily unavailable fix may recover; keep waiting until the overall deadline.
+            },{enableHighAccuracy:true,maximumAge:0,timeout});
+            if(finished&&watchId!==null)geo.clearWatch(watchId);
+          }catch(error){finish(new Error("تعذر بدء تحديد الموقع. افتح البوابة في متصفح الجوال واسمح باستخدام موقعك."));}
+        });
+      }};
+    })(window);
+  </script>
   <script>
     (function(){
       "use strict";
       const API="/api/employee-portal";
       const $=id=>document.getElementById(id);
       const loginView=$("login-view"),loadingView=$("loading-view"),dashboard=$("dashboard-view");
-      let challengeId=null, resendAt=0, resendTimer=null, summary=null, sessionId=null, developmentOtp=false;
+      let challengeId=null, resendAt=0, resendTimer=null, summary=null, sessionId=null, developmentOtp=false, authEpoch=0, logoutPending=false, settingsReturnFocus=null;
       let leaveAttachmentId=null, leaveAttachmentFile=null, attendanceReport=null, correctionDraft=null;
       const correctionDrafts=new Map();
       const clarificationFeedback=new Map();
@@ -197,24 +343,27 @@
       function message(el,text,kind){el.textContent=text||"";el.className=kind||"live-message";show(el,!!text)}
       function setLoading(loading){$("send-otp").disabled=loading;$("verify-otp").disabled=loading;$("resend-otp").disabled=loading||Date.now()<resendAt}
       async function request(path,options){
+        const requestEpoch=authEpoch;
         const opts=options||{};
         const headers=Object.assign({"X-Portal-Request":"1"},opts.body?{"Content-Type":"application/json"}:{},opts.headers||{});
         let response;
         try{response=await fetch(API+path,{method:opts.method||"GET",credentials:"same-origin",headers,body:opts.body?JSON.stringify(opts.body):undefined});}
-        catch(error){throw new Error("تعذر الاتصال بالخدمة. تحقق من اتصالك ثم حاول مجددًا.");}
+        catch(error){if(requestEpoch!==authEpoch){const stale=new Error("تم تجاهل استجابة جلسة منتهية.");stale.stale=true;throw stale}throw new Error("تعذر الاتصال بالخدمة. تحقق من اتصالك ثم حاول مجددًا.");}
         let data={};
         try{data=await response.json();}catch(error){data={};}
-        if(response.status===401&&!path.startsWith("/otp/")){clearPrivate();showLogin();throw new Error("انتهت جلستك. أدخل رقم جوالك للمتابعة.");}
+        if(requestEpoch!==authEpoch){const stale=new Error("تم تجاهل استجابة جلسة منتهية.");stale.stale=true;throw stale;}
+        if(response.status===401&&!path.startsWith("/otp/")){authEpoch++;clearPrivate();showLogin();const ended=new Error("انتهت جلستك. أدخل رقم جوالك للمتابعة.");ended.status=401;throw ended;}
         if(!response.ok){
           if(response.status===429&&path.startsWith("/otp/")){
             const retry=Number(response.headers.get("Retry-After"))||900;
             resendAt=Date.now()+Math.max(1,retry)*1000;startResendTimer();
           }
-          throw new Error(typeof data.message==="string"?data.message:"تعذر إكمال الطلب. حاول مرة أخرى.");
+          const failure=new Error(typeof data.message==="string"?data.message:"تعذر إكمال الطلب. حاول مرة أخرى.");failure.status=response.status;throw failure;
         }
         return data;
       }
       async function uploadMedical(file,fields){
+        const uploadEpoch=authEpoch;
         if(!file)throw new Error("اختر المرفق الطبي أولاً.");
         if(file.size>5*1024*1024)throw new Error("حجم الملف يتجاوز 5 ميغابايت.");
         const allowed=/\.(pdf|png|jpe?g)$/i.test(file.name)&&["application/pdf","image/png","image/jpeg"].includes(file.type);
@@ -223,10 +372,11 @@
         Object.entries(fields).forEach(([key,value])=>formData.append(key,String(value)));
         let response;
         try{response=await fetch(API+"/medical-documents",{method:"POST",credentials:"same-origin",headers:{"X-Portal-Request":"1"},body:formData});}
-        catch(error){throw new Error("تعذر الاتصال بالخدمة. تحقق من اتصالك ثم حاول مجددًا.");}
+        catch(error){if(uploadEpoch!==authEpoch){const stale=new Error("تم تجاهل استجابة جلسة منتهية.");stale.stale=true;throw stale}throw new Error("تعذر الاتصال بالخدمة. تحقق من اتصالك ثم حاول مجددًا.");}
         let data={};try{data=await response.json();}catch(error){data={};}
-        if(response.status===401){clearPrivate();showLogin();throw new Error("انتهت جلستك. أدخل رقم جوالك للمتابعة.");}
-        if(!response.ok)throw new Error(typeof data.message==="string"?data.message:"تعذر رفع المرفق. حاول مرة أخرى.");
+        if(uploadEpoch!==authEpoch){const stale=new Error("تم تجاهل استجابة جلسة منتهية.");stale.stale=true;throw stale}
+        if(response.status===401){authEpoch++;clearPrivate();showLogin();const ended=new Error("انتهت جلستك. أدخل رقم جوالك للمتابعة.");ended.status=401;throw ended}
+        if(!response.ok){const failure=new Error(typeof data.message==="string"?data.message:"تعذر رفع المرفق. حاول مرة أخرى.");failure.status=response.status;throw failure}
         if(!Number.isInteger(Number(data.id)))throw new Error("تم الرفع لكن تعذر تأكيد رقم المرفق. أعد المحاولة.");
         return Number(data.id);
       }
@@ -242,14 +392,69 @@
       }
       function clearPrivate(){
         summary=null;sessionId=null;attendanceReport=null;correctionDraft=null;correctionDrafts.clear();dashboard.querySelectorAll("[id^='employee-'],#attendance-history,#leave-balance,#leave-history,#permission-history,#session-list").forEach(el=>el.textContent="");
+        challengeId=null;if(resendTimer){clearInterval(resendTimer);resendTimer=null;}$("login-phone").value="";$("otp-code").value="";$("assigned-zone").textContent="";$("today-date").textContent="";
+        dashboard.querySelectorAll("form").forEach(form=>form.reset());
         ["attendance-message","leave-message","permission-message","session-message","correction-message"].forEach(id=>message($(id),""));
         leaveAttachmentId=null;leaveAttachmentFile=null;
         $("leave-medical-file").value="";$("leave-medical-file").required=false;show($("sick-attachment-row"),false);
         show($("correction-dialog"),false);show($("panel-permissions"),false);
+        $("account-settings-content").replaceChildren();$("account-settings-content").setAttribute("aria-busy","false");closeAccountSettings(false);
+        ["dashboard-error","ack-message"].forEach(id=>{message($(id),"");});
         clarificationFeedback.clear();
         ["attendance-history","leave-history","permission-history","leave-request-history","permission-request-history","session-list","ack-list","decision-history"].forEach(id=>$(id).replaceChildren());
       }
-      function errorText(target,error){message(target,error.message||"حدث خطأ غير متوقع.","error");}
+      function errorText(target,error){if(error?.stale)return;message(target,error.message||"حدث خطأ غير متوقع.","error");}
+      function closeAccountSettings(returnFocus){
+        show($("account-settings-dialog"),false);
+        const focusTarget=settingsReturnFocus;settingsReturnFocus=null;
+        if(returnFocus!==false&&focusTarget?.isConnected&&!dashboard.hidden&&loginView.hidden)focusTarget.focus();
+      }
+      function settingsField(list,label,value,dir){
+        const item=document.createElement("div");item.className="settings-field";
+        const term=document.createElement("dt");term.textContent=label;
+        const detail=document.createElement("dd");detail.textContent=value==null||value===""?"—":String(value);
+        if(dir)detail.dir=dir;
+        item.append(term,detail);list.append(item);
+      }
+      function renderAccountProfile(data){
+        const employee=data?.employee;if(!employee)throw new Error("تعذر قراءة معلومات الحساب.");
+        const host=$("account-settings-content"),list=document.createElement("dl");list.className="settings-fields";
+        const contractTypes={fixed_term:"محدد المدة",fixed:"محدد المدة",open:"غير محدد المدة",training:"تدريب",permanent:"دائم",unlimited:"غير محدد المدة",temporary:"مؤقت",seasonal:"موسمي",part_time:"دوام جزئي",full_time:"دوام كامل"};
+        const statuses={active:"على رأس العمل",employed:"على رأس العمل",inactive:"غير نشط",terminated:"منتهي الخدمة",resigned:"مستقيل",suspended:"موقوف",on_leave:"في إجازة",probation:"فترة تجربة"};
+        const zones=Array.isArray(summary?.assignedZones)?summary.assignedZones:[];
+        const assignedZone=zones.find(zone=>String(zone.id)===String(employee.attendanceZoneId));
+        settingsField(list,"الاسم",employee.fullNameAr||employee.fullNameEn);
+        if(employee.fullNameEn)settingsField(list,"الاسم بالإنجليزية",employee.fullNameEn);
+        settingsField(list,"الرقم الوظيفي",employee.employeeNumber,"ltr");
+        settingsField(list,"القسم",employee.departmentNameAr||employee.department);
+        settingsField(list,"المسمى الوظيفي",employee.position);
+        settingsField(list,"المدير المباشر",employee.managerName);
+        settingsField(list,"رقم الجوال",employee.phone,"ltr");
+        settingsField(list,"البريد الإلكتروني",employee.email,"ltr");
+        settingsField(list,"نوع العقد",contractTypes[String(employee.contractType||"").toLowerCase()]||employee.contractType);
+        settingsField(list,"تاريخ بداية العقد",employee.contractStart?dateText(employee.contractStart,false):"—");
+        settingsField(list,"تاريخ نهاية العقد",employee.contractEnd?dateText(employee.contractEnd,false):"—");
+        settingsField(list,"حالة الموظف",statuses[String(employee.status||"").toLowerCase()]||employee.status);
+        settingsField(list,"حالة الدوام",employee.attendanceEnabled===true?"مفعّل":employee.attendanceEnabled===false?"غير مفعّل":"—");
+        settingsField(list,"موقع البصمة",assignedZone?.nameAr||"غير محدد");
+        host.replaceChildren(list);
+      }
+      async function loadAccountProfile(){
+        if(!sessionId||logoutPending)return;
+        const requestEpoch=authEpoch,host=$("account-settings-content");
+        host.setAttribute("aria-busy","true");host.replaceChildren();
+        const loading=document.createElement("div");loading.className="loading-box";loading.setAttribute("role","status");loading.textContent="جارٍ تحميل معلومات الحساب…";host.append(loading);
+        try{
+          const data=await request("/profile");
+          if(requestEpoch!==authEpoch||!sessionId)return;
+          renderAccountProfile(data);
+        }catch(error){
+          if(requestEpoch!==authEpoch||!sessionId)return;
+          host.replaceChildren();
+          const box=document.createElement("div");box.className="settings-message error";box.setAttribute("role","alert");box.textContent=error.message||"تعذر تحميل معلومات الحساب.";
+          const retry=document.createElement("button");retry.type="button";retry.className="btn secondary";retry.textContent="إعادة المحاولة";retry.addEventListener("click",loadAccountProfile);box.append(" ",retry);host.append(box);
+        }finally{if(requestEpoch===authEpoch)host.setAttribute("aria-busy","false");}
+      }
       function statusLabel(status){
         const labels={pending:"قيد المراجعة",manager_approved:"وافق المدير — بانتظار الموارد البشرية",clarification_requested:"مطلوب توضيح",auto_approved:"اعتماد تلقائي تاريخي",approved:"مقبول",rejected:"مرفوض",cancelled:"ملغي",accepted:"مقبول"};
         return labels[String(status||"").toLowerCase()]||status||"—";
@@ -263,6 +468,18 @@
         if(!value)return "—";
         const date=new Date(value);if(Number.isNaN(date.getTime()))return String(value);
         return new Intl.DateTimeFormat("ar-SA",withTime?{dateStyle:"medium",timeStyle:"short",timeZone:"Asia/Riyadh"}:{dateStyle:"medium",timeZone:"Asia/Riyadh"}).format(date);
+      }
+      function attendanceDateCompact(value){
+        if(!value)return "—";
+        const date=new Date(`${String(value).slice(0,10)}T12:00:00+03:00`);
+        if(Number.isNaN(date.getTime()))return String(value);
+        return new Intl.DateTimeFormat("en-GB",{day:"2-digit",month:"2-digit",year:"numeric",numberingSystem:"latn",timeZone:"Asia/Riyadh"}).format(date);
+      }
+      function attendanceTimeCompact(value){
+        if(!value)return "—";
+        const date=new Date(value);
+        if(Number.isNaN(date.getTime()))return String(value);
+        return new Intl.DateTimeFormat("en-GB",{hour:"2-digit",minute:"2-digit",hourCycle:"h23",numberingSystem:"latn",timeZone:"Asia/Riyadh"}).format(date);
       }
       function cell(text){const td=document.createElement("td");td.textContent=text==null||text===""?"—":String(text);return td}
       function renderTable(container,headers,rows,emptyTitle,emptyText,rowIds){
@@ -284,7 +501,7 @@
         const header=["اليوم","التاريخ","الفترة","الحضور الفعلي","الانصراف الفعلي","الحالة","دقائق التقصير","معالجة التقصير"];
         const tableWrap=document.createElement("div");tableWrap.className="table-wrap attendance-table-wrap";const table=document.createElement("table");
         const thead=document.createElement("thead"),trh=document.createElement("tr");header.forEach(x=>{const th=document.createElement("th");th.textContent=x;trh.append(th)});thead.append(trh);table.append(thead);
-        const tbody=document.createElement("tbody"),cards=document.createElement("div");cards.className="attendance-cards";
+        const tbody=document.createElement("tbody"),cards=document.createElement("div"),desktopRows=[];cards.className="attendance-cards";
         rows.forEach(row=>{
           const correction=correctionByKey.get(`${row.day}|${row.shiftId}`);
           const lateKnown=row.late===true||row.late===false;
@@ -293,7 +510,11 @@
           const minutes=correction?.status==="approved"||row.excused?0:rawMinutes;
           const minutesText=minutes===null?"غير متاح":String(minutes);
           const values=[new Intl.DateTimeFormat("ar-SA",{weekday:"long"}).format(new Date(`${row.day}T12:00:00+03:00`)),dateText(row.day),row.shiftLabel||row.shiftId||"—",row.checkIn?dateText(row.checkIn,true):"—",row.checkOut?dateText(row.checkOut,true):"—",reportStatus(row.status),minutesText];
-          const tr=document.createElement("tr");values.forEach(v=>tr.append(cell(v)));
+          const desktopValues=[values[0],attendanceDateCompact(row.day),values[2],row.checkIn?attendanceTimeCompact(row.checkIn):"—",row.checkOut?attendanceTimeCompact(row.checkOut):"—",values[5],minutesText];
+          const tr=document.createElement("tr");desktopValues.forEach((v,index)=>{
+            if([1,3,4].includes(index)){const td=document.createElement("td");td.className="attendance-ltr";const isolated=document.createElement("bdi");isolated.dir="ltr";isolated.textContent=v;td.append(isolated);tr.append(td)}
+            else tr.append(cell(v));
+          });
           const actionCell=document.createElement("td");
           const requiresProcessing=minutes>0||["absent","missing_checkin","missing_checkout","out_of_zone"].includes(row.status)||row.outOfZone===true;
           if(requiresProcessing&&correction?.status!=="pending"&&correction?.status!=="approved"){
@@ -301,7 +522,7 @@
             action.onclick=()=>openCorrection(row,correction);actionCell.append(action);
           } else if(correction){const pill=document.createElement("span");pill.className="pill "+(correction.status==="approved"?"ok":"wait");pill.textContent=correction.status==="approved"?"تم الاعتماد":correction.status==="pending"?"قيد المراجعة":correction.status==="rejected"?"مرفوض":"—";actionCell.append(pill);if(correction.reviewNote){const note=document.createElement("small");note.textContent=" · "+correction.reviewNote;actionCell.append(note)}}
           else actionCell.textContent="—";
-          tr.append(actionCell);tbody.append(tr);
+          tr.append(actionCell);desktopRows.push({day:row.day,element:tr});
           const card=document.createElement("article");card.className="attendance-mobile-card";const heading=document.createElement("header");const day=document.createElement("span");day.textContent=values[0]+" · "+values[1];const status=document.createElement("span");status.className="pill "+(row.status==="present"?"ok":"");status.textContent=reportStatus(row.status);heading.append(day,status);
           const dl=document.createElement("dl");[["الفترة",values[2]],["الحضور الفعلي",values[3]],["الانصراف الفعلي",values[4]],["دقائق التقصير",minutesText]].forEach(([label,value])=>{const wrap=document.createElement("div"),dt=document.createElement("dt"),dd=document.createElement("dd");dt.textContent=label;dd.textContent=value;wrap.append(dt,dd);dl.append(wrap)});
           card.append(heading,dl);
@@ -309,6 +530,7 @@
           else if(correction){const note=document.createElement("p");note.className="hint";note.textContent=(correction.status==="approved"?"تم اعتماد معالجة التقصير":correction.status==="pending"?"طلبك قيد المراجعة":correction.status==="rejected"?"رُفض الطلب":"")+(correction.reviewNote?" · "+correction.reviewNote:"");card.append(note)}
           cards.append(card);
         });
+        desktopRows.sort((a,b)=>b.day.localeCompare(a.day)).forEach(item=>tbody.append(item.element));
         table.append(tbody);tableWrap.append(table);host.append(tableWrap,cards);
       }
       function openCorrection(row,existing){
@@ -400,12 +622,9 @@
           if(item.current){const current=document.createElement("span");current.className="session-current";current.textContent="هذا الجهاز";const revoke=document.createElement("button");revoke.type="button";revoke.textContent="إنهاء هذه الجلسة";revoke.addEventListener("click",()=>revokeSession(item.id,false));row.append(info,current,revoke);}else{const revoke=document.createElement("button");revoke.type="button";revoke.textContent="إنهاء الجلسة";revoke.addEventListener("click",()=>revokeSession(item.id,false));row.append(info,revoke);}list.append(row);
         });
       }
-      function renderDashboard(data){
-        const shiftSelect=$("attendance-shift"),selectedShift=shiftSelect.value;shiftSelect.replaceChildren();
-        const auto=document.createElement("option");auto.value="";auto.textContent="تحديد تلقائي حسب الوقت الحالي";shiftSelect.append(auto);
-        for(const shift of data.shifts||[]){const option=document.createElement("option");option.value=shift.id;option.textContent=`${shift.label} · ${shift.start} — ${shift.end} · سماح ${shift.graceMinutes} دقيقة`;shiftSelect.append(option);}
-        if(Array.from(shiftSelect.options).some(o=>o.value===selectedShift))shiftSelect.value=selectedShift;
-        loadAcknowledgments();
+      function renderDashboard(data,renderEpoch){
+        if(renderEpoch!==authEpoch||!sessionId||logoutPending)return;
+        loadAcknowledgments(renderEpoch);
         message($("dashboard-error"),"");
         const activeTab=document.querySelector(".tab[aria-selected='true']")?.id.slice(4)||"attendance";
         summary=data;const employee=data.employee||{};
@@ -413,65 +632,82 @@
         $("employee-department").textContent=employee.departmentNameAr||employee.department||"—";$("employee-position").textContent=employee.position||"—";
         $("today-date").textContent=new Intl.DateTimeFormat("ar-SA",{weekday:"long",day:"numeric",month:"long",year:"numeric"}).format(new Date());
         const zone=(data.assignedZones||[]).find(z=>String(z.id)===String(employee.attendanceZoneId));
-        $("assigned-zone").textContent=zone?`${zone.nameAr} · نطاق ${zone.radiusMeters||50} متر`:"لم يتم تحديد موقع بصمة مخصص";
+        $("assigned-zone").textContent=zone?`${zone.nameAr} · نطاق ${zone.radiusMeters||50} متر`:"موقع البصمة غير محدد. يرجى مراجعة الموارد البشرية.";
+        setAttendanceBusy(false);
         $("logout").hidden=false;
         attendanceReport=data.attendanceReport||{rows:[]};
         renderAttendanceRows(attendanceReport,data.corrections||attendanceReport.corrections||[]);
         renderBalance(data.balance||{});renderLeaveHistory(data.leaves);renderPermissionHistory(data.permissions);
         renderRequestHistory(data.requestHistory,data.leaves,data.permissions);renderSessions(data.sessions);
-        loadMedicalDocuments();
+        loadMedicalDocuments(renderEpoch);
         show(loginView,false);show(loadingView,false);show(dashboard,true);selectTab(activeTab);
       }
-      async function loadMedicalDocuments(){
+      async function loadMedicalDocuments(expectedEpoch=authEpoch){
+        if(expectedEpoch!==authEpoch||!sessionId)return;
         const host=$("employee-medical-documents");host.replaceChildren();
         try{
           const docs=await request("/medical-documents");
+          if(expectedEpoch!==authEpoch||!sessionId)return;
           if(!Array.isArray(docs)||!docs.length){host.textContent="لا توجد مرفقات طبية محفوظة.";return;}
           const title=document.createElement("h3");title.textContent="المرفقات الطبية";host.append(title);
           docs.forEach(item=>{const row=document.createElement("p");row.append(documentLink(item));host.append(row);});
         }catch(error){
-          if(!loginView.hidden)return;
+          if(expectedEpoch!==authEpoch||!sessionId||!loginView.hidden)return;
           host.replaceChildren();const note=document.createElement("p");note.textContent="تعذر تحميل المرفقات الطبية.";
           const retry=document.createElement("button");retry.type="button";retry.className="text-button";retry.textContent="إعادة المحاولة";retry.addEventListener("click",loadMedicalDocuments);
           host.append(note,retry);
         }
       }
       async function loadSummary(){
+        if(!sessionId||logoutPending)return;
+        const expectedEpoch=authEpoch;
         show(loginView,false);show(loadingView,true);
-        try{const data=await request("/summary");renderDashboard(data);}
+        try{const data=await request("/summary");if(expectedEpoch!==authEpoch||!sessionId)return;renderDashboard(data,expectedEpoch);}
         catch(error){
-          if(error.message==="انتهت جلستك. أدخل رقم جوالك للمتابعة."){showLogin();errorText($("login-error"),error);return;}
+          if(expectedEpoch!==authEpoch||error?.stale||!sessionId)return;
+          if(error.status===401)return;
           show(loadingView,false);show(dashboard,true);
           const target=$("dashboard-error");errorText(target,error);
           const retry=document.createElement("button");retry.type="button";retry.className="btn secondary";retry.textContent="إعادة المحاولة";retry.addEventListener("click",loadSummary);target.append(" ",retry);
         }
       }
-      document.addEventListener("visibilitychange",()=>{if(!document.hidden&&sessionId)loadSummary().catch(()=>{});});
-      async function loadAcknowledgments(){
+      document.addEventListener("visibilitychange",()=>{if(!document.hidden&&sessionId&&!logoutPending)loadSummary().catch(()=>{});});
+      async function loadAcknowledgments(expectedEpoch=authEpoch){
+        if(expectedEpoch!==authEpoch||!sessionId)return;
         const box=$("ack-list"),history=$("decision-history");box.replaceChildren();history.replaceChildren();
         try {
           const [data,events]=await Promise.all([request("/acknowledgments"),request("/request-history")]);
+          if(expectedEpoch!==authEpoch||!sessionId)return;
           for(const item of data.pending){
-            const card=document.createElement("article");card.className="panel";
+            const card=document.createElement("article");card.className="panel acknowledgment-card";
             const title=document.createElement("h3");title.textContent=item.document.title;
-            const content=document.createElement("pre");content.style.cssText="white-space:pre-wrap;overflow-wrap:anywhere;font:inherit";
+            const content=document.createElement("pre");content.className="ack-document";
             content.textContent=JSON.stringify(item.document,null,2);
-            const version=document.createElement("p");version.style.overflowWrap="anywhere";version.textContent="بصمة النسخة SHA-256: "+item.version;
+            const version=document.createElement("p");version.className="ack-version";version.append("بصمة النسخة SHA-256: ");
+            const hash=document.createElement("bdi");hash.dir="ltr";hash.textContent=item.version;version.append(hash);
+            const commencementControls=[];
             if(item.document.workflow==="wf03"){
-              const label=document.createElement("label");label.textContent="تاريخ المباشرة الفعلي";
-              const date=document.createElement("input");date.type="date";date.value=item.document.formData.startDate||"";label.append(date);
-              const save=document.createElement("button");save.className="btn secondary";save.textContent="حفظ التاريخ ومراجعة النسخة";
+              const label=document.createElement("label");label.className="ack-date-field";label.textContent="تاريخ المباشرة الفعلي";
+              const date=document.createElement("input");date.className="ack-date-control";date.type="date";date.value=item.document.formData.startDate||"";label.append(date);
+              const save=document.createElement("button");save.type="button";save.className="btn secondary ack-save";save.textContent="حفظ التاريخ ومراجعة النسخة";
               save.onclick=async()=>{try{await request("/acknowledgments/"+item.id+"/commencement",{method:"PATCH",body:{startDate:date.value}});await loadAcknowledgments();}catch(e){errorText($("ack-message"),e);}};
-              card.append(label,save);
+              commencementControls.push(label,save);
             }
             const button=document.createElement("button");button.className="btn";button.textContent="قرأت هذه النسخة وأقر بالاطلاع عليها";
             button.onclick=async()=>{if(!confirm("هل قرأت النسخة المعروضة وتقر بها؟ هذا إقرار إلكتروني عادي."))return;button.disabled=true;
               try{await request("/acknowledgments/"+item.id,{method:"POST",body:{version:item.version,acknowledged:true}});message($("ack-message"),"تم حفظ الإقرار ونسخة المستند.","success");await loadAcknowledgments();}
               catch(e){errorText($("ack-message"),e);}finally{button.disabled=false;}};
-            card.append(title,content,version,button);box.append(card);
+            card.append(title,content,version,...commencementControls,button);box.append(card);
           }
-          if(!data.pending.length){const p=document.createElement("p");p.textContent="لا توجد إقرارات بانتظارك.";box.append(p);}
-          for(const record of data.evidence){const p=document.createElement("p");p.style.overflowWrap="anywhere";p.textContent="إقرار محفوظ #"+record.action_id+" · "+record.acknowledged_at+" · "+record.document_hash;box.append(p);}
+          if(!data.pending.length){const p=document.createElement("p");p.className="ack-evidence";p.textContent="لا توجد إقرارات بانتظارك.";box.append(p);}
+          for(const record of data.evidence){
+            const p=document.createElement("p");p.className="ack-evidence";p.append("إقرار محفوظ #"+record.action_id+" · ");
+            for(const [index,value]of[record.acknowledged_at,record.document_hash].entries()){
+              if(index)p.append(" · ");
+              const isolated=document.createElement("bdi");isolated.dir="ltr";isolated.textContent=value||"—";p.append(isolated);
+            }
+            box.append(p);
+          }
           for(const item of data.clarifications||[]){
             const card=document.createElement("article");card.className="request-history-card";
             const title=document.createElement("p");title.textContent=item.title+" #"+item.id+" · "+item.note;
@@ -487,7 +723,11 @@
             });
             form.append(label,button);card.append(title,form);box.append(card);
           }
-          for(const event of events){const p=document.createElement("p");p.textContent=`${event.kind==="leave"?"إجازة":"استئذان"} #${event.request_id} · ${event.next_status} · ${event.note||""} · ${event.created_at}`;history.append(p);}
+          for(const event of events){
+            const p=document.createElement("p");p.className="decision-history-item";
+            p.append(`${event.kind==="leave"?"إجازة":"استئذان"} #${event.request_id} · ${event.next_status} · ${event.note||""} · `);
+            const timestamp=document.createElement("bdi");timestamp.dir="ltr";timestamp.textContent=event.created_at||"—";p.append(timestamp);history.append(p);
+          }
         }catch(e){errorText($("ack-message"),e);}
       }
       $("workflow-request-form").addEventListener("submit",async event=>{
@@ -498,14 +738,45 @@
         catch(e){errorText($("ack-message"),e);}finally{button.disabled=false;}
       });
       async function checkSession(){
+        if(logoutPending)return;
+        const checkEpoch=++authEpoch;
+        clearPrivate();
         show(loginView,false);show(loadingView,true);
-        try{const data=await request("/me");sessionId=data.sessionId||null;await loadSummary();}
-        catch(error){if(loginView.hidden){showLogin();if(error.message!=="انتهت جلستك. أدخل رقم جوالك للمتابعة.")errorText($("login-error"),error);}}
+        try{
+          const data=await request("/me");
+          if(checkEpoch!==authEpoch)return;
+          sessionId=data.sessionId||null;
+          if(!sessionId)throw new Error("تعذر بدء جلسة الموظف. أعد تسجيل الدخول.");
+          await loadSummary();
+        }catch(error){
+          if(checkEpoch!==authEpoch||error?.stale)return;
+          if(loginView.hidden){showLogin();if(error.status!==401)errorText($("login-error"),error);}
+        }
       }
       function selectTab(name){
         document.querySelectorAll(".tab").forEach(tab=>{const active=tab.id==="tab-"+name;tab.setAttribute("aria-selected",String(active));tab.tabIndex=active?0:-1});
         document.querySelectorAll(".tab-panel").forEach(panel=>show(panel,panel.id==="panel-"+name));
       }
+      $("open-account-settings").addEventListener("click",()=>{
+        if(!sessionId||logoutPending)return;
+        settingsReturnFocus=document.activeElement;show($("account-settings-dialog"),true);
+        $("close-account-settings").focus();loadAccountProfile();
+      });
+      $("close-account-settings").addEventListener("click",()=>closeAccountSettings(true));
+      $("account-settings-dialog").addEventListener("click",event=>{if(event.target===$("account-settings-dialog"))closeAccountSettings(true)});
+      $("account-settings-dialog").addEventListener("keydown",event=>{
+        if(event.key==="Escape"){event.preventDefault();closeAccountSettings(true);return}
+        if(event.key!=="Tab")return;
+        const dialog=$("account-settings-dialog");
+        const focusable=Array.from(dialog.querySelectorAll('button:not([disabled]),a[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])')).filter(node=>!node.hidden&&!node.closest("[hidden]"));
+        if(!focusable.length){event.preventDefault();dialog.focus();return}
+        const first=focusable[0],last=focusable[focusable.length-1];
+        if(event.shiftKey&&(document.activeElement===first||!dialog.contains(document.activeElement))){event.preventDefault();last.focus()}
+        else if(!event.shiftKey&&(document.activeElement===last||!dialog.contains(document.activeElement))){event.preventDefault();first.focus()}
+      });
+      $("settings-devices").addEventListener("click",()=>{
+        closeAccountSettings(false);selectTab("sessions");$("tab-sessions").focus();
+      });
       document.querySelectorAll(".tab").forEach(tab=>tab.addEventListener("click",()=>selectTab(tab.id.slice(4))));
       document.querySelector(".tabs").addEventListener("keydown",event=>{
         if(!["ArrowLeft","ArrowRight","Home","End"].includes(event.key))return;const tabs=Array.from(document.querySelectorAll(".tab"));const current=tabs.indexOf(document.activeElement);let next=event.key==="Home"?0:event.key==="End"?tabs.length-1:(current+(event.key==="ArrowLeft"?1:-1)+tabs.length)%tabs.length;tabs[next].focus();tabs[next].click();
@@ -549,22 +820,38 @@
       $("change-phone").addEventListener("click",()=>{if(resendTimer)clearInterval(resendTimer);challengeId=null;show($("otp-form"),false);show($("phone-form"),true);message($("login-error"),"");$("login-phone").focus();});
       $("login-phone").addEventListener("input",()=>message($("login-error"),""));
       $("otp-code").addEventListener("input",()=>message($("login-error"),""));
+      function setAttendanceBusy(busy){
+        const assigned=(summary?.assignedZones||[]).some(z=>String(z.id)===String(summary?.employee?.attendanceZoneId));
+        const disabled=busy||!assigned||summary?.employee?.attendanceEnabled===false;
+        $("check-in").disabled=disabled;$("check-out").disabled=disabled;
+      }
       async function attendance(type){
         message($("dashboard-error"),"");
-        const status=$("attendance-message");message(status,"جارٍ تحديد الموقع…");
-        if(!navigator.geolocation){errorText(status,new Error("خدمة تحديد الموقع غير متاحة على هذا الجهاز."));return;}
-        $("check-in").disabled=true;$("check-out").disabled=true;
-        navigator.geolocation.getCurrentPosition(async position=>{
-          try{
-            message(status,"جارٍ تسجيل الحركة…");
-            const coords=position.coords;const shiftId=$("attendance-shift").value;const data=await request("/attendance",{method:"POST",body:{type,latitude:coords.latitude,longitude:coords.longitude,accuracy:coords.accuracy,locationTimestamp:position.timestamp,...(shiftId?{shiftId}:{})}});
-            message(status,data.message||"تم تسجيل الحركة بنجاح.","success");await loadSummary();
-          }catch(error){if(loginView.hidden)errorText(status,error);}
-          finally{$("check-in").disabled=false;$("check-out").disabled=false;}
-        },error=>{
-          const text=error.code===1?"لم نتمكن من الوصول إلى موقعك. اسمح باستخدام الموقع ثم حاول مجددًا.":error.code===3?"استغرق تحديد الموقع وقتًا طويلًا. حاول مرة أخرى.":"تعذر تحديد الموقع الحالي. تحقق من إعدادات جهازك.";
-          errorText(status,new Error(text));$("check-in").disabled=false;$("check-out").disabled=false;
-        },{enableHighAccuracy:true,maximumAge:0,timeout:20000});
+        const status=$("attendance-message");show($("location-help"),false);
+        if(!(summary?.assignedZones||[]).some(z=>String(z.id)===String(summary?.employee?.attendanceZoneId))){
+          errorText(status,new Error("موقع البصمة غير محدد. يرجى مراجعة الموارد البشرية."));return;
+        }
+        message(status,"جارٍ تحديد موقع الجوال…");setAttendanceBusy(true);
+        const employeeIdAtStart=summary?.employee?.id,sessionAtStart=sessionId;
+        let position;
+        try{
+          const policy=document.permissionsPolicy||document.featurePolicy;
+          if(policy?.allowsFeature&&!policy.allowsFeature("geolocation"))
+            throw new Error("المتصفح لا يسمح باستخدام الموقع داخل هذه المعاينة. افتح البوابة في صفحة مستقلة واسمح باستخدام موقعك.");
+          position=await window.TeakLocation.getAccuratePosition({onProgress:accuracy=>{
+            if(accuracy>50)message(status,`جارٍ تحسين دقة موقع الجوال… الدقة الحالية نحو ${Math.ceil(accuracy)} متر.`);
+          }});
+        }catch(error){
+          errorText(status,error);show($("location-help"),true);$("location-help").open=true;setAttendanceBusy(false);return;
+        }
+        if(!loginView.hidden||summary?.employee?.id!==employeeIdAtStart||sessionId!==sessionAtStart){setAttendanceBusy(false);return;}
+        try{
+          message(status,"جارٍ تسجيل الحركة…");
+          const c=position.coords;
+          const data=await request("/attendance",{method:"POST",body:{type,latitude:c.latitude,longitude:c.longitude,accuracy:c.accuracy,locationTimestamp:position.timestamp}});
+          message(status,data.message||"تم تسجيل الحركة بنجاح.","success");await loadSummary();
+        }catch(error){if(loginView.hidden)errorText(status,error);}
+        finally{setAttendanceBusy(false);}
       }
       $("check-in").addEventListener("click",()=>attendance("check_in"));$("check-out").addEventListener("click",()=>attendance("check_out"));
       $("leave-type").addEventListener("change",()=>{
@@ -599,12 +886,14 @@
         catch(error){errorText($("leave-message"),error);}finally{button.disabled=false;}
       });
        async function uploadCorrectionAttachment(id,file){
+          const uploadEpoch=authEpoch;
          const form=new FormData();form.append("file",file);
          let response;try{response=await fetch(API+`/attendance/corrections/${encodeURIComponent(id)}/attachment`,{method:"POST",credentials:"same-origin",headers:{"X-Portal-Request":"1"},body:form});}
-         catch(error){throw new Error("تعذر الاتصال بالخدمة. الملف ما زال محفوظًا ويمكن إعادة المحاولة.");}
+          catch(error){if(uploadEpoch!==authEpoch){const stale=new Error("تم تجاهل استجابة جلسة منتهية.");stale.stale=true;throw stale}throw new Error("تعذر الاتصال بالخدمة. الملف ما زال محفوظًا ويمكن إعادة المحاولة.");}
          let data={};try{data=await response.json()}catch(error){}
-         if(response.status===401){clearPrivate();showLogin();throw new Error("انتهت جلستك. أدخل رقم جوالك للمتابعة.")}
-         if(!response.ok)throw new Error(data.message||"تعذر رفع المرفق. أعد المحاولة؛ لن يُعاد إنشاء الطلب.");
+          if(uploadEpoch!==authEpoch){const stale=new Error("تم تجاهل استجابة جلسة منتهية.");stale.stale=true;throw stale}
+          if(response.status===401){authEpoch++;clearPrivate();showLogin();const ended=new Error("انتهت جلستك. أدخل رقم جوالك للمتابعة.");ended.status=401;throw ended}
+          if(!response.ok){const failure=new Error(data.message||"تعذر رفع المرفق. أعد المحاولة؛ لن يُعاد إنشاء الطلب.");failure.status=response.status;throw failure}
        }
        $("correction-form").addEventListener("submit",async event=>{
          event.preventDefault();const form=event.currentTarget;if(!form.reportValidity())return;
@@ -668,10 +957,25 @@
       }
       $("revoke-all").addEventListener("click",()=>revokeSession(null,true));
       $("logout").addEventListener("click",async()=>{
-        const button=$("logout");button.disabled=true;
-        try{await request("/logout",{method:"POST",body:{}});clearPrivate();showLogin();$("login-phone").value="";message($("login-success"),"تم تسجيل الخروج.");}
-        catch(error){errorText($("dashboard-error"),error);}
-        finally{button.disabled=false;}
+        if(logoutPending)return;
+        const button=$("logout"),logoutEpoch=++authEpoch;
+        logoutPending=true;button.disabled=true;button.setAttribute("aria-busy","true");closeAccountSettings(false);
+        try{
+          await request("/logout",{method:"POST",body:{}});
+          if(logoutEpoch!==authEpoch)return;
+          authEpoch++;
+          clearPrivate();showLogin();message($("login-success"),"تم تسجيل الخروج.");
+        }catch(error){
+          if(error.status===401){showLogin();message($("login-success"),"انتهت الجلسة وتم تسجيل الخروج.");return}
+          if(logoutEpoch===authEpoch&&sessionId){
+            logoutPending=false;
+            await loadSummary();
+            if(logoutEpoch===authEpoch&&sessionId)errorText($("dashboard-error"),error);
+            else if(error.status!==401&&!error.stale)errorText($("login-error"),error);
+          }else if(logoutEpoch===authEpoch)errorText(sessionId?$("dashboard-error"):$("login-error"),error);
+        }finally{
+          logoutPending=false;button.disabled=false;button.removeAttribute("aria-busy");
+        }
       });
       async function initialize(){
         // Fail closed if the server's environment configuration cannot be loaded.

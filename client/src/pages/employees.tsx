@@ -1,5 +1,5 @@
-import { useState, useMemo, useRef } from "react";
-import { Link } from "wouter";
+import { useState, useMemo, useRef, useEffect } from "react";
+import { Link, useSearch } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLanguage } from "@/components/language-provider";
 import { useAuth } from "@/hooks/use-auth";
@@ -190,8 +190,6 @@ function FormFields({ data, onChange, users, jobTitlesList }: {
   const { t } = useLanguage();
   const { data: allEmployees = [] } = useQuery<Employee[]>({ queryKey: ["/api/employees"] });
   const { data: departments = [] } = useQuery<{ id: number; code: string; nameAr: string }[]>({ queryKey: ["/api/hr/departments"] });
-  const { data: zones = [] } = useQuery<{ id: number; nameAr: string; radiusMeters?: number }[]>({ queryKey: ["/api/attendance/zones"] });
-  const { data: schedules = [] } = useQuery<any[]>({ queryKey: ["/api/attendance/work-settings"] });
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
       <div className="space-y-1">
@@ -282,21 +280,7 @@ function FormFields({ data, onChange, users, jobTitlesList }: {
         <Input type="email" value={data.email} onChange={e => onChange({ ...data, email: e.target.value })}
           placeholder="employee@example.com" data-testid="input-email" dir="ltr" className="text-start" />
       </div>
-      <div className="space-y-1">
-        <Label>{t("موقع البصمة المخصص", "Assigned attendance zone")}</Label>
-        <Select value={data.attendanceZoneId || "none"} onValueChange={v => onChange({ ...data, attendanceZoneId: v === "none" ? "" : v, attendanceScheduleId: "" })}>
-          <SelectTrigger><SelectValue placeholder="اختر موقع البصمة" /></SelectTrigger><SelectContent>
-            <SelectItem value="none">بدون موقع مخصص</SelectItem>{zones.map(z=><SelectItem key={z.id} value={String(z.id)}>{z.nameAr} · نطاق {z.radiusMeters||50}م</SelectItem>)}
-          </SelectContent>
-        </Select>
-        {data.attendanceZoneId && <div className="mt-2"><Label>خيار جدول الدوام</Label>
-          <Select value={data.attendanceScheduleId || "none"} onValueChange={v=>onChange({...data,attendanceScheduleId:v==="none"?"":v})}>
-            <SelectTrigger><SelectValue placeholder="اختر الجدول" /></SelectTrigger><SelectContent>
-              <SelectItem value="none">تحديد تلقائي</SelectItem>{schedules.filter((s:any)=>s.scopeType==="location"&&String(s.locationZoneId)===data.attendanceZoneId).map((s:any)=><SelectItem key={s.id} value={String(s.id)}>{s.labelAr||s.label||`جدول ${s.id}`}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>}
-      </div>
+      <AttendanceAssignmentFields data={data} onChange={onChange} />
       <div className="space-y-1">
         <Label>{t("موقع السكن / الملاحظة (نص)", "Home location / note (text)")}</Label>
         <Input value={data.fingerScanLocation} onChange={e => onChange({ ...data, fingerScanLocation: e.target.value })}
@@ -365,6 +349,42 @@ function FormFields({ data, onChange, users, jobTitlesList }: {
           </SelectContent>
         </Select>
       </div>
+    </div>
+  );
+}
+
+function AttendanceAssignmentFields({ data, onChange }: {
+  data: EmployeeForm;
+  onChange: (data: EmployeeForm) => void;
+}) {
+  const { data: zones = [] } = useQuery<{ id: number; nameAr: string; radiusMeters?: number }[]>({ queryKey: ["/api/attendance/zones"] });
+  const { data: schedules = [] } = useQuery<any[]>({ queryKey: ["/api/attendance/work-settings"] });
+  return (
+    <div className="space-y-3 rounded-md border p-3 sm:col-span-2">
+      <p className="text-sm font-semibold">تعيين موقع البصمة وجدول الدوام</p>
+      <div className="space-y-1">
+        <Label>موقع البصمة المخصص</Label>
+        <Select value={data.attendanceZoneId || "none"} onValueChange={value => onChange({ ...data, attendanceZoneId: value === "none" ? "" : value, attendanceScheduleId: "" })}>
+          <SelectTrigger className="min-h-11"><SelectValue placeholder="اختر موقع البصمة" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">بدون موقع مخصص</SelectItem>
+            {zones.map(zone => <SelectItem key={zone.id} value={String(zone.id)}>{zone.nameAr} · نطاق {zone.radiusMeters || 50}م</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </div>
+      {data.attendanceZoneId && (
+        <div className="space-y-1">
+          <Label>خيار جدول الدوام</Label>
+          <Select value={data.attendanceScheduleId || "none"} onValueChange={value => onChange({ ...data, attendanceScheduleId: value === "none" ? "" : value })}>
+            <SelectTrigger className="min-h-11"><SelectValue placeholder="اختر الجدول" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">تحديد تلقائي</SelectItem>
+              {schedules.filter((schedule: any) => schedule.scopeType === "location" && String(schedule.locationZoneId) === data.attendanceZoneId)
+                .map((schedule: any) => <SelectItem key={schedule.id} value={String(schedule.id)}>{schedule.labelAr || schedule.label || `جدول ${schedule.id}`}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
     </div>
   );
 }
@@ -1082,7 +1102,7 @@ function AssetsPanel({ employee }: { employee: Employee }) {
   );
 }
 
-function EmployeeDetailDialog({ emp, users, onClose }: { emp: Employee; users: any[]; onClose: () => void }) {
+function EmployeeDetailDialog({ emp, users, onClose, initialTab }: { emp: Employee; users: any[]; onClose: () => void; initialTab?: "attendance" }) {
   const { t } = useLanguage();
   const { user: currentUser } = useAuth();
   const { toast } = useToast();
@@ -1183,18 +1203,19 @@ function EmployeeDetailDialog({ emp, users, onClose }: { emp: Employee; users: a
         </div>
       </div>
 
-      <Tabs defaultValue="info" className="w-full">
-        <TabsList className="w-full mb-4" data-testid="tabs-employee-detail">
-          <TabsTrigger value="info" className="flex-1" data-testid="tab-employee-info">{t("البيانات", "Info")}</TabsTrigger>
-          <TabsTrigger value="assets" className="flex-1" data-testid="tab-employee-assets">
+      <Tabs defaultValue={initialTab === "attendance" ? "attendance" : "info"} className="w-full">
+        <TabsList className="mb-4 flex h-auto w-full flex-wrap gap-1" data-testid="tabs-employee-detail">
+          <TabsTrigger value="info" className="min-h-11 flex-1" data-testid="tab-employee-info">{t("البيانات", "Info")}</TabsTrigger>
+          <TabsTrigger value="attendance" className="min-h-11 flex-1" data-testid="tab-employee-attendance"><MapPin className="me-1 h-4 w-4" />الدوام</TabsTrigger>
+          <TabsTrigger value="assets" className="min-h-11 flex-1" data-testid="tab-employee-assets">
             <Package className="w-3.5 h-3.5 me-1" />{t("العُهد", "Assets")}
           </TabsTrigger>
-          <TabsTrigger value="eosb" className="flex-1" data-testid="tab-employee-eosb">
+          <TabsTrigger value="eosb" className="min-h-11 flex-1" data-testid="tab-employee-eosb">
             <Calculator className="w-3.5 h-3.5 me-1" />{t("نهاية الخدمة", "EOS")}
           </TabsTrigger>
-          <TabsTrigger value="documents" className="flex-1" data-testid="tab-docs">{t("المستندات", "Documents")}</TabsTrigger>
+          <TabsTrigger value="documents" className="min-h-11 flex-1" data-testid="tab-docs">{t("المستندات", "Documents")}</TabsTrigger>
           {canManageAccess && emp.userId && (
-            <TabsTrigger value="access" className="flex-1" data-testid="tab-access">{t("الصلاحيات", "Access")}</TabsTrigger>
+            <TabsTrigger value="access" className="min-h-11 flex-1" data-testid="tab-access">{t("الصلاحيات", "Access")}</TabsTrigger>
           )}
         </TabsList>
 
@@ -1208,6 +1229,15 @@ function EmployeeDetailDialog({ emp, users, onClose }: { emp: Employee; users: a
           <Button className="w-full" onClick={handleUpdate} disabled={!isFormValid || updateMutation.isPending} data-testid="button-save-employee">
             {updateMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin me-2" /> : null}
             {t("حفظ التعديلات", "Save Changes")}
+          </Button>
+        </TabsContent>
+
+        <TabsContent value="attendance" className="space-y-4">
+          <p className="text-sm text-muted-foreground">هذه الحقول تستخدم تعيين الموظف الحالي لموقع البصمة وخيار جدول الدوام.</p>
+          <AttendanceAssignmentFields data={editForm} onChange={setEditForm} />
+          <Button className="min-h-11 w-full" onClick={handleUpdate} disabled={!isFormValid || updateMutation.isPending} data-testid="button-save-employee-attendance">
+            {updateMutation.isPending ? <Loader2 className="me-2 h-4 w-4 animate-spin" /> : null}
+            حفظ تعيينات الدوام
           </Button>
         </TabsContent>
 
@@ -1316,6 +1346,13 @@ export default function EmployeesPage() {
   const [jobTitlesOpen, setJobTitlesOpen] = useState(false);
   const [departmentsOpen, setDepartmentsOpen] = useState(false);
   const [newDepartmentName, setNewDepartmentName] = useState("");
+  const routeSearch = useSearch();
+  const assignmentFocus = new URLSearchParams(routeSearch).get("tab") === "attendance";
+  const employeeListRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (assignmentFocus) employeeListRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [assignmentFocus]);
 
   const { data: employees = [], isLoading } = useQuery<Employee[]>({ queryKey: ["/api/employees"] });
   const { data: users = [] } = useQuery<any[]>({ queryKey: ["/api/users"] });
@@ -1474,31 +1511,7 @@ export default function EmployeesPage() {
       )}
 
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold" data-testid="text-employees-title">{t("الموارد البشرية", "Human Resources")}</h1>
-          <p className="text-muted-foreground text-sm">{t("إدارة شؤون الموظفين والصلاحيات", "Employee & Access Management")}</p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => setJobTitlesOpen(true)} data-testid="button-manage-job-titles">
-            <ClipboardList className="w-4 h-4 me-1" />{t("المسميات الوظيفية", "Job Titles")}
-          </Button>
-          <Link href="/hr/attendance-monitor?tab=zones" className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm hover:bg-muted"><MapPin className="h-4 w-4" />إدارة مواقع البصمة</Link>
-          <Dialog open={createOpen} onOpenChange={open => { setCreateOpen(open); if (!open) setForm(emptyForm); }}>
-            <DialogTrigger asChild>
-              <Button data-testid="button-new-employee">
-                <Plus className="w-4 h-4 me-2" />{t("إضافة موظف", "Add Employee")}
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
-              <DialogHeader><DialogTitle>{t("إضافة موظف جديد", "Add New Employee")}</DialogTitle></DialogHeader>
-              <FormFields data={form} onChange={setForm} users={users} jobTitlesList={jobTitlesList} />
-              <Button className="w-full mt-3" onClick={handleCreate} disabled={!isFormValid(form) || createMutation.isPending} data-testid="button-create-employee">
-                {createMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin me-2" /> : <Plus className="w-4 h-4 me-2" />}
-                {t("إضافة الموظف", "Add Employee")}
-              </Button>
-            </DialogContent>
-          </Dialog>
-        </div>
+        <h1 className="text-xl md:text-2xl font-bold" data-testid="text-employees-title">{t("الموظفون", "Employees")}</h1>
       </div>
 
       <Dialog open={departmentsOpen} onOpenChange={setDepartmentsOpen}>
@@ -1516,25 +1529,6 @@ export default function EmployeesPage() {
         </DialogContent>
       </Dialog>
 
-      <PrehireSection />
-      <div className="flex flex-wrap items-center gap-2">
-        <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
-          <SelectTrigger className="w-full sm:w-64" aria-label={t("القسم", "Department")}><SelectValue /></SelectTrigger>
-          <SelectContent><SelectItem value="all">{t("كل الأقسام", "All departments")} ({employees.length})</SelectItem>
-            {Array.from(new Set(employees.map(e => e.department || ""))).sort().map(d => <SelectItem key={d} value={d || "__none"}>{departments.find(x=>x.code===d)?.nameAr || departmentLabels[d]?.ar || d || t("غير محدد", "Unassigned")} ({employees.filter(e => (e.department || "") === d).length})</SelectItem>)}
-          </SelectContent>
-        </Select>
-        <Button variant="outline" size="sm" onClick={() => setDepartmentsOpen(true)}><Users className="w-4 h-4 me-1" />إدارة الأقسام</Button>
-        <Button variant="outline" disabled={exporting || isLoading} onClick={async () => {
-          setExporting(true);
-          try { await exportEmployeeWorkbook(employees, departmentFilter === "all" ? undefined : departmentFilter === "__none" ? "" : departmentFilter); }
-          catch (e) { toast({ title: t("تعذر تصدير Excel", "Excel export failed"), description: (e as Error).message, variant: "destructive" }); }
-          finally { setExporting(false); }
-        }}>{exporting ? <Loader2 className="w-4 h-4 animate-spin me-2" /> : <Download className="w-4 h-4 me-2" />}{t("Excel — المصنع / القسم", "Excel — master / department")}</Button>
-        <Button variant="outline" onClick={() => setReport({ title: t("تقرير الموظفين", "Employee report"), subtitle: `${t("عدد النتائج", "Results")}: ${filtered.length}`, headings: employeeHeadings, rows: filtered.map(employeeExportRow) })}>{t("طباعة النتائج / PDF", "Print results / PDF")}</Button>
-      </div>
-      <ReportPreview report={report} onClose={() => setReport(null)} />
-
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
           { icon: <Users className="w-7 h-7 text-primary" />, val: activeEmps.length, label: t("موظف نشط", "Active Employees"), tid: "text-total-employees" },
@@ -1543,10 +1537,10 @@ export default function EmployeesPage() {
           { icon: <DollarSign className="w-7 h-7 text-primary" />, val: totalSalary.toLocaleString(), label: t("إجمالي الرواتب ر.س", "Total Salaries SAR"), tid: "text-total-salary" },
         ].map((card, i) => (
           <Card key={i}>
-            <CardContent className="p-4 flex items-center gap-3">
-              {card.icon}
+            <CardContent className="p-2.5 sm:p-4 flex items-center gap-2 sm:gap-3">
+              <span className="[&>svg]:h-5 [&>svg]:w-5 sm:[&>svg]:h-6 sm:[&>svg]:w-6">{card.icon}</span>
               <div>
-                <p className={`text-xl font-bold ${card.cls || ""}`} data-testid={card.tid}>{card.val}</p>
+                <p className={`text-lg sm:text-xl font-bold tabular-nums ${card.cls || ""}`} data-testid={card.tid}>{card.val}</p>
                 <p className="text-xs text-muted-foreground leading-tight">{card.label}</p>
               </div>
             </CardContent>
@@ -1554,12 +1548,49 @@ export default function EmployeesPage() {
         ))}
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-3">
+      <div className="flex flex-wrap items-center gap-2" aria-label="أدوات إدارة الموظفين">
+        <Button variant="outline" size="sm" className="min-h-11" onClick={() => setJobTitlesOpen(true)} data-testid="button-manage-job-titles">
+          <ClipboardList className="w-4 h-4 me-1" />{t("المسميات الوظيفية", "Job Titles")}
+        </Button>
+        <Link href="/attendance-monitor?tab=zones" className="inline-flex min-h-11 items-center gap-2 rounded-md border px-3 py-2 text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" data-testid="link-attendance-zones">
+          <MapPin className="h-4 w-4" />مواقع البصمة
+        </Link>
+        <Dialog open={createOpen} onOpenChange={open => { setCreateOpen(open); if (!open) setForm(emptyForm); }}>
+          <DialogTrigger asChild>
+            <Button className="min-h-11" data-testid="button-new-employee">
+              <Plus className="w-4 h-4 me-2" />{t("إضافة موظف", "Add Employee")}
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader><DialogTitle>{t("إضافة موظف جديد", "Add New Employee")}</DialogTitle></DialogHeader>
+            <FormFields data={form} onChange={setForm} users={users} jobTitlesList={jobTitlesList} />
+            <Button className="w-full mt-3 min-h-11" onClick={handleCreate} disabled={!isFormValid(form) || createMutation.isPending} data-testid="button-create-employee">
+              {createMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin me-2" /> : <Plus className="w-4 h-4 me-2" />}
+              {t("إضافة الموظف", "Add Employee")}
+            </Button>
+          </DialogContent>
+        </Dialog>
+        <PrehireSection />
+      </div>
+
+      {assignmentFocus && (
+        <p className="rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-muted-foreground" role="status">
+          اختر «تعيين الموقع والجدول» من الموظف المطلوب؛ سيتم التعديل من نموذج الموظف المعتاد.
+        </p>
+      )}
+
+      <div className="flex flex-col sm:flex-row gap-2">
         <div className="relative flex-1">
           <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input className="ps-10" placeholder={t("بحث بالاسم أو الرقم أو المسمى أو الجوال...", "Search by name, number, title, phone...")}
+          <Input className="ps-10 min-h-11" placeholder={t("بحث بالاسم أو الرقم أو المسمى أو الجوال...", "Search by name, number, title, phone...")}
             value={search} onChange={e => setSearch(e.target.value)} data-testid="input-search-employees" />
         </div>
+        <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
+          <SelectTrigger className="w-full sm:w-56 min-h-11" aria-label={t("القسم", "Department")}><SelectValue /></SelectTrigger>
+          <SelectContent><SelectItem value="all">{t("كل الأقسام", "All departments")} ({employees.length})</SelectItem>
+            {Array.from(new Set(employees.map(e => e.department || ""))).sort().map(d => <SelectItem key={d} value={d || "__none"}>{departments.find(x=>x.code===d)?.nameAr || departmentLabels[d]?.ar || d || t("غير محدد", "Unassigned")} ({employees.filter(e => (e.department || "") === d).length})</SelectItem>)}
+          </SelectContent>
+        </Select>
         <div className="flex gap-2 flex-wrap">
           {[
             { key: "all", ar: "الكل", en: "All" },
@@ -1567,7 +1598,7 @@ export default function EmployeesPage() {
             { key: "inactive", ar: "غير نشط", en: "Inactive" },
             { key: "terminated", ar: "منتهي", en: "Terminated" },
           ].map(tab => (
-            <Button key={tab.key} size="sm" variant={filter === tab.key ? "default" : "outline"}
+            <Button key={tab.key} size="sm" className="min-h-11" variant={filter === tab.key ? "default" : "outline"}
               onClick={() => setFilter(tab.key)} data-testid={`button-filter-${tab.key}`}>
               {t(tab.ar, tab.en)}
             </Button>
@@ -1575,8 +1606,24 @@ export default function EmployeesPage() {
         </div>
       </div>
 
+      <details className="rounded-lg border bg-card px-3 py-2">
+        <summary className="cursor-pointer min-h-11 flex items-center text-sm font-medium">أدوات إضافية: الأقسام والتصدير والطباعة</summary>
+        <div className="flex flex-wrap items-center gap-2 border-t pt-3">
+          <Button variant="outline" size="sm" className="min-h-11" onClick={() => setDepartmentsOpen(true)}><Users className="w-4 h-4 me-1" />إدارة الأقسام</Button>
+          <Button variant="outline" className="min-h-11" disabled={exporting || isLoading} onClick={async () => {
+            setExporting(true);
+            try { await exportEmployeeWorkbook(employees, departmentFilter === "all" ? undefined : departmentFilter === "__none" ? "" : departmentFilter); }
+            catch (e) { toast({ title: t("تعذر تصدير Excel", "Excel export failed"), description: (e as Error).message, variant: "destructive" }); }
+            finally { setExporting(false); }
+          }}>{exporting ? <Loader2 className="w-4 h-4 animate-spin me-2" /> : <Download className="w-4 h-4 me-2" />}{t("تصدير Excel", "Export Excel")}</Button>
+          <Button variant="outline" className="min-h-11" onClick={() => setReport({ title: t("تقرير الموظفين", "Employee report"), subtitle: `${t("عدد النتائج", "Results")}: ${filtered.length}`, headings: employeeHeadings, rows: filtered.map(employeeExportRow) })}>{t("طباعة النتائج / PDF", "Print results / PDF")}</Button>
+        </div>
+      </details>
+      <ReportPreview report={report} onClose={() => setReport(null)} />
+
       <Card className="overflow-hidden">
-        <div className="overflow-x-auto">
+        <div ref={employeeListRef} className="scroll-mt-20">
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-sm hr-responsive" data-testid="table-employees">
             <thead className="bg-muted/40 border-b">
               <tr>
@@ -1648,20 +1695,20 @@ export default function EmployeesPage() {
                     <td data-label={t("إجراءات", "Actions")} className="px-3 py-3 text-center">
                       <div className="flex items-center justify-center gap-1">
                         {(currentUser?.role === "owner" || currentUser?.role === "assistant" || currentUser?.role === "hr") && (
-                          <Button size="icon" variant="ghost" className="h-10 w-10" aria-label={t("عرض ملف الموظف", "View employee file")} asChild
+                          <Button size="icon" variant="ghost" className="h-11 w-11" aria-label={t("عرض ملف الموظف", "View employee file")} asChild
                             data-testid={`button-view-employee-${emp.id}`}>
                             <Link href={`/employees/${emp.id}`}>
                               <Eye className="w-3.5 h-3.5" />
                             </Link>
                           </Button>
                         )}
-                        <Button size="icon" variant="ghost" className="h-10 w-10" aria-label={t("تعديل الموظف", "Edit employee")}
+                        <Button size="icon" variant="ghost" className="h-11 w-11" aria-label={assignmentFocus ? `تعيين موقع وجدول الدوام للموظف ${emp.employeeNumber}` : t("تعديل الموظف", "Edit employee")}
                           onClick={() => setSelectedEmployee(emp)} data-testid={`button-edit-employee-${emp.id}`}>
-                          <Pencil className="w-3.5 h-3.5" />
+                          {assignmentFocus ? <MapPin className="w-4 h-4" /> : <Pencil className="w-3.5 h-3.5" />}
                         </Button>
                         {(currentUser?.role === "owner" || currentUser?.role === "hr" || currentUser?.role === "it" || currentUser?.role === "assistant") && (
                           <Button size="icon" variant="ghost"
-                            className="h-10 w-10 text-destructive hover:text-destructive hover:bg-destructive/10"
+                            className="h-11 w-11 text-destructive hover:text-destructive hover:bg-destructive/10"
                             aria-label={t("حذف سجل غير مستخدم", "Delete unused record")}
                             onClick={() => { setDeleteConfirmation(""); setDeleteEmpConfirm(emp); }}
                             data-testid={`button-delete-employee-${emp.id}`}>
@@ -1675,6 +1722,52 @@ export default function EmployeesPage() {
               })}
             </tbody>
           </table>
+        </div>
+        <div className="md:hidden space-y-2 p-2" data-testid="employee-mobile-cards">
+          {filtered.length === 0 ? (
+            <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
+              {t("لا يوجد موظفون مطابقون", "No employees found")}
+            </div>
+          ) : filtered.map(emp => {
+            const dept = departments.find(x => x.code === emp.department)?.nameAr || departmentLabels[emp.department]?.ar || emp.department || t("غير محدد", "Unassigned");
+            const status = statusConfig[emp.status] || statusConfig.active;
+            const salary = parseFloat(emp.monthlySalary?.toString() || "0");
+            return (
+              <article key={emp.id} className="rounded-md border bg-background p-3" data-testid={`card-employee-${emp.id}`}>
+                <header className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-semibold leading-snug">{getEmployeeName(emp)}</p>
+                    <p className="mt-0.5 font-mono text-xs text-muted-foreground" dir="ltr">#{emp.employeeNumber}</p>
+                  </div>
+                  <Badge className={`${status.cls} shrink-0 text-[10px]`}>{t(status.ar, status.en)}</Badge>
+                </header>
+                <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
+                  <div className="col-span-2"><dt className="text-[11px] text-muted-foreground">المسمى الوظيفي</dt><dd className="font-medium">{emp.position}</dd></div>
+                  <div><dt className="text-[11px] text-muted-foreground">القسم</dt><dd>{dept}</dd></div>
+                  <div><dt className="text-[11px] text-muted-foreground">مدة الخدمة</dt><dd>{computeServiceDuration(emp.contractStart, t)}</dd></div>
+                  <div><dt className="text-[11px] text-muted-foreground">الراتب الشهري</dt><dd className="font-semibold tabular-nums">{salary.toLocaleString()} ر.س</dd></div>
+                  <div><dt className="text-[11px] text-muted-foreground">الحضور</dt><dd>{emp.attendanceEnabled === false ? "غير مفعّل" : "مفعّل"}</dd></div>
+                </dl>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {(currentUser?.role === "owner" || currentUser?.role === "assistant" || currentUser?.role === "hr") && (
+                    <Button size="sm" variant="outline" className="min-h-11 flex-1" asChild data-testid={`mobile-button-view-employee-${emp.id}`}>
+                      <Link href={`/employees/${emp.id}`}><Eye className="me-1 h-4 w-4" />الملف</Link>
+                    </Button>
+                  )}
+                  <Button size="sm" variant="outline" className="min-h-11 flex-1" aria-label={assignmentFocus ? `تعيين موقع وجدول الدوام للموظف ${emp.employeeNumber}` : `تعديل الموظف ${emp.employeeNumber}`} onClick={() => setSelectedEmployee(emp)} data-testid={`mobile-button-edit-employee-${emp.id}`}>
+                    {assignmentFocus ? <MapPin className="me-1 h-4 w-4" /> : <Pencil className="me-1 h-4 w-4" />}
+                    {assignmentFocus ? "موقع وجدول الدوام" : "تعديل"}
+                  </Button>
+                  {(currentUser?.role === "owner" || currentUser?.role === "hr" || currentUser?.role === "it" || currentUser?.role === "assistant") && (
+                    <Button size="icon" variant="ghost" className="h-11 w-11 text-destructive" aria-label={`حذف سجل الموظف ${emp.employeeNumber}`} onClick={() => { setDeleteConfirmation(""); setDeleteEmpConfirm(emp); }} data-testid={`mobile-button-delete-employee-${emp.id}`}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+              </article>
+            );
+          })}
+        </div>
         </div>
         {filtered.length > 0 && (
           <div className="px-4 py-2 border-t text-xs text-muted-foreground text-end">
@@ -1690,7 +1783,7 @@ export default function EmployeesPage() {
           </DialogHeader>
           <Button variant="outline" size="sm" onClick={() => setEmployeeDialogExpanded(v => !v)}>{employeeDialogExpanded ? t("تصغير مساحة العمل", "Compact workspace") : t("توسيع البيانات والمستندات والعهد", "Expand information, documents & assets")}</Button>
           {selectedEmployee && (
-            <EmployeeDetailDialog emp={selectedEmployee} users={users} onClose={() => setSelectedEmployee(null)} />
+            <EmployeeDetailDialog key={selectedEmployee.id} emp={selectedEmployee} users={users} onClose={() => setSelectedEmployee(null)} initialTab={assignmentFocus ? "attendance" : undefined} />
           )}
         </DialogContent>
       </Dialog>
@@ -1757,20 +1850,18 @@ function PrehireSection() {
   const pending = actions.filter(a => !["completed", "rejected", "cancelled"].includes(a.status));
 
   return (
-    <Card data-testid="card-prehire-section">
-      <CardHeader className="pb-2 cursor-pointer" onClick={() => setOpen(v => !v)}>
-        <CardTitle className="text-base flex items-center gap-2">
-          <UserCog className="w-4 h-4" />
-          {t("التوظيف الجديد — طلب وترشيح (WF-02 / WF-03)", "New Hiring — Request & Nomination (WF-02 / WF-03)")}
-          {pending.length > 0 && <Badge variant="secondary" className="text-[10px]">{pending.length}</Badge>}
-          <span className="ms-auto">{open ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}</span>
-        </CardTitle>
-      </CardHeader>
-      {open && (
-        <CardContent className="pt-0 space-y-3">
-          <div className="flex flex-wrap gap-2" onClick={e => e.stopPropagation()}>
-            <NewHrActionDialog workflow="wf02" employeeId={null} queryKey={queryKey} />
-            <NewHrActionDialog workflow="wf03" employeeId={null} queryKey={queryKey} />
+    <>
+      <Button variant="outline" className="min-h-11" onClick={() => setOpen(true)} aria-haspopup="dialog" aria-controls="prehire-dialog" data-testid="button-open-prehire">
+        <UserCog className="me-2 h-4 w-4" />{t("التوظيف الجديد", "New hiring")}
+        {pending.length > 0 && <Badge variant="secondary" className="ms-2 text-[10px]">{pending.length}</Badge>}
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent id="prehire-dialog" className="max-w-xl max-h-[88dvh] overflow-y-auto">
+          <DialogHeader><DialogTitle>{t("التوظيف الجديد", "New hiring")}</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">أنشئ طلب توظيف أو ترشيح موظف، وتابع الاعتمادات من هنا.</p>
+          <div className="flex flex-wrap gap-2">
+            <NewHrActionDialog workflow="wf02" employeeId={null} queryKey={queryKey} triggerLabel="طلب توظيف" />
+            <NewHrActionDialog workflow="wf03" employeeId={null} queryKey={queryKey} triggerLabel="ترشيح موظف" />
           </div>
           {isLoading ? (
             <div className="flex justify-center py-4"><Loader2 className="w-5 h-5 animate-spin text-primary" /></div>
@@ -1781,8 +1872,8 @@ function PrehireSection() {
               {actions.map(a => <HrActionCard key={a.id} action={a} queryKey={queryKey} />)}
             </div>
           )}
-        </CardContent>
-      )}
-    </Card>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
