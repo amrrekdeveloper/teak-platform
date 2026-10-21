@@ -1,5 +1,7 @@
 import { eq, desc, like, and, sql, gte, lte, or, asc, isNull, isNotNull, inArray } from "drizzle-orm";
 import { db } from "./db";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { withDepartmentCatalogWrite } from "./department-catalog";
 import {
   users, type User, type InsertUser,
   userPermissions, type UserPermission,
@@ -798,11 +800,19 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createEmployee(employee: InsertEmployee): Promise<Employee> {
-    const [created] = await db.insert(employees).values(employee).returning();
-    return created;
+    return withDepartmentCatalogWrite(async client => {
+      const [created] = await drizzle(client).insert(employees).values(employee).returning();
+      return created;
+    });
   }
 
   async updateEmployee(id: number, data: Partial<InsertEmployee>): Promise<Employee | undefined> {
+    if (Object.hasOwn(data, "department")) {
+      return withDepartmentCatalogWrite(async client => {
+        const [updated] = await drizzle(client).update(employees).set(data).where(eq(employees.id, id)).returning();
+        return updated;
+      });
+    }
     const [updated] = await db.update(employees).set(data).where(eq(employees.id, id)).returning();
     return updated;
   }

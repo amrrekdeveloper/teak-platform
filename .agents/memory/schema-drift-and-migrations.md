@@ -13,6 +13,12 @@ This repo has real schema drift between `shared/schema.ts` and the actual Postgr
 
 **How to apply:** inspect both schemas and read-only production data, apply approved development-only changes, and recompute the Publish diff. Preserve production runtime tables in development even if an idle worker has not created them there. A new populated lookup relationship may need staged releases; never assume development seed data reaches production.
 
+**Staged catalog integrity:** keep affected writes disabled until the validated foreign key exists; never recreate it automatically at startup.
+
+**Why:** a populated legacy table cannot reference an empty newly published catalog, and temporarily removing the FK must not allow deletion/assignment races.
+
+**How to apply:** backfill only referenced codes without changing employees or resurrecting deleted unused departments, then restore the named FK through a second Publish. See `docs/department-catalog-publication.md` for the operating procedure.
+
 **Columns with defaults + drizzle-zod:** a NOT NULL column with `.default('')` (e.g. `employees.full_name_ar`) becomes optional in the generated insert schema, so the API can persist an empty string. If a field must be non-blank, add an explicit backend guard in the POST/PATCH route — schema validation alone won't enforce it.
 
 **Custom JSONB shapes may need explicit insert-schema refinements.**

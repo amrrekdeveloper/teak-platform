@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { pool } from "./db";
 import { insertLocationZoneSchema } from "../shared/schema";
+import { bootstrapDepartmentCatalog, withDepartmentCatalogWrite } from "./department-catalog";
 
 export function validateAttendanceZone(input:unknown) {
   const zone=insertLocationZoneSchema.parse(input);
@@ -15,13 +16,6 @@ export function validateAttendanceZone(input:unknown) {
     throw Object.assign(new Error("النطاق يجب أن يكون من 1 إلى 50000 متر."),{status:400});
   return zone;
 }
-
-const departmentNames: Record<string,string> = {
-  sales:"المبيعات",design:"التصميم",production:"الإنتاج",warehouse:"المستودع",
-  finance:"المالية",hr:"الموارد البشرية",it:"تقنية المعلومات",delivery:"التوصيل",
-  installation:"التركيب",quality:"الجودة",management:"الإدارة",
-  customer_service:"خدمة العملاء",purchasing:"المشتريات",
-};
 
 export async function initAttendanceWorkspace() {
   await pool.query(`
@@ -45,24 +39,12 @@ export async function initAttendanceWorkspace() {
       actor_id integer REFERENCES users(id),decision text NOT NULL,note text,created_at timestamptz NOT NULL DEFAULT now()
     );
   `);
-  // Seed the catalog once, not on every startup: deleted departments must stay deleted.
+  // Schema changes belong to Publish. Backfill only referenced codes, never deleted unused departments.
+  await bootstrapDepartmentCatalog();
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
     await client.query("SELECT pg_advisory_xact_lock(51804)");
-    const exists = (await client.query("SELECT to_regclass('hr_departments') AS name")).rows[0].name;
-    if (!exists) {
-      await client.query(`CREATE TABLE hr_departments(
-        id serial PRIMARY KEY,code department NOT NULL UNIQUE,name_ar text NOT NULL UNIQUE
-      )`);
-      const codes = (await client.query("SELECT unnest(enum_range(NULL::department))::text AS code")).rows;
-      for (const {code} of codes) await client.query(
-        "INSERT INTO hr_departments(code,name_ar) VALUES($1,$2)",[code,departmentNames[code] || code]);
-    }
-    await client.query(`DO $$ BEGIN
-      IF NOT EXISTS(SELECT 1 FROM pg_constraint WHERE conname='employee_department_catalog' AND conrelid='employees'::regclass) THEN
-        ALTER TABLE employees ADD CONSTRAINT employee_department_catalog FOREIGN KEY(department) REFERENCES hr_departments(code);
-      END IF; END $$`);
     // The database guard also protects concurrent delete/assignment races, including legacy APIs.
     await client.query(`CREATE OR REPLACE FUNCTION teak_attendance_assignment_guard() RETURNS trigger LANGUAGE plpgsql AS $$
       BEGIN
@@ -90,18 +72,22 @@ export function registerDepartmentCatalog(app: Express, authorize: RequestHandle
     if(!parsed.success)return res.status(400).json({message:"أدخل اسم قسم صحيحًا."});
     try {
       // Generated identifier only; no user input is interpolated into ALTER TYPE.
-      const code=`dept_${randomUUID().replaceAll("-","")}`;
-      await pool.query(`ALTER TYPE department ADD VALUE IF NOT EXISTS '${code}'`);
-      const {rows:[row]}=await pool.query('INSERT INTO hr_departments(code,name_ar) VALUES($1,$2) RETURNING id,code,name_ar AS "nameAr"',[code,parsed.data.nameAr]);
+      const row = await withDepartmentCatalogWrite(async client => {
+        const code=`dept_${randomUUID().replaceAll("-","")}`;
+        await client.query(`ALTER TYPE department ADD VALUE IF NOT EXISTS '${code}'`);
+        const {rows:[created]}=await client.query('INSERT INTO hr_departments(code,name_ar) VALUES($1,$2) RETURNING id,code,name_ar AS "nameAr"',[code,parsed.data.nameAr]);
+        return created;
+      });
       res.status(201).json(row);
-    } catch(error:any) { res.status(error.code==="23505"?409:500).json({message:error.code==="23505"?"القسم موجود مسبقًا.":"تعذّرت إضافة القسم."}); }
+    } catch(error:any) { res.status(error.status===503?503:error.code==="23505"?409:500).json({message:error.status===503?error.message:error.code==="23505"?"القسم موجود مسبقًا.":"تعذّرت إضافة القسم."}); }
   });
   app.delete("/api/hr/departments/:id",authorize,async (req,res)=>{
     try {
-      const result=await pool.query("DELETE FROM hr_departments WHERE id=$1 RETURNING id",[Number(req.params.id)]);
+      const result=await withDepartmentCatalogWrite(client =>
+        client.query("DELETE FROM hr_departments WHERE id=$1 RETURNING id",[Number(req.params.id)]));
       if(!result.rowCount)return res.status(404).json({message:"القسم غير موجود."});
       res.json({success:true});
-    } catch(error:any) { res.status(error.code==="23503"?409:500).json({message:error.code==="23503"?"انقل جميع الموظفين من القسم قبل حذفه، بمن فيهم غير النشطين.":"تعذّر حذف القسم."}); }
+    } catch(error:any) { res.status(error.status===503?503:error.code==="23503"?409:500).json({message:error.status===503?error.message:error.code==="23503"?"انقل جميع الموظفين من القسم قبل حذفه، بمن فيهم غير النشطين.":"تعذّر حذف القسم."}); }
   });
 }
 

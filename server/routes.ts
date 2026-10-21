@@ -3708,7 +3708,7 @@ export async function registerRoutes(
       const emp = await withUniqueEmployeePhone(parsed, undefined, () => storage.createEmployee(parsed));
       res.status(201).json(emp);
     } catch (error: any) {
-      if (error?.status === 400 || error?.status === 409) return res.status(error.status).json({ message: error.message });
+      if (error?.status === 400 || error?.status === 409 || error?.status === 503) return res.status(error.status).json({ message: error.message });
       if (error?.name === "ZodError") return res.status(400).json({ message: "بيانات غير صالحة", messageEn: "Invalid data", errors: error.errors });
       if (error?.code === "23505") return res.status(409).json({ message: "رقم الموظف مستخدم لموظف آخر", messageEn: "Employee number already in use" });
       console.error("Employee creation error:", error);
@@ -3737,7 +3737,7 @@ export async function registerRoutes(
       if (!updated) return res.status(404).json({ message: "الموظف غير موجود", messageEn: "Employee not found" });
       res.json(updated);
     } catch (error: any) {
-      if (error?.status === 400 || error?.status === 409) return res.status(error.status).json({ message: error.message });
+      if (error?.status === 400 || error?.status === 409 || error?.status === 503) return res.status(error.status).json({ message: error.message });
       if (error?.code === "23505") return res.status(409).json({ message: "رقم الموظف مستخدم لموظف آخر", messageEn: "Employee number already in use" });
       res.status(500).json({ message: "حدث خطأ في تحديث الموظف", messageEn: "Error updating employee" });
     }

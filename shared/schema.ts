@@ -103,6 +103,13 @@ export const departmentEnum = pgEnum("department", [
   "customer_service",
 ]);
 
+// Publish phase 1: create/backfill the catalog before adding the employees FK in phase 2.
+export const hrDepartments = pgTable("hr_departments", {
+  id: serial("id").primaryKey(),
+  code: departmentEnum("code").$type<string>().notNull().unique("hr_departments_code_key"),
+  nameAr: text("name_ar").notNull().unique("hr_departments_name_ar_key"),
+});
+
 export const contractTypeEnum = pgEnum("contract_type", [
   "fixed",
   "open",
