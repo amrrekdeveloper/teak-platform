@@ -1416,6 +1416,13 @@ export type InsertAttendanceViolation = z.infer<typeof insertAttendanceViolation
 export type AttendanceViolation = typeof attendanceViolations.$inferSelect;
 
 // إعدادات أوقات الدوام — افتراضي عام + تخصيص لكل قسم أو موظف
+// Keep the worker checkpoint in the published schema, even when the dev worker is idle.
+export const attendanceJobState = pgTable("attendance_job_state", {
+  id: text("id").primaryKey(),
+  lastDay: text("last_day").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const workScheduleSettings = pgTable("work_schedule_settings", {
   id: serial("id").primaryKey(),
   scopeType: text("scope_type").notNull(), // default | department | employee

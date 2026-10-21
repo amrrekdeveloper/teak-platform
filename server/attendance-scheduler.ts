@@ -9,8 +9,6 @@ export async function runAttendanceCatchup() {
   try {
     locked=(await client.query("SELECT pg_try_advisory_lock(610281941) AS locked")).rows[0].locked;
     if(!locked)return;
-    await client.query(`CREATE TABLE IF NOT EXISTS attendance_job_state (
-      id text PRIMARY KEY,last_day text NOT NULL,updated_at timestamptz NOT NULL DEFAULT now())`);
     const {rows:[last]}=await client.query("SELECT last_day FROM attendance_job_state WHERE id='reconciliation'");
     const today=riyadhDateKey(new Date());
     const prior=last?.last_day || riyadhDateKey(new Date(Date.now()-2*86400000));

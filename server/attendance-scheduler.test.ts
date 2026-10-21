@@ -14,6 +14,7 @@ describe("attendance worker concurrency and restart",()=>{
   it("runs today's reconciliation and checkpoints only after success",async()=>{
     await runAttendanceCatchup();
     expect(fixture.reconcile).toHaveBeenCalledWith(riyadhDateKey(new Date()));
+    expect(fixture.query.mock.calls.some(([s])=>/\b(CREATE|ALTER|DROP)\b/i.test(s))).toBe(false);
     expect(fixture.query.mock.calls.some(([s])=>s.startsWith("INSERT INTO attendance_job_state"))).toBe(true);
     expect(fixture.query.mock.calls.at(-1)?.[0]).toContain("pg_advisory_unlock");
     expect(fixture.release).toHaveBeenCalledOnce();
