@@ -12,6 +12,7 @@ import {
   date,
   pgEnum,
   unique,
+  foreignKey,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -103,7 +104,7 @@ export const departmentEnum = pgEnum("department", [
   "customer_service",
 ]);
 
-// Publish phase 1: create/backfill the catalog before adding the employees FK in phase 2.
+// The catalog is populated before publishing its employee FK (see the staged-publication runbook).
 export const hrDepartments = pgTable("hr_departments", {
   id: serial("id").primaryKey(),
   code: departmentEnum("code").$type<string>().notNull().unique("hr_departments_code_key"),
@@ -145,7 +146,13 @@ export const employees = pgTable("employees", {
   attendanceScheduleId: integer("attendance_schedule_id"),
   managerId: integer("manager_id"), // المدير المباشر (اختياري) — بدونه يذهب الاعتماد لـ HR/المالك
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (table) => ({
+  departmentCatalog: foreignKey({
+    name: "employee_department_catalog",
+    columns: [table.department],
+    foreignColumns: [hrDepartments.code],
+  }).onDelete("no action").onUpdate("no action"),
+}));
 
 export const insertEmployeeSchema = createInsertSchema(employees).omit({
   id: true,

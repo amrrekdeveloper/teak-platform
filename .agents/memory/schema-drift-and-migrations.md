@@ -15,7 +15,7 @@ This repo has real schema drift between `shared/schema.ts` and the actual Postgr
 
 **Staged catalog integrity:** keep affected writes disabled until the validated foreign key exists; never recreate it automatically at startup.
 
-**Why:** a populated legacy table cannot reference an empty newly published catalog, and temporarily removing the FK must not allow deletion/assignment races.
+**Why:** a populated legacy table cannot reference an empty newly published catalog, and temporarily removing the FK must not allow deletion/assignment races. Publish can create a table empty: its existence is not proof its lookup data has been initialized.
 
 **How to apply:** backfill only referenced codes without changing employees or resurrecting deleted unused departments, then restore the named FK through a second Publish. See `docs/department-catalog-publication.md` for the operating procedure.
 

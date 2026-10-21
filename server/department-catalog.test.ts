@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { getTableConfig } from "drizzle-orm/pg-core";
+import { employees, hrDepartments } from "../shared/schema";
 
 const fixture = vi.hoisted(() => ({ query: vi.fn(), release: vi.fn(), connect: vi.fn() }));
 vi.mock("./db", () => ({ pool: { connect: fixture.connect, query: fixture.query } }));
@@ -14,6 +16,15 @@ beforeEach(() => {
 });
 
 describe("department catalog staged publication", () => {
+  it("declares the phase-two FK in the schema without cascading employee changes", () => {
+    const fk = getTableConfig(employees).foreignKeys.find(key => key.getName() === "employee_department_catalog");
+    expect(fk).toBeDefined();
+    expect(fk!.reference().columns.map(column => column.name)).toEqual(["department"]);
+    expect(fk!.reference().foreignTable).toBe(hrDepartments);
+    expect(fk!.reference().foreignColumns.map(column => column.name)).toEqual(["code"]);
+    expect(fk!.onDelete).toBe("no action");
+    expect(fk!.onUpdate).toBe("no action");
+  });
   it("backfills an existing but empty table from referenced codes, without schema or employee writes", async () => {
     fixture.query.mockImplementation(async (query: string) => ({
       rows: query.includes("SELECT DISTINCT") ? [{ code: "hr" }, { code: "legacy_code" }] : [],
