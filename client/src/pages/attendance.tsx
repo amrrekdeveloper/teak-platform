@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { useLanguage } from "@/components/language-provider";
+import { useLanguage, LanguageToggle } from "@/components/language-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -391,15 +391,7 @@ export default function AttendancePage() {
         <div className="ms-auto flex items-center gap-2">
           <Shield className="w-5 h-5 opacity-60 hidden sm:block" />
           <span className="text-sm opacity-70 hidden sm:block">{t("بوابة الموظفين", "Employee Portal")}</span>
-          <Button
-            variant="secondary"
-            size="sm"
-            className="h-8 px-3 font-bold"
-            onClick={toggleLang}
-            data-testid="button-toggle-language"
-          >
-            {lang === "ar" ? "EN" : "ع"}
-          </Button>
+          <LanguageToggle testId="button-toggle-language" />
         </div>
       </div>
 

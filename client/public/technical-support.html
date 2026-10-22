@@ -10,6 +10,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Zain:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <script data-language-bootstrap>try{var l=new URLSearchParams(location.search).get("lang");if(l!=="en"&&l!=="ar")l=localStorage.getItem("teak-lang")==="en"?"en":"ar";document.documentElement.lang=l;document.documentElement.dir=l==="en"?"ltr":"rtl"}catch(_){}</script>
+  <link rel="stylesheet" href="/teak-language.css">
+  <script src="/teak-language.js" defer></script>
   <style>
     :root{color-scheme:light;--brand:#9e0a0a;--paper:#f7f5f1;--ink:#252321;--muted:#706d68;--line:#e5e1dc;--font:"Zain",Tahoma,sans-serif}
     *{box-sizing:border-box}body{margin:0;min-height:100vh;min-height:100dvh;background:var(--paper);color:var(--ink);font-family:var(--font);display:flex;flex-direction:column}
@@ -27,7 +30,7 @@
   </style>
 </head>
 <body>
-  <header>
+  <header data-teak-language-host>
     <a class="logo" href="/" aria-label="العودة إلى تيك"><img src="/__maintenance/logo.png" alt="تيك — TEAK" width="782" height="511"><span aria-hidden="true"></span><b>بوابة تيك</b></a>
   </header>
   <main>

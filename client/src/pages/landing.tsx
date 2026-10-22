@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { motion, AnimatePresence, useInView } from "framer-motion";
 import { useTheme } from "@/components/theme-provider";
-import { useLanguage } from "@/components/language-provider";
+import { useLanguage, LanguageToggle } from "@/components/language-provider";
 import { useAuth } from "@/hooks/use-auth";
 import {
   Sun,
@@ -233,15 +233,7 @@ function Navbar() {
           </div>
 
           <div className="flex items-center gap-1 sm:gap-2">
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={toggleLang}
-              data-testid="button-language-toggle"
-              aria-label={t("تبديل اللغة إلى الإنجليزية", "Switch language to Arabic")}
-            >
-              <span className="text-xs font-bold">{lang === "ar" ? "EN" : "ع"}</span>
-            </Button>
+            <LanguageToggle />
             <Button
               size="icon"
               variant="ghost"

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useLanguage } from "@/components/language-provider";
+import { useLanguage, LanguageToggle } from "@/components/language-provider";
 import { useTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -83,9 +83,7 @@ function PortalHeader({ customerName, customer, orderCount }: { customerName: st
             </div>
           </div>
           <div className="flex items-center gap-1">
-            <Button variant="ghost" size="sm" className="text-xs" onClick={toggleLang} data-testid="button-lang-toggle">
-              {lang === "ar" ? "EN" : "عربي"}
-            </Button>
+            <LanguageToggle testId="button-lang-toggle" />
             <Button variant="ghost" size="icon" onClick={toggleTheme} data-testid="button-theme-toggle">
               {theme === "dark" ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
             </Button>

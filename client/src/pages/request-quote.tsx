@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useLanguage } from "@/components/language-provider";
+import { useLanguage, LanguageToggle } from "@/components/language-provider";
 import { LoadingTransition } from "@/components/loading-transition";
 import { useTheme } from "@/components/theme-provider";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -207,9 +207,7 @@ export default function RequestQuotePage() {
               </div>
             </Link>
             <div className="flex items-center gap-1">
-              <Button size="icon" variant="ghost" onClick={toggleLang} data-testid="button-lang">
-                <span className="text-xs font-bold">{lang === "ar" ? "EN" : "ع"}</span>
-              </Button>
+              <LanguageToggle testId="button-lang" />
               <Button size="icon" variant="ghost" onClick={toggleTheme} data-testid="button-theme">
                 {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
               </Button>

@@ -28,3 +28,4 @@
 - [Development verification](development-verification.md) — resets can stop workflows/remove temporary files; mocked auth and SQL do not prove real-session/PostgreSQL compatibility.
 - [Employee auth rate limits](employee-auth-rate-limits.md) — protect phone/browser/challenge independently; shared NAT and protocol-test counters must not lock fresh employee logins.
 - [Administrative login policy](administrative-login-policy.md) — owner/HR passwords managed in the owner panel; six-character policy and safe remembered sign-in.
+- [Bilingual product scope](bilingual-product-scope.md) — Arabic/English choice must continue from the public entry page into employee and administrative interfaces.

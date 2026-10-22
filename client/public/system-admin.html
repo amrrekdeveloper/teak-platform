@@ -10,6 +10,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Zain:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <script data-language-bootstrap>try{var l=new URLSearchParams(location.search).get("lang");if(l!=="en"&&l!=="ar")l=localStorage.getItem("teak-lang")==="en"?"en":"ar";document.documentElement.lang=l;document.documentElement.dir=l==="en"?"ltr":"rtl"}catch(_){}</script>
+  <link rel="stylesheet" href="/teak-language.css">
+  <script src="/teak-language.js" defer></script>
   <style>
     :root{color-scheme:light;--brand:#9e0a0a;--brand-deep:#760909;--paper:#f7f5f1;--card:#fff;--ink:#252321;--muted:#706d68;--line:#e5e1dc;--soft:#f2efea;--sage:#426d5a;--shadow:0 10px 28px rgba(34,28,24,.07);--font:"Zain",Tahoma,sans-serif}
     *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;min-height:100vh;min-height:100dvh;background:var(--paper);color:var(--ink);font-family:var(--font);font-size:15px}button,input{font:inherit}button,a{-webkit-tap-highlight-color:transparent}button{cursor:pointer}a{color:inherit}
@@ -32,7 +35,7 @@
   <div class="shell">
     <header class="masthead">
       <a class="brand" href="/" aria-label="العودة إلى تيك"><img src="/__maintenance/logo.png" alt="تيك — TEAK" width="782" height="511"><span class="brand-rule" aria-hidden="true"></span><span>حسابات الموارد البشرية</span></a>
-      <div class="mast-right"><span class="status-dot" aria-hidden="true"></span><span>وصول المالك</span></div>
+      <div class="mast-right" data-teak-language-host><span class="status-dot" aria-hidden="true"></span><span>وصول المالك</span></div>
     </header>
     <main class="main">
       <header class="intro">
@@ -122,7 +125,7 @@
       const $=id=>document.getElementById(id);
       const loginView=$("login-view"),loadingView=$("loading-view"),dashboard=$("dashboard-view");
       const REMEMBER_KEY="teak.auth.remember.owner";
-       let busy=false,resetTarget=null,previousFocus=null,ownerPasswordReturnFocus=null,ownerUsername="",workspaceEpoch=0;
+       let busy=false,resetTarget=null,previousFocus=null,ownerPasswordReturnFocus=null,ownerUsername="",workspaceEpoch=0,lastAccountData=null;
       function readRememberedLogin(){
         try{const saved=JSON.parse(localStorage.getItem(REMEMBER_KEY)||"null");return{username:typeof saved?.username==="string"?saved.username:"",rememberMe:saved?.rememberMe===true}}
         catch(error){return{username:"",rememberMe:false}}
@@ -187,13 +190,14 @@
       function setBusy(button,value,label){button.disabled=value;if(label)button.textContent=value?"جارٍ التنفيذ…":label}
       function dateLabel(value){
         if(!value)return "—";const date=new Date(value);if(Number.isNaN(date.getTime()))return String(value);
-        return new Intl.DateTimeFormat("ar-SA",{dateStyle:"medium"}).format(date);
+        return new Intl.DateTimeFormat(document.documentElement.lang==="en"?"en-US":"ar-SA",{dateStyle:"medium"}).format(date);
       }
       function element(tag,text,className){
         const node=document.createElement(tag);if(text!==undefined)node.textContent=text;if(className)node.className=className;return node;
       }
       function clearTransientMessages(){message($("page-error"),"");message($("page-success"),"");message($("list-error"),"")}
       function renderAccounts(accounts){
+        lastAccountData=Array.isArray(accounts)?accounts:null;
         const list=$("account-list");list.replaceChildren();
         if(!Array.isArray(accounts))throw new Error("استجابة الحسابات غير صالحة.");
         if(!accounts.length){const empty=element("div","", "empty");empty.append(element("strong","لا توجد حسابات بعد"));empty.append(element("span","أنشئ أول حساب موارد بشرية من النموذج المجاور."));list.append(empty);return}
@@ -212,6 +216,7 @@
           card.append(actions);list.append(card);
         });
       }
+      window.addEventListener("teak-language-change",()=>{if(lastAccountData&&!dashboard.hidden)renderAccounts(lastAccountData)});
       async function loadAccounts(){
          const loadEpoch=workspaceEpoch;
         const list=$("account-list"),refresh=$("refresh");list.setAttribute("aria-busy","true");refresh.disabled=true;

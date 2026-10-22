@@ -1327,7 +1327,7 @@ function JobTitlesManager() {
 }
 
 export default function EmployeesPage() {
-  const { t } = useLanguage();
+  const { t, isRTL } = useLanguage();
   const { toast } = useToast();
   const { user: currentUser } = useAuth();
   const [search, setSearch] = useState("");
@@ -1515,7 +1515,7 @@ export default function EmployeesPage() {
       </div>
 
       <Dialog open={departmentsOpen} onOpenChange={setDepartmentsOpen}>
-        <DialogContent dir="rtl" className="max-w-lg">
+        <DialogContent dir={isRTL ? "rtl" : "ltr"} className="max-w-lg">
           <DialogHeader><DialogTitle>إدارة الأقسام</DialogTitle></DialogHeader>
           <form className="flex gap-2" onSubmit={e=>{e.preventDefault();if(newDepartmentName.trim())addDepartmentMutation.mutate(newDepartmentName.trim())}}>
             <Input value={newDepartmentName} onChange={e=>setNewDepartmentName(e.target.value)} placeholder="اسم القسم بالعربية" required />

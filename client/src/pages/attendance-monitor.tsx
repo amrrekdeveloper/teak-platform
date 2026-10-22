@@ -211,7 +211,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export default function AttendanceMonitorPage() {
-  const { t } = useLanguage();
+  const { t, isRTL } = useLanguage();
   const { toast } = useToast();
   const qc = useQueryClient();
   const [pagePath, setPagePath] = useLocation();
@@ -616,7 +616,7 @@ export default function AttendanceMonitorPage() {
   };
 
   return (
-    <div className="p-3 md:p-6 space-y-5 max-w-7xl mx-auto min-w-0" dir="rtl">
+    <div className="p-3 md:p-6 space-y-5 max-w-7xl mx-auto min-w-0" dir={isRTL ? "rtl" : "ltr"}>
       {/* Header */}
       <div className="flex items-center justify-between gap-2">
         <h1 className="text-lg md:text-2xl font-bold">{t("مراقبة الدوام", "Attendance Monitor")}</h1>
@@ -1361,7 +1361,7 @@ export default function AttendanceMonitorPage() {
 
       {/* Location Mini-Map Popup */}
       <Dialog open={!!locationPopup} onOpenChange={open => !open && setLocationPopup(null)}>
-        <DialogContent dir="rtl" className="max-w-sm">
+        <DialogContent dir={isRTL ? "rtl" : "ltr"} className="max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <MapPin className={`w-4 h-4 ${locationPopup?.isOutOfZone ? "text-orange-500" : "text-green-500"}`} />
@@ -1400,7 +1400,7 @@ export default function AttendanceMonitorPage() {
 
       {/* Edit Record Dialog */}
       <Dialog open={!!editRecord} onOpenChange={open => !open && setEditRecord(null)}>
-        <DialogContent dir="rtl">
+        <DialogContent dir={isRTL ? "rtl" : "ltr"}>
           <DialogHeader>
             <DialogTitle>تعديل سجل الحضور</DialogTitle>
           </DialogHeader>
@@ -1440,7 +1440,7 @@ export default function AttendanceMonitorPage() {
 
       {/* Admin Override Dialog */}
       <Dialog open={!!overrideRecord} onOpenChange={open => !open && setOverrideRecord(null)}>
-        <DialogContent dir="rtl">
+        <DialogContent dir={isRTL ? "rtl" : "ltr"}>
           <DialogHeader>
             <DialogTitle>تدخل إداري — تصحيح بعذر معتمد</DialogTitle>
           </DialogHeader>

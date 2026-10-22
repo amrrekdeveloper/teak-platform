@@ -13,6 +13,7 @@ import EvaluationsPage from "@/pages/evaluations";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { LanguageToggle, useLanguage } from "@/components/language-provider";
 import {
   ArrowLeft, CalendarDays, ChevronLeft, CircleDollarSign, Eye, EyeOff,
   ClipboardCheck, Clock3, DoorOpen, LoaderCircle, LockKeyhole, Menu,
@@ -52,6 +53,7 @@ function WorkspaceLoading() {
 }
 
 function HrLogin({ sessionUser }: { sessionUser: HrUser | null }) {
+  const { t, isRTL } = useLanguage();
   const [, setLocation] = useLocation();
   const [savedLogin] = useState(readRememberedHrLogin);
   const [rememberMe, setRememberMe] = useState(savedLogin.rememberMe);
@@ -102,43 +104,43 @@ function HrLogin({ sessionUser }: { sessionUser: HrUser | null }) {
 
   const wrongRole = !!sessionUser && (sessionUser.role !== "hr" || sessionUser.maintenanceScope !== "hr");
   return (
-    <main className="hr-login-page" dir="rtl">
+    <main className="hr-login-page" dir={isRTL ? "rtl" : "ltr"}>
       <div className="hr-login-frame">
         <section className="hr-login-copy">
-          <div className="hr-wordmark"><img src="/__maintenance/logo.png" alt="TEAK" /><span>إدارة الموارد البشرية</span></div>
+          <div className="hr-wordmark"><img src="/__maintenance/logo.png" alt="TEAK" /><span>{t("إدارة الموارد البشرية", "Human Resources")}</span><LanguageToggle /></div>
           <div className="hr-login-title">
-            <span className="hr-kicker">مساحة الموارد البشرية</span>
-            <h1>تسجيل الدخول</h1>
-            <p>استخدم حساب الموارد البشرية المعتمد.</p>
+            <span className="hr-kicker">{t("مساحة الموارد البشرية", "HR workspace")}</span>
+            <h1>{t("تسجيل الدخول", "Sign in")}</h1>
+            <p>{t("استخدم حساب الموارد البشرية المعتمد.", "Use your authorized HR account.")}</p>
           </div>
           <form className="hr-login-form" onSubmit={submit} noValidate autoComplete="on">
             <div className="hr-field">
-              <Label htmlFor="hr-username">اسم المستخدم</Label>
+              <Label htmlFor="hr-username">{t("اسم المستخدم", "Username")}</Label>
               <Input id="hr-username" name="username" type="text" autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false} defaultValue={savedLogin.username} onChange={e => { if (rememberMe) saveRememberedHrLogin(e.target.value, true); }} required disabled={pending} />
             </div>
             <div className="hr-field">
-              <Label htmlFor="hr-password">كلمة المرور</Label>
+              <Label htmlFor="hr-password">{t("كلمة المرور", "Password")}</Label>
               <div className="hr-password-wrap">
                 <Input id="hr-password" name="password" type={showPassword ? "text" : "password"} autoComplete="current-password" autoCapitalize="none" autoCorrect="off" spellCheck={false} defaultValue="" required disabled={pending} />
-                <button type="button" className="hr-password-toggle" aria-label={showPassword ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"} aria-pressed={showPassword} onClick={() => setShowPassword(value => !value)} disabled={pending}>{showPassword ? <EyeOff size={17} /> : <Eye size={17} />}</button>
+                <button type="button" className="hr-password-toggle" aria-label={showPassword ? t("إخفاء كلمة المرور", "Hide password") : t("إظهار كلمة المرور", "Show password")} aria-pressed={showPassword} onClick={() => setShowPassword(value => !value)} disabled={pending}>{showPassword ? <EyeOff size={17} /> : <Eye size={17} />}</button>
               </div>
             </div>
             <div className="hr-remember">
-              <label><input type="checkbox" name="rememberMe" checked={rememberMe} onChange={e => { setRememberMe(e.target.checked); const form=e.currentTarget.form; saveRememberedHrLogin(e.target.checked && form ? String(new FormData(form).get("username") || "") : "", e.target.checked); }} disabled={pending} /> تذكرني على هذا الجهاز</label>
-              <p>لا تفعّل التذكر على جهاز مشترك.</p>
+              <label><input type="checkbox" name="rememberMe" checked={rememberMe} onChange={e => { setRememberMe(e.target.checked); const form=e.currentTarget.form; saveRememberedHrLogin(e.target.checked && form ? String(new FormData(form).get("username") || "") : "", e.target.checked); }} disabled={pending} /> {t("تذكرني على هذا الجهاز", "Remember me on this device")}</label>
+              <p>{t("لا تفعّل التذكر على جهاز مشترك.", "Do not use this on a shared device.")}</p>
             </div>
             {(error || wrongRole) && (
               <p className="hr-login-error" role="alert">
-                {error || "هذا الحساب لا يملك صلاحية الدخول إلى مساحة الموارد البشرية."}
+                {error || t("هذا الحساب لا يملك صلاحية الدخول إلى مساحة الموارد البشرية.", "This account cannot access the HR workspace.")}
               </p>
             )}
             <Button type="submit" disabled={pending} className="hr-login-submit">
               {pending ? <LoaderCircle size={17} className="hr-spinning" /> : <LockKeyhole size={17} />}
-              <span>{pending ? "جارٍ التحقق…" : "دخول آمن"}</span>
-              <ArrowLeft size={17} />
+              <span>{pending ? t("جارٍ التحقق…", "Verifying…") : t("دخول آمن", "Secure sign in")}</span>
+              <ArrowLeft size={17} className={isRTL ? "" : "rotate-180"} />
             </Button>
           </form>
-          <p className="hr-login-footnote"><LockKeyhole size={14} /> دخول مخصص لإدارة الموارد البشرية</p>
+          <p className="hr-login-footnote"><LockKeyhole size={14} /> {t("دخول مخصص لإدارة الموارد البشرية", "Dedicated access for HR administration")}</p>
         </section>
         <aside className="hr-login-aside" aria-label="نظام الموارد البشرية">
           <div className="hr-aside-top"><span>TEAK / PEOPLE</span><span className="hr-status-dot" /> بيئة داخلية</div>
@@ -147,8 +149,8 @@ function HrLogin({ sessionUser }: { sessionUser: HrUser | null }) {
             <div className="hr-art-core"><UsersRound size={49} strokeWidth={1.15} /></div>
             <span className="hr-art-index">01 — 06</span>
           </div>
-          <div className="hr-aside-caption"><span>إدارة الفريق</span><strong>من أول يوم،<br />إلى كل يوم.</strong></div>
-          <div className="hr-aside-bottom"><span>الموارد البشرية</span><span>HR / 2026</span></div>
+          <div className="hr-aside-caption"><span>{t("إدارة الفريق", "People management")}</span><strong>{t("من أول يوم،", "From day one,")}<br />{t("إلى كل يوم.", "to every day.")}</strong></div>
+          <div className="hr-aside-bottom"><span>{t("الموارد البشرية", "Human Resources")}</span><span>HR / 2026</span></div>
         </aside>
       </div>
     </main>
@@ -156,6 +158,15 @@ function HrLogin({ sessionUser }: { sessionUser: HrUser | null }) {
 }
 
 function HrLayout() {
+  const { t, isRTL } = useLanguage();
+  const navLabel = (key: HrPage) => ({
+    employees: t("الموظفون", "Employees"),
+    "attendance-monitor": t("مراقبة الدوام", "Attendance"),
+    leaves: t("الطلبات والإجازات", "Requests & leave"),
+    payroll: t("مسير الرواتب", "Payroll"),
+    advances: t("السلف", "Advances"),
+    evaluations: t("التقييمات", "Evaluations"),
+  })[key];
   const [location, setLocation] = useLocation();
   const { user, isLoading, logout, isLoggingOut } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -187,41 +198,43 @@ function HrLayout() {
   };
 
   return (
-    <div className="hr-workspace" dir="rtl">
+    <div className="hr-workspace" dir={isRTL ? "rtl" : "ltr"}>
       <header className="hr-mobile-header">
         <button type="button" className="hr-icon-button" aria-label={menuOpen ? "إغلاق القائمة" : "فتح القائمة"} aria-expanded={menuOpen} onClick={() => setMenuOpen(v => !v)}>
           {menuOpen ? <X size={21} /> : <Menu size={21} />}
         </button>
-         <div className="hr-mobile-brand"><img src="/__maintenance/logo.png" alt="TEAK" /><span>تيك</span></div>
+         <div className="hr-mobile-brand"><img src="/__maintenance/logo.png" alt="TEAK" /><span>{t("تيك", "TEAK")}</span></div>
+        <LanguageToggle testId="button-hr-mobile-language" />
         <span className="hr-avatar">{(hrUser.fullNameAr || hrUser.username || "HR").slice(0, 1)}</span>
       </header>
       {menuOpen && <button type="button" className="hr-mobile-scrim" aria-label="إغلاق القائمة" onClick={() => setMenuOpen(false)} />}
       <aside className={`hr-sidebar ${menuOpen ? "is-open" : ""}`}>
         <div className="hr-brand-lockup">
           <img src="/__maintenance/logo.png" alt="TEAK" />
-          <div><strong>تيك</strong><small>إدارة الموارد البشرية</small></div>
+          <div><strong>{t("تيك", "TEAK")}</strong><small>{t("إدارة الموارد البشرية", "Human Resources")}</small></div>
         </div>
-        <div className="hr-side-label">مساحة العمل</div>
+        <div className="hr-side-label">{t("مساحة العمل", "Workspace")}</div>
         <nav className="hr-nav" aria-label="التنقل في الموارد البشرية">
           {navItems.map(({ href, key, label, icon: Icon }) => (
             <button key={key} type="button" className={`hr-nav-link ${active?.key === key ? "is-active" : ""}`} onClick={() => { setLocation(href); setMenuOpen(false); }}>
-              <Icon size={18} strokeWidth={1.8} /><span>{label}</span>{active?.key === key && <ChevronLeft size={15} className="hr-nav-chevron" />}
+              <Icon size={18} strokeWidth={1.8} /><span>{navLabel(key)}</span>{active?.key === key && <ChevronLeft size={15} className={`hr-nav-chevron ${isRTL ? "" : "rotate-180"}`} />}
             </button>
           ))}
         </nav>
         <div className="hr-sidebar-bottom">
           <div className="hr-user-summary"><span className="hr-avatar">{(hrUser.fullNameAr || hrUser.username || "HR").slice(0, 1)}</span><span className="hr-user-details"><strong>{hrUser.fullNameAr || hrUser.fullNameEn || "إدارة الموارد البشرية"}</strong><small>مسؤول الموارد البشرية</small></span></div>
           <button type="button" className="hr-logout" onClick={handleLogout} disabled={isLoggingOut}>
-            {isLoggingOut ? <LoaderCircle size={17} className="hr-spinning" /> : <DoorOpen size={17} />}<span>تسجيل الخروج</span>
+            {isLoggingOut ? <LoaderCircle size={17} className="hr-spinning" /> : <DoorOpen size={17} />}<span>{t("تسجيل الخروج", "Sign out")}</span>
           </button>
           {logoutError && <p className="hr-session-error" role="alert">{logoutError}</p>}
         </div>
       </aside>
       <section className="hr-main-column">
         <header className="hr-topbar" data-page={active?.key}>
-          <div><span className="hr-breadcrumb-root">تيك</span><span className="hr-breadcrumb-slash">/</span><span>{active?.label || "الموظف"}</span></div>
+          <div><span className="hr-breadcrumb-root">{t("تيك", "TEAK")}</span><span className="hr-breadcrumb-slash">/</span><span>{active ? navLabel(active.key) : t("الموظف", "Employee")}</span></div>
           <div className="hr-topbar-actions">
-            <div className="hr-topbar-state"><span className="hr-topbar-dot" /> مساحة الموارد البشرية</div>
+            <div className="hr-topbar-state"><span className="hr-topbar-dot" /> {t("مساحة الموارد البشرية", "HR workspace")}</div>
+            <LanguageToggle testId="button-hr-desktop-language" />
           </div>
         </header>
         <main className="hr-content">
@@ -362,6 +375,8 @@ export default function HrWorkspace() {
           .hr-icon-button { width:42px;height:42px;display:grid;place-items:center;border:0;border-radius:8px;background:transparent;color:var(--hr-ink); }
           .hr-mobile-scrim { position:fixed;z-index:29;inset:58px 0 0;display:block;width:100%;border:0;background:#251b17a1; }
           .hr-sidebar { z-index:35;inset-block:58px 0;inset-inline-start:0;inset-inline-end:auto;width:min(84vw,300px);padding:20px 14px 14px;transform:translateX(105%);transition:transform .22s ease;box-shadow:-12px 0 30px #382a2714; }
+          .hr-workspace[dir="ltr"] .hr-sidebar { transform:translateX(-105%); }
+          .hr-workspace[dir="ltr"] .hr-sidebar.is-open { transform:translateX(0); }
           .hr-sidebar.is-open { transform:translateX(0); }
           .hr-main-column { width:100%;margin:0; }
           .hr-topbar { min-height:52px;padding:0 12px;background:transparent;border-bottom:0; }
@@ -369,6 +384,7 @@ export default function HrWorkspace() {
           .hr-topbar>div:first-child { min-width:0;gap:7px;font-size:13px; }
           .hr-topbar>div:first-child>span:last-child { overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
           .hr-topbar-actions { gap:0; }
+          .hr-topbar-actions [data-teak-language-control] { display:none; }
           .hr-topbar-state { display:none; }
           .hr-content { padding:6px 12px 24px; }
           .hr-content :where(h1.text-2xl) { font-size:1.25rem; }

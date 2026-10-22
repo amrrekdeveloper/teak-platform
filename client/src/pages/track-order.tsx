@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useLanguage } from "@/components/language-provider";
+import { useLanguage, LanguageToggle } from "@/components/language-provider";
 import { useTheme } from "@/components/theme-provider";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -64,9 +64,7 @@ export default function TrackOrderPage() {
             <img src={teakLogo} alt="Teak" className="h-8 object-contain cursor-pointer logo-auto transition-all duration-300" data-testid="img-track-logo" />
           </Link>
           <div className="flex items-center gap-1">
-            <Button size="icon" variant="ghost" onClick={toggleLang} data-testid="button-track-lang">
-              <span className="text-xs font-bold">{lang === "ar" ? "EN" : "ع"}</span>
-            </Button>
+            <LanguageToggle testId="button-track-lang" />
             <Button size="icon" variant="ghost" onClick={toggleTheme} data-testid="button-track-theme">
               {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </Button>

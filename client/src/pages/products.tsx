@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useLanguage } from "@/components/language-provider";
+import { useLanguage, LanguageToggle } from "@/components/language-provider";
 import { useTheme } from "@/components/theme-provider";
 import type { Product } from "@shared/schema";
 import { Card, CardContent } from "@/components/ui/card";
@@ -57,9 +57,7 @@ export default function ProductsPage() {
                   {t("طلب عرض سعر", "Request Quote")}
                 </Button>
               </Link>
-              <Button size="icon" variant="ghost" onClick={toggleLang} data-testid="button-lang">
-                <span className="text-xs font-bold">{lang === "ar" ? "EN" : "ع"}</span>
-              </Button>
+              <LanguageToggle testId="button-lang" />
               <Button size="icon" variant="ghost" onClick={toggleTheme} data-testid="button-theme">
                 {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
               </Button>

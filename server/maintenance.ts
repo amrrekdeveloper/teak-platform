@@ -78,6 +78,12 @@ export function createMaintenanceMiddleware(
         res.type("png").send(logo);
         return;
       }
+      // Exact public language assets only; never expose arbitrary filesystem paths.
+      if (req.path === "/teak-language.js" || req.path === "/teak-language.css") {
+        res.type(req.path.endsWith(".js") ? "application/javascript" : "text/css")
+          .send(readFileSync(path.join(publicDir, req.path.slice(1)), "utf8"));
+        return;
+      }
       if (!req.path.startsWith("/api/") && req.path !== "/api") {
         // Replit's deployment health check requests /. Keep it healthy while
         // serving only maintenance content; deep links return temporary 503.

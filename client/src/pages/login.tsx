@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
-import { useLanguage } from "@/components/language-provider";
+import { useLanguage, LanguageToggle } from "@/components/language-provider";
 import { useLoadingTransition } from "@/components/loading-transition";
 import { useTheme } from "@/components/theme-provider";
 import { useToast } from "@/hooks/use-toast";
@@ -352,9 +352,7 @@ export default function LoginPage() {
         <Button size="icon" variant="ghost" onClick={toggleTheme} className="rounded-full" data-testid="button-login-theme">
           {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
         </Button>
-        <Button variant="ghost" size="sm" onClick={toggleLang} className="rounded-full text-xs font-bold" data-testid="button-login-lang">
-          {lang === "ar" ? "EN" : "عربي"}
-        </Button>
+        <LanguageToggle testId="button-login-lang" />
       </div>
 
       {/* LEFT PANEL — desktop only */}

@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { useAuth } from "@/hooks/use-auth";
-import { useLanguage } from "@/components/language-provider";
+import { useLanguage, LanguageToggle } from "@/components/language-provider";
 import { useTheme } from "@/components/theme-provider";
 import { AppSidebar, MobileMenuButton } from "@/components/app-sidebar";
 import { Button } from "@/components/ui/button";
@@ -496,14 +496,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 </>
               )}
             </div>
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={toggleLang}
-              data-testid="button-dashboard-lang"
-            >
-              <span className="text-xs font-bold">{lang === "ar" ? "EN" : "ع"}</span>
-            </Button>
+            <LanguageToggle testId="button-dashboard-lang" />
             <Button
               size="icon"
               variant="ghost"

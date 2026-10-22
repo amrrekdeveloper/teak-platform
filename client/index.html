@@ -1,6 +1,13 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
   <head>
+    <script>
+      try {
+        var teakLanguage = localStorage.getItem("teak-lang") === "en" ? "en" : "ar";
+        document.documentElement.lang = teakLanguage;
+        document.documentElement.dir = teakLanguage === "ar" ? "rtl" : "ltr";
+      } catch (_) {}
+    </script>
     <!-- Google tag (gtag.js) — Analytics + Ads -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=AW-18040336936"></script>
     <script>

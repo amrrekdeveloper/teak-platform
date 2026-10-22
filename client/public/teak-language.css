@@ -1,0 +1,56 @@
+.teak-language-toggle {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 42px;
+  padding: 0 11px;
+  border: 1px solid #d8d0c8;
+  border-radius: 4px;
+  background: #fff;
+  color: #7b1815;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  margin: 0;
+  transition: background-color .16s ease, border-color .16s ease, color .16s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.teak-language-toggle:hover { background: #f7efed; border-color: #bd8a82; }
+.teak-language-toggle:focus-visible { outline: 3px solid #9e0a0a; outline-offset: 3px; }
+.teak-language-toggle svg { width: 18px; height: 18px; flex: none; }
+.teak-language-toggle span { font-weight: 700; }
+.teak-language-toggle--inverse { border-color: #ffffff8a; background: transparent; color: #fff; }
+.teak-language-toggle--inverse:hover { background: #ffffff18; border-color: #fff; }
+.teak-language-toggle--inverse:focus-visible { outline-color: #fff; }
+.teak-language-toggle--maintenance { margin-inline-start: auto; }
+html[dir="ltr"] .notice,
+html[dir="ltr"] .support-note,
+html[dir="ltr"] .account-security,
+html[dir="ltr"] .owner-password-warning { border-right: 0; border-left: 2px solid var(--brand, #9e0a0a); }
+html[dir="ltr"] .owner-password-warning { border-left-width: 3px; }
+html[dir="ltr"] .balance-numbers div { border-right: 0; border-left: 1px solid #ded9d2; }
+html[dir="ltr"] .balance-numbers div:last-child { border-left: 0; }
+html[dir="ltr"] .meta-item { border-right: 0; border-left: 1px solid rgba(255,255,255,.3); }
+html[dir="ltr"] .meta-item:first-child { padding-left: 0; padding-right: 13px; }
+html[dir="ltr"] .meta-item:last-child { padding-right: 0; }
+html[dir="ltr"] .profile-meta .meta-item { border-right: 0; border-left: 1px solid rgba(255,255,255,.3); }
+html[dir="ltr"] .profile-meta .meta-item:first-child { padding-left: 0; padding-right: 13px; }
+html[dir="ltr"] .profile-meta .meta-item:last-child { padding-right: 0; }
+html[dir="ltr"] th,
+html[dir="ltr"] td { text-align: left; }
+html[dir="ltr"] .form-row input[dir="ltr"],
+html[dir="ltr"] input[dir="ltr"] { text-align: left; }
+html[dir="ltr"] .brand-caption { text-align: center; }
+header[data-teak-language-host] { justify-content: space-between; }
+@media (max-width: 760px) {
+  .teak-language-toggle { min-height: 42px; padding-inline: 9px; }
+}
+@media (max-width: 390px) {
+  .mast-right > span:not(.status-dot) { display: none; }
+  .brand-lockup > span:last-child,
+  .brand > span:last-child { max-width: 28vw; overflow-wrap: anywhere; line-height: 1.1; }
+}

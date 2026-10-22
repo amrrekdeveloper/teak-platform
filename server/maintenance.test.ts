@@ -58,6 +58,12 @@ describe("maintenance mode", () => {
     expect(request("/__maintenance/logo.png").headers.type).toBe("png");
     expect(request("/assets/app.js").passed).toBe(true);
   });
+  it("serves only the exact bilingual assets during maintenance", () => {
+    expect(request("/teak-language.js").headers.type).toBe("application/javascript");
+    expect(request("/teak-language.css").headers.type).toBe("text/css");
+    expect(request("/teak-language.js/private").status).toBe(503);
+    expect(request("/teak-language.js", "POST").status).toBe(503);
+  });
   it("allows only isolated employee pages/API, never administrative application paths", () => {
     expect(request("/employee-self-service").headers.type).toBe("html");
     expect(String(request("/employee-self-service").body)).toContain("otp-code");

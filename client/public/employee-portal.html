@@ -10,6 +10,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Zain:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <script data-language-bootstrap>try{var l=new URLSearchParams(location.search).get("lang");if(l!=="en"&&l!=="ar")l=localStorage.getItem("teak-lang")==="en"?"en":"ar";document.documentElement.lang=l;document.documentElement.dir=l==="en"?"ltr":"rtl"}catch(_){}</script>
+  <link rel="stylesheet" href="/teak-language.css">
+  <script src="/teak-language.js" defer></script>
   <style>
     :root{color-scheme:light;--brand:#9e0a0a;--brand-deep:#760909;--paper:#f7f5f1;--card:#fff;--ink:#252321;--muted:#706d68;--line:#e5e1dc;--soft:#f2efea;--sage:#426d5a;--shadow:0 10px 28px rgba(34,28,24,.07);--font:"Zain",Tahoma,sans-serif}
     *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;min-height:100vh;min-height:100dvh;background:var(--paper);color:var(--ink);font-family:var(--font);font-size:15px}button,input,select,textarea{font:inherit}button,a{-webkit-tap-highlight-color:transparent}button{cursor:pointer}a{color:inherit}
@@ -117,7 +120,7 @@
         <img src="/__maintenance/logo.png" alt="تيك — TEAK" width="782" height="511">
         <span class="brand-rule" aria-hidden="true"></span><span>بوابة الموظفين</span>
       </a>
-      <div class="mast-right"><span class="status-dot" aria-hidden="true"></span><span>الخدمة الذاتية</span><button class="logout-icon" id="logout" type="button" aria-label="تسجيل الخروج" title="تسجيل الخروج" hidden><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M10 17l5-5-5-5M15 12H3"/><path d="M12 3h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-6"/></svg></button></div>
+      <div class="mast-right" data-teak-language-host><span class="status-dot" aria-hidden="true"></span><span>الخدمة الذاتية</span><button class="logout-icon" id="logout" type="button" aria-label="تسجيل الخروج" title="تسجيل الخروج" hidden><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M10 17l5-5-5-5M15 12H3"/><path d="M12 3h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-6"/></svg></button></div>
     </header>
     <main class="main">
       <section id="login-view" class="login-wrap" aria-labelledby="login-title">
@@ -467,13 +470,13 @@
       function dateText(value,withTime){
         if(!value)return "—";
         const date=new Date(value);if(Number.isNaN(date.getTime()))return String(value);
-        return new Intl.DateTimeFormat("ar-SA",withTime?{dateStyle:"medium",timeStyle:"short",timeZone:"Asia/Riyadh"}:{dateStyle:"medium",timeZone:"Asia/Riyadh"}).format(date);
+        return new Intl.DateTimeFormat(document.documentElement.lang==="en"?"en-US":"ar-SA",withTime?{dateStyle:"medium",timeStyle:"short",timeZone:"Asia/Riyadh"}:{dateStyle:"medium",timeZone:"Asia/Riyadh"}).format(date);
       }
       function attendanceDateCompact(value){
         if(!value)return "—";
         const date=new Date(`${String(value).slice(0,10)}T12:00:00+03:00`);
         if(Number.isNaN(date.getTime()))return String(value);
-        return new Intl.DateTimeFormat("en-GB",{day:"2-digit",month:"2-digit",year:"numeric",numberingSystem:"latn",timeZone:"Asia/Riyadh"}).format(date);
+        return new Intl.DateTimeFormat(document.documentElement.lang==="en"?"en-GB":"ar-SA",{day:"2-digit",month:"2-digit",year:"numeric",numberingSystem:"latn",timeZone:"Asia/Riyadh"}).format(date);
       }
       function attendanceTimeCompact(value){
         if(!value)return "—";
@@ -509,7 +512,7 @@
           const rawMinutes=deficiencyKnown?(row.late===true?row.lateMinutes:0)+row.earlyDepartureMinutes:null;
           const minutes=correction?.status==="approved"||row.excused?0:rawMinutes;
           const minutesText=minutes===null?"غير متاح":String(minutes);
-          const values=[new Intl.DateTimeFormat("ar-SA",{weekday:"long"}).format(new Date(`${row.day}T12:00:00+03:00`)),dateText(row.day),row.shiftLabel||row.shiftId||"—",row.checkIn?dateText(row.checkIn,true):"—",row.checkOut?dateText(row.checkOut,true):"—",reportStatus(row.status),minutesText];
+          const values=[new Intl.DateTimeFormat(document.documentElement.lang==="en"?"en-US":"ar-SA",{weekday:"long"}).format(new Date(`${row.day}T12:00:00+03:00`)),dateText(row.day),row.shiftLabel||row.shiftId||"—",row.checkIn?dateText(row.checkIn,true):"—",row.checkOut?dateText(row.checkOut,true):"—",reportStatus(row.status),minutesText];
           const desktopValues=[values[0],attendanceDateCompact(row.day),values[2],row.checkIn?attendanceTimeCompact(row.checkIn):"—",row.checkOut?attendanceTimeCompact(row.checkOut):"—",values[5],minutesText];
           const tr=document.createElement("tr");desktopValues.forEach((v,index)=>{
             if([1,3,4].includes(index)){const td=document.createElement("td");td.className="attendance-ltr";const isolated=document.createElement("bdi");isolated.dir="ltr";isolated.textContent=v;td.append(isolated);tr.append(td)}
@@ -630,7 +633,7 @@
         summary=data;const employee=data.employee||{};
         $("employee-name").textContent=employee.fullNameAr||"مرحبًا";$("employee-number").textContent=employee.employeeNumber||"—";
         $("employee-department").textContent=employee.departmentNameAr||employee.department||"—";$("employee-position").textContent=employee.position||"—";
-        $("today-date").textContent=new Intl.DateTimeFormat("ar-SA",{weekday:"long",day:"numeric",month:"long",year:"numeric"}).format(new Date());
+        $("today-date").textContent=new Intl.DateTimeFormat(document.documentElement.lang==="en"?"en-US":"ar-SA",{weekday:"long",day:"numeric",month:"long",year:"numeric"}).format(new Date());
         const zone=(data.assignedZones||[]).find(z=>String(z.id)===String(employee.attendanceZoneId));
         $("assigned-zone").textContent=zone?`${zone.nameAr} · نطاق ${zone.radiusMeters||50} متر`:"موقع البصمة غير محدد. يرجى مراجعة الموارد البشرية.";
         setAttendanceBusy(false);
@@ -994,6 +997,14 @@
           await checkSession();
         }catch(error){showLogin();errorText($("login-error"),error);}
       }
+      window.addEventListener("teak-language-change",function(){
+        if(!summary||!sessionId)return;
+        $("today-date").textContent=new Intl.DateTimeFormat(document.documentElement.lang==="en"?"en-US":"ar-SA",{weekday:"long",day:"numeric",month:"long",year:"numeric"}).format(new Date());
+        const currentReport=attendanceReport||summary.attendanceReport||{rows:[]};
+        renderAttendanceRows(currentReport,currentReport.corrections||summary.corrections||[]);
+        renderBalance(summary.balance||{});renderLeaveHistory(summary.leaves);renderPermissionHistory(summary.permissions);
+        renderRequestHistory(summary.requestHistory,summary.leaves,summary.permissions);renderSessions(summary.sessions);
+      });
       initialize();
     }());
   </script>
