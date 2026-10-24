@@ -12,6 +12,9 @@ import { saveObjectFile, streamObjectFile, deleteObjectFile } from "./objectFile
 import { initMedicalDocuments, registerHrMedicalDocuments, medicalDocumentRole } from "./employee-portal/medical-documents";
 import { initAttendanceScheduleHistory, scheduledShiftsForDay, freezeCurrentAttendanceSchedules } from "./attendance-schedule-history";
 import { applyAttendanceCorrection, attendanceCorrections, registerHrCorrections } from "./attendance-corrections";
+import type { AttendanceReportRow } from "../shared/attendance-report";
+import type { Employee } from "../shared/schema";
+import type { WeekPolicy } from "../shared/attendance-workweek";
 
 /** Additive only. Call during startup after existing attendance tables have been initialized. */
 export async function ensureAttendanceExtensions() {
@@ -122,10 +125,11 @@ export async function recordAttendanceViolation(employeeId: number, day: string,
   finally { client.release(); }
 }
 
-export async function employeeAttendanceReport(employeeId: number, from: string, to: string, now = new Date()) {
-  const employee = await storage.getEmployee(employeeId);
+export async function employeeAttendanceReport(employeeId: number, from: string, to: string, now = new Date(),
+  context?: { employee: Employee; settings: WorkScheduleLike[]; policies: WeekPolicy[] }) {
+  const employee = context?.employee ?? await storage.getEmployee(employeeId);
   if (!employee) throw new Error("الموظف غير موجود");
-  const settings = await attendanceSchedules();
+  const settings = context?.settings ?? await attendanceSchedules();
   const currentShifts = resolveAttendanceShifts(settings, employee);
   const result = await pool.query(`SELECT id,type,check_time AT TIME ZONE 'UTC' AS "checkTime",shift_key AS "shiftKey",
     is_manual_edit AS "isManualEdit",location_name AS "locationName",is_out_of_zone AS "isOutOfZone"
@@ -141,7 +145,7 @@ export async function employeeAttendanceReport(employeeId: number, from: string,
   const violations = await pool.query(`SELECT business_day,shift_key,violation_type FROM attendance_violations
     WHERE employee_id=$1 AND business_day BETWEEN $2 AND $3`, [employeeId,from,to]);
   const corrections = await attendanceCorrections(employeeId,from,to);
-  const policies=await weekPolicies();
+  const policies=context?.policies ?? await weekPolicies();
   const calendars=new Map<string,{workingDay:boolean;source:string;policyId:number|null}>(
     (await pool.query(`SELECT business_day,working_day AS "workingDay",source,policy_id AS "policyId"
       FROM attendance_day_calendars WHERE employee_id=$1 AND business_day BETWEEN $2 AND $3`,
@@ -280,6 +284,63 @@ export function registerAttendanceSupport(app: Express, authorize: RequestHandle
         Date.parse(to) - Date.parse(from) > 366 * 86400000) return res.status(400).json({ message: "اختر موظفًا وفترة صحيحة لا تتجاوز سنة." });
       res.json(await employeeAttendanceReport(id, from, to));
     } catch { res.status(500).json({ message: "تعذّر إعداد تقرير الحضور." }); }
+  });
+  app.get("/api/attendance/period-report", authorize, async (req, res) => {
+    const from = typeof req.query.from === "string" ? req.query.from : "";
+    const to = typeof req.query.to === "string" ? req.query.to : "";
+    const employeeId = req.query.employeeId === undefined ? undefined : Number(req.query.employeeId);
+    if (!validDate(from) || !validDate(to) || from > to || Date.parse(to) - Date.parse(from) >= 366 * 86400000
+      || (employeeId !== undefined && (!Number.isSafeInteger(employeeId) || employeeId <= 0))) {
+      return res.status(400).json({ message: "اختر فترة صحيحة لا تتجاوز 366 يومًا شاملة البداية والنهاية.", messageEn: "Choose a valid range of at most 366 days inclusive." });
+    }
+    try {
+      const allEmployees = await storage.getEmployees();
+      const selected = employeeId === undefined ? allEmployees : allEmployees.filter(e => e.id === employeeId);
+      if (employeeId !== undefined && !selected.length)
+        return res.status(404).json({ message: "الموظف غير موجود.", messageEn: "Employee not found." });
+      const rows: (AttendanceReportRow & {employeeId:number;employeeNumber:string;employeeNameAr:string;employeeNameEn:string|null})[] = [];
+      const warnings = new Set<string>();
+      const [settings, policies] = await Promise.all([attendanceSchedules(), weekPolicies()]);
+      const now = new Date();
+      // At most four employees in flight; leave pool capacity for live attendance.
+      for (let offset = 0; offset < selected.length; offset += 4) {
+        const batch = await Promise.all(selected.slice(offset, offset + 4).map(async employee => {
+          const report = await employeeAttendanceReport(employee.id, from, to, now, { employee, settings, policies });
+          return { employee, report };
+        }));
+        for (const { employee, report } of batch) {
+          report.configurationWarnings.forEach(w => warnings.add(w));
+          rows.push(...report.rows.map(row => ({ ...row, employeeId: employee.id,
+            employeeNumber: employee.employeeNumber, employeeNameAr: employee.fullNameAr || employee.employeeNumber,
+            employeeNameEn: employee.fullNameEn })));
+        }
+      }
+      // Keep every original punch, even when an old shift key no longer has a schedule.
+      const raw = await pool.query(`SELECT id,employee_id,type,check_time AT TIME ZONE 'UTC' AS time,
+        is_manual_edit,is_out_of_zone FROM attendance_records WHERE employee_id=ANY($1::integer[])
+        AND check_time >= $2::timestamptz AT TIME ZONE 'UTC' AND check_time <= $3::timestamptz AT TIME ZONE 'UTC'
+        ORDER BY check_time,id`, [selected.map(e => e.id), riyadhDayBounds(from).from, riyadhDayBounds(to).to]);
+      const represented = new Set(rows.flatMap(row => row.recordIds || []));
+      for (const event of raw.rows) {
+        if (represented.has(event.id)) continue;
+        const employee = selected.find(e => e.id === event.employee_id)!;
+        rows.push({ employeeId: employee.id, employeeNumber: employee.employeeNumber,
+          employeeNameAr: employee.fullNameAr || employee.employeeNumber, employeeNameEn: employee.fullNameEn,
+          day: riyadhDateKey(new Date(event.time)), shiftId: `unassigned-${event.id}`,
+          shiftLabel: "حركة غير مرتبطة بجدول موثق", status: "unverified_schedule",
+          checkIn: event.type === "check_in" ? event.time : null,
+          checkOut: event.type === "check_out" ? event.time : null,
+          scheduleVerified: false, calendarVerified: false, late: null, lateMinutes: null,
+          earlyDepartureMinutes: null, adminOverride: event.is_manual_edit, outOfZone: event.is_out_of_zone,
+          recordId: event.id, recordIds: [event.id] });
+        warnings.add("يشمل التقرير حركات قديمة غير مرتبطة بجدول؛ لم تُحذف ولم تُحسب لها مخالفات تقديرية.");
+      }
+      rows.sort((a, b) => a.employeeNumber.localeCompare(b.employeeNumber, "en", { numeric: true }) || a.day.localeCompare(b.day));
+      res.set("Cache-Control", "private, no-store").json({ rows, warnings: Array.from(warnings) });
+    } catch (error) {
+      console.error("Attendance period report failed", error instanceof Error ? error.message : "unknown");
+      res.status(500).json({ message: "تعذّر إعداد التقرير الكامل؛ لم يتم إرجاع نتيجة جزئية.", messageEn: "Could not prepare the complete report; no partial result was returned." });
+    }
   });
   app.get("/api/attendance/shift-settings", authorize, async (_req, res) => {
     try { res.json(await attendanceSchedules()); }

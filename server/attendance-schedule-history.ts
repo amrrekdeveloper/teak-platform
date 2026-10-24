@@ -27,7 +27,10 @@ export async function scheduledShiftsForDay(settings: WorkScheduleLike[], employ
 }
 
 /** Before a settings mutation freeze today's configuration, including employees who have not checked in. */
-export async function freezeCurrentAttendanceSchedules(executor:{query:(sql:string)=>Promise<unknown>}=pool) {
+export async function freezeCurrentAttendanceSchedules(executor:{query:(sql:string)=>Promise<unknown>}=pool, employeeId?: number) {
+  if (employeeId !== undefined && (!Number.isSafeInteger(employeeId) || employeeId <= 0)) throw new Error("Invalid employee");
+  // Identifier is an application-validated integer, never free-form SQL.
+  const employeeFilter = employeeId === undefined ? "" : ` AND e.id=${employeeId}`;
   await executor.query(`INSERT INTO attendance_day_schedules(employee_id,business_day,shifts)
     SELECT e.id,to_char(now() AT TIME ZONE 'Asia/Riyadh','YYYY-MM-DD'),
       COALESCE(NULLIF(w.shifts,'[]'::jsonb), jsonb_build_array(jsonb_build_object(
@@ -43,7 +46,7 @@ export async function freezeCurrentAttendanceSchedules(executor:{query:(sql:stri
     ) w ON true WHERE e.status='active' AND (
       e.created_at < date_trunc('day',now() AT TIME ZONE 'Asia/Riyadh') AT TIME ZONE 'Asia/Riyadh'
       OR EXISTS(SELECT 1 FROM attendance_records r WHERE r.employee_id=e.id
-        AND r.check_time >= date_trunc('day',now() AT TIME ZONE 'Asia/Riyadh') - interval '3 hours'))
+        AND r.check_time >= date_trunc('day',now() AT TIME ZONE 'Asia/Riyadh') - interval '3 hours'))${employeeFilter}
     ON CONFLICT(employee_id,business_day) DO NOTHING`);
   await executor.query(`INSERT INTO attendance_day_calendars(employee_id,business_day,working_day,policy_id,source)
     SELECT e.id,to_char(now() AT TIME ZONE 'Asia/Riyadh','YYYY-MM-DD'),
@@ -60,6 +63,6 @@ export async function freezeCurrentAttendanceSchedules(executor:{query:(sql:stri
         ((own.working_days IS NOT NULL AND id=own.id) OR (own.working_days IS NULL AND employee_id IS NULL))
         AND effective_from<=to_char(now() AT TIME ZONE 'Asia/Riyadh','YYYY-MM-DD')
       ORDER BY effective_from DESC,id DESC LIMIT 1
-    ) p ON true WHERE e.status='active'
+    ) p ON true WHERE e.status='active'${employeeFilter}
     ON CONFLICT(employee_id,business_day) DO NOTHING`);
 }

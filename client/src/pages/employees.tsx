@@ -5,6 +5,7 @@ import { useLanguage } from "@/components/language-provider";
 import { useAuth } from "@/hooks/use-auth";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { toLatinDigits } from "@shared/digits";
+import { changedEmployeeFields } from "@shared/employee-edit";
 import { ReportPreview, type ReportData } from "@/components/hr-report";
 import { exportEmployeeWorkbook, employeeExportRow, employeeHeadings } from "@/lib/hr-employee-export";
 import { useToast } from "@/hooks/use-toast";
@@ -1131,6 +1132,7 @@ function EmployeeDetailDialog({ emp, users, onClose, initialTab }: { emp: Employ
     attendanceZoneId: (emp as any).attendanceZoneId?.toString() || "",
     attendanceScheduleId: (emp as any).attendanceScheduleId?.toString() || "",
   });
+  const editBaseline = useRef(editForm);
 
   const { data: jobTitlesList = [] } = useQuery<any[]>({ queryKey: ["/api/job-titles"] });
 
@@ -1139,6 +1141,7 @@ function EmployeeDetailDialog({ emp, users, onClose, initialTab }: { emp: Employ
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/employees"] });
       toast({ title: t("تم تحديث بيانات الموظف", "Employee updated") });
+      onClose();
     },
     onError: (err: any) => toast({ title: err?.message || t("حدث خطأ في التحديث", "Error updating"), variant: "destructive" }),
   });
@@ -1182,7 +1185,18 @@ function EmployeeDetailDialog({ emp, users, onClose, initialTab }: { emp: Employ
     if (editForm.iqamaNumber) data.iqamaNumber = editForm.iqamaNumber;
     if (editForm.iqamaExpiry) data.iqamaExpiry = editForm.iqamaExpiry;
     if (editForm.contractEnd) data.contractEnd = editForm.contractEnd;
-    updateMutation.mutate(data);
+    const patch = changedEmployeeFields(data, editForm, editBaseline.current);
+    if (!Object.keys(patch).length) {
+      toast({ title: t("لم تعدّل أي بيانات.", "No fields were changed.") });
+      return;
+    }
+    if ("attendanceZoneId" in patch || "attendanceScheduleId" in patch) {
+      patch.expectedAttendanceAssignment = {
+        attendanceZoneId: editBaseline.current.attendanceZoneId ? Number(editBaseline.current.attendanceZoneId) : null,
+        attendanceScheduleId: editBaseline.current.attendanceScheduleId ? Number(editBaseline.current.attendanceScheduleId) : null,
+      };
+    }
+    updateMutation.mutate(patch);
   };
 
   const serviceDuration = computeServiceDuration(emp.contractStart, t);
@@ -1337,6 +1351,7 @@ export default function EmployeesPage() {
   const [deleteEmpConfirm, setDeleteEmpConfirm] = useState<Employee | null>(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [departmentFilter, setDepartmentFilter] = useState("all");
+  const [onlyUnassigned, setOnlyUnassigned] = useState(false);
   const [employeeDialogExpanded, setEmployeeDialogExpanded] = useState(false);
   const [report, setReport] = useState<ReportData | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -1427,6 +1442,7 @@ export default function EmployeesPage() {
     return employees
       .filter(e => filter === "all" || e.status === filter)
       .filter(e => departmentFilter === "all" || (e.department || "__none") === departmentFilter)
+      .filter(e => !onlyUnassigned || (e.status === "active" && !e.attendanceZoneId))
       .filter(e =>
         !q ||
         e.employeeNumber?.toLowerCase().includes(q) ||
@@ -1450,7 +1466,7 @@ export default function EmployeesPage() {
         if (av > bv) return sortDir === "asc" ? 1 : -1;
         return 0;
       });
-  }, [employees, filter, search, sortKey, sortDir, users, departmentFilter]);
+  }, [employees, filter, search, sortKey, sortDir, users, departmentFilter, onlyUnassigned]);
 
   const activeEmps = employees.filter(e => e.status === "active");
   const saudiCount = activeEmps.filter(e => e.nationality === "saudi").length;
@@ -1574,9 +1590,14 @@ export default function EmployeesPage() {
       </div>
 
       {assignmentFocus && (
-        <p className="rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-muted-foreground" role="status">
-          اختر «تعيين الموقع والجدول» من الموظف المطلوب؛ سيتم التعديل من نموذج الموظف المعتاد.
-        </p>
+        <div className="flex flex-wrap items-center gap-3 rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-sm">
+          <p className="flex-1 min-w-48" role="status">{t("اختر الموظف لتعيين موقع البصمة وجدول الدوام. ملاحظة السكن القديمة ليست تعيينًا لموقع.", "Select an employee to assign a workplace and schedule. A legacy location note is not an assignment.")}</p>
+          <label className="flex min-h-11 items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={onlyUnassigned} onChange={e => { setOnlyUnassigned(e.target.checked); setFilter("all"); }}
+              data-testid="filter-unassigned-workplace" />
+            {t("النشطون بلا موقع", "Active without workplace")} ({activeEmps.filter(e => !e.attendanceZoneId).length})
+          </label>
+        </div>
       )}
 
       <div className="flex flex-col sm:flex-row gap-2">

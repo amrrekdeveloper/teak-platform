@@ -36,6 +36,7 @@ afterAll(async()=>{
     await pool.query("DELETE FROM employees WHERE id=$1",[id]);
   }
   await pool.query("DELETE FROM hr_audit_log WHERE performed_by=$1",[actor]);
+  await pool.query("DELETE FROM notifications WHERE user_id=$1",[actor]);
   await pool.query("DELETE FROM users WHERE id=$1",[actor]);
 });
 function policy(ids=[employee]){return parseWeekInput({mode:"policy",scope:"employees",employeeIds:ids,

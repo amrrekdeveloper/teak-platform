@@ -52,6 +52,7 @@ try {
       for(const table of ["employee_portal_otps","employee_portal_devices","attendance_audit_log","attendance_records","attendance_day_schedules","attendance_calendar_reviews","attendance_day_calendars","attendance_violations","attendance_monthly_risk","risk_alerts"])
         await pool.query(`DELETE FROM ${table} WHERE employee_id=$1`,[id]);
       await pool.query("DELETE FROM attendance_week_policies WHERE employee_id=$1",[id]);
+      await pool.query("DELETE FROM hr_audit_log WHERE employee_id=$1",[id]);
       await pool.query("DELETE FROM employees WHERE id=$1",[id]);
     }
     await pool.query("DELETE FROM work_schedule_settings WHERE label_ar=$1",[marker]);

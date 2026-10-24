@@ -5,6 +5,7 @@ import viteConfig from "../vite.config";
 import fs from "fs";
 import path from "path";
 import { nanoid } from "nanoid";
+import { isHrWorkspacePage } from "../shared/hr-access";
 
 const viteLogger = createLogger();
 
@@ -39,7 +40,8 @@ export async function setupVite(server: Server, app: Express) {
         import.meta.dirname,
         "..",
         "client",
-        "index.html",
+        // Vite can rewrite req.url internally; select the entry from the original navigation.
+        isHrWorkspacePage(url.split("?")[0]) ? "hr.html" : "index.html",
       );
 
       // always reload the index.html file from disk incase it changes

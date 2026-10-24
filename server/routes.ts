@@ -1,5 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { registerAttendanceEvents } from "./attendance-live";
+import { saveEmployeeEdit } from "./employee-edit";
 import { parseInt, singleParam } from "./route-param";
 import { createServer, type Server } from "http";
 import { eq } from "drizzle-orm";
@@ -3730,14 +3731,12 @@ export async function registerRoutes(
         if (existing) return res.status(409).json({ message: `رقم الموظف ${num} مستخدم لموظف آخر`, messageEn: `Employee number ${num} is already in use` });
       }
       const empId = parseInt(req.params.id);
-      await validateEmployeeAttendanceAssignment(req.body,empId);
-      if (["department","attendanceZoneId","attendanceScheduleId"].some(key=>key in req.body))
-        await freezeCurrentAttendanceSchedules();
-      const updated = await withUniqueEmployeePhone(req.body, empId, () => storage.updateEmployee(empId, req.body));
+      const updated = await withUniqueEmployeePhone(req.body, empId, () => saveEmployeeEdit(empId, req.body, req.session.userId!));
       if (!updated) return res.status(404).json({ message: "الموظف غير موجود", messageEn: "Employee not found" });
       res.json(updated);
     } catch (error: any) {
       if (error?.status === 400 || error?.status === 409 || error?.status === 503) return res.status(error.status).json({ message: error.message });
+      if (error?.name === "ZodError") return res.status(400).json({ message: "بيانات الموظف غير صالحة.", messageEn: "Invalid employee data" });
       if (error?.code === "23505") return res.status(409).json({ message: "رقم الموظف مستخدم لموظف آخر", messageEn: "Employee number already in use" });
       res.status(500).json({ message: "حدث خطأ في تحديث الموظف", messageEn: "Error updating employee" });
     }

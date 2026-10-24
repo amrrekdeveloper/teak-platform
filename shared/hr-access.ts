@@ -39,7 +39,7 @@ const rules: [string[], RegExp][] = [
   [["PATCH"], /^\/api\/payroll\/\d+$/],
   [["POST"], /^\/api\/payroll\/\d+\/pay$/],
   [["GET"], /^\/api\/attendance\/(?:monitor|device-report|violations|risk-scores|audit-log)$/],
-  [["GET"], /^\/api\/attendance\/(?:shift-monitor|shift-settings|employees\/\d+\/report|medical-attachments\/\d+)$/],
+  [["GET"], /^\/api\/attendance\/(?:period-report|shift-monitor|shift-settings|employees\/\d+\/report|medical-attachments\/\d+)$/],
   [["GET"], /^\/api\/attendance\/medical-documents(?:\/\d+\/download)?$/],
   [["PUT"], /^\/api\/attendance\/work-settings\/\d+\/shifts$/],
   [["POST"], /^\/api\/attendance\/record\/\d+\/medical-attachment$/],

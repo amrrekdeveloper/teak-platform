@@ -19,6 +19,7 @@ import {
 import { useLanguage } from "@/components/language-provider";
 import AttendanceZonesMap from "@/components/attendance-zones-map";
 import AttendanceZoneSchedules from "@/components/attendance-zone-schedules";
+import { AttendancePeriodReport } from "@/components/attendance-period-report";
 import { resolveWorkSchedule, isLateCheckIn, riyadhDateKey, riyadhDayBounds } from "@shared/attendance";
 import { attendanceStatusLabels, type AttendanceReportRow } from "@shared/attendance-report";
 import { loadMapsLibrary } from "@/lib/maps-loader";
@@ -701,6 +702,7 @@ export default function AttendanceMonitorPage() {
         </TabsContent>
       <TabsContent value="daily">
       <section className="space-y-3" aria-label="مراقبة دوام اليوم">
+        <AttendancePeriodReport employees={employees} />
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
           <p className="text-sm font-medium text-muted-foreground">
             {monitorDay===todayKey?"اليوم":monitorDay===riyadhDateKey(new Date(Date.now()-86400000))?"أمس":"التاريخ المحدد"}

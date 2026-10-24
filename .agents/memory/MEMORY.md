@@ -29,3 +29,5 @@
 - [Employee auth rate limits](employee-auth-rate-limits.md) — protect phone/browser/challenge independently; shared NAT and protocol-test counters must not lock fresh employee logins.
 - [Administrative login policy](administrative-login-policy.md) — owner/HR passwords managed in the owner panel; six-character policy and safe remembered sign-in.
 - [Bilingual product scope](bilingual-product-scope.md) — Arabic/English choice must continue from the public entry page into employee and administrative interfaces.
+- [Attendance assignment concurrency](attendance-assignment-concurrency.md) — dirty-field saves, explicit assignment comparison, and employees-before-evidence locking protect HR decisions.
+- [HR entry loading](hr-entry-loading.md) — keep HR entry independent; Vite can rewrite the request URL, so choose the HTML entry from the original navigation.

@@ -91,16 +91,16 @@ export function registerDepartmentCatalog(app: Express, authorize: RequestHandle
   });
 }
 
-export async function validateEmployeeAttendanceAssignment(input: Record<string,unknown>, id?: number) {
-  if(input.department!==undefined&&!(await pool.query("SELECT 1 FROM hr_departments WHERE code::text=$1",[input.department])).rowCount)
+export async function validateEmployeeAttendanceAssignment(input: Record<string,unknown>, id?: number, connection: Pick<typeof pool, "query"> = pool) {
+  if(input.department!==undefined&&!(await connection.query("SELECT 1 FROM hr_departments WHERE code::text=$1",[input.department])).rowCount)
     throw Object.assign(new Error("القسم غير موجود. اختر قسمًا من القائمة."),{status:400});
-  const current=id?(await pool.query("SELECT attendance_zone_id,attendance_schedule_id FROM employees WHERE id=$1",[id])).rows[0]:undefined;
+  const current=id?(await connection.query("SELECT attendance_zone_id,attendance_schedule_id FROM employees WHERE id=$1",[id])).rows[0]:undefined;
   const zone=input.attendanceZoneId===undefined?current?.attendance_zone_id:input.attendanceZoneId;
   const schedule=input.attendanceScheduleId===undefined?current?.attendance_schedule_id:input.attendanceScheduleId;
   for(const value of [zone,schedule])if(value!=null&&(!Number.isSafeInteger(value)||Number(value)<=0))
     throw Object.assign(new Error("اختر موقع بصمة وجدول دوام صحيحين."),{status:400});
-  if(zone!=null&&!(await pool.query("SELECT 1 FROM location_zones WHERE id=$1 AND is_active=true",[zone])).rowCount)
+  if(zone!=null&&!(await connection.query("SELECT 1 FROM location_zones WHERE id=$1 AND is_active=true",[zone])).rowCount)
     throw Object.assign(new Error("موقع البصمة غير موجود أو غير نشط."),{status:400});
-  if(schedule!=null&&!(await pool.query("SELECT 1 FROM work_schedule_settings WHERE id=$1 AND location_zone_id=$2 AND scope_type='location'",[schedule,zone])).rowCount)
+  if(schedule!=null&&!(await connection.query("SELECT 1 FROM work_schedule_settings WHERE id=$1 AND location_zone_id=$2 AND scope_type='location'",[schedule,zone])).rowCount)
     throw Object.assign(new Error("جدول الدوام لا ينتمي لموقع بصمة الموظف."),{status:400});
 }
