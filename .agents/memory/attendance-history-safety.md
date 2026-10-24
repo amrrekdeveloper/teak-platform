@@ -20,3 +20,9 @@ An old shift snapshot does not prove which weekdays were working days. Weekly ca
 **Why:** Production had captured shift hours but no recorded workweek policy. Applying the newly confirmed Saturday–Thursday week retroactively would invent absence and lateness.
 
 **How to apply:** Schedule normal policy changes for a future date. Correct today or a past day only through explicit, reasoned HR review that preserves original punches and previous classification. Even an approved working-day review cannot establish absence when the original daily shift/end time is missing.
+
+HR must be able to exclude an erroneous checkout while retaining the valid check-in and the original evidence.
+
+**Why:** The owner reported accidental checkout punches that ended employees' shifts and could not be corrected through the existing excuse dialog. Both movements must remain inspectable; an excuse alone does not reverse a checkout.
+
+**How to apply:** Separate movement correction from absence excuses. Preserve an audit trail and require an explicit HR decision rather than automatically deleting closely spaced punches.
