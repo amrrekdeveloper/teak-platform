@@ -825,12 +825,19 @@
       $("change-phone").addEventListener("click",()=>{if(resendTimer)clearInterval(resendTimer);challengeId=null;show($("otp-form"),false);show($("phone-form"),true);message($("login-error"),"");$("login-phone").focus();});
       $("login-phone").addEventListener("input",()=>message($("login-error"),""));
       $("otp-code").addEventListener("input",()=>message($("login-error"),""));
+      let attendanceBusy=false;
+      const attendanceRequests={check_in:null,check_out:null};
       function setAttendanceBusy(busy){
+        attendanceBusy=busy;
         const assigned=(summary?.assignedZones||[]).some(z=>String(z.id)===String(summary?.employee?.attendanceZoneId));
         const disabled=busy||!assigned||summary?.employee?.attendanceEnabled===false;
         $("check-in").disabled=disabled;$("check-out").disabled=disabled;
       }
       async function attendance(type){
+        if(attendanceBusy)return;
+        if(type==="check_out"&&!confirm(document.documentElement.lang==="en"
+          ?"Confirm check-out? This records your departure and ends the current shift. Do not use it to repeat check-in."
+          :"تأكيد الانصراف؟ هذه الحركة تسجل خروجك وتنهي الوردية الحالية. لا تستخدمها لإعادة تسجيل الحضور."))return;
         message($("dashboard-error"),"");
         const status=$("attendance-message");show($("location-help"),false);
         if(!(summary?.assignedZones||[]).some(z=>String(z.id)===String(summary?.employee?.attendanceZoneId))){
@@ -853,7 +860,9 @@
         try{
           message(status,"جارٍ تسجيل الحركة…");
           const c=position.coords;
-          const data=await request("/attendance",{method:"POST",body:{type,latitude:c.latitude,longitude:c.longitude,accuracy:c.accuracy,locationTimestamp:position.timestamp}});
+          attendanceRequests[type] ||= crypto.randomUUID();
+          const data=await request("/attendance",{method:"POST",body:{type,requestId:attendanceRequests[type],latitude:c.latitude,longitude:c.longitude,accuracy:c.accuracy,locationTimestamp:position.timestamp}});
+          attendanceRequests[type]=null;
           message(status,data.message||"تم تسجيل الحركة بنجاح.","success");await loadSummary();
         }catch(error){if(loginView.hidden)errorText(status,error);}
         finally{setAttendanceBusy(false);}

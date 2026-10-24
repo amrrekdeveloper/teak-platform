@@ -17,6 +17,7 @@ import { ensureAttendanceExtensions } from "./attendance-support";
 import { freezeCurrentAttendanceSchedules } from "./attendance-schedule-history";
 import { runAttendanceCatchup } from "./attendance-scheduler";
 import { registerAttendanceOverride } from "./attendance-override";
+import { registerAttendanceMovements } from "./attendance-movements";
 import { registerDepartmentCatalog, validateEmployeeAttendanceAssignment, validateAttendanceZone } from "./attendance-workspace";
 import { validateShifts } from "../shared/attendance";
 import { employeeMonthlyAttendanceRisk, notifyMonthlyAttendanceRisk } from "./attendance-risk";
@@ -8671,6 +8672,7 @@ export async function registerRoutes(
 
   // التدخل الإداري (المرحلة 6): عذر معتمد + Audit — بلا أثر مالي
   registerAttendanceOverride(app, requireRole("owner", "it", "hr"));
+  registerAttendanceMovements(app, requireRole("owner", "hr"));
 
   // سجل التدقيق + تقرير الأعذار الشهري
   app.get("/api/attendance/audit-log", requireRole("owner", "it", "hr"), async (req, res) => {

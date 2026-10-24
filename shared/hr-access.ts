@@ -45,6 +45,8 @@ const rules: [string[], RegExp][] = [
   [["POST"], /^\/api\/attendance\/record\/\d+\/medical-attachment$/],
   [["PATCH"], /^\/api\/attendance\/record\/\d+$/],
   [["POST"], /^\/api\/attendance\/record\/\d+\/override$/],
+  [["POST"], /^\/api\/attendance\/record\/\d+\/correction$/],
+  [["GET", "POST"], /^\/api\/attendance\/movements$/],
   [["POST"], /^\/api\/attendance\/permission\/\d+\/decision$/],
   [["GET", "POST"], /^\/api\/attendance\/(?:zones|work-settings)$/],
   [["PATCH", "DELETE"], /^\/api\/attendance\/(?:zones|work-settings)\/\d+$/],

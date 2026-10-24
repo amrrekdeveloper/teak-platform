@@ -57,6 +57,7 @@ import {
   fiscalYears, type FiscalYear, type InsertFiscalYear,
 } from "@shared/schema";
 import { toLatinDigits, parseNum } from "@shared/digits";
+import { activeMovementSql } from "./attendance-movement-state";
 
 export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
@@ -1306,7 +1307,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getAttendanceRecords(filters?: { employeeId?: number; employeePhone?: string; from?: string; to?: string; locationName?: string }): Promise<AttendanceRecord[]> {
-    const conditions = [];
+    const conditions = [sql.raw(activeMovementSql())];
     if (filters?.employeeId) conditions.push(eq(attendanceRecords.employeeId, filters.employeeId));
     if (filters?.employeePhone) conditions.push(eq(attendanceRecords.employeePhone, filters.employeePhone));
     if (filters?.locationName) conditions.push(eq(attendanceRecords.locationName, filters.locationName));
@@ -1328,7 +1329,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getLastAttendanceRecord(employeeId?: number, employeePhone?: string): Promise<AttendanceRecord | undefined> {
-    const conditions = [];
+    const conditions = [sql.raw(activeMovementSql())];
     if (employeeId) conditions.push(eq(attendanceRecords.employeeId, employeeId));
     if (employeePhone) conditions.push(eq(attendanceRecords.employeePhone, employeePhone));
     if (!conditions.length) return undefined;

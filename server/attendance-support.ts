@@ -15,6 +15,7 @@ import { applyAttendanceCorrection, attendanceCorrections, registerHrCorrections
 import type { AttendanceReportRow } from "../shared/attendance-report";
 import type { Employee } from "../shared/schema";
 import type { WeekPolicy } from "../shared/attendance-workweek";
+import { activeMovementSql } from "./attendance-movement-state";
 
 /** Additive only. Call during startup after existing attendance tables have been initialized. */
 export async function ensureAttendanceExtensions() {
@@ -133,7 +134,7 @@ export async function employeeAttendanceReport(employeeId: number, from: string,
   const currentShifts = resolveAttendanceShifts(settings, employee);
   const result = await pool.query(`SELECT id,type,check_time AT TIME ZONE 'UTC' AS "checkTime",shift_key AS "shiftKey",
     is_manual_edit AS "isManualEdit",location_name AS "locationName",is_out_of_zone AS "isOutOfZone"
-    FROM attendance_records WHERE employee_id=$1 AND check_time >= $2::timestamptz AT TIME ZONE 'UTC'
+    FROM attendance_records WHERE ${activeMovementSql()} AND employee_id=$1 AND check_time >= $2::timestamptz AT TIME ZONE 'UTC'
     AND check_time <= $3::timestamptz AT TIME ZONE 'UTC' ORDER BY check_time,id`,
   [employeeId, riyadhDayBounds(from).from, riyadhDayBounds(to).to]);
   const rows = [];
@@ -317,7 +318,7 @@ export function registerAttendanceSupport(app: Express, authorize: RequestHandle
       }
       // Keep every original punch, even when an old shift key no longer has a schedule.
       const raw = await pool.query(`SELECT id,employee_id,type,check_time AT TIME ZONE 'UTC' AS time,
-        is_manual_edit,is_out_of_zone FROM attendance_records WHERE employee_id=ANY($1::integer[])
+        is_manual_edit,is_out_of_zone FROM attendance_records WHERE ${activeMovementSql()} AND employee_id=ANY($1::integer[])
         AND check_time >= $2::timestamptz AT TIME ZONE 'UTC' AND check_time <= $3::timestamptz AT TIME ZONE 'UTC'
         ORDER BY check_time,id`, [selected.map(e => e.id), riyadhDayBounds(from).from, riyadhDayBounds(to).to]);
       const represented = new Set(rows.flatMap(row => row.recordIds || []));

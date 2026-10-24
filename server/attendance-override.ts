@@ -26,6 +26,7 @@ export function registerAttendanceOverride(app:Express,authorize:RequestHandler)
       }));
     } catch(error:any) {
       const status=[400,404,409].includes(error.status)?error.status:500;
+      if(status===500) console.error("[attendance-override]", {recordId:id,code:error.code,message:error.message});
       res.status(status).json({message:status===500?"تعذر حفظ التصحيح.":error.message});
     }
   });

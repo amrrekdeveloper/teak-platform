@@ -204,6 +204,7 @@ const API_PERMISSION_BYPASS: { prefix: string; key: string; exclude?: string[]; 
   { prefix: "/api/attendance/risk-scores", key: "/attendance-monitor" },
   // Core monitor workflow includes correcting records / overrides
   { prefix: "/api/attendance/record", key: "/attendance-monitor" },
+  { prefix: "/api/attendance/movements", key: "/attendance-monitor" },
   { prefix: "/api/attendance/audit-log", key: "/attendance-monitor" },
   { prefix: "/api/inventory-transactions", key: "/inventory" },
   { prefix: "/api/inventory", key: "/inventory" },
@@ -242,6 +243,9 @@ export function requireRole(...roles: string[]) {
         });
       }
 
+      // Downstream audited operations need the identity loaded from this
+      // authenticated session, never an identity supplied in the request body.
+      (req as any).user = user;
       if (!roles.includes(user.role) && user.role !== "owner" && user.role !== "it") {
         // Per-account module grant can open API access for the granted module
         const granted = await hasModuleGrantForPath(user, req.method, req.path);

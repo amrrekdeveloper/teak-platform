@@ -15,6 +15,7 @@ import {
   Users, Clock, LogIn, LogOut, AlertTriangle, CheckCircle2, XCircle, MapPin,
   Pencil, Monitor, Factory, Building2, RefreshCw, Download, Filter, Map,
   ChevronDown, ChevronLeft, ChevronRight, CalendarDays, Settings, Plus, Trash2, FileText,
+  History, RotateCcw,
 } from "lucide-react";
 import { useLanguage } from "@/components/language-provider";
 import AttendanceZonesMap from "@/components/attendance-zones-map";
@@ -59,6 +60,26 @@ interface AttendanceRecord {
   shiftLabel?: string;
   shiftEndTime?: string;
 }
+
+interface AttendanceMovement {
+  id: number;
+  type: "check_in" | "check_out";
+  checkTime: string;
+  shiftKey: string;
+  employeeNameAr: string;
+  excluded: boolean;
+  version: number;
+  exclusionReason?: string;
+}
+
+interface AttendanceMovementsResponse {
+  records: AttendanceMovement[];
+  employeeId: number;
+  day: string;
+  shifts: { id: string | number; label: string; start: string; end: string }[];
+}
+
+type MovementAction = "void" | "restore" | "edit" | "add";
 
 const OVERRIDE_EXCUSE_LABELS: Record<string, string> = {
   forgot_fingerprint: "نسيان بصمة (يُحتسب حضوراً)",
@@ -236,6 +257,14 @@ export default function AttendanceMonitorPage() {
   const [overrideExcuse, setOverrideExcuse] = useState("forgot_fingerprint");
   const [overrideNote, setOverrideNote] = useState("");
   const [overrideTime, setOverrideTime] = useState("");
+  const [movementEmployee, setMovementEmployee] = useState<{ id: number; name: string; day: string; shiftKey?: string } | null>(null);
+  const [movementAction, setMovementAction] = useState<{ action: MovementAction; movement?: AttendanceMovement } | null>(null);
+  const [movementReason, setMovementReason] = useState("");
+  const [movementType, setMovementType] = useState<"check_in" | "check_out">("check_in");
+  const [movementTime, setMovementTime] = useState("");
+  const [movementShiftKey, setMovementShiftKey] = useState("");
+  const [movementConfirmed, setMovementConfirmed] = useState(false);
+  const [movementError, setMovementError] = useState("");
   const [medicalUploading, setMedicalUploading] = useState(false);
   const [medicalAttachmentId, setMedicalAttachmentId] = useState<number | null>(null);
   const [locationPopup, setLocationPopup] = useState<{ lat: string; lng: string; name: string | null; isOutOfZone: boolean } | null>(null);
@@ -292,6 +321,28 @@ export default function AttendanceMonitorPage() {
     },
     refetchInterval: 60000,
   });
+  const movementQuery = useQuery<AttendanceMovementsResponse>({
+    queryKey: ["/api/attendance/movements", movementEmployee?.id, movementEmployee?.day],
+    enabled: !!movementEmployee,
+    queryFn: async () => {
+      if (!movementEmployee) throw new Error("اختر موظفاً وتاريخاً لعرض الحركات.");
+      const params = new URLSearchParams({ employeeId: String(movementEmployee.id), day: movementEmployee.day });
+      const response = await fetch(`/api/attendance/movements?${params}`, { credentials: "include" });
+      const result = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(result?.message || result?.error || "تعذر تحميل الحركات. أعد المحاولة أو تحقق من صلاحية الوصول.");
+      return result as AttendanceMovementsResponse;
+    },
+  });
+  useEffect(() => {
+    if (!movementEmployee || movementQuery.isLoading || movementQuery.isError) return;
+    const shifts = movementQuery.data?.shifts || [];
+    const currentShift = String(movementShiftKey);
+    if (shifts.length === 1) {
+      setMovementShiftKey(String(shifts[0].id));
+    } else if (currentShift && !shifts.some(shift => String(shift.id) === currentShift)) {
+      setMovementShiftKey("");
+    }
+  }, [movementEmployee?.id, movementEmployee?.day, movementEmployee?.shiftKey, movementShiftKey, movementQuery.dataUpdatedAt, movementQuery.isLoading, movementQuery.isError]);
   const exportEvidence=useQuery<{rows:(AttendanceReportRow&{employeeId:number;ended?:boolean|null})[]}>({
     queryKey:["attendance-shift-monitor",dateRange.from,dateRange.to],
     queryFn:async()=>{
@@ -372,11 +423,45 @@ export default function AttendanceMonitorPage() {
     mutationFn: ({ id, ...body }: { id: number; excuseType: string; note: string; newCheckTime?: string }) =>
       apiRequest("POST", `/api/attendance/record/${id}/override`, body),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/attendance/monitor"] });
+      qc.invalidateQueries({
+        predicate: query => query.queryKey.some(part => typeof part === "string" && part.includes("attendance")),
+      });
       setOverrideRecord(null);
       toast({ title: "تم اعتماد التدخل الإداري" });
     },
     onError: (e: Error) => toast({ title: e.message || "تعذّر اعتماد التدخل", variant: "destructive" }),
+  });
+
+  const movementMutation = useMutation({
+    mutationFn: async (input:
+      | { kind: "correction"; id: number; body: { action: "void" | "restore" | "edit"; reason: string; expectedVersion: number; newType?: "check_in" | "check_out"; newCheckTime?: string } }
+      | { kind: "add"; body: { employeeId: number; day: string; shiftKey: string; type: "check_in" | "check_out"; checkTime: string; reason: string } }) => {
+      if (input.kind === "correction") {
+        return apiRequest("POST", `/api/attendance/record/${input.id}/correction`, input.body);
+      }
+      return apiRequest("POST", "/api/attendance/movements", input.body);
+    },
+    onSuccess: async () => {
+      await qc.invalidateQueries({
+        predicate: query => query.queryKey.some(part => typeof part === "string" && part.includes("attendance")),
+      });
+      setMovementAction(null);
+      setMovementReason("");
+      setMovementConfirmed(false);
+      setMovementError("");
+      await movementQuery.refetch();
+      toast({ title: "تم حفظ تصحيح الحركة وتحديث السجل" });
+    },
+    onError: async (error: Error) => {
+      const message = error.message || "تعذر حفظ الحركة. راجع ترتيب الدخول والخروج ثم أعد المحاولة.";
+      setMovementError(message);
+      setMovementAction(null);
+      setMovementReason("");
+      setMovementConfirmed(false);
+      toast({ title: message, variant: "destructive" });
+      const latest = await movementQuery.refetch();
+      if (!latest.data) setMovementError(`${message} تعذر تحديث نسخة السجل؛ أعد تحميل الحركات قبل المحاولة مجدداً.`);
+    },
   });
 
   const records = data?.records || [];
@@ -504,6 +589,94 @@ export default function AttendanceMonitorPage() {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id); else next.add(id);
       return next;
+    });
+  };
+
+  const openMovementDialog = (employeeId: number, employeeName: string, day: string, shiftKey?: string | null) => {
+    const selectedDay = String(day || monitorDay).slice(0, 10);
+    setMovementEmployee({ id: employeeId, name: employeeName, day: selectedDay, shiftKey: shiftKey || undefined });
+    setMovementAction(null);
+    setMovementReason("");
+    setMovementShiftKey(shiftKey || "");
+    setMovementTime("");
+    setMovementConfirmed(false);
+    setMovementError("");
+  };
+
+  const beginMovementAction = (action: MovementAction, movement?: AttendanceMovement) => {
+    setMovementAction({ action, movement });
+    setMovementType(movement?.type || "check_in");
+    setMovementTime(movement
+      ? new Date(new Date(movement.checkTime).getTime() + 3 * 3600000).toISOString().slice(11, 16)
+      : "");
+    setMovementShiftKey(movement?.shiftKey || movementEmployee?.shiftKey || "");
+    setMovementReason("");
+    setMovementConfirmed(false);
+    setMovementError("");
+  };
+
+  const closeMovementDialog = () => {
+    if (movementMutation.isPending) return;
+    setMovementEmployee(null);
+    setMovementAction(null);
+    setMovementReason("");
+    setMovementConfirmed(false);
+    setMovementError("");
+  };
+
+  const saveMovementAction = () => {
+    if (!movementEmployee || !movementAction) return;
+    const reason = movementReason.trim();
+    if (reason.length < 3) {
+      setMovementError("اكتب سبباً واضحاً لا يقل عن 3 أحرف.");
+      return;
+    }
+    if (!movementConfirmed) {
+      setMovementError("أكد فهمك لأثر هذا الإجراء قبل الحفظ.");
+      return;
+    }
+    if (movementAction.action === "add" && (!movementTime || !movementShiftKey.trim())) {
+      setMovementError("حدد وقت الحركة والوردية لإضافتها.");
+      return;
+    }
+    if (movementAction.action === "edit" && !movementTime) {
+      setMovementError("حدد الوقت الجديد للحركة.");
+      return;
+    }
+    const checkTime = movementTime
+      ? new Date(`${movementEmployee.day}T${movementTime}:00+03:00`)
+      : null;
+    if (checkTime && (!Number.isFinite(checkTime.getTime()) || riyadhDateKey(checkTime) !== movementEmployee.day)) {
+      setMovementError("يجب أن يقع وقت الحركة ضمن اليوم المحدد بتوقيت الرياض.");
+      return;
+    }
+    const isoTime = checkTime?.toISOString();
+    setMovementError("");
+    if (movementAction.action === "add") {
+      movementMutation.mutate({
+        kind: "add",
+        body: {
+          employeeId: movementEmployee.id,
+          day: movementEmployee.day,
+          shiftKey: movementShiftKey.trim(),
+          type: movementType,
+          checkTime: isoTime!,
+          reason,
+        },
+      });
+      return;
+    }
+    const movement = movementAction.movement;
+    if (!movement) return;
+    movementMutation.mutate({
+      kind: "correction",
+      id: movement.id,
+      body: {
+        action: movementAction.action,
+        reason,
+        expectedVersion: movement.version,
+        ...(movementAction.action === "edit" ? { newType: movementType, newCheckTime: isoTime } : {}),
+      },
     });
   };
 
@@ -781,10 +954,30 @@ export default function AttendanceMonitorPage() {
               todayEvidence.isLoading?<div className="space-y-2 rounded-lg border bg-card p-4" aria-label="تحميل بيانات اليوم"><div className="h-4 w-1/4 animate-pulse rounded bg-muted"/><div className="h-10 animate-pulse rounded bg-muted"/><div className="h-10 animate-pulse rounded bg-muted"/></div>:
               <Card><CardHeader className="pb-2"><CardTitle className="text-base flex items-center justify-between gap-2"><span className="truncate">سجل الموظفين · {monitorDay===todayKey?"اليوم":monitorDay===riyadhDateKey(new Date(Date.now()-86400000))?"أمس":new Intl.DateTimeFormat("ar-SA",{day:"numeric",month:"short",timeZone:"Asia/Riyadh"}).format(new Date(`${monitorDay}T12:00:00+03:00`))}</span><Badge variant="outline" className="shrink-0">{visibleRows.length} وردية معروضة</Badge></CardTitle></CardHeader><CardContent className="p-0">
                 {!visibleRows.length?<div className="p-8 text-center text-sm text-muted-foreground">{rows.length?"لا توجد نتائج مطابقة للتصفية.":"لا توجد ورديات مجدولة اليوم."}</div>:
-                  <><div className="hidden md:block overflow-x-auto"><table className="w-full min-w-[980px] text-sm"><thead><tr className="border-y bg-muted/40 text-muted-foreground">{["الموظف","الرقم الوظيفي","الوردية","الحضور","الانصراف","الحالة","الموقع","النطاق"].map(x=><th key={x} className="p-3 text-start font-medium">{x}</th>)}</tr></thead><tbody>{visibleRows.map((r,i)=><tr key={`${r.employeeId}-${r.day}-${r.shiftId}-${i}`} className="border-b last:border-0">{cells(r).map((value,j)=><td key={j} className="p-3">{j===5?<Badge variant={rowState(r)==="absent"?"destructive":rowState(r)==="working"?"default":"outline"}>{value}</Badge>:value}</td>)}</tr>)}</tbody></table></div>
-                    <div className="divide-y md:hidden">{visibleRows.map((r,i)=><article key={`${r.employeeId}-${r.day}-${r.shiftId}-${i}`} className="p-4"><header className="flex items-start justify-between gap-2"><div><strong>{r.employeeName||`#${r.employeeId}`}</strong><p className="text-xs text-muted-foreground">{r.employeeNumber||"—"} · {r.shiftLabel||r.shiftId}</p></div><Badge variant={rowState(r)==="absent"?"destructive":rowState(r)==="working"?"default":"outline"}>{statusText(r)}</Badge></header><dl className="mt-3 grid grid-cols-2 gap-3 text-sm"><div><dt className="text-xs text-muted-foreground">الحضور</dt><dd>{r.checkIn?formatTime(String(r.checkIn)):"—"}</dd></div><div><dt className="text-xs text-muted-foreground">الانصراف</dt><dd>{r.checkOut?formatTime(String(r.checkOut)):"—"}</dd></div><div><dt className="text-xs text-muted-foreground">الموقع</dt><dd>{(r.locationNames||[]).join("، ")||r.homeLocation||"—"}</dd></div><div><dt className="text-xs text-muted-foreground">النطاق</dt><dd>{r.outOfZone?"خارج النطاق":"داخل/غير محدد"}</dd></div></dl></article>)}</div></>}
+                   <><div className="hidden md:block overflow-x-auto"><table className="w-full min-w-[1040px] text-sm"><thead><tr className="border-y bg-muted/40 text-muted-foreground">{["الموظف","الرقم الوظيفي","الوردية","الحضور","الانصراف","الحالة","الموقع","النطاق","الحركات"].map(x=><th key={x} className="p-3 text-start font-medium">{x}</th>)}</tr></thead><tbody>{visibleRows.map((r,i)=><tr key={`${r.employeeId}-${r.day}-${r.shiftId}-${i}`} className="border-b last:border-0">{cells(r).map((value,j)=><td key={j} className="p-3">{j===5?<Badge variant={rowState(r)==="absent"?"destructive":rowState(r)==="working"?"default":"outline"}>{value}</Badge>:value}</td>)}<td className="p-2"><Button size="sm" variant="outline" className="h-9 gap-1 whitespace-nowrap" onClick={()=>openMovementDialog(r.employeeId,r.employeeName||`#${r.employeeId}`,String(r.day||monitorDay),r.shiftId ? String(r.shiftId) : undefined)} data-testid={`button-correct-movements-employee-${r.employeeId}`}><History className="h-3.5 w-3.5"/>تصحيح الحركات</Button></td></tr>)}</tbody></table></div>
+                     <div className="divide-y md:hidden">{visibleRows.map((r,i)=><article key={`${r.employeeId}-${r.day}-${r.shiftId}-${i}`} className="p-4"><header className="flex items-start justify-between gap-2"><div><strong>{r.employeeName||`#${r.employeeId}`}</strong><p className="text-xs text-muted-foreground">{r.employeeNumber||"—"} · {r.shiftLabel||r.shiftId}</p></div><Badge variant={rowState(r)==="absent"?"destructive":rowState(r)==="working"?"default":"outline"}>{statusText(r)}</Badge></header><dl className="mt-3 grid grid-cols-2 gap-3 text-sm"><div><dt className="text-xs text-muted-foreground">الحضور</dt><dd>{r.checkIn?formatTime(String(r.checkIn)):"—"}</dd></div><div><dt className="text-xs text-muted-foreground">الانصراف</dt><dd>{r.checkOut?formatTime(String(r.checkOut)):"—"}</dd></div><div><dt className="text-xs text-muted-foreground">الموقع</dt><dd>{(r.locationNames||[]).join("، ")||r.homeLocation||"—"}</dd></div><div><dt className="text-xs text-muted-foreground">النطاق</dt><dd>{r.outOfZone?"خارج النطاق":"داخل/غير محدد"}</dd></div></dl><Button size="sm" variant="outline" className="mt-3 min-h-10 w-full gap-2" onClick={()=>openMovementDialog(r.employeeId,r.employeeName||`#${r.employeeId}`,String(r.day||monitorDay),r.shiftId ? String(r.shiftId) : undefined)} data-testid={`button-correct-movements-employee-${r.employeeId}`}><History className="h-4 w-4"/>تصحيح الحركات</Button></article>)}</div></>}
               </CardContent></Card>}
-          </>;
+           </>;
+        })()}
+        {!todayEvidence.isLoading && !todayEvidence.isError && (() => {
+          const representedEmployees = new Set((todayEvidence.data?.rows || []).map(row => row.employeeId));
+          const withoutShiftRows = employees.filter(employee => !representedEmployees.has(employee.id)
+            && (!liveSearch.trim() || `${employee.nameAr} ${employee.employeeNumber}`.toLocaleLowerCase("ar").includes(liveSearch.trim().toLocaleLowerCase("ar"))));
+          return withoutShiftRows.length ? (
+            <Card data-testid="employees-without-shift-rows">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">موظفون بلا وردية ظاهرة اليوم</CardTitle>
+                <p className="text-xs text-muted-foreground">يمكن فتح سجل الحركات مباشرة حتى عند عدم وجود بصمات أو صف وردية في التقرير.</p>
+              </CardHeader>
+              <CardContent className="flex flex-wrap gap-2">
+                {withoutShiftRows.map(employee => (
+                  <Button key={employee.id} size="sm" variant="outline" className="min-h-10" onClick={() => openMovementDialog(employee.id, employee.nameAr, monitorDay)} data-testid={`button-correct-no-records-${employee.id}`}>
+                    <History className="me-1 h-3.5 w-3.5" />{employee.nameAr} · تصحيح الحركات
+                  </Button>
+                ))}
+              </CardContent>
+            </Card>
+          ) : null;
         })()}
       </section>
       </TabsContent>
@@ -1263,6 +1456,9 @@ export default function AttendanceMonitorPage() {
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-1">
+                            <Button size="sm" variant="outline" className="h-8 gap-1 text-xs whitespace-nowrap" disabled={!rec.employeeId} onClick={() => rec.employeeId && openMovementDialog(rec.employeeId, rec.employeeNameAr || `#${rec.employeeId}`, riyadhDateKey(new Date(rec.checkTime)), rec.shiftKey)} data-testid={`button-correct-record-${rec.id}`}>
+                              <History className="w-3.5 h-3.5" />تصحيح الحركات
+                            </Button>
                             <Button size="sm" variant="ghost" onClick={() => openEditDialog(rec)} data-testid={`button-edit-record-${rec.id}`}>
                               <Pencil className="w-3.5 h-3.5" />
                             </Button>
@@ -1369,6 +1565,158 @@ export default function AttendanceMonitorPage() {
           </TabsContent>
         )}
       </Tabs>
+
+      <Dialog open={!!movementEmployee} onOpenChange={open => !open && closeMovementDialog()}>
+        <DialogContent dir={isRTL ? "rtl" : "ltr"} className="max-h-[90dvh] max-w-2xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><History className="h-5 w-5 text-primary" />تصحيح الحركات</DialogTitle>
+            {movementEmployee && <p className="text-sm text-muted-foreground">{movementEmployee.name} · {movementEmployee.day} · توقيت الرياض</p>}
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="flex flex-col gap-2 rounded-lg border border-amber-300/70 bg-amber-50/70 p-3 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100 sm:flex-row sm:items-center sm:justify-between">
+              <p className="leading-6">يعرض هذا السجل كل بصمات الدخول والخروج الأصلية. الحذف من الاحتساب لا يمحو سجل التدقيق.</p>
+              <Button size="sm" variant="outline" className="min-h-10 shrink-0" disabled={movementMutation.isPending || movementQuery.isLoading || movementQuery.isError || !(movementQuery.data?.shifts?.length)} onClick={() => beginMovementAction("add")} data-testid="button-add-movement">
+                <Plus className="me-1 h-4 w-4" />إضافة حركة ناقصة
+              </Button>
+            </div>
+            {!movementQuery.isLoading && !movementQuery.isError && !(movementQuery.data?.shifts?.length) && (
+              <div className="rounded-lg border border-amber-300 bg-amber-50/70 p-3 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100" role="status" data-testid="movement-no-schedule-warning">
+                لا يوجد جدول ورديات محفوظ لهذا الموظف في اليوم المحدد؛ لا يمكن إضافة حركة يدوية دون وردية معتمدة.
+              </div>
+            )}
+
+            {movementQuery.isLoading ? (
+              <div className="space-y-2 rounded-lg border p-4" aria-label="تحميل سجل الحركات" data-testid="movement-loading">
+                <div className="h-4 w-1/3 animate-pulse rounded bg-muted" />
+                <div className="h-12 animate-pulse rounded bg-muted" />
+                <div className="h-12 animate-pulse rounded bg-muted" />
+              </div>
+            ) : movementQuery.isError ? (
+              <div className="flex flex-col gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm sm:flex-row sm:items-center sm:justify-between" role="alert" data-testid="movement-load-error">
+                <span>{movementQuery.error instanceof Error ? movementQuery.error.message : "تعذر تحميل الحركات."}</span>
+                <Button variant="outline" onClick={() => movementQuery.refetch()} data-testid="button-retry-movements">إعادة تحميل الحركات</Button>
+              </div>
+            ) : (
+              <div className="space-y-2" data-testid="movement-history">
+                {(movementQuery.data?.records || []).length === 0 ? (
+                  <div className="rounded-lg border border-dashed bg-muted/20 px-4 py-7 text-center">
+                    <p className="font-medium">لا توجد حركات مسجلة لهذا اليوم</p>
+                    <p className="mt-1 text-sm text-muted-foreground">{movementQuery.data?.shifts?.length ? "يمكنك إضافة حركة ناقصة مع توثيق سببها." : "لم يُحفظ جدول وردية لهذا اليوم، لذلك لا تتاح إضافة حركة يدوية."}</p>
+                  </div>
+                ) : (movementQuery.data?.records || []).map(movement => (
+                  <article key={`${movement.id}-${movement.version}`} className={`rounded-lg border p-3 ${movement.excluded ? "border-amber-300 bg-amber-50/60 dark:border-amber-900 dark:bg-amber-950/20" : "bg-card"}`} data-testid={`movement-row-${movement.id}`}>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          {movement.type === "check_in" ? <LogIn className="h-4 w-4 text-green-600" /> : <LogOut className="h-4 w-4 text-orange-600" />}
+                          <strong>{movement.type === "check_in" ? "دخول" : "خروج"}</strong>
+                          <span className="font-mono text-sm tabular-nums">{formatTime(movement.checkTime)}</span>
+                          <Badge variant="outline" className="text-xs">{movement.shiftKey || "وردية غير محددة"}</Badge>
+                          {movement.excluded && <Badge variant="destructive" data-testid={`badge-movement-excluded-${movement.id}`}>مستبعدة من الاحتساب</Badge>}
+                        </div>
+                        {movement.excluded && movement.exclusionReason && <p className="mt-2 text-sm text-amber-900 dark:text-amber-200">سبب الاستبعاد: {movement.exclusionReason}</p>}
+                        <p className="mt-1 text-xs text-muted-foreground">نسخة السجل {movement.version}</p>
+                      </div>
+                      <div className="flex shrink-0 flex-wrap gap-2">
+                        {movement.excluded ? (
+                          <Button size="sm" variant="outline" className="min-h-10" disabled={movementMutation.isPending} onClick={() => beginMovementAction("restore", movement)} data-testid={`button-restore-movement-${movement.id}`}>
+                            <RotateCcw className="me-1 h-3.5 w-3.5" />استعادة
+                          </Button>
+                        ) : (
+                          <Button size="sm" variant="outline" className="min-h-10" disabled={movementMutation.isPending} onClick={() => beginMovementAction("void", movement)} data-testid={`button-void-movement-${movement.id}`}>
+                            استبعاد
+                          </Button>
+                        )}
+                        <Button size="sm" variant="outline" className="min-h-10" disabled={movementMutation.isPending} onClick={() => beginMovementAction("edit", movement)} data-testid={`button-edit-movement-${movement.id}`}>
+                          <Pencil className="me-1 h-3.5 w-3.5" />تعديل
+                        </Button>
+                      </div>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+
+            {movementError && <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive" role="alert" data-testid="movement-action-error">{movementError}</div>}
+
+            {movementAction && (
+              <section className="space-y-4 rounded-xl border border-primary/25 bg-primary/[0.035] p-4" data-testid="movement-action-form">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="font-semibold">
+                      {movementAction.action === "void" ? "استبعاد الحركة من الاحتساب"
+                        : movementAction.action === "restore" ? "استعادة الحركة للاحتساب"
+                          : movementAction.action === "edit" ? "تعديل الحركة" : "إضافة حركة ناقصة"}
+                    </h3>
+                    <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                      {movementAction.action === "void" ? "تبقى البصمة الأصلية وسجلها التدقيقي محفوظين، وتتغير نتيجة احتساب الدوام."
+                        : movementAction.action === "restore" ? "ستعود البصمة الأصلية إلى احتساب الحضور والوردية."
+                          : movementAction.action === "edit" ? "سيُحدّث نوع الحركة أو وقتها مع حفظ القيمة السابقة في سجل التدقيق."
+                            : "ستُضاف بصمة يدوية إلى يوم الموظف، وتخضع للتحقق من تسلسل الدخول والخروج."}
+                    </p>
+                  </div>
+                  {movementAction.action !== "add" && <Button type="button" size="sm" variant="ghost" disabled={movementMutation.isPending || !(movementQuery.data?.shifts?.length)} onClick={() => beginMovementAction("add")} className="shrink-0" data-testid="button-switch-to-add-movement">إضافة حركة</Button>}
+                </div>
+
+                {(movementAction.action === "edit" || movementAction.action === "add") && (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium" htmlFor="movement-type">نوع الحركة</label>
+                      <Select value={movementType} onValueChange={value => setMovementType(value as "check_in" | "check_out")}>
+                        <SelectTrigger id="movement-type" className="min-h-11" data-testid="select-movement-type"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="check_in">دخول</SelectItem>
+                          <SelectItem value="check_out">خروج</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium" htmlFor="movement-time">الوقت في اليوم المحدد</label>
+                      <Input id="movement-time" type="time" value={movementTime} onChange={event => setMovementTime(event.target.value)} className="min-h-11" dir="ltr" data-testid="input-movement-time" />
+                    </div>
+                    {movementAction.action === "add" && (
+                      <div className="space-y-1.5 sm:col-span-2">
+                        <label className="text-sm font-medium" htmlFor="movement-shift">الوردية</label>
+                        <Select value={movementShiftKey} onValueChange={setMovementShiftKey}>
+                          <SelectTrigger id="movement-shift" className="min-h-11" data-testid="select-movement-shift"><SelectValue placeholder="اختر الوردية المسجلة لهذا اليوم" /></SelectTrigger>
+                          <SelectContent>
+                            {(movementQuery.data?.shifts || []).map(shift => (
+                              <SelectItem key={String(shift.id)} value={String(shift.id)}>
+                                {shift.label} · {shift.start}–{shift.end}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {movementQuery.data?.shifts?.length === 1 && <p className="text-xs text-muted-foreground">تم اختيار الوردية الوحيدة المحفوظة لهذا اليوم تلقائياً.</p>}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium" htmlFor="movement-reason">سبب التصحيح <span className="text-destructive">*</span></label>
+                  <Textarea id="movement-reason" value={movementReason} onChange={event => { setMovementReason(event.target.value); setMovementError(""); }} placeholder="اكتب سبباً واضحاً للتوثيق..." rows={3} data-testid="input-movement-reason" />
+                  <p className="text-xs text-muted-foreground">مطلوب للتدقيق، 3 أحرف على الأقل.</p>
+                </div>
+
+                <label className="flex cursor-pointer items-start gap-3 rounded-lg border bg-background p-3 text-sm leading-6">
+                  <input type="checkbox" checked={movementConfirmed} onChange={event => { setMovementConfirmed(event.target.checked); setMovementError(""); }} className="mt-1 h-4 w-4 shrink-0 accent-primary" data-testid="checkbox-confirm-movement" />
+                  <span>أؤكد فهمي أن الإجراء سيغيّر نتيجة احتساب الحضور، وأن التصحيح محفوظ في سجل تدقيق إداري.</span>
+                </label>
+                <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                  <Button type="button" variant="outline" className="min-h-11" disabled={movementMutation.isPending} onClick={() => { setMovementAction(null); setMovementError(""); setMovementConfirmed(false); }} data-testid="button-cancel-movement-action">إلغاء دون حفظ</Button>
+                  <Button type="button" className="min-h-11" disabled={movementMutation.isPending || movementReason.trim().length < 3 || !movementConfirmed || ((movementAction.action === "add" || movementAction.action === "edit") && !movementTime) || (movementAction.action === "add" && !movementShiftKey.trim())} onClick={saveMovementAction} data-testid="button-save-movement">
+                    {movementMutation.isPending ? "جارٍ الحفظ..." : "تأكيد وحفظ"}
+                  </Button>
+                </div>
+              </section>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" className="min-h-11" disabled={movementMutation.isPending} onClick={closeMovementDialog} data-testid="button-close-movement-dialog">إغلاق</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Location Mini-Map Popup */}
       <Dialog open={!!locationPopup} onOpenChange={open => !open && setLocationPopup(null)}>

@@ -1,8 +1,9 @@
 /** Ephemeral browser-test data only. Never run against a deployment. */
-import { randomUUID } from "node:crypto";
+import { randomUUID, randomBytes } from "node:crypto";
 import { pool } from "../server/db";
 import { hashPassword } from "../server/auth";
 import { riyadhDateKey } from "../shared/attendance";
+import { tokenHash } from "../server/employee-portal/security";
 if(process.env.NODE_ENV!=="development"||process.env.REPLIT_DEPLOYMENT==="1")throw new Error("Development only");
 const action=process.argv[2],tag=process.argv[3]||randomUUID().slice(0,8);
 if(!/^[a-z0-9-]{3,40}$/.test(tag))throw new Error("Invalid fixture tag");
@@ -37,8 +38,26 @@ try {
       for(const [type,time]of[["check_in","08:30"],["check_out","14:00"]])await client.query(`INSERT INTO attendance_records
         (employee_id,type,check_time,shift_key,location_name) VALUES($1,$2,$3::timestamptz AT TIME ZONE 'UTC','single',$4)`,
       [employee.id,type,`${day}T${time}:00+03:00`,marker]);
+      let movementFixture = {};
+      if(process.argv[4] === "movements") {
+        const today=riyadhDateKey(new Date()), portalToken=randomBytes(32).toString("hex");
+        await client.query("INSERT INTO attendance_day_schedules(employee_id,business_day,shifts) VALUES($1,$2,$3)",[employee.id,today,JSON.stringify(shifts)]);
+        const punchIds: number[]=[];
+        for(const [type,minutes]of[["check_in",16],["check_out",2]] as const) {
+          const {rows:[punch]}=await client.query(`INSERT INTO attendance_records
+            (employee_id,employee_name_ar,type,check_time,shift_key,location_name)
+            VALUES($1,$2,$3,$4::timestamptz AT TIME ZONE 'UTC','single',$2) RETURNING id`,
+          [employee.id,marker,type,new Date(Date.now()-minutes*60000).toISOString()]);
+          punchIds.push(punch.id);
+        }
+        await client.query(`INSERT INTO employee_portal_devices
+          (id,employee_id,phone,token_hash,device_name,expires_at,auth_mode)
+          VALUES($1,$2,teak_hr_phone($3),$4,'Isolated browser test',now()+interval '1 hour','sms')`,
+        [randomUUID(),employee.id,phone,tokenHash(portalToken)]);
+        movementFixture={today,punchIds,portalToken};
+      }
       await client.query("COMMIT");
-      console.log(JSON.stringify({tag,marker,username,password,phone,employeeId:employee.id,hrId:hr.id,zoneId:zone.id,scheduleId:schedule.id,day}));
+      console.log(JSON.stringify({tag,marker,username,password,phone,employeeId:employee.id,hrId:hr.id,zoneId:zone.id,scheduleId:schedule.id,day,...movementFixture}));
     }catch(error){await client.query("ROLLBACK");throw error;}finally{client.release();}
   }else if(action==="cleanup"){
     const {rows}=await pool.query("SELECT id FROM employees WHERE employee_number=$1",[marker]);

@@ -11,6 +11,7 @@ import { employeePhone, publicEmployee, takeLimit, type PortalEmployee } from ".
 import { permittedZone, riyadhDay, validDate } from "./security";
 import { annualEntitlementAt, annualUsage } from "../hr-workflow-support";
 import { attendanceSchedules, recordAttendanceViolation } from "../attendance-support";
+import { activeMovementSql } from "../attendance-movement-state";
 import { riyadhMinutesOfDay } from "../../shared/attendance";
 import { scheduledShiftsForDay } from "../attendance-schedule-history";
 import { calendarForDay, weekPolicies } from "../attendance-workweek";
@@ -43,6 +44,7 @@ const attendanceInput = z.object({
   accuracy: z.number().finite().positive(),
   locationTimestamp: z.number().finite(),
   shiftId: z.string().max(30).optional(),
+  requestId: z.string().uuid().optional(),
 }).strict();
 
 async function leaveBalance(employee: PortalEmployee) {
@@ -172,9 +174,21 @@ export function registerEmployeeServices(router: Router) {
       await client.query("BEGIN");
       // One transition at a time for this employee across all portal devices.
       await client.query("SELECT pg_advisory_xact_lock(51701,$1)", [employee.id]);
+      if (input.requestId) {
+        const replay = (await client.query(`SELECT id,type,check_time AT TIME ZONE 'UTC' AS "checkTime",
+          location_name AS "locationName",${activeMovementSql()} AS active FROM attendance_records
+          WHERE employee_id=$1 AND device_info->>'requestId'=$2 ORDER BY id DESC LIMIT 1`,
+        [employee.id, input.requestId])).rows[0];
+        if (replay) {
+          if (replay.type !== input.type || !replay.active)
+            portalError(409, "تغيرت حالة هذه الحركة. حدّث سجل الحضور قبل المحاولة.");
+          await client.query("COMMIT");
+          return res.json({ record: replay, replayed: true, message: "هذه الحركة مسجلة بالفعل؛ لم تسجل بصمة إضافية." });
+        }
+      }
       const day = riyadhDay(new Date(now));
       const { rows } = await client.query(`SELECT type,check_time AT TIME ZONE 'UTC' AS check_time FROM attendance_records
-        WHERE employee_id=$1 AND check_time>=($2::timestamptz AT TIME ZONE 'UTC')
+        WHERE ${activeMovementSql()} AND employee_id=$1 AND check_time>=($2::timestamptz AT TIME ZONE 'UTC')
         AND check_time<($2::timestamptz AT TIME ZONE 'UTC') + interval '1 day'
         AND (shift_key=$3 OR (shift_key IS NULL AND $4))
         ORDER BY check_time DESC,id DESC LIMIT 1`, [employee.id, `${day}T00:00:00+03:00`, shift!.id, shifts.length === 1]);
@@ -198,7 +212,7 @@ export function registerEmployeeServices(router: Router) {
         RETURNING id,type,check_time AT TIME ZONE 'UTC' AS "checkTime",location_name AS "locationName"`,
       [employee.id, employeePhone(employee), employee.full_name_ar, input.type, zone.nameAr,
         input.latitude, input.longitude,
-        JSON.stringify({ source: "employee-self-service", accuracyMeters: input.accuracy }),
+        JSON.stringify({ source: "employee-self-service", accuracyMeters: input.accuracy, requestId: input.requestId }),
         `employee-device:${sessionId}`, shift!.id]);
       record = inserted.rows[0];
       await client.query("COMMIT");
