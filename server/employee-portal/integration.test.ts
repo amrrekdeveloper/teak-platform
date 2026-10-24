@@ -78,6 +78,11 @@ beforeAll(async () => {
     [`ESS-TEST-${randomUUID()}`,role]);
     medicalReviewers[role]=user.id;temporaryUsers.push(user.id);
   }
+  // This fixture deliberately has an approved calendar; missing-calendar safety
+  // is covered separately by the workweek integration tests.
+  for(const id of [employeeId,secondId])await pool.query(`INSERT INTO attendance_week_policies
+    (employee_id,working_days,effective_from,reason,created_by) VALUES($1,'[0,1,2,3,4,6]','2025-01-01','Approved test calendar',$2)`,
+  [id,medicalReviewers.hr]);
   const app = express();
   // This in-process server is test-only; use an isolated rate-limit identity.
   app.set("trust proxy",true);
@@ -108,6 +113,9 @@ beforeAll(async () => {
 afterAll(async () => {
   if (server) await new Promise<void>(resolve => { server.close(() => resolve()); server.closeAllConnections(); });
   for (const id of [employeeId, secondId].filter(Boolean)) {
+    await pool.query("DELETE FROM attendance_calendar_reviews WHERE employee_id=$1",[id]);
+    await pool.query("DELETE FROM attendance_day_calendars WHERE employee_id=$1",[id]);
+    await pool.query("DELETE FROM attendance_week_policies WHERE employee_id=$1",[id]);
     await pool.query(`DELETE FROM notifications WHERE related_entity='attendance_correction'
       AND related_id IN(SELECT id FROM attendance_corrections WHERE employee_id=$1)`,[id]);
     await pool.query(`DELETE FROM attendance_correction_history WHERE correction_id IN

@@ -13,6 +13,8 @@ import { annualEntitlementAt, annualUsage } from "../hr-workflow-support";
 import { attendanceSchedules, recordAttendanceViolation } from "../attendance-support";
 import { riyadhMinutesOfDay } from "../../shared/attendance";
 import { scheduledShiftsForDay } from "../attendance-schedule-history";
+import { calendarForDay, weekPolicies } from "../attendance-workweek";
+import { resolveWeekPolicy } from "../../shared/attendance-workweek";
 
 const dateInput = z.string().refine(validDate, "التاريخ غير صالح");
 const reasonInput = z.string().trim().min(3).max(1000);
@@ -88,6 +90,8 @@ export function registerEmployeeServices(router: Router) {
     ]);
     res.json({
       employee: publicEmployee(employee), balance,
+      workweek:{...resolveWeekPolicy(await weekPolicies(),employee.id,riyadhDay()),
+        todayCalendar:await calendarForDay(employee.id,riyadhDay())},
       assignedZones: (await storage.getLocationZones()).filter(z=>z.isActive&&z.id===employee.attendanceZoneId)
         .map(z=>({id:z.id,nameAr:z.nameAr,radiusMeters:z.radiusMeters})),
       attendanceReport: await employeeAttendanceReport(employee.id,riyadhDay(new Date(Date.now()-29*86400000)),riyadhDay()),

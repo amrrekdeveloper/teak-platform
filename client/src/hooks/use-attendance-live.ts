@@ -5,6 +5,7 @@ const attendanceKeys = new Set([
   "/api/employees", "/api/attendance/zones", "/api/attendance/work-settings",
   "/api/attendance/monitor", "/api/attendance/corrections", "/api/attendance/violations",
   "/api/attendance/risk-scores", "/api/attendance/device-report", "/api/attendance/audit-log",
+  "/api/attendance/workweek/settings",
   "attendance-shift-monitor", "attendance-shift-monitor-today", "attendance-individual-report",
 ]);
 

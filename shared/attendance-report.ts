@@ -4,6 +4,7 @@ export interface AttendanceReportRow {
   checkIn:string|Date|null;checkOut:string|Date|null;
   scheduleVerified:boolean;late:boolean|null;lateMinutes:number|null;earlyDepartureMinutes:number|null;
   adminOverride:boolean;outOfZone:boolean;recordId?:number|null;recordIds?:number[];
+  workingDay?:boolean|null;calendarVerified?:boolean;calendarSource?:string;
 }
 export const attendanceStatusLabels:Record<string,string>={
   present:"حاضر",late:"متأخر",absent:"غائب",pending:"لم تنته الوردية",

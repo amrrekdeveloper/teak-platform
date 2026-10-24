@@ -184,6 +184,7 @@
         <section class="tab-panel" id="panel-attendance" role="tabpanel" aria-labelledby="tab-attendance">
           <div class="layout-grid attendance-layout">
             <article class="panel"><div id="assigned-zone" class="assigned-zone"></div>
+              <p id="assigned-week" class="hint"></p>
               <div class="attendance-actions"><button class="btn" id="check-in" type="button" data-testid="check-in">تسجيل حضور</button><button class="btn secondary" id="check-out" type="button" data-testid="check-out">تسجيل انصراف</button></div>
               <p class="geo-note">وقت التسجيل حسب توقيت النظام.</p><p class="live-message" id="attendance-message" role="status" aria-live="polite"></p>
               <details id="location-help" class="hint" hidden><summary>المساعدة في تحديد موقع الجوال</summary><p>فعّل خدمات الموقع في الجوال، واسمح للمتصفح باستخدام «الموقع الدقيق». ثم اسمح لهذه الصفحة باستخدام موقعك. إذا بقيت الدقة ضعيفة، جرّب الاقتراب من نافذة أو مكان مفتوح داخل مقر العمل.</p><a href="/employee-self-service" target="_blank" rel="noopener">فتح البوابة في صفحة مستقلة</a></details>
@@ -636,6 +637,7 @@
         $("today-date").textContent=new Intl.DateTimeFormat(document.documentElement.lang==="en"?"en-US":"ar-SA",{weekday:"long",day:"numeric",month:"long",year:"numeric"}).format(new Date());
         const zone=(data.assignedZones||[]).find(z=>String(z.id)===String(employee.attendanceZoneId));
         $("assigned-zone").textContent=zone?`${zone.nameAr} · نطاق ${zone.radiusMeters||50} متر`:"موقع البصمة غير محدد. يرجى مراجعة الموارد البشرية.";
+        renderWorkweek();
         setAttendanceBusy(false);
         $("logout").hidden=false;
         attendanceReport=data.attendanceReport||{rows:[]};
@@ -997,7 +999,18 @@
           await checkSession();
         }catch(error){showLogin();errorText($("login-error"),error);}
       }
+      function renderWorkweek(){
+        if(!summary)return;
+        const week=summary.workweek,en=document.documentElement.lang==="en";
+        const names=en?["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"]:["الأحد","الاثنين","الثلاثاء","الأربعاء","الخميس","الجمعة","السبت"];
+        const parts=[];
+        if(week?.workingDays)parts.push((en?"Working days: ":"أيام العمل: ")+week.workingDays.map(d=>names[d]).join(en?", ":"، "));
+        const calendar=week?.todayCalendar;
+        parts.push(calendar?.verified?(calendar.workingDay?(en?"Today is a working day":"اليوم يوم عمل"):(en?"Today is a rest day":"اليوم يوم راحة")):(en?"Today's workweek is not approved. Contact HR.":"أيام العمل لهذا اليوم غير معتمدة. راجع الموارد البشرية."));
+        $("assigned-week").textContent=parts.join(" · ");
+      }
       window.addEventListener("teak-language-change",function(){
+        renderWorkweek();
         if(!summary||!sessionId)return;
         $("today-date").textContent=new Intl.DateTimeFormat(document.documentElement.lang==="en"?"en-US":"ar-SA",{weekday:"long",day:"numeric",month:"long",year:"numeric"}).format(new Date());
         const currentReport=attendanceReport||summary.attendanceReport||{rows:[]};

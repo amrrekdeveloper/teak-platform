@@ -2,7 +2,9 @@ import type { Express, RequestHandler } from "express";
 import { z } from "zod";
 import { pool } from "./db";
 import { storage } from "./storage";
-import { resolveAttendanceShifts, riyadhDateKey, riyadhDayBounds, shiftAttendanceStatus, validateShifts, isRiyadhWeekend, type WorkScheduleLike } from "../shared/attendance";
+import { resolveAttendanceShifts, riyadhDateKey, riyadhDayBounds, shiftAttendanceStatus, validateShifts, type WorkScheduleLike } from "../shared/attendance";
+import { completeShiftEvidence, legacyRestDay } from "../shared/attendance-workweek";
+import { calendarForDay, weekPolicies, registerWorkweek } from "./attendance-workweek";
 import { validDate } from "./employee-portal/security";
 import multer from "multer";
 import { randomUUID } from "node:crypto";
@@ -139,10 +141,16 @@ export async function employeeAttendanceReport(employeeId: number, from: string,
   const violations = await pool.query(`SELECT business_day,shift_key,violation_type FROM attendance_violations
     WHERE employee_id=$1 AND business_day BETWEEN $2 AND $3`, [employeeId,from,to]);
   const corrections = await attendanceCorrections(employeeId,from,to);
+  const policies=await weekPolicies();
+  const calendars=new Map<string,{workingDay:boolean;source:string;policyId:number|null}>(
+    (await pool.query(`SELECT business_day,working_day AS "workingDay",source,policy_id AS "policyId"
+      FROM attendance_day_calendars WHERE employee_id=$1 AND business_day BETWEEN $2 AND $3`,
+    [employeeId,from,to])).rows.map(r=>[r.business_day,r]));
   for (let time = +new Date(riyadhDayBounds(from).from); time <= +new Date(riyadhDayBounds(to).to); time += 86400000) {
     const day = riyadhDateKey(new Date(time));
     const shifts = savedSchedules.get(day) ?? (day===riyadhDateKey(new Date())
       ? await scheduledShiftsForDay(settings,employee,day) : currentShifts);
+    const calendar=await calendarForDay(employeeId,day,pool,policies,calendars);
     for (const shift of shifts) {
       // Legacy unassigned records are safe only for a single shift; never guess morning/evening.
       const events = result.rows.filter(r => riyadhDateKey(new Date(r.checkTime)) === day &&
@@ -150,27 +158,31 @@ export async function employeeAttendanceReport(employeeId: number, from: string,
       const state = shiftAttendanceStatus(day, shift, events, now);
       const attempts = violations.rows.filter(v => v.business_day === day && v.shift_key === shift.id);
       const leave = leaves.some(l => l.startDate <= day && l.endDate >= day);
-      let status = events.length ? state.status : day < employee.contractStart ? "not_started"
-        : leave ? "approved_leave" : isRiyadhWeekend(new Date(time)) ? "rest_day"
+      const rest=calendar.workingDay===false||(!calendar.verified&&legacyRestDay(day));
+      let status = events.length ? (rest?"present":state.status) : day < employee.contractStart ? "not_started"
+        : leave ? "approved_leave" : rest ? "rest_day"
         : attempts.some(v => v.violation_type === "missing_checkin") ? "missing_checkin" : state.status;
-      const scheduleVerified = savedDays.has(day) || day === riyadhDateKey(new Date());
+      const scheduleVerified = calendar.verified && completeShiftEvidence(shifts) &&
+        (savedDays.has(day) || day === riyadhDateKey(new Date()));
       if (!scheduleVerified && !["not_started","approved_leave","rest_day"].includes(status)) status="unverified_schedule";
       const correction=corrections.find(c=>c.businessDay===day&&c.shiftKey===shift.id);
       rows.push(applyAttendanceCorrection({ day, shiftId: shift.id, shiftLabel: shift.label, ...state, status,
         // Current settings cannot establish historical schedule-dependent facts.
-        late: scheduleVerified ? state.late : null,
-        lateMinutes: scheduleVerified ? state.lateMinutes : null,
-        earlyDepartureMinutes: scheduleVerified ? state.earlyDepartureMinutes : null,
+        late: scheduleVerified ? (rest?false:state.late) : null,
+        lateMinutes: scheduleVerified ? (rest?0:state.lateMinutes) : null,
+        earlyDepartureMinutes: scheduleVerified ? (rest?0:state.earlyDepartureMinutes) : null,
         ended: scheduleVerified ? state.ended : null,
         recordId: events[0]?.id ?? null,
         recordIds: events.map(event=>event.id),
         scheduleVerified,
+        workingDay:calendar.workingDay,calendarVerified:calendar.verified,calendarSource:calendar.source,
         locationNames: Array.from(new Set(events.map(r => r.locationName).filter(Boolean))),
         outOfZone: events.some(r => r.isOutOfZone) || attempts.some(v => v.violation_type === "out_of_zone") },correction));
     }
   }
   return { employeeId, employeeName: employee.fullNameAr, from, to, rows,
     configurationWarnings: [
+      ...(rows.some(r=>!r.calendarVerified)?["أيام العمل والراحة غير معتمدة لبعض الأيام. راجع إعدادات الدوام؛ لا تُحتسب مخالفات تلقائية لهذه الأيام."]:[]),
       ...(currentShifts.some(s => !s.end) ? ["لم يُضبط وقت نهاية الدوام؛ لا يُحتسب نقص الخروج أو الغياب حتى ضبطه."] : []),
       ...((await pool.query(`SELECT 1 FROM generate_series($2::date,$3::date,'1 day') d
         WHERE d::date< (now() AT TIME ZONE 'Asia/Riyadh')::date AND NOT EXISTS(
@@ -192,6 +204,7 @@ export async function reconcileAttendance(day = riyadhDateKey(new Date())) {
 }
 
 export function registerAttendanceSupport(app: Express, authorize: RequestHandler) {
+  registerWorkweek(app,authorize);
   registerHrCorrections(app,authorize);
   registerHrMedicalDocuments(app, authorize);
   app.get("/api/attendance/shift-monitor", authorize, async (req, res) => {

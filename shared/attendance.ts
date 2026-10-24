@@ -106,7 +106,7 @@ export function riyadhDateKey(date: Date): string {
   return shifted.toISOString().split("T")[0];
 }
 
-// عطلة نهاية الأسبوع السعودية: الجمعة والسبت (بتوقيت الرياض)
+// Legacy compatibility only. Operational attendance uses effective-dated workweek policies.
 export function isRiyadhWeekend(date: Date): boolean {
   const shifted = new Date(date.getTime() + 3 * 60 * 60 * 1000);
   const dow = shifted.getUTCDay(); // 5 = الجمعة، 6 = السبت

@@ -1,6 +1,7 @@
 import {beforeEach,describe,it,expect,vi} from "vitest";
 const state=vi.hoisted(()=>({query:vi.fn()}));
 vi.mock("./db",()=>({pool:{query:state.query}}));
+vi.mock("./attendance-workweek",()=>({calendarForDay:vi.fn()}));
 import {scheduledShiftsForDay} from "./attendance-schedule-history";
 import {riyadhDateKey} from "../shared/attendance";
 describe("immutable daily schedules",()=>{

@@ -157,6 +157,7 @@
     "نقص انصراف":"Missing check-out","لم ينتهِ الدوام":"Workday not ended","إجازة معتمدة":"Approved leave",
     "يوم راحة":"Rest day","قبل المباشرة":"Before start date","جدول تاريخي غير موثق":"Undocumented historical schedule",
     "غير موثق":"Undocumented","معذور":"Excused","لا توجد سجلات للفترة":"No records for this period",
+    "أيام العمل والراحة غير معتمدة لبعض الأيام. راجع إعدادات الدوام؛ لا تُحتسب مخالفات تلقائية لهذه الأيام.":"Work and rest days are not approved for some dates. Contact HR; no automatic violations are assessed for these dates.",
     "ستظهر حركات الحضور والانصراف هنا.":"Attendance entries will appear here.","اليوم":"Day","الفترة":"Period",
     "الحضور الفعلي":"Actual check-in","الانصراف الفعلي":"Actual check-out","دقائق التقصير":"Minutes late/early",
     "غير متاح":"Unavailable","إعادة التقديم":"Resubmit","تم الاعتماد":"Approved","تم اعتماد معالجة التقصير":"Correction approved",

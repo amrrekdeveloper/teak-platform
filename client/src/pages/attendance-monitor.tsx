@@ -202,7 +202,7 @@ function StatusBadge({ status }: { status: string }) {
     late: { label: "متأخر", icon: <Clock className="w-3 h-3" />, className: "bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-400" },
     split_shifts: { label: "ورديات مستقلة — راجع سجل الموظف", icon: <Clock className="w-3 h-3" />, className: "bg-blue-100 text-blue-700" },
   };
-  const s = map[status] || { label: status, icon: null, className: "bg-muted text-muted-foreground" };
+  const s = map[status] || { label: attendanceStatusLabels[status]||status, icon: null, className: "bg-muted text-muted-foreground" };
   return (
     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${s.className}`}>
       {s.icon}{s.label}
@@ -329,6 +329,15 @@ export default function AttendanceMonitorPage() {
     const evidence=exportEvidence.data?.rows.filter(r=>r.employeeId===employeeId&&r.day===riyadhDateKey(day))||[];
     return evidence.length?Array.from(new Set(evidence.map(r=>attendanceStatusLabels[r.status]||r.status))).join(" / "):"جدول تاريخي غير موثق";
   };
+  // Legacy view keeps the original punches, but all classifications come from
+  // the same frozen calendar/shift evidence as daily view, payroll and exports.
+  const evidenceDayStatus=(records:AttendanceRecord[],employeeId:number,day:Date)=>{
+    const original=getDayStatus(records,employeeId);
+    const rows=exportEvidence.data?.rows.filter(r=>r.employeeId===employeeId&&r.day===riyadhDateKey(day))??[];
+    const priority=["unverified_schedule","absent","missing_checkin","missing_checkout","late","present","excused","pending","approved_leave","rest_day","not_started"];
+    const status=priority.find(s=>rows.some(r=>r.status===s))??"unverified_schedule";
+    return {...original,status};
+  };
 
   const { data: zones = [] } = useQuery<LocationZone[]>({
     queryKey: ["/api/attendance/zones"],
@@ -431,22 +440,22 @@ export default function AttendanceMonitorPage() {
       filteredEmployees.forEach(emp => {
         days.forEach(day => {
           const dayRecs = recordsForDay(locRecords, day);
-          const st = getDayStatus(dayRecs, emp.id, lateCheck).status;
+          const st = evidenceDayStatus(dayRecs, emp.id,day).status;
           if (st === "present") present++;
           else if (st === "late") late++;
           else if (st === "missing_checkout" || st === "missing_checkin") incomplete++;
-          else absent++;
+          else if(st==="absent") absent++;
         });
       });
     } else {
-      present = filteredEmployees.filter(e => getDayStatus(locRecords, e.id, lateCheck).status === "present").length;
-      late = filteredEmployees.filter(e => getDayStatus(locRecords, e.id, lateCheck).status === "late").length;
-      absent = filteredEmployees.filter(e => getDayStatus(locRecords, e.id, lateCheck).status === "absent").length;
-      incomplete = filteredEmployees.filter(e => ["missing_checkout", "missing_checkin"].includes(getDayStatus(locRecords, e.id, lateCheck).status)).length;
+      present = filteredEmployees.filter(e => evidenceDayStatus(locRecords, e.id,new Date(dateRange.from)).status === "present").length;
+      late = filteredEmployees.filter(e => evidenceDayStatus(locRecords, e.id,new Date(dateRange.from)).status === "late").length;
+      absent = filteredEmployees.filter(e => evidenceDayStatus(locRecords, e.id,new Date(dateRange.from)).status === "absent").length;
+      incomplete = filteredEmployees.filter(e => ["missing_checkout", "missing_checkin"].includes(evidenceDayStatus(locRecords, e.id,new Date(dateRange.from)).status)).length;
     }
     const outOfZone = locRecords.filter(r => r.isOutOfZone).length;
     return { present, absent, incomplete, late, outOfZone, total: filteredEmployees.length };
-  }, [locRecords, filteredEmployees, isMultiDay, days, lateCheck]);
+  }, [locRecords, filteredEmployees, isMultiDay, days, exportEvidence.data,dateRange.from]);
 
   // موظفون معروضون بعد فلتر الحالة (نقر البطاقات)
   const visibleEmployees = useMemo(() => {
@@ -455,10 +464,10 @@ export default function AttendanceMonitorPage() {
       statusFilter === "incomplete" ? (st === "missing_checkin" || st === "missing_checkout") : st === statusFilter;
     if (isMultiDay) {
       return filteredEmployees.filter(emp =>
-        days.some(day => matches(getDayStatus(recordsForDay(locRecords, day), emp.id, lateCheck).status)));
+        days.some(day => matches(evidenceDayStatus(recordsForDay(locRecords, day), emp.id,day).status)));
     }
-    return filteredEmployees.filter(emp => matches(getDayStatus(locRecords, emp.id, lateCheck).status));
-  }, [filteredEmployees, statusFilter, isMultiDay, days, locRecords, lateCheck]);
+    return filteredEmployees.filter(emp => matches(evidenceDayStatus(locRecords, emp.id,new Date(dateRange.from)).status));
+  }, [filteredEmployees, statusFilter, isMultiDay, days, locRecords, exportEvidence.data,dateRange.from]);
 
   const toggleStatusFilter = (key: string) => setStatusFilter(prev => (prev === key ? "all" : key));
 
@@ -985,7 +994,7 @@ export default function AttendanceMonitorPage() {
               ) : isMultiDay ? (
                 <div className="divide-y" data-testid="list-multiday-employees">
                   {visibleEmployees.map(emp => {
-                    const empDays = days.map(day => ({ day, s: getDayStatus(recordsForDay(locRecords, day), emp.id, lateCheck) }));
+                    const empDays = days.map(day => ({ day, s: evidenceDayStatus(recordsForDay(locRecords, day), emp.id,day) }));
                     const presentDays = empDays.filter(d => d.s.status === "present").length;
                     const incompleteDays = empDays.filter(d => ["missing_checkout", "missing_checkin"].includes(d.s.status)).length;
                     const absentDays = empDays.filter(d => d.s.status === "absent").length;
@@ -1075,7 +1084,7 @@ export default function AttendanceMonitorPage() {
                     </thead>
                     <tbody className="divide-y">
                       {visibleEmployees.map(emp => {
-                        const s = getDayStatus(locRecords, emp.id, lateCheck);
+                        const s = evidenceDayStatus(locRecords, emp.id,new Date(dateRange.from));
                         return (
                           <tr key={emp.id} className="hover:bg-muted/20 transition-colors" data-testid={`row-employee-${emp.id}`}>
                             <td className="px-4 py-3">

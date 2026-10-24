@@ -6,6 +6,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import EmployeesPage from "@/pages/employees";
 import EmployeeDetailPage from "@/pages/employee-detail";
 import AttendanceMonitorPage from "@/pages/attendance-monitor";
+import AttendanceSettingsPage from "@/pages/attendance-settings";
 import LeavesPage from "@/pages/leaves";
 import PayrollPage from "@/pages/payroll";
 import AdvancesPage from "@/pages/advances";
@@ -17,11 +18,11 @@ import { LanguageToggle, useLanguage } from "@/components/language-provider";
 import {
   ArrowLeft, CalendarDays, ChevronLeft, CircleDollarSign, Eye, EyeOff,
   ClipboardCheck, Clock3, DoorOpen, LoaderCircle, LockKeyhole, Menu,
-  ShieldCheck, UsersRound, X,
+  ShieldCheck, UsersRound, X, Settings,
 } from "lucide-react";
 
 type HrUser = { role?: string; maintenanceScope?: string; fullNameAr?: string; fullNameEn?: string; username?: string };
-type HrPage = "employees" | "attendance-monitor" | "leaves" | "payroll" | "advances" | "evaluations";
+type HrPage = "employees" | "attendance-monitor" | "attendance-settings" | "leaves" | "payroll" | "advances" | "evaluations";
 type RememberedLogin = { username: string; rememberMe: boolean };
 const HR_REMEMBER_KEY = "teak.auth.remember.hr";
 function readRememberedHrLogin(): RememberedLogin {
@@ -37,6 +38,7 @@ function saveRememberedHrLogin(username: string, rememberMe: boolean) {
 const navItems: { href: string; key: HrPage; label: string; icon: typeof UsersRound }[] = [
   { href: "/employees", key: "employees", label: "الموظفون", icon: UsersRound },
   { href: "/attendance-monitor", key: "attendance-monitor", label: "مراقبة الدوام", icon: Clock3 },
+  { href: "/attendance-settings", key: "attendance-settings", label: "إعدادات الدوام", icon: Settings },
   { href: "/leaves", key: "leaves", label: "الطلبات والإجازات", icon: CalendarDays },
   { href: "/payroll", key: "payroll", label: "مسير الرواتب", icon: CircleDollarSign },
   { href: "/advances", key: "advances", label: "السلف", icon: DoorOpen },
@@ -162,6 +164,7 @@ function HrLayout() {
   const navLabel = (key: HrPage) => ({
     employees: t("الموظفون", "Employees"),
     "attendance-monitor": t("مراقبة الدوام", "Attendance"),
+    "attendance-settings": t("إعدادات الدوام", "Attendance settings"),
     leaves: t("الطلبات والإجازات", "Requests & leave"),
     payroll: t("مسير الرواتب", "Payroll"),
     advances: t("السلف", "Advances"),
@@ -243,6 +246,7 @@ function HrLayout() {
             <Route path="/employees/:id" component={EmployeeDetailPage} />
             <Route path="/employees" component={EmployeesPage} />
             <Route path="/attendance-monitor" component={AttendanceMonitorPage} />
+            <Route path="/attendance-settings" component={AttendanceSettingsPage} />
             <Route path="/leaves" component={LeavesPage} />
             <Route path="/payroll" component={PayrollPage} />
             <Route path="/advances" component={AdvancesPage} />

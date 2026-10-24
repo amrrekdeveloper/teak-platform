@@ -49,14 +49,16 @@ try {
       await pool.query("DELETE FROM attendance_correction_history WHERE correction_id IN(SELECT id FROM attendance_corrections WHERE employee_id=$1)",[id]);
       await pool.query("DELETE FROM notifications WHERE related_entity='attendance_correction' AND related_id IN(SELECT id FROM attendance_corrections WHERE employee_id=$1)",[id]);
       await pool.query("DELETE FROM attendance_corrections WHERE employee_id=$1",[id]);
-      for(const table of ["employee_portal_otps","employee_portal_devices","attendance_audit_log","attendance_records","attendance_day_schedules","attendance_violations","attendance_monthly_risk","risk_alerts"])
+      for(const table of ["employee_portal_otps","employee_portal_devices","attendance_audit_log","attendance_records","attendance_day_schedules","attendance_calendar_reviews","attendance_day_calendars","attendance_violations","attendance_monthly_risk","risk_alerts"])
         await pool.query(`DELETE FROM ${table} WHERE employee_id=$1`,[id]);
+      await pool.query("DELETE FROM attendance_week_policies WHERE employee_id=$1",[id]);
       await pool.query("DELETE FROM employees WHERE id=$1",[id]);
     }
     await pool.query("DELETE FROM work_schedule_settings WHERE label_ar=$1",[marker]);
     await pool.query("DELETE FROM location_zones WHERE name_ar=$1",[marker]);
     await pool.query("DELETE FROM notifications WHERE user_id IN(SELECT id FROM users WHERE username=$1)",[`att_ui_${tag}`]);
     await pool.query("DELETE FROM user_sessions WHERE sess->>'userId' IN(SELECT id::text FROM users WHERE username=$1)",[`att_ui_${tag}`]);
+    await pool.query("DELETE FROM hr_audit_log WHERE performed_by IN(SELECT id FROM users WHERE username=$1)",[`att_ui_${tag}`]);
     await pool.query("DELETE FROM users WHERE username=$1 AND full_name_ar=$2",[`att_ui_${tag}`,marker]);
     console.log("Fixture removed");
   }else throw new Error("Use create|cleanup");

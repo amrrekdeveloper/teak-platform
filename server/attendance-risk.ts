@@ -1,5 +1,5 @@
 import type { Employee, User } from "../shared/schema";
-import { isRiyadhWeekend, RISK_POINTS, riskLevel } from "../shared/attendance";
+import { RISK_POINTS, riskLevel } from "../shared/attendance";
 import { employeeAttendanceReport } from "./attendance-support";
 import { pool } from "./db";
 import { storage } from "./storage";
@@ -13,8 +13,10 @@ export async function employeeMonthlyAttendanceRisk(employee:Employee,period:str
   let late=0,absent=0,incomplete=0;
   const verified=new Set<string>(),unverified=new Set<string>();
   for(const row of report.rows) {
-    if(row.day<employee.contractStart||isRiyadhWeekend(new Date(`${row.day}T12:00:00+03:00`))||
+    if(row.day<employee.contractStart||
       leaves.some(l=>l.startDate<=row.day&&l.endDate>=row.day))continue;
+    if(row.calendarVerified===false){unverified.add(row.day);continue;}
+    if(row.workingDay===false||row.status==="rest_day")continue;
     if(row.scheduleVerified!==true){unverified.add(row.day);continue;}
     verified.add(row.day);
     if(row.adminOverride||row.status==="excused")continue;

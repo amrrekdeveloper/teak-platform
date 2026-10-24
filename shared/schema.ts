@@ -13,6 +13,8 @@ import {
   pgEnum,
   unique,
   foreignKey,
+  primaryKey,
+  check,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -1449,6 +1451,49 @@ export const workScheduleSettings = pgTable("work_schedule_settings", {
   locationZoneId: integer("location_zone_id"),
   labelAr: text("label_ar"),
 });
+
+// Append-only effective-dated calendar policy. null days = return an employee to the general rule.
+export const attendanceWeekPolicies = pgTable("attendance_week_policies", {
+  id: serial("id").primaryKey(),
+  employeeId: integer("employee_id"),
+  workingDays: jsonb("working_days").$type<number[] | null>(),
+  effectiveFrom: text("effective_from").notNull(),
+  reason: text("reason").notNull(),
+  createdBy: integer("created_by").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, t => ({
+  generalDays: check("attendance_week_general_days", sql`${t.employeeId} IS NOT NULL OR ${t.workingDays} IS NOT NULL`),
+  employeeFk:foreignKey({name:"attendance_week_policies_employee_id_fkey",columns:[t.employeeId],foreignColumns:[employees.id]}),
+  creatorFk:foreignKey({name:"attendance_week_policies_created_by_fkey",columns:[t.createdBy],foreignColumns:[users.id]}),
+}));
+
+export const attendanceDayCalendars = pgTable("attendance_day_calendars", {
+  employeeId: integer("employee_id").notNull(),
+  businessDay: text("business_day").notNull(),
+  workingDay: boolean("working_day").notNull(),
+  policyId: integer("policy_id"),
+  source: text("source").notNull(),
+  capturedAt: timestamp("captured_at", { withTimezone: true }).notNull().defaultNow(),
+}, t => ({
+  pk: primaryKey({ name:"attendance_day_calendars_pkey",columns: [t.employeeId, t.businessDay] }),
+  employeeFk:foreignKey({name:"attendance_day_calendars_employee_id_fkey",columns:[t.employeeId],foreignColumns:[employees.id]}),
+  policyFk:foreignKey({name:"attendance_day_calendars_policy_id_fkey",columns:[t.policyId],foreignColumns:[attendanceWeekPolicies.id]}),
+}));
+
+export const attendanceCalendarReviews = pgTable("attendance_calendar_reviews", {
+  id: serial("id").primaryKey(),
+  employeeId: integer("employee_id").notNull(),
+  businessDay: text("business_day").notNull(),
+  workingDay: boolean("working_day").notNull(),
+  oldValue: jsonb("old_value").notNull(),
+  newValue: jsonb("new_value").notNull(),
+  reason: text("reason").notNull(),
+  createdBy: integer("created_by").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+},t=>({
+  employeeFk:foreignKey({name:"attendance_calendar_reviews_employee_id_fkey",columns:[t.employeeId],foreignColumns:[employees.id]}),
+  creatorFk:foreignKey({name:"attendance_calendar_reviews_created_by_fkey",columns:[t.createdBy],foreignColumns:[users.id]}),
+}));
 
 export const insertWorkScheduleSettingSchema = createInsertSchema(workScheduleSettings).omit({
   id: true,
