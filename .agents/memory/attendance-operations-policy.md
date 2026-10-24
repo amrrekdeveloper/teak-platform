@@ -2,6 +2,12 @@
 name: Attendance operations policy
 description: Owner requirements for employee attendance, geofences, schedule choices and deficiency approval.
 ---
+TEAK's current working week is Saturday through Thursday; Friday alone is the weekly rest day. HR must be able to change working days for everyone or individual employees through clear attendance settings.
+
+**Why:** On 2026-10-24 the owner explicitly corrected the Friday/Saturday weekend assumption and requested configurable working days after seeing incorrect weekly-rest labels in production.
+
+**How to apply:** Do not infer TEAK's workweek from the standard Saudi weekend. Keep weekly-day policy configurable, visible to HR, and effective-dated; preserve historical evidence rather than silently applying today's rule to past attendance.
+
 Attendance belongs to the employee's assigned workplace, not their home-location note. A workplace may offer several alternative schedules; each alternative has one or two periods, and the employee is assigned one alternative, not all alternatives combined.
 
 **Why:** The owner explicitly requested multiple options at the same location, including a single 07:30–14:30 option and a separate split 09:00–12:00 / 16:00–22:00 option.
