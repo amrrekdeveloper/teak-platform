@@ -65,7 +65,7 @@ export function parseWeekInput(body:unknown, today=riyadhDateKey(new Date())) {
     input.scope==="employees"&&input.includeOverrides)
     throw new WeekError(400,"اختر نطاق تطبيق صحيحًا.","Choose a valid scope.");
   if(input.mode==="policy" && (!input.effectiveFrom||input.effectiveFrom<=today||input.businessDay))
-    throw new WeekError(400,"التعديل العام يسري غدًا أو لاحقًا. استخدم مراجعة يوم للتاريخ الجاري أو السابق.","Policies must start tomorrow or later. Use day review for today or earlier.");
+    throw new WeekError(400,"تعديل أيام الدوام يبدأ غدًا أو بعده. لتعديل اليوم أو تاريخ سابق اختر تصحيح يوم في السجل.","Workday changes start tomorrow or later. Choose Correct a recorded day for today or earlier.");
   if(input.mode==="review" && (!input.businessDay||input.businessDay>today||input.effectiveFrom ||
     input.scope!=="employees"||input.workingDays===null))
     throw new WeekError(400,"مراجعة اليوم تتطلب موظفين محددين وتاريخًا غير مستقبلي.","Day review requires selected employees and a date no later than today.");
@@ -102,14 +102,14 @@ export async function buildWeekPreview(input:WorkweekInput, executor:Executor=po
   const day=(input.mode==="review"?input.businessDay:input.effectiveFrom)!;
   const policies=await weekPolicies(executor);
   if(input.mode==="bootstrap" && policies.length)
-    throw new WeekError(409,"سبق اعتماد أسبوع العمل. حدّث الشاشة واستخدم تعديل السياسة.","A workweek policy already exists. Refresh and use policy changes.");
+    throw new WeekError(409,"أيام الدوام معتمدة بالفعل. حدّث الشاشة لتعديلها.","Working days have already been saved. Refresh the page to edit them.");
   const employees=(await executor.query(`SELECT id,employee_number AS "employeeNumber",full_name_ar AS name,status,
     COALESCE(hire_date,contract_start) AS "contractStart" FROM employees ORDER BY id`)).rows;
   const chosen=employees.filter(e=>input.scope==="all"?e.status==="active":input.employeeIds.includes(e.id));
   if(input.scope==="employees"&&chosen.length!==input.employeeIds.length)
     throw new WeekError(404,"تعذر العثور على أحد الموظفين. أعد المعاينة.","An employee was not found. Refresh the preview.");
     if(input.mode!=="review"&&chosen.some(e=>e.status!=="active"))
-    throw new WeekError(400,"اختر موظفين نشطين لتعديل أسبوع العمل.","Select active employees for a workweek policy.");
+      throw new WeekError(400,"اختر موظفين نشطين لتعديل أيام الدوام.","Select active employees to change working days.");
   const rows:any[]=[]; let excludedCount=0;
   for(const employee of chosen) {
     const before=resolveWeekPolicy(policies,employee.id,day);
@@ -117,8 +117,8 @@ export async function buildWeekPreview(input:WorkweekInput, executor:Executor=po
     const after=input.workingDays===null?resolveWeekPolicy(policies.filter(p=>p.employeeId!==employee.id),employee.id,day)
       :{workingDays:input.workingDays,source:input.scope==="all"?"default":"employee"};
     if(input.mode==="policy"&&input.workingDays===null&&after.workingDays===null)
-      throw new WeekError(400,"لا توجد قاعدة عامة معتمدة في تاريخ السريان. اعتمد القاعدة العامة قبل إلغاء تخصيص الموظف.",
-        "No general policy is approved for that date. Approve a general policy before resetting the employee exception.");
+      throw new WeekError(400,"لم تُحفظ أيام دوام عامة لهذا التاريخ. احفظها أولًا قبل إعادة الموظف إلى الدوام العام.",
+        "No company working days are saved for that date. Save them before returning an employee to the company schedule.");
     const row:any={employeeId:employee.id,employeeNumber:employee.employeeNumber,name:employee.name,
       before:{...before,workingDay:workdayFor(before,day)},after:{...after,workingDay:after.workingDays?.includes(new Date(`${day}T12:00:00+03:00`).getUTCDay())??null}};
     if(input.mode==="review"){
@@ -138,8 +138,8 @@ export async function buildWeekPreview(input:WorkweekInput, executor:Executor=po
   const warnings=[
     "لن تتغير البصمات أو ساعات الدوام أو مواقع العمل. / Punches, shift times and workplaces remain unchanged.",
     ...(input.mode==="review"?["هذه مراجعة ليوم محدد وليست تعديلًا عامًا للتاريخ؛ الأصل والسبب وهوية المعتمد تحفظ في السجل. / This reviews one day only and preserves the original evidence and audit trail."]:[]),
-    ...(input.scope==="all"?["القاعدة العامة تشمل الموظفين الجدد أيضًا. التخصيصات المؤجلة بعد تاريخ السريان تبقى محفوظة. / The general policy also covers new employees. Later scheduled employee overrides are preserved."]:[]),
-    ...(input.workingDays?.length===7?["لم تحدد يوم راحة أسبوعية. تأكد من السياسة المعتمدة قبل المتابعة. / No weekly rest day selected. Confirm your approved policy."]:[]),
+    ...(input.scope==="all"?["أيام الدوام العامة تشمل الموظفين الجدد أيضًا، وتبقى تعديلات الموظفين المحددة لتواريخ لاحقة محفوظة. / Company working days also cover new employees. Employee changes scheduled for later dates are preserved."]:[]),
+    ...(input.workingDays?.length===7?["لم تحدد يوم راحة أسبوعية. تأكد أن هذا مقصود قبل الحفظ. / No weekly rest day selected. Confirm this is intended before saving."]:[]),
   ];
   const relevantPolicies=policies.filter(p=>p.employeeId===null||chosen.some(e=>e.id===p.employeeId));
   const previewToken=createHash("sha256").update(JSON.stringify({input,policies:relevantPolicies,employees:chosen,rows})).digest("hex");

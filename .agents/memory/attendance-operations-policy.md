@@ -55,3 +55,9 @@ HR attendance setup is a primary workflow: workplace zones, schedule periods/wor
 **Why:** The owner repeatedly could not find the controls needed to configure attendance. Hiding essential setup made the system appear nonfunctional even when its underlying forms existed.
 
 **How to apply:** Keep concise, visible setup navigation alongside daily monitoring. On HR mobile pages, use one page heading, prioritize indicators, render employees as cards, and group exports/secondary tools separately. Preserve the desktop employee table the owner explicitly likes.
+
+HR-facing workweek setup must use plain work/rest language, not expose “current policy”, “future policy”, or policy-version dashboards as the primary workflow.
+
+**Why:** The owner explicitly rejected this terminology and the cluttered configuration screen as impractical for HR operators.
+
+**How to apply:** Present employee scope, work/rest days and a clear apply date with review/save. Keep dated evidence and protected historical corrections internally, with a separate plain “correct a recorded day” action. Do not simplify by silently rewriting old days or approving unknown schedules on publish. Keep hours, locations and employee assignments visibly reachable.
