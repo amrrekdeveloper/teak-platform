@@ -7,6 +7,7 @@ import { normalizeEmployeePhone } from "./employee-portal/security";
 import { riyadhDateKey } from "../shared/attendance";
 import { HR_WORKSPACE_PERMISSIONS } from "../shared/hr-access";
 import type { InsertLeaveRequest } from "../shared/schema";
+import { registerHrAlerts } from "./hr-alerts";
 
 export async function createAdministrativeLeave(data: InsertLeaveRequest, userId:number) {
   const client=await pool.connect();
@@ -140,6 +141,7 @@ export async function hrReport(input: z.infer<typeof reportInput>) {
 }
 
 export function registerHrOperations(app:Express, authorize:RequestHandler) {
+  registerHrAlerts(app,authorize);
   const endpoint = (handler:(req:any,res:any)=>Promise<any>):RequestHandler => async(req,res)=>{
     try {await handler(req,res);} catch(error:any) {
       if(error instanceof z.ZodError) {res.status(400).json({message:"تحقق من الحقول والفترة المحددة.",errors:error.flatten()});return;}
@@ -181,6 +183,7 @@ export function registerHrOperations(app:Express, authorize:RequestHandler) {
       FROM users WHERE role='hr' AND archived=false ORDER BY id`);
     res.json({employees:employees.map(e=>({...e,phoneValid:!!normalizeEmployeePhone(e.phone||""),duplicatePhone:(counts.get(normalizeEmployeePhone(e.phone||"")||"")||0)>1})),
       hrAccounts,modules:HR_WORKSPACE_PERMISSIONS.map(key=>{
+        if(key==="/alerts")return {key,ar:"مركز التنبيهات",en:"Alert center"};
         const labels:Record<string,[string,string]>={"/employees":["الموظفون","Employees"],"/attendance-monitor":["مراقبة الدوام","Attendance"],"/attendance-settings":["إعدادات الدوام","Attendance settings"],"/leaves":["الإجازات","Leave"],"/permissions":["الاستئذانات","Permissions"],"/reports":["مركز التقارير","Reports"],"/access":["الحسابات والصلاحيات","Accounts & access"],"/actions":["المعاملات والقرارات","HR actions"],"/payroll":["مسير الرواتب","Payroll"],"/advances":["السلف","Advances"],"/evaluations":["التقييمات","Evaluations"]};
         return {key,ar:labels[key]?.[0]||key,en:labels[key]?.[1]||key};
       })});

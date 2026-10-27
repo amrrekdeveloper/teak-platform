@@ -18,6 +18,7 @@ import { calendarForDay, weekPolicies } from "../attendance-workweek";
 import { resolveWeekPolicy } from "../../shared/attendance-workweek";
 import { selectPunchShift, EARLY_CHECKIN_MINUTES } from "../../shared/attendance-shift-selection";
 import { annualLeaveBalance, cancelLeave } from "../hr-operations";
+import { employeeComplianceAlerts } from "../hr-alerts";
 
 const dateInput = z.string().refine(validDate, "التاريخ غير صالح");
 const reasonInput = z.string().trim().min(3).max(1000);
@@ -83,6 +84,7 @@ export function registerEmployeeServices(router: Router) {
     const input=z.object({reason:reasonInput}).strict().parse(req.body);
     res.json(await cancelLeave(Number(req.params.id),input.reason,{employeeId:employee.id}));
   }));
+  router.get("/alerts",asyncRoute(async(_req,res)=>res.json(await employeeComplianceAlerts(identity(res).employee.id))));
   router.get("/summary", asyncRoute(async (_req, res) => {
     const { employee, sessionId } = identity(res);
     const [records, leaves, permissions, balance, devices] = await Promise.all([

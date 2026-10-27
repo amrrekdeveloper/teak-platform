@@ -194,10 +194,19 @@
         <nav class="tabs" role="tablist" aria-label="خدمات الموظف">
           <button class="tab" id="tab-attendance" role="tab" aria-selected="true" aria-controls="panel-attendance" type="button">الحضور والانصراف</button>
           <button class="tab" id="tab-leaves" role="tab" aria-selected="false" aria-controls="panel-leaves" type="button">الإجازات</button>
+          <button class="tab" id="tab-alerts" role="tab" aria-selected="false" aria-controls="panel-alerts" type="button">التنبيهات <span id="personal-alert-count"></span></button>
           <button class="tab" id="tab-acknowledgments" role="tab" aria-selected="false" aria-controls="panel-acknowledgments" type="button">القرارات والتعاميم</button>
           <button class="tab" id="tab-sessions" role="tab" aria-selected="false" aria-controls="panel-sessions" type="button">أجهزتي</button>
           <button class="tab" id="tab-support" role="tab" aria-selected="false" aria-controls="panel-support" type="button">الدعم الفني</button>
         </nav>
+        <section class="tab-panel" id="panel-alerts" role="tabpanel" aria-labelledby="tab-alerts" hidden>
+          <div class="card">
+            <h2>تنبيهات مستنداتي</h2>
+            <p class="muted">تواريخ مسجلة تحتاج المتابعة مع الموارد البشرية، ولا يترتب عليها خصم أو إيقاف تلقائي.</p>
+            <div id="personal-alert-list" aria-live="polite"></div>
+            <button type="button" class="btn secondary" id="refresh-personal-alerts">تحديث التنبيهات</button>
+          </div>
+        </section>
         <section class="tab-panel" id="panel-attendance" role="tabpanel" aria-labelledby="tab-attendance">
           <div class="layout-grid attendance-layout">
             <article class="panel"><div id="assigned-zone" class="assigned-zone"></div>
@@ -423,6 +432,7 @@
         $("login-success").textContent="";show($("login-success"),false);$("login-phone").focus();
       }
       function clearPrivate(){
+        $("personal-alert-list").replaceChildren();$("personal-alert-count").textContent="";
         leaveCancelTarget=null;show($("leave-cancel-dialog"),false);$("leave-cancel-reason").value="";
         summary=null;sessionId=null;attendanceReport=null;correctionDraft=null;correctionDrafts.clear();dashboard.querySelectorAll("[id^='employee-'],#attendance-history,#leave-balance,#leave-history,#permission-history,#session-list").forEach(el=>el.textContent="");
         challengeId=null;if(resendTimer){clearInterval(resendTimer);resendTimer=null;}$("login-phone").value="";$("otp-code").value="";$("assigned-zone").textContent="";$("today-date").textContent="";
@@ -715,6 +725,7 @@
         renderAttendanceRows(attendanceReport,data.corrections||attendanceReport.corrections||[]);
         renderBalance(data.balance||{});renderLeaveHistory(data.leaves);renderPermissionHistory(data.permissions);
         renderRequestHistory(data.requestHistory,data.leaves,data.permissions);renderSessions(data.sessions);
+        loadPersonalAlerts(renderEpoch);
         loadMedicalDocuments(renderEpoch);
         show(loginView,false);show(loadingView,false);show(dashboard,true);selectTab(activeTab);
       }
@@ -734,6 +745,27 @@
           host.append(note,retry);
         }
       }
+      async function loadPersonalAlerts(expectedEpoch=authEpoch){
+        if(!sessionId||logoutPending)return;
+        const target=$("personal-alert-list"),button=$("refresh-personal-alerts");
+        button.disabled=true;target.setAttribute("aria-busy","true");
+        try{
+          const data=await request("/alerts");if(expectedEpoch!==authEpoch||!sessionId)return;
+          target.replaceChildren();const items=Array.isArray(data.items)?data.items:[];
+          $("personal-alert-count").textContent=items.length?`(${items.length})`:"";
+          if(!items.length){const empty=document.createElement("p");empty.className="muted";empty.textContent="لا توجد تنبيهات مستندات ضمن الفترة الحالية.";target.append(empty);}
+          for(const alert of items){
+            const article=document.createElement("article");article.className=alert.severity==="critical"?"error":"info";article.style.marginBlock="12px";
+            const title=document.createElement("h3"),description=document.createElement("p");
+            const english=document.documentElement.lang==="en";title.textContent=english?alert.titleEn:alert.titleAr;
+            description.textContent=english?alert.descriptionEn:alert.descriptionAr;
+            title.style.marginBlock="0 8px";description.style.margin="0";
+            article.append(title,description);target.append(article);
+          }
+        }catch(error){if(expectedEpoch===authEpoch&&!error.stale&&sessionId)errorText(target,error);}
+        finally{if(expectedEpoch===authEpoch){button.disabled=false;target.setAttribute("aria-busy","false");}}
+      }
+      $("refresh-personal-alerts").addEventListener("click",()=>loadPersonalAlerts());
       async function loadSummary(){
         if(!sessionId||logoutPending)return;
         const expectedEpoch=authEpoch;
@@ -1094,6 +1126,7 @@
       window.addEventListener("teak-language-change",function(){
         renderWorkweek();
         if(!summary||!sessionId)return;
+        loadPersonalAlerts();
         $("today-date").textContent=new Intl.DateTimeFormat(document.documentElement.lang==="en"?"en-US":"ar-SA",{weekday:"long",day:"numeric",month:"long",year:"numeric"}).format(new Date());
         const currentReport=attendanceReport||summary.attendanceReport||{rows:[]};
         renderAttendanceRows(currentReport,currentReport.corrections||summary.corrections||[]);

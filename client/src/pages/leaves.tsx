@@ -17,7 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertCircle, CalendarDays, CheckCircle2, Clock3, FileText, Loader2, Plus, Search, XCircle } from "lucide-react";
 
@@ -98,6 +98,7 @@ function LeavesContent({ section, legacy }: { section: Section; legacy: boolean 
     queryClient.invalidateQueries({ queryKey: ["/api/attendance/permissions"] });
     queryClient.invalidateQueries({ queryKey: ["/api/leaves/balance"] });
     queryClient.invalidateQueries({ queryKey: ["/api/pending-requests"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/hr/alerts"] });
   };
   const createMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/leaves", { ...form, leaveFormData }),
@@ -272,7 +273,7 @@ function LeavesContent({ section, legacy }: { section: Section; legacy: boolean 
     </section>
 
     <Dialog open={createOpen} onOpenChange={setCreateOpen}><DialogContent className="max-h-[94dvh] w-[96vw] max-w-3xl overflow-y-auto">
-      <DialogHeader><DialogTitle>{t("طلب إجازة", "Leave request")}</DialogTitle></DialogHeader>
+      <DialogHeader><DialogTitle>{t("طلب إجازة", "Leave request")}</DialogTitle><DialogDescription>{t("أدخل بيانات الطلب ومرفقاته قبل الإرسال للمراجعة.", "Enter the request details and any required attachments before submitting for review.")}</DialogDescription></DialogHeader>
       <div className="space-y-3">
         <div className="space-y-1"><Label>{t("الموظف", "Employee")}</Label><Select value={form.employeeId} onValueChange={employeeId => setForm(v => ({ ...v, employeeId }))}><SelectTrigger><SelectValue placeholder={t("اختر الموظف", "Select employee")} /></SelectTrigger><SelectContent>{employees.filter(e => e.status === "active").map(e => <SelectItem key={e.id} value={String(e.id)}>{employeeName(e.id)}</SelectItem>)}</SelectContent></Select></div>
         <div className="space-y-1"><Label>{t("نوع الإجازة", "Leave type")}</Label><Select value={form.leaveType} onValueChange={leaveType => setForm(v => ({ ...v, leaveType }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{LEAVE_TYPES.map(x => <SelectItem key={x.value} value={x.value}>{t(x.ar, x.en)}</SelectItem>)}</SelectContent></Select></div>
@@ -284,7 +285,7 @@ function LeavesContent({ section, legacy }: { section: Section; legacy: boolean 
     </DialogContent></Dialog>
 
     <Dialog open={!!decision} onOpenChange={open => { if (!open && !decideMutation.isPending) { setDecision(null); setDecisionNote(""); setOverrideManager(false); } }}><DialogContent>
-      <DialogHeader><DialogTitle>{t(decision?.action === "approve" ? "اعتماد الطلب" : decision?.action === "reject" ? "رفض الطلب" : "طلب توضيح", decision?.action === "approve" ? "Approve request" : decision?.action === "reject" ? "Reject request" : "Request details")}</DialogTitle></DialogHeader>
+      <DialogHeader><DialogTitle>{t(decision?.action === "approve" ? "اعتماد الطلب" : decision?.action === "reject" ? "رفض الطلب" : "طلب توضيح", decision?.action === "approve" ? "Approve request" : decision?.action === "reject" ? "Reject request" : "Request details")}</DialogTitle><DialogDescription>{t("راجع الطلب وسجّل الملاحظة المطلوبة قبل تأكيد القرار. لن يُغلق النموذج قبل اكتمال الحفظ.", "Review the request and enter any required note before confirming. The dialog remains open until the update succeeds.")}</DialogDescription></DialogHeader>
       <div className="space-y-3"><Label>{t("ملاحظة / سبب التدخل", "Notes / intervention reason")}{decision?.action !== "approve" || decision?.stage==="manager" ? ` · ${t("مطلوبة", "required")}` : ` · ${t("اختيارية", "optional")}`}</Label><Textarea value={decisionNote} onChange={e => setDecisionNote(e.target.value)} />
         {decision?.stage==="manager" && <p className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">{t("الطلب ينتظر المدير المباشر. لإصدار قرار نهائي الآن، فعّل التدخل الإداري وسجّل سببًا من 3 أحرف على الأقل.", "This request awaits the manager. To make a final decision now, explicitly authorize an administrative override and enter a reason of at least 3 characters.")}</p>}
         {decision?.stage.toLowerCase().includes("manager") && <label className="flex items-start gap-2 rounded-lg border p-3 text-sm"><input type="checkbox" checked={overrideManager} onChange={e => setOverrideManager(e.target.checked)} className="mt-1" /><span>{t("تجاوز مرحلة المدير المباشر (إجراء إداري صريح)", "Override manager stage (explicit administrative action)")}</span></label>}
@@ -293,7 +294,7 @@ function LeavesContent({ section, legacy }: { section: Section; legacy: boolean 
     </DialogContent></Dialog>
 
     <Dialog open={!!cancelTarget} onOpenChange={open => { if (!open && !cancelMutation.isPending) { setCancelTarget(null); setCancelReason(""); } }}><DialogContent>
-      <DialogHeader><DialogTitle>{t("تأكيد إلغاء الإجازة", "Confirm leave cancellation")}</DialogTitle></DialogHeader>
+      <DialogHeader><DialogTitle>{t("تأكيد إلغاء الإجازة", "Confirm leave cancellation")}</DialogTitle><DialogDescription>{t("أدخل سبباً واضحاً؛ سيُحفظ القرار في سجل الطلب.", "Provide a clear reason; the decision will remain in the request history.")}</DialogDescription></DialogHeader>
       <div className="space-y-3"><p className="rounded-lg border border-amber-500/30 bg-amber-50 p-3 text-sm text-amber-900">{t("هذا الإجراء نهائي ويحفظ سجل الطلب. قد يؤثر على الحضور ورصيد الإجازة، ولا يرحّل أي تعديل إلى الرواتب تلقائياً.", "This is irreversible and retains the request history. It may change attendance and leave balance; payroll is not updated automatically.")}</p>
         <div className="space-y-1"><Label>{t("سبب الإلغاء (٣ أحرف على الأقل)", "Cancellation reason (at least 3 characters)")}</Label><Textarea value={cancelReason} onChange={e => setCancelReason(e.target.value)} /></div></div>
       <DialogFooter><Button variant="destructive" disabled={cancelReason.trim().length < 3 || cancelMutation.isPending} onClick={() => cancelMutation.mutate()}>{cancelMutation.isPending && <Loader2 className="me-2 h-4 w-4 animate-spin" />}{t("تأكيد الإلغاء", "Confirm cancellation")}</Button></DialogFooter>

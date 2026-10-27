@@ -77,6 +77,7 @@ try {
     await pool.query("DELETE FROM work_schedule_settings WHERE label_ar=$1",[marker]);
     await pool.query("DELETE FROM location_zones WHERE name_ar=$1",[marker]);
     await pool.query("DELETE FROM notifications WHERE user_id IN(SELECT id FROM users WHERE username=$1)",[`att_ui_${tag}`]);
+    await pool.query("DELETE FROM hr_alert_states WHERE user_id IN(SELECT id FROM users WHERE username=$1)",[`att_ui_${tag}`]);
     await pool.query("DELETE FROM user_sessions WHERE sess->>'userId' IN(SELECT id::text FROM users WHERE username=$1)",[`att_ui_${tag}`]);
     await pool.query("DELETE FROM hr_audit_log WHERE performed_by IN(SELECT id FROM users WHERE username=$1)",[`att_ui_${tag}`]);
     await pool.query("DELETE FROM users WHERE username=$1 AND full_name_ar=$2",[`att_ui_${tag}`,marker]);

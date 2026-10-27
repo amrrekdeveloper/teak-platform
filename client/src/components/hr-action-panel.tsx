@@ -92,6 +92,7 @@ export function HrActionCard({ action, employeeName, queryKey }: { action: HrAct
       queryClient.invalidateQueries({ queryKey });
       queryClient.invalidateQueries({ queryKey: ["/api/hr-actions"] });
       queryClient.invalidateQueries({ queryKey: ["/api/employees"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/alerts"] });
       setRejectOpen(false); setNote("");
       toast({ title: t("تم تنفيذ الخطوة", "Step processed") });
     },
@@ -264,6 +265,7 @@ export function NewHrActionDialog({ workflow, employeeId, queryKey, triggerLabel
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey });
       queryClient.invalidateQueries({ queryKey: ["/api/hr-actions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/alerts"] });
       setOpen(false); setForm({});
       toast({ title: t("تم إنشاء الإجراء", "Action created") });
     },

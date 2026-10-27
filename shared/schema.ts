@@ -1017,6 +1017,28 @@ export const insertNotificationSchema = createInsertSchema(notifications).omit({
 export type InsertNotification = z.infer<typeof insertNotificationSchema>;
 export type Notification = typeof notifications.$inferSelect;
 
+// Published through the managed schema flow, never created by startup handlers.
+export const hrAlertSettings = pgTable("hr_alert_settings", {
+  id: integer("id").primaryKey().default(1),
+  leadDays: integer("lead_days").notNull().default(90),
+  requestSlaDays: integer("request_sla_days").notNull().default(3),
+  updatedBy: integer("updated_by").references(() => users.id),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, table => ({
+  singleton: check("hr_alert_settings_singleton", sql`${table.id} = 1`),
+  bounds: check("hr_alert_settings_bounds", sql`${table.leadDays} BETWEEN 7 AND 180 AND ${table.requestSlaDays} BETWEEN 1 AND 30`),
+}));
+
+export const hrAlertStates = pgTable("hr_alert_states", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  alertKey: text("alert_key").notNull(),
+  readAt: timestamp("read_at", { withTimezone: true }),
+  snoozedUntil: timestamp("snoozed_until", { withTimezone: true }),
+  note: text("note"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, table => ({ userAlert: unique("hr_alert_states_user_alert_unique").on(table.userId, table.alertKey) }));
+
 export const activityLog = pgTable("activity_log", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").references(() => users.id),

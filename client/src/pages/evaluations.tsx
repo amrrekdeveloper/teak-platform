@@ -29,7 +29,7 @@ function currentPeriod() {
 }
 
 export default function EvaluationsPage() {
-  const { t } = useLanguage();
+  const { t, isRTL } = useLanguage();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [report, setReport] = useState<ReportData | null>(null);
@@ -147,7 +147,10 @@ export default function EvaluationsPage() {
                 {evals.map(ev => (
                   <tr key={ev.id} className="border-b last:border-0" data-testid={`row-evaluation-${ev.id}`}>
                     <td data-label={t("الموظف", "Employee")} className="p-3 font-medium">{empName(ev.employeeId)}</td>
-                    <td data-label={t("الفترة", "Period")} className="p-3" dir="ltr">{ev.period}</td>
+                    <td data-label={t("الفترة", "Period")} className="p-3">
+                      <span dir="ltr">{ev.period}</span>
+                      <span className="mt-1 block text-xs text-muted-foreground">{t("تقييم", "Evaluation")} #{ev.id} · <time dateTime={String(ev.createdAt)}>{new Date(ev.createdAt).toLocaleDateString(isRTL ? "ar-SA-u-ca-gregory" : "en-GB")}</time></span>
+                    </td>
                     <td data-label={t("الإجمالي", "Overall")} className="p-3"><span className={`font-bold ${scoreColor(Number(ev.overallScore))}`} data-testid={`text-overall-${ev.id}`}>{Number(ev.overallScore).toFixed(2)}/5</span></td>
                     <td data-label={t("نقاط القوة", "Strengths")} className="p-3 max-w-[200px] truncate text-muted-foreground">{ev.strengths || "—"}</td>
                     <td data-label={t("مجالات التحسين", "Improvements")} className="p-3 max-w-[200px] truncate text-muted-foreground">{ev.improvements || "—"}</td>

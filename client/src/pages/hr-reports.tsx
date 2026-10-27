@@ -151,6 +151,9 @@ export default function HrReportsPage() {
     const style = doc.createElement("style");
     style.textContent = "body{font:14px Tahoma,Arial,sans-serif;color:#2f2c28;padding:24px}h1{font-size:22px}p{color:#625d56}table{border-collapse:collapse;width:100%;margin-top:18px}th,td{border:1px solid #cfc9bf;padding:8px;text-align:start;vertical-align:top}th{background:#f0ece5}tr{break-inside:avoid}@media print{body{padding:0}}";
     doc.head.appendChild(style);
+    const pageFormat=doc.createElement("style");
+    pageFormat.textContent=`@page{size:A4 ${data.columns.length>7?"landscape":"portrait"};margin:12mm}table{font-size:${data.columns.length>7?"11":"13"}px}td{overflow-wrap:anywhere}`;
+    doc.head.appendChild(pageFormat);
     const heading = doc.createElement("h1"); heading.textContent = `${t("تقرير", "Report")} — ${reportLabel ? t(reportLabel.ar, reportLabel.en) : type}`; doc.body.appendChild(heading);
     const period = doc.createElement("p"); period.textContent = `${from} — ${to}${data.truncated ? ` · ${t("تم تحديد النتائج بأول ٥٠٠٠ صف", "Limited to the first 5,000 rows")}` : ""}`; doc.body.appendChild(period);
     const table = doc.createElement("table"), thead = doc.createElement("thead"), headerRow = doc.createElement("tr");
@@ -213,7 +216,15 @@ export default function HrReportsPage() {
                     </dl>
                   </article>)}
                 </div>
-                <div className="hidden overflow-x-auto md:block"><table className="w-full min-w-[640px] text-sm"><thead className="bg-muted/50"><tr>{headers.map(header => <th key={header} className="p-3 text-start font-semibold">{header}</th>)}</tr></thead><tbody>{data.rows.map((row, index) => <tr key={index} className="border-t">{data.columns.map(column => <td key={column.key} className="max-w-xs break-words p-3">{formatCell(column.key, row[column.key])}</td>)}</tr>)}</tbody></table></div>
+                {data.columns.length>7 && <p className="hidden border-y px-5 py-2 text-xs text-muted-foreground md:block">{t("مرّر الجدول أفقيًا لعرض بقية الأعمدة. الطباعة والتصدير يشملان جميع الحقول.", "Scroll the table horizontally for more columns. Print and export include every field.")}</p>}
+                <div className="hidden overflow-x-auto md:block" role="region" aria-label={t("نتائج التقرير", "Report results")} tabIndex={0}>
+                  <table className="w-full text-sm" style={{minWidth:Math.max(720,data.columns.length*135)}}>
+                    <thead className="bg-muted/50"><tr>{headers.map(header => <th key={header} className="whitespace-nowrap p-3 text-start font-semibold">{header}</th>)}</tr></thead>
+                    <tbody>{data.rows.map((row,index)=><tr key={index} className="border-t">
+                      {data.columns.map(column=><td key={column.key} className="p-3 align-top" style={{minWidth:column.key==="employee"||column.key==="position"?180:110,whiteSpace:["employee","position","details","reason","notes"].includes(column.key)?"normal":"nowrap"}}>{formatCell(column.key,row[column.key])}</td>)}
+                    </tr>)}</tbody>
+                  </table>
+                </div>
               </>}</>
           : <div className="p-8 text-center text-sm text-muted-foreground">{t("حدّد تواريخ صالحة لعرض التقرير.", "Choose a valid date range to load a report.")}</div>}
       </CardContent>

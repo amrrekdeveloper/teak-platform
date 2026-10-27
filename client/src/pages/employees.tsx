@@ -14,7 +14,7 @@ import { HrActionCard, NewHrActionDialog } from "@/components/hr-action-panel";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -1176,6 +1176,7 @@ function EmployeeDetailDialog({ emp, users, onClose, initialTab }: { emp: Employ
     mutationFn: (data: any) => apiRequest("PATCH", `/api/employees/${emp.id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/employees"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/alerts"] });
       toast({ title: t("تم تحديث بيانات الموظف", "Employee updated") });
       onClose();
     },
@@ -1186,6 +1187,7 @@ function EmployeeDetailDialog({ emp, users, onClose, initialTab }: { emp: Employ
     mutationFn: (enabled: boolean) => apiRequest("PATCH", `/api/employees/${emp.id}`, { attendanceEnabled: enabled }),
     onSuccess: (_, enabled) => {
       queryClient.invalidateQueries({ queryKey: ["/api/employees"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/alerts"] });
       setEditForm(f => ({ ...f, attendanceEnabled: enabled }));
       toast({ title: enabled ? t("تم تفعيل الحضور", "Attendance enabled") : t("تم تعطيل الحضور", "Attendance disabled") });
     },
@@ -1429,6 +1431,7 @@ export default function EmployeesPage() {
     mutationFn: (data: any) => apiRequest("POST", "/api/employees", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/employees"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/alerts"] });
       setCreateOpen(false);
       setForm(emptyForm);
       toast({ title: t("تمت إضافة الموظف بنجاح", "Employee added successfully") });
@@ -1447,6 +1450,7 @@ export default function EmployeesPage() {
     mutationFn: (id: number) => apiRequest("DELETE", `/api/employees/${id}`, { confirmEmployeeNumber: deleteConfirmation }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/employees"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/alerts"] });
       setDeleteEmpConfirm(null);
       toast({ title: t("تم حذف سجل الموظف بنجاح", "Employee record deleted") });
     },
@@ -1846,7 +1850,8 @@ export default function EmployeesPage() {
           style={{ width: employeeDialogExpanded ? "98vw" : "96vw", maxWidth: employeeDialogExpanded ? "98vw" : "42rem", minWidth: 0 }}
           className={employeeDialogExpanded ? "h-[96dvh] overflow-y-auto overflow-x-hidden p-4 sm:p-6" : "max-h-[94dvh] overflow-y-auto overflow-x-hidden p-4 sm:p-6"}>
           <DialogHeader>
-            <DialogTitle>{t("ملف الموظف", "Employee Profile")} — #{selectedEmployee?.employeeNumber}</DialogTitle>
+            <DialogTitle className="px-7 break-words">{t("ملف الموظف", "Employee Profile")} — #{selectedEmployee?.employeeNumber}</DialogTitle>
+            <DialogDescription className="sr-only">{t("بيانات الموظف ومستنداته وتعيينات الدوام. لا تُحفظ التغييرات إلا عند تأكيد الحفظ.", "Employee information, documents and attendance assignments. Changes are saved only when confirmed.")}</DialogDescription>
           </DialogHeader>
           <Button variant="outline" size="sm" onClick={() => setEmployeeDialogExpanded(v => !v)}>{employeeDialogExpanded ? t("تصغير مساحة العمل", "Compact workspace") : t("توسيع البيانات والمستندات والعهد", "Expand information, documents & assets")}</Button>
           {selectedEmployee && (

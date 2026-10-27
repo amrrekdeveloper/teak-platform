@@ -26,3 +26,9 @@ New HR API namespaces must retain response-body log redaction.
 **Why:** Captured request forms can contain identity numbers, contact details, and employment terms; generic API response logging can expose them even when endpoint authorization is correct.
 
 **How to apply:** Check the HTTP logging exclusion whenever introducing a new HR namespace. Log method, path, status and timing, not employee/form payloads.
+
+Expiry alerts describe recorded evidence, not a legal determination. Missing dates mean unknown, not expired. Reading or snoozing is personal to a reviewer and must not conceal the issue from other HR reviewers.
+
+**Why:** The factory's existing files include missing and potentially stale expiry dates. Treating a warning as verified misconduct, or a shared dismissal as renewal, could affect employee rights unfairly.
+
+**How to apply:** No automatic suspension, payroll deduction, guessed document date, or absence finding from a document alert. Expired snoozes become visible again; renewing a source document produces a fresh alert. External SMS/email sending requires an explicit notification scope rather than being implied by an in-app alert center.

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Route, Switch, useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import EmployeesPage from "@/pages/employees";
@@ -14,6 +15,7 @@ import HrActionsPage from "@/pages/hr-actions";
 import PayrollPage from "@/pages/payroll";
 import AdvancesPage from "@/pages/advances";
 import EvaluationsPage from "@/pages/evaluations";
+import HrAlertsPage from "@/pages/hr-alerts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,11 +23,11 @@ import { LanguageToggle, useLanguage } from "@/components/language-provider";
 import {
   ArrowLeft, CalendarDays, ChevronLeft, CircleDollarSign, Eye, EyeOff, BriefcaseBusiness,
   ClipboardCheck, Clock3, DoorOpen, LoaderCircle, LockKeyhole, Menu,
-  ShieldCheck, UsersRound, X, Settings, FileBarChart2, KeyRound,
+  ShieldCheck, UsersRound, X, Settings, FileBarChart2, KeyRound, Bell,
 } from "lucide-react";
 
 type HrUser = { role?: string; maintenanceScope?: string; fullNameAr?: string; fullNameEn?: string; username?: string };
-type HrPage = "employees" | "attendance-monitor" | "attendance-settings" | "leaves" | "permissions" | "reports" | "access" | "actions" | "payroll" | "advances" | "evaluations";
+type HrPage = "employees" | "attendance-monitor" | "attendance-settings" | "leaves" | "permissions" | "reports" | "access" | "actions" | "payroll" | "advances" | "evaluations" | "alerts";
 type RememberedLogin = { username: string; rememberMe: boolean };
 const HR_REMEMBER_KEY = "teak.auth.remember.hr";
 function readRememberedHrLogin(): RememberedLogin {
@@ -43,6 +45,7 @@ const navItems: { href: string; key: HrPage; group: "people" | "requests" | "ope
   { href: "/attendance-monitor", key: "attendance-monitor", group: "people", icon: Clock3 },
   { href: "/attendance-settings", key: "attendance-settings", group: "people", icon: Settings },
   { href: "/leaves", key: "leaves", group: "requests", icon: CalendarDays },
+  { href: "/alerts", key: "alerts", group: "requests", icon: Bell },
   { href: "/permissions", key: "permissions", group: "requests", icon: Clock3 },
   { href: "/reports", key: "reports", group: "requests", icon: FileBarChart2 },
   { href: "/payroll", key: "payroll", group: "operations", icon: CircleDollarSign },
@@ -180,9 +183,20 @@ function HrLayout() {
     payroll: t("مسير الرواتب", "Payroll"),
     advances: t("السلف", "Advances"),
     evaluations: t("التقييمات", "Evaluations"),
+    alerts: t("التنبيهات", "Alerts"),
   })[key];
   const [location, setLocation] = useLocation();
   const { user, isLoading, logout, isLoggingOut } = useAuth();
+  const { data: alertSnapshot } = useQuery<{ items: { severity: string; readAt: string | null }[] }>({
+    queryKey: ["/api/hr/alerts"],
+    queryFn: async () => {
+      const response = await fetch("/api/hr/alerts", { credentials: "include" });
+      if (!response.ok) throw new Error("alerts");
+      return response.json();
+    },
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
+  });
   const [menuOpen, setMenuOpen] = useState(false);
   const [logoutError, setLogoutError] = useState("");
   const currentPath = location.replace(/^\/hr/, "") || "/";
@@ -213,11 +227,12 @@ function HrLayout() {
 
   return (
     <div className="hr-workspace" dir={isRTL ? "rtl" : "ltr"}>
-      <header className="hr-mobile-header">
+       <header className="hr-mobile-header">
         <button type="button" className="hr-icon-button" aria-label={menuOpen ? "إغلاق القائمة" : "فتح القائمة"} aria-expanded={menuOpen} onClick={() => setMenuOpen(v => !v)}>
           {menuOpen ? <X size={21} /> : <Menu size={21} />}
         </button>
          <div className="hr-mobile-brand"><img src="/__maintenance/logo.png" alt="TEAK" /><span>{t("تيك", "TEAK")}</span></div>
+         <button type="button" className="hr-alert-bell" aria-label={t("فتح التنبيهات", "Open alerts")} onClick={() => setLocation("/alerts")}><Bell size={19} />{(alertSnapshot?.items || []).filter(item => item.severity === "critical" && !item.readAt).length > 0 && <span>{Math.min(99, (alertSnapshot?.items || []).filter(item => item.severity === "critical" && !item.readAt).length)}</span>}</button>
         <LanguageToggle testId="button-hr-mobile-language" />
         <span className="hr-avatar">{(hrUser.fullNameAr || hrUser.username || "HR").slice(0, 1)}</span>
       </header>
@@ -250,6 +265,7 @@ function HrLayout() {
         <header className="hr-topbar" data-page={active?.key}>
           <div><span className="hr-breadcrumb-root">{t("تيك", "TEAK")}</span><span className="hr-breadcrumb-slash">/</span><span>{active ? navLabel(active.key) : t("الموظف", "Employee")}</span></div>
           <div className="hr-topbar-actions">
+             <button type="button" className="hr-alert-bell" aria-label={t("فتح التنبيهات", "Open alerts")} onClick={() => setLocation("/alerts")}><Bell size={18} />{(alertSnapshot?.items || []).filter(item => item.severity === "critical" && !item.readAt).length > 0 && <span>{Math.min(99, (alertSnapshot?.items || []).filter(item => item.severity === "critical" && !item.readAt).length)}</span>}</button>
             <div className="hr-topbar-state"><span className="hr-topbar-dot" /> {t("مساحة الموارد البشرية", "HR workspace")}</div>
             <LanguageToggle testId="button-hr-desktop-language" />
           </div>
@@ -262,6 +278,7 @@ function HrLayout() {
             <Route path="/attendance-monitor" component={AttendanceMonitorPage} />
             <Route path="/attendance-settings" component={AttendanceSettingsPage} />
             <Route path="/leaves"><LeavesPage /></Route>
+             <Route path="/alerts" component={HrAlertsPage} />
             <Route path="/permissions">{() => <LeavesPage section="permissions" />}</Route>
             <Route path="/reports" component={HrReportsPage} />
             <Route path="/access" component={HrAccessManagementPage} />
@@ -294,15 +311,21 @@ function HrLoginRoute() {
 }
 
 export default function HrWorkspace() {
+  useEffect(()=>{
+    document.documentElement.classList.add("teak-hr-surface");
+    return ()=>document.documentElement.classList.remove("teak-hr-surface");
+  },[]);
   return (
     <>
       <style>{`
+        html.teak-hr-surface { overflow-x:clip; }
+        html.teak-hr-surface body { overflow-x:clip;overflow-y:visible;min-width:0;max-width:100%; }
         .hr-workspace, .hr-login-page { --hr-red:#9e0a0a; --hr-red-deep:#780808; --hr-paper:#f6f2ea; --hr-ivory:#fffdf8; --hr-ink:#382a27; --hr-muted:#786c64; --hr-line:#e7ded3; --hr-soft:#f1ebe2; color:var(--hr-ink); font-family:"Zain",Tahoma,sans-serif; }
         .hr-workspace { min-height:100dvh; width:100%;max-width:100%;overflow-x:clip;display:flex; background:var(--hr-paper); }
         @media(max-width:767px) {
           .hr-workspace table.hr-responsive,.hr-workspace .hr-responsive tbody { display:block;width:100%;min-width:0; }
           .hr-workspace .hr-responsive thead { display:none; }
-          .hr-workspace .hr-responsive tbody tr { display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;margin:10px;padding:14px;border:1px solid var(--hr-line);border-radius:10px;background:var(--hr-ivory); }
+           .hr-workspace .hr-responsive tbody tr { display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;margin:10px 0;padding:14px;border:1px solid var(--hr-line);border-radius:10px;background:var(--hr-ivory); }
           .hr-workspace .hr-responsive td { display:block;min-width:0;max-width:none;padding:0;border:0;white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere;text-align:start; }
           .hr-workspace .hr-responsive td:before { display:block;content:attr(data-label);font-size:12px;font-weight:400;color:var(--hr-muted);margin-bottom:4px; }
           .hr-workspace .hr-responsive td:last-child { grid-column:1/-1; }
@@ -337,10 +360,14 @@ export default function HrWorkspace() {
         .hr-breadcrumb-root,.hr-breadcrumb-slash { color:#a2968e;font-weight:400; }
         .hr-topbar-state { display:flex;align-items:center;gap:8px;color:var(--hr-muted);font-size:13px; }
         .hr-topbar-actions { display:flex;align-items:center;gap:14px;flex-shrink:0; }
+         .hr-alert-bell { position:relative;width:38px;height:38px;flex:0 0 auto;display:grid;place-items:center;border:1px solid var(--hr-line);border-radius:9px;background:var(--hr-ivory);color:var(--hr-ink);cursor:pointer; }
+         .hr-alert-bell:hover { color:var(--hr-red);border-color:#d9b4aa; }
+         .hr-alert-bell:focus-visible { outline:2px solid var(--hr-red);outline-offset:2px; }
+         .hr-alert-bell span { position:absolute;inset-block-start:-5px;inset-inline-end:-5px;min-width:17px;height:17px;display:grid;place-items:center;padding:0 3px;border:2px solid var(--hr-paper);border-radius:999px;background:var(--hr-red);color:#fff;font:10px/1 sans-serif; }
         .hr-icon-button:focus-visible,.hr-nav-link:focus-visible,.hr-logout:focus-visible { outline:2px solid var(--hr-red);outline-offset:3px; }
         .hr-session-error { margin:10px 0 0;color:var(--hr-red);font-size:13px;line-height:1.5; }
         .hr-topbar-dot,.hr-status-dot { width:7px;height:7px;border-radius:50%;background:#708268; }
-        .hr-content { width:100%;max-width:1500px;margin:0 auto;padding:29px 34px 42px;min-width:0;overflow-x:auto; }
+         .hr-content { width:100%;max-width:1500px;margin:0 auto;padding:29px 34px 42px;min-width:0;overflow-x:clip; }
         .hr-content > * { min-width:0;max-width:100%; }
         .hr-content :where(.grid,.flex) { min-width:0; }
         .hr-content .grid > * { min-width:0; }
@@ -404,6 +431,7 @@ export default function HrWorkspace() {
           .hr-mobile-brand { display:flex;align-items:center;gap:8px;color:var(--hr-red);font-weight:700;font-size:15px; }
           .hr-mobile-brand img { width:44px;height:34px;object-fit:contain; }
           .hr-mobile-header .hr-brand-mark { width:30px;height:30px;border-radius:9px; }
+           .hr-mobile-header .hr-alert-bell { margin-inline-start:auto;width:34px;height:34px;border:0;background:transparent; }
           .hr-icon-button { width:42px;height:42px;display:grid;place-items:center;border:0;border-radius:8px;background:transparent;color:var(--hr-ink); }
           .hr-mobile-scrim { position:fixed;z-index:29;inset:58px 0 0;display:block;width:100%;border:0;background:#251b17a1; }
           .hr-sidebar { z-index:35;inset-block:58px 0;inset-inline-start:0;inset-inline-end:auto;width:min(84vw,300px);padding:20px 14px 14px;transform:translateX(105%);transition:transform .22s ease;box-shadow:-12px 0 30px #382a2714; }
@@ -411,7 +439,7 @@ export default function HrWorkspace() {
           .hr-workspace[dir="ltr"] .hr-sidebar.is-open { transform:translateX(0); }
           .hr-sidebar.is-open { transform:translateX(0); }
           .hr-main-column { width:100%;margin:0; }
-          .hr-topbar { min-height:52px;padding:0 12px;background:transparent;border-bottom:0; }
+          .hr-topbar { display:none; }
            .hr-topbar[data-page="employees"],.hr-topbar[data-page="attendance-monitor"] { display:none; }
           .hr-topbar>div:first-child { min-width:0;gap:7px;font-size:13px; }
           .hr-topbar>div:first-child>span:last-child { overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }

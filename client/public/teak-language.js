@@ -4,6 +4,11 @@
   "use strict";
   var KEY = "teak-lang";
   var copy = {
+    "التنبيهات":"Alerts",
+    "تنبيهات مستنداتي":"My document alerts",
+    "تواريخ مسجلة تحتاج المتابعة مع الموارد البشرية، ولا يترتب عليها خصم أو إيقاف تلقائي.":"Recorded dates to review with HR. No automatic deduction or suspension is applied.",
+    "تحديث التنبيهات":"Refresh alerts",
+    "لا توجد تنبيهات مستندات ضمن الفترة الحالية.":"No document alerts in the current review period.",
     "الموارد البشرية":"Human resources",
     "الإدارة":"Administration",
     "اعتماد إداري":"Administrative approval",
