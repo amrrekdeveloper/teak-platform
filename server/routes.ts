@@ -9,6 +9,7 @@ import { payrollRole, payrollAction, approveAdvance, payrollFailure, PayrollErro
 import { decideHrRequest, annualUsage, annualEntitlementAt, initHrWorkflowSupport, workflowClarification, advanceHrActionVersioned } from "./hr-workflow-support";
 import { captureLeaveForm, initHrLeaveForm } from "./hr-leave-form";
 import { registerManagerWorkspace } from "./hr-manager-workspace";
+import { registerHrOperations, annualLeaveBalance, createAdministrativeLeave } from "./hr-operations";
 import { setupAuth, requireAuth, requireRole, comparePasswords, hashPassword, getEffectivePermissionsForUser } from "./auth";
 import { initializeHrDataIntegrity, deleteUnusedEmployee } from "./hr-data-integrity";
 import { initializeSystemAdmin } from "./system-admin";
@@ -292,6 +293,7 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
   setupAuth(app);
+  registerHrOperations(app,requireRole("owner","assistant","hr"));
   registerAttendanceEvents(app, requireRole("owner", "it", "hr"));
   const systemAdminStatus = await initializeSystemAdmin({ hashPassword, comparePasswords });
   console.log(`System administrator setup: ${systemAdminStatus}`);
@@ -4177,12 +4179,9 @@ export async function registerRoutes(
     try {
       const employeeId = parseInt(req.params.employeeId);
       const year = typeof req.query.year === "string" && /^\d{4}$/.test(req.query.year) ? req.query.year : String(new Date().getFullYear());
-      const emp = await storage.getEmployee(employeeId);
-      if (!emp) return res.status(404).json({ message: "الموظف غير موجود", messageEn: "Employee not found" });
-      const today = new Date().toISOString().slice(0, 10);
-      const entitlement = annualEntitlementAt(emp.contractStart, year === today.slice(0, 4) ? today : `${year}-12-31`);
-      const used = annualUsage(await storage.getLeaveRequests(employeeId), Number(year));
-      res.json({ entitlement, used, remaining: Math.max(0, entitlement - used), year });
+      if(!Number.isSafeInteger(employeeId)||employeeId<=0||Number(year)<1900||Number(year)>2200)
+        return res.status(400).json({message:"الموظف أو السنة غير صالحة."});
+      res.json(await annualLeaveBalance(employeeId,Number(year)));
     } catch (error) {
       res.status(500).json({ message: "حدث خطأ", messageEn: "Error computing balance" });
     }
@@ -4210,12 +4209,12 @@ export async function registerRoutes(
       const emp = await storage.getEmployee(employeeId);
       if (!emp) return res.status(404).json({ message: "الموظف غير موجود", messageEn: "Employee not found" });
 
-      const created = await storage.createLeaveRequest({
+      const created = await createAdministrativeLeave({
         employeeId, leaveType, startDate, endDate, days,
         leaveFormData: await captureLeaveForm(employeeId, req.body.leaveFormData, { kind: "admin", userId: req.session.userId! }, startDate),
         reason: typeof req.body.reason === "string" ? req.body.reason : null,
         status: "pending",
-      } as any);
+      } as any,req.session.userId!);
       res.status(201).json(created);
     } catch (error) {
       if (error instanceof z.ZodError) return res.status(400).json({ message: "بيانات نموذج الإجازة غير صالحة", errors: error.flatten() });
@@ -4267,7 +4266,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "قرار غير صالح", messageEn: "Invalid decision" });
       }
       const normalized = decision === "approved" ? "approve" : decision === "rejected" ? "reject" : decision;
-      const updated = await decideHrRequest("leave", id, req.session.userId!, normalized, note);
+      const updated = await decideHrRequest("leave", id, req.session.userId!, normalized, note,{overrideManager:req.body.overrideManager===true});
       await notifyEmployeeUser(updated.employee_id, "تحديث طلب الإجازة", note || updated.status, id);
       res.json(await storage.getLeaveRequest(id));
     } catch (error: any) {
@@ -4293,6 +4292,7 @@ export async function registerRoutes(
       const decisionHistory = (await pool.query("SELECT * FROM hr_request_history ORDER BY id DESC")).rows;
 
       const relevantLeave = (l: typeof allLeaves[number]) => {
+        if (isHrRole && ["pending","manager_approved","clarification_requested"].includes(l.status)) return true;
         if (l.status === "pending" || l.status === "clarification_requested") {
           const emp = allEmployees.find(e => e.id === l.employeeId);
           if (emp?.managerId && !l.managerApprovedBy) return managedIds.includes(l.employeeId);
@@ -4302,6 +4302,7 @@ export async function registerRoutes(
         return false;
       };
       const relevantPerm = (p: typeof allPerms[number]) => {
+        if (isHrRole && ["pending","manager_approved","clarification_requested"].includes(p.status)) return true;
         if (String(p.status) === "manager_approved") return isHrRole;
         if (p.status !== "pending" && p.status !== "clarification_requested") return false;
         if (!p.employeeId) return isHrRole;
@@ -4325,8 +4326,8 @@ export async function registerRoutes(
       };
 
       res.json({
-        leaves: allLeaves.filter(relevantLeave).map(l => ({ ...l, employee: empInfo(l.employeeId), history: historyFor(l.employeeId) })),
-        permissions: allPerms.filter(relevantPerm).map(p => ({ ...p, employee: empInfo(p.employeeId), history: historyFor(p.employeeId) })),
+        leaves: allLeaves.filter(relevantLeave).map(l => ({ ...l, reviewerStage: allEmployees.find(e=>e.id===l.employeeId)?.managerId && !l.managerApprovedBy && l.status!=="manager_approved" ? "manager" : "hr",employee: empInfo(l.employeeId), history: historyFor(l.employeeId) })),
+        permissions: allPerms.filter(relevantPerm).map(p => ({ ...p, reviewerStage: allEmployees.find(e=>e.id===p.employeeId)?.managerId && !permissionManagerApprovals.has(p.id) && p.status!=="manager_approved" ? "manager" : "hr",employee: empInfo(p.employeeId), history: historyFor(p.employeeId) })),
       });
     } catch {
       res.status(500).json({ message: "حدث خطأ" });
@@ -8434,7 +8435,7 @@ export async function registerRoutes(
       if (!["approve", "reject", "clarify"].includes(decision)) {
         return res.status(400).json({ message: "قرار غير صالح" });
       }
-      const updated = await decideHrRequest("permission", id, req.session.userId!, decision, note);
+      const updated = await decideHrRequest("permission", id, req.session.userId!, decision, note,{overrideManager:req.body.overrideManager===true});
       if (updated.employee_id) {
         await notifyEmployeeUser(updated.employee_id, "تحديث طلب الاستئذان", note || updated.status, id);
       }

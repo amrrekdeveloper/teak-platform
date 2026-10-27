@@ -46,11 +46,11 @@ export async function captureLeaveForm(
        AND form_data->>'returnDate' < $2
      ORDER BY form_data->>'returnDate' DESC LIMIT 1`, [employeeId, startDate],
   );
-  const entitlement = annualEntitlementAt(employee.contractStart, year === Number(today.slice(0, 4)) ? today : `${year}-12-31`);
+  const entitlement = annualEntitlementAt(employee.hireDate || employee.contractStart, year === Number(today.slice(0, 4)) ? today : `${year}-12-31`);
   const used = annualUsage(existing, year);
   return {
     version: 1, capturedAt: now.toISOString(), capturedBy: actor,
-    employee: { id: employee.id, employeeNumber: employee.employeeNumber, name: employee.fullNameAr || employee.fullNameEn || employee.employeeNumber, department: employee.department, position: employee.position, nationality: employee.nationality, idNumber: employee.iqamaNumber, phone: employee.phone },
+    employee: { id: employee.id, employeeNumber: employee.employeeNumber, name: employee.fullNameAr || employee.fullNameEn || employee.employeeNumber, department: employee.department, position: employee.position, nationality: employee.nationality, idNumber: employee.nationality === "saudi" ? employee.nationalId : employee.iqamaNumber, phone: employee.phone },
     submitted,
     substitute: substitute ? { id: substitute.id, employeeNumber: substitute.employeeNumber, name: substitute.fullNameAr || substitute.fullNameEn || substitute.employeeNumber } : null,
     hr: { year, annualEntitlement: entitlement, usedDays: used, leaveBalance: Math.max(0, entitlement - used), calculatedAt: now.toISOString(), lastLeaveType: submitted.hrReview?.lastLeaveType || prior?.leaveType || null, lastReturnDate: submitted.hrReview?.lastReturnDate || returns.rows[0]?.date || null, entitlementDate: submitted.hrReview?.entitlementDate || null },

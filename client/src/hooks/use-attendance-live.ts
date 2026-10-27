@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 const attendanceKeys = new Set([
+  "/api/leaves", "/api/pending-requests", "/api/leaves/balance",
+  "/api/attendance/permissions", "/api/hr/reports", "/api/hr/requests",
   "/api/employees", "/api/attendance/zones", "/api/attendance/work-settings",
   "/api/attendance/monitor", "/api/attendance/corrections", "/api/attendance/violations",
   "/api/attendance/risk-scores", "/api/attendance/device-report", "/api/attendance/audit-log",

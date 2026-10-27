@@ -70,7 +70,7 @@ app.use((req, res, next) => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      const privateHrResponse = /^\/api\/(?:auth|system-admin|hr-access|manager-access|manager|employees|users|attendance|employee-portal|leaves|pending-requests|requests-report|hr-actions|hr-permissions|hr-audit-log|payroll|advances|evaluations|notifications)(?:\/|$)/.test(path);
+      const privateHrResponse = /^\/api\/(?:auth|system-admin|hr|hr-access|manager-access|manager|employees|users|attendance|employee-portal|leaves|pending-requests|requests-report|hr-actions|hr-permissions|hr-audit-log|payroll|advances|evaluations|notifications)(?:\/|$)/.test(path);
       if (capturedJsonResponse && !privateHrResponse) {
         logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
       }

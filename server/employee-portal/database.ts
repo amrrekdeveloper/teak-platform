@@ -30,7 +30,7 @@ export type PortalEmployee = {
   full_name_ar: string; department: string; position: string;
   phone: string | null;
   status: string; attendance_enabled: boolean;
-  contract_start: string; manager_id: number | null;
+  contract_start: string; hire_date?: string | null; manager_id: number | null;
   attendanceZoneId?: number | null; attendanceScheduleId?: number | null;
   attendanceLocationMode?: "assigned" | "unrestricted";
   department_name_ar?: string | null;
@@ -39,7 +39,7 @@ export async function employeeDirectory(): Promise<PortalEmployee[]> {
   const { rows } = await pool.query(`
     SELECT e.id,e.user_id,e.employee_number,e.full_name_ar,e.department,e.position,
       e.phone,e.status,e.attendance_enabled,
-      e.contract_start::text,e.manager_id,e.attendance_zone_id AS "attendanceZoneId",
+      e.contract_start::text,e.hire_date::text,e.manager_id,e.attendance_zone_id AS "attendanceZoneId",
       e.attendance_schedule_id AS "attendanceScheduleId",
       e.attendance_location_mode AS "attendanceLocationMode",d.name_ar AS department_name_ar
     FROM employees e LEFT JOIN hr_departments d ON d.code=e.department

@@ -279,7 +279,7 @@ export type EmployeeAdvance = typeof employeeAdvances.$inferSelect;
 
 // ===== Leave Management (الإجازات) =====
 export const leaveTypeEnum = pgEnum("leave_type", ["annual", "sick", "unpaid", "emergency", "maternity", "other"]);
-export const leaveStatusEnum = pgEnum("leave_status", ["pending", "manager_approved", "approved", "rejected", "clarification_requested"]);
+export const leaveStatusEnum = pgEnum("leave_status", ["pending", "manager_approved", "approved", "rejected", "clarification_requested", "cancelled"]);
 
 export const leaveRequests = pgTable("leave_requests", {
   id: serial("id").primaryKey(),

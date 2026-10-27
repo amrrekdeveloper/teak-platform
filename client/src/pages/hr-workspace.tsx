@@ -8,6 +8,9 @@ import EmployeeDetailPage from "@/pages/employee-detail";
 import AttendanceMonitorPage from "@/pages/attendance-monitor";
 import AttendanceSettingsPage from "@/pages/attendance-settings";
 import LeavesPage from "@/pages/leaves";
+import HrReportsPage from "@/pages/hr-reports";
+import HrAccessManagementPage from "@/pages/hr-access-management";
+import HrActionsPage from "@/pages/hr-actions";
 import PayrollPage from "@/pages/payroll";
 import AdvancesPage from "@/pages/advances";
 import EvaluationsPage from "@/pages/evaluations";
@@ -16,13 +19,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LanguageToggle, useLanguage } from "@/components/language-provider";
 import {
-  ArrowLeft, CalendarDays, ChevronLeft, CircleDollarSign, Eye, EyeOff,
+  ArrowLeft, CalendarDays, ChevronLeft, CircleDollarSign, Eye, EyeOff, BriefcaseBusiness,
   ClipboardCheck, Clock3, DoorOpen, LoaderCircle, LockKeyhole, Menu,
-  ShieldCheck, UsersRound, X, Settings,
+  ShieldCheck, UsersRound, X, Settings, FileBarChart2, KeyRound,
 } from "lucide-react";
 
 type HrUser = { role?: string; maintenanceScope?: string; fullNameAr?: string; fullNameEn?: string; username?: string };
-type HrPage = "employees" | "attendance-monitor" | "attendance-settings" | "leaves" | "payroll" | "advances" | "evaluations";
+type HrPage = "employees" | "attendance-monitor" | "attendance-settings" | "leaves" | "permissions" | "reports" | "access" | "actions" | "payroll" | "advances" | "evaluations";
 type RememberedLogin = { username: string; rememberMe: boolean };
 const HR_REMEMBER_KEY = "teak.auth.remember.hr";
 function readRememberedHrLogin(): RememberedLogin {
@@ -35,14 +38,18 @@ function saveRememberedHrLogin(username: string, rememberMe: boolean) {
   try { window.localStorage.setItem(HR_REMEMBER_KEY, JSON.stringify({ username: rememberMe ? username : "", rememberMe })); } catch { /* Storage may be blocked; authentication still works. */ }
 }
 
-const navItems: { href: string; key: HrPage; label: string; icon: typeof UsersRound }[] = [
-  { href: "/employees", key: "employees", label: "الموظفون", icon: UsersRound },
-  { href: "/attendance-monitor", key: "attendance-monitor", label: "مراقبة الدوام", icon: Clock3 },
-  { href: "/attendance-settings", key: "attendance-settings", label: "إعدادات الدوام", icon: Settings },
-  { href: "/leaves", key: "leaves", label: "الطلبات والإجازات", icon: CalendarDays },
-  { href: "/payroll", key: "payroll", label: "مسير الرواتب", icon: CircleDollarSign },
-  { href: "/advances", key: "advances", label: "السلف", icon: DoorOpen },
-  { href: "/evaluations", key: "evaluations", label: "التقييمات", icon: ClipboardCheck },
+const navItems: { href: string; key: HrPage; group: "people" | "requests" | "operations"; icon: typeof UsersRound }[] = [
+  { href: "/employees", key: "employees", group: "people", icon: UsersRound },
+  { href: "/attendance-monitor", key: "attendance-monitor", group: "people", icon: Clock3 },
+  { href: "/attendance-settings", key: "attendance-settings", group: "people", icon: Settings },
+  { href: "/leaves", key: "leaves", group: "requests", icon: CalendarDays },
+  { href: "/permissions", key: "permissions", group: "requests", icon: Clock3 },
+  { href: "/reports", key: "reports", group: "requests", icon: FileBarChart2 },
+  { href: "/payroll", key: "payroll", group: "operations", icon: CircleDollarSign },
+  { href: "/advances", key: "advances", group: "operations", icon: DoorOpen },
+  { href: "/evaluations", key: "evaluations", group: "operations", icon: ClipboardCheck },
+  { href: "/access", key: "access", group: "operations", icon: KeyRound },
+  { href: "/actions", key: "actions", group: "operations", icon: BriefcaseBusiness },
 ];
 
 function WorkspaceLoading() {
@@ -165,7 +172,11 @@ function HrLayout() {
     employees: t("الموظفون", "Employees"),
     "attendance-monitor": t("مراقبة الدوام", "Attendance"),
     "attendance-settings": t("إعدادات الدوام", "Attendance settings"),
-    leaves: t("الطلبات والإجازات", "Requests & leave"),
+    leaves: t("الإجازات", "Leaves"),
+    permissions: t("الاستئذانات", "Permissions"),
+    reports: t("التقارير", "Reports"),
+    access: t("الحسابات والصلاحيات", "Accounts & access"),
+    actions: t("الإجراءات", "Actions"),
     payroll: t("مسير الرواتب", "Payroll"),
     advances: t("السلف", "Advances"),
     evaluations: t("التقييمات", "Evaluations"),
@@ -218,11 +229,14 @@ function HrLayout() {
         </div>
         <div className="hr-side-label">{t("مساحة العمل", "Workspace")}</div>
         <nav className="hr-nav" aria-label="التنقل في الموارد البشرية">
-          {navItems.map(({ href, key, label, icon: Icon }) => (
-            <button key={key} type="button" className={`hr-nav-link ${active?.key === key ? "is-active" : ""}`} onClick={() => { setLocation(href); setMenuOpen(false); }}>
-              <Icon size={18} strokeWidth={1.8} /><span>{navLabel(key)}</span>{active?.key === key && <ChevronLeft size={15} className={`hr-nav-chevron ${isRTL ? "" : "rotate-180"}`} />}
-            </button>
-          ))}
+          {(["people", "requests", "operations"] as const).map(group => <div key={group} className="hr-nav-group">
+            <div className="hr-nav-group-label">{group === "people" ? t("الفريق والحضور", "People & attendance") : group === "requests" ? t("الطلبات", "Requests") : t("الإدارة", "Operations")}</div>
+            {navItems.filter(item => item.group === group).map(({ href, key, icon: Icon }) => (
+              <button key={key} type="button" className={`hr-nav-link ${active?.key === key ? "is-active" : ""}`} onClick={() => { setLocation(href); setMenuOpen(false); }}>
+                <Icon size={18} strokeWidth={1.8} /><span>{navLabel(key)}</span>{active?.key === key && <ChevronLeft size={15} className={`hr-nav-chevron ${isRTL ? "" : "rotate-180"}`} />}
+              </button>
+            ))}
+          </div>)}
         </nav>
         <div className="hr-sidebar-bottom">
           <div className="hr-user-summary"><span className="hr-avatar">{(hrUser.fullNameAr || hrUser.username || "HR").slice(0, 1)}</span><span className="hr-user-details"><strong>{hrUser.fullNameAr || hrUser.fullNameEn || "إدارة الموارد البشرية"}</strong><small>مسؤول الموارد البشرية</small></span></div>
@@ -247,7 +261,11 @@ function HrLayout() {
             <Route path="/employees" component={EmployeesPage} />
             <Route path="/attendance-monitor" component={AttendanceMonitorPage} />
             <Route path="/attendance-settings" component={AttendanceSettingsPage} />
-            <Route path="/leaves" component={LeavesPage} />
+            <Route path="/leaves"><LeavesPage /></Route>
+            <Route path="/permissions">{() => <LeavesPage section="permissions" />}</Route>
+            <Route path="/reports" component={HrReportsPage} />
+            <Route path="/access" component={HrAccessManagementPage} />
+            <Route path="/actions" component={HrActionsPage} />
             <Route path="/payroll" component={PayrollPage} />
             <Route path="/advances" component={AdvancesPage} />
             <Route path="/evaluations" component={EvaluationsPage} />
@@ -281,6 +299,14 @@ export default function HrWorkspace() {
       <style>{`
         .hr-workspace, .hr-login-page { --hr-red:#9e0a0a; --hr-red-deep:#780808; --hr-paper:#f6f2ea; --hr-ivory:#fffdf8; --hr-ink:#382a27; --hr-muted:#786c64; --hr-line:#e7ded3; --hr-soft:#f1ebe2; color:var(--hr-ink); font-family:"Zain",Tahoma,sans-serif; }
         .hr-workspace { min-height:100dvh; width:100%;max-width:100%;overflow-x:clip;display:flex; background:var(--hr-paper); }
+        @media(max-width:767px) {
+          .hr-workspace table.hr-responsive,.hr-workspace .hr-responsive tbody { display:block;width:100%;min-width:0; }
+          .hr-workspace .hr-responsive thead { display:none; }
+          .hr-workspace .hr-responsive tbody tr { display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;margin:10px;padding:14px;border:1px solid var(--hr-line);border-radius:10px;background:var(--hr-ivory); }
+          .hr-workspace .hr-responsive td { display:block;min-width:0;max-width:none;padding:0;border:0;white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere;text-align:start; }
+          .hr-workspace .hr-responsive td:before { display:block;content:attr(data-label);font-size:12px;font-weight:400;color:var(--hr-muted);margin-bottom:4px; }
+          .hr-workspace .hr-responsive td:last-child { grid-column:1/-1; }
+        }
         .hr-sidebar { position:fixed; inset-block:0; inset-inline-start:0; z-index:30; width:258px; background:var(--hr-ivory); border-inline-end:1px solid var(--hr-line); display:flex; flex-direction:column; padding:28px 17px 18px;overflow-y:auto;overscroll-behavior:contain; }
         .hr-brand-lockup { display:flex; align-items:center; gap:11px; padding:0 9px 28px; border-bottom:1px solid var(--hr-line); }
         .hr-brand-lockup img { width:54px;height:38px;object-fit:contain; }
@@ -290,6 +316,8 @@ export default function HrWorkspace() {
         .hr-brand-lockup small { display:block;margin-top:4px;font-size:13px;color:var(--hr-muted); }
         .hr-side-label { margin:27px 11px 10px;color:#a2968e;font-size:12px;font-weight:700; }
         .hr-nav { display:grid;gap:5px; }
+         .hr-nav-group { display:grid;gap:4px;margin-top:10px; }
+         .hr-nav-group-label { padding:8px 11px 2px;color:#a2968e;font-size:11px;font-weight:700;letter-spacing:.02em; }
         .hr-nav-link { min-height:46px;width:100%;display:flex;align-items:center;gap:12px;padding:0 12px;border:0;border-radius:9px;background:transparent;color:#655851;text-align:start;font:inherit;font-size:15px;cursor:pointer;transition:background .18s,color .18s; }
         .hr-nav-link:hover { background:#f6f0e9;color:var(--hr-red); }
         .hr-nav-link.is-active { background:var(--hr-red);color:#fff;box-shadow:0 5px 12px #9e0a0a1c; }
@@ -370,7 +398,7 @@ export default function HrWorkspace() {
         @keyframes hr-skeleton { to { background-position:-200% 0; } }
         @keyframes hr-spin { to { transform:rotate(360deg); } }
         @media(max-width:900px) { .hr-sidebar { width:226px; }.hr-main-column { width:calc(100% - 226px);margin-inline-start:226px; }.hr-content { padding:24px 22px 34px; }.hr-topbar { padding-inline:22px; } }
-        @media(max-width:767px) {
+         @media(max-width:767px) {
           .hr-workspace { display:block;padding-top:58px; }
           .hr-mobile-header { position:fixed;z-index:40;inset-block-start:0;inset-inline:0;height:58px;display:flex;align-items:center;justify-content:space-between;padding-inline:13px;border-bottom:1px solid var(--hr-line);background:var(--hr-ivory); }
           .hr-mobile-brand { display:flex;align-items:center;gap:8px;color:var(--hr-red);font-weight:700;font-size:15px; }

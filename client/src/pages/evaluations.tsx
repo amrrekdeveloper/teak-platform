@@ -132,7 +132,7 @@ export default function EvaluationsPage() {
           ) : evals.length === 0 ? (
             <div className="p-8 text-center text-muted-foreground" data-testid="text-empty">{t("لا توجد تقييمات", "No evaluations")}</div>
           ) : (
-            <table className="w-full text-sm">
+            <table className="w-full text-sm hr-responsive">
               <thead className="border-b bg-muted/40">
                 <tr>
                   <th className="p-3 text-start font-medium">{t("الموظف", "Employee")}</th>
@@ -146,12 +146,12 @@ export default function EvaluationsPage() {
               <tbody>
                 {evals.map(ev => (
                   <tr key={ev.id} className="border-b last:border-0" data-testid={`row-evaluation-${ev.id}`}>
-                    <td className="p-3 font-medium">{empName(ev.employeeId)}</td>
-                    <td className="p-3" dir="ltr">{ev.period}</td>
-                    <td className="p-3"><span className={`font-bold ${scoreColor(Number(ev.overallScore))}`} data-testid={`text-overall-${ev.id}`}>{Number(ev.overallScore).toFixed(2)}/5</span></td>
-                    <td className="p-3 max-w-[200px] truncate text-muted-foreground">{ev.strengths || "—"}</td>
-                    <td className="p-3 max-w-[200px] truncate text-muted-foreground">{ev.improvements || "—"}</td>
-                    <td className="p-3"><Badge variant="outline">{ev.status === "finalized" ? t("نهائي", "Final") : t("مسودة", "Draft")}</Badge><Button variant="ghost" size="sm" onClick={() => setReport({
+                    <td data-label={t("الموظف", "Employee")} className="p-3 font-medium">{empName(ev.employeeId)}</td>
+                    <td data-label={t("الفترة", "Period")} className="p-3" dir="ltr">{ev.period}</td>
+                    <td data-label={t("الإجمالي", "Overall")} className="p-3"><span className={`font-bold ${scoreColor(Number(ev.overallScore))}`} data-testid={`text-overall-${ev.id}`}>{Number(ev.overallScore).toFixed(2)}/5</span></td>
+                    <td data-label={t("نقاط القوة", "Strengths")} className="p-3 max-w-[200px] truncate text-muted-foreground">{ev.strengths || "—"}</td>
+                    <td data-label={t("مجالات التحسين", "Improvements")} className="p-3 max-w-[200px] truncate text-muted-foreground">{ev.improvements || "—"}</td>
+                    <td data-label={t("الحالة / المستند", "Status / document")} className="p-3"><Badge variant="outline">{ev.status === "finalized" ? t("نهائي", "Final") : t("مسودة", "Draft")}</Badge><Button variant="ghost" size="sm" onClick={() => setReport({
                       title: t("تقييم الأداء", "Performance evaluation"),
                       subtitle: `${empName(ev.employeeId)} | ${ev.period} | #${ev.id} | ${ev.status === "finalized" ? t("نهائي", "Final") : t("مسودة — غير نهائي", "Draft — not final")}`,
                       headings: [t("البند", "Criterion"), t("النتيجة / التفاصيل", "Score / details")],

@@ -112,6 +112,23 @@
     @media(max-width:760px){.profile-strip{padding:11px;gap:7px}.profile-heading{align-items:flex-start}.profile-meta{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 0}.profile-meta .meta-item{padding:2px 8px;border:0;border-right:1px solid #ffffff4d}.profile-meta .meta-item:nth-child(odd){padding-right:0}.profile-meta .meta-item:last-child{grid-column:1/-1;padding-left:0}.account-settings-card{padding:15px}.settings-fields{gap:6px}.settings-field{padding:9px}.account-settings-header h2{font-size:17px}}
     @media(max-width:390px){.settings-fields{grid-template-columns:minmax(0,1fr)}.settings-field{display:grid;grid-template-columns:42% minmax(0,1fr);gap:8px;align-items:start}.settings-field dt{margin:0}.account-security .btn{width:100%}.logout-icon,.profile-settings,.account-settings-close{width:44px;height:44px}}
   </style>
+  <style>
+    #leave-request-editor>summary{list-style:none;cursor:pointer;margin-block:10px}
+    #leave-request-editor[open]>summary{margin-bottom:14px}
+    .leave-cell-label{display:none}
+    #leave-cancel-dialog .correction-card{max-width:100%;overflow-wrap:anywhere}
+    @media(max-width:640px){
+      .leave-responsive .table-wrap{border:0;overflow:visible}
+      .leave-responsive table,.leave-responsive tbody{display:block;min-width:0;width:100%}
+      .leave-responsive thead{display:none}
+      .leave-responsive tbody tr{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;border:1px solid var(--line);padding:12px;margin-block:8px;background:var(--card)}
+      .leave-responsive td{display:block;border:0;padding:0;min-width:0;text-align:start;overflow-wrap:anywhere}
+      .leave-responsive td:last-child{grid-column:1/-1}
+      .leave-cell-label{display:block;font-size:11px;color:var(--muted);margin-bottom:3px}
+      .balance-numbers{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+      .balance-numbers div{border:0;padding-inline:0}
+    }
+  </style>
 </head>
 <body>
   <div class="shell">
@@ -196,6 +213,8 @@
           <div class="section-head"><div><h2>الإجازات</h2><p>راجع رصيدك وقدم طلبًا جديدًا.</p></div><button type="button" class="btn secondary" id="open-permission-leave">طلب استئذان</button></div>
           <div class="layout-grid">
             <article class="panel"><h3>رصيد الإجازات</h3><div id="leave-balance"></div>
+              <p class="hint">المدة أيام تقويمية تشمل يوم البداية والنهاية. الاعتماد النهائي لدى الموارد البشرية.</p>
+              <details id="leave-request-editor"><summary class="btn secondary">طلب إجازة جديد</summary>
               <form id="leave-form" class="request-form" novalidate data-testid="leave-form">
                 <div class="form-row wide"><label for="leave-type">نوع الإجازة</label><select id="leave-type" name="leaveType" required><option value="annual">سنوية</option><option value="sick">مرضية</option><option value="unpaid">بدون راتب</option><option value="emergency">طارئة</option><option value="maternity">أمومة</option><option value="other">أخرى</option></select></div>
                 <div class="form-row"><label for="leave-start">من تاريخ</label><input id="leave-start" name="startDate" type="date" required></div>
@@ -216,7 +235,7 @@
                   <p class="hint">إقرار إلكتروني عادي، وليس توقيعًا رقميًا مؤهلًا.</p>
                 </details>
                 <div class="actions"><button class="btn" type="submit">إرسال طلب الإجازة</button></div>
-              </form><p class="live-message" id="leave-message" role="status" aria-live="polite"></p>
+              </form></details><p class="live-message" id="leave-message" role="status" aria-live="polite"></p>
             </article>
             <article class="panel"><h3>سجل الإجازات</h3><div id="leave-history"></div><div id="leave-request-history"></div><div id="employee-medical-documents" class="medical-docs"></div></article>
           </div>
@@ -261,6 +280,15 @@
           <p id="ack-message" class="live-message" role="status"></p>
           <section class="ack-section" aria-labelledby="ack-section-title"><h3 id="ack-section-title">الإقرارات والمستندات</h3><div id="ack-list"></div></section>
           <section class="ack-section" aria-labelledby="decision-section-title"><h3 id="decision-section-title">آخر تحديثات الطلبات</h3><div id="decision-history"></div></section>
+        </section>
+        <section class="correction-dialog" id="leave-cancel-dialog" hidden role="dialog" aria-modal="true" aria-labelledby="leave-cancel-title">
+          <div class="correction-card">
+            <h3 id="leave-cancel-title">سحب طلب الإجازة</h3>
+            <p class="hint">يمكن سحب الطلب قبل اعتماد المدير. يبقى السجل محفوظًا.</p>
+            <label for="leave-cancel-reason">سبب السحب</label><textarea id="leave-cancel-reason" minlength="3" maxlength="1000"></textarea>
+            <p id="leave-cancel-message" role="alert" class="live-message"></p>
+            <div class="actions"><button type="button" class="btn" id="confirm-leave-cancel">تأكيد السحب</button><button type="button" class="btn secondary" id="close-leave-cancel">رجوع</button></div>
+          </div>
         </section>
         <section class="tab-panel" id="panel-support" role="tabpanel" aria-labelledby="tab-support" hidden>
           <div class="section-head"><div><h2>الدعم الفني</h2><p>نحن هنا لمساعدتك.</p></div></div>
@@ -338,7 +366,7 @@
       const API="/api/employee-portal";
       const $=id=>document.getElementById(id);
       const loginView=$("login-view"),loadingView=$("loading-view"),dashboard=$("dashboard-view");
-      let challengeId=null, resendAt=0, resendTimer=null, summary=null, sessionId=null, developmentOtp=false, authEpoch=0, logoutPending=false, settingsReturnFocus=null;
+      let challengeId=null, resendAt=0, resendTimer=null, summary=null, sessionId=null, developmentOtp=false, authEpoch=0, logoutPending=false, settingsReturnFocus=null, leaveCancelTarget=null;
       let leaveAttachmentId=null, leaveAttachmentFile=null, attendanceReport=null, correctionDraft=null;
       const correctionDrafts=new Map();
       const clarificationFeedback=new Map();
@@ -395,6 +423,7 @@
         $("login-success").textContent="";show($("login-success"),false);$("login-phone").focus();
       }
       function clearPrivate(){
+        leaveCancelTarget=null;show($("leave-cancel-dialog"),false);$("leave-cancel-reason").value="";
         summary=null;sessionId=null;attendanceReport=null;correctionDraft=null;correctionDrafts.clear();dashboard.querySelectorAll("[id^='employee-'],#attendance-history,#leave-balance,#leave-history,#permission-history,#session-list").forEach(el=>el.textContent="");
         challengeId=null;if(resendTimer){clearInterval(resendTimer);resendTimer=null;}$("login-phone").value="";$("otp-code").value="";$("assigned-zone").textContent="";$("today-date").textContent="";
         dashboard.querySelectorAll("form").forEach(form=>form.reset());
@@ -555,7 +584,43 @@
       function renderLeaveHistory(leaves){
         const rows=(Array.isArray(leaves)?leaves:[]).map(r=>[typeLabel(r.leaveType),dateText(r.startDate),dateText(r.endDate),r.days==null?"—":String(r.days),{statusPill:true,value:r.status}]);
         renderTable($("leave-history"),["النوع","من","إلى","الأيام","الحالة"],rows,"لا توجد طلبات إجازة","ستجد طلباتك السابقة هنا.",(leaves||[]).map(r=>"leave-request-"+r.id));
+        const host=$("leave-history");host.classList.add("leave-responsive");
+        host.querySelectorAll("tbody tr").forEach((row,index)=>{
+          const item=leaves[index],labels=["النوع","من","إلى","الأيام","الحالة"];
+          Array.from(row.children).forEach((td,i)=>{const label=document.createElement("small");label.className="leave-cell-label";label.textContent=labels[i];td.prepend(label)});
+          if(["pending","clarification_requested"].includes(item.status)){
+            const td=document.createElement("td"),button=document.createElement("button");button.type="button";button.className="btn secondary";button.textContent="سحب الطلب";
+            button.addEventListener("click",()=>{leaveCancelTarget={id:item.id,epoch:authEpoch,returnFocus:button};$("leave-cancel-reason").value="";message($("leave-cancel-message"),"");show($("leave-cancel-dialog"),true);$("leave-cancel-reason").focus()});
+            td.append(button);row.append(td);
+          }else row.append(cell("—"));
+        });
+        const heading=host.querySelector("thead tr");if(heading){const th=document.createElement("th");th.textContent="الإجراء";heading.append(th)}
       }
+      $("close-leave-cancel").addEventListener("click",()=>{
+        const target=leaveCancelTarget;leaveCancelTarget=null;show($("leave-cancel-dialog"),false);target?.returnFocus?.focus();
+      });
+      $("leave-cancel-dialog").addEventListener("keydown",event=>{
+        if(event.key==="Escape"){event.preventDefault();$("close-leave-cancel").click();return}
+        if(event.key==="Tab"){
+          const controls=Array.from($("leave-cancel-dialog").querySelectorAll("textarea,button")).filter(el=>!el.disabled);
+          const first=controls[0],last=controls[controls.length-1];
+          if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus()}
+          else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus()}
+        }
+      });
+      $("confirm-leave-cancel").addEventListener("click",async()=>{
+        const target=leaveCancelTarget;if(!target||target.epoch!==authEpoch)return;
+        const reason=$("leave-cancel-reason").value.trim(),button=$("confirm-leave-cancel");
+        if(reason.length<3){message($("leave-cancel-message"),"أدخل سببًا من 3 أحرف على الأقل.","error");return}
+        button.disabled=true;$("close-leave-cancel").disabled=true;
+        try{
+          await request("/leaves/"+encodeURIComponent(target.id)+"/cancel",{method:"POST",body:{reason}});
+          if(target.epoch!==authEpoch)return;
+          leaveCancelTarget=null;show($("leave-cancel-dialog"),false);
+          await loadSummary();message($("leave-message"),"تم سحب الطلب مع حفظ سجله.","success");
+        }catch(error){if(target.epoch===authEpoch&&!error.stale)message($("leave-cancel-message"),error.message,"error")}
+        finally{button.disabled=false;$("close-leave-cancel").disabled=false}
+      });
       function renderPermissionHistory(items){
         const rows=(Array.isArray(items)?items:[]).map(r=>[typeLabel(r.type),dateText(r.date)+" · "+(r.startTime||"—"),dateText(r.returnDate||r.date)+" · "+(r.endTime||"—"),r.hoursRequested,{statusPill:true,value:r.status}]);
         renderTable($("permission-history"),["النوع","المغادرة","العودة","الساعات","الحالة"],rows,"لا توجد طلبات استئذان","ستظهر طلباتك السابقة هنا.",(items||[]).map(r=>"permission-request-"+r.id));
@@ -580,7 +645,8 @@
               const line=document.createElement("p");line.className="m-0 mt-2 text-sm";
               const decisionLabels={approve:"اعتماد",approved:"اعتماد",manager_approved:"موافقة المدير",hr_approved:"موافقة الموارد البشرية",reject:"رفض",rejected:"رفض",clarify:"طلب توضيح",request_clarification:"طلب توضيح",requested_clarification:"طلب توضيح",clarification_requested:"طلب توضيح"};
               const transition=[statusLabel(event.previousStatus),statusLabel(event.nextStatus)].filter(Boolean).join(" ← ");
-              line.textContent=(decisionLabels[event.decision]||event.decision||"تحديث")+" · "+transition+" · "+dateText(event.createdAt,true);
+              const administrativeLabels={administrative_approve:"اعتماد إداري",administrative_reject:"رفض إداري",administrative_clarify:"طلب توضيح إداري",cancel:"إلغاء الطلب"};
+              line.textContent=(administrativeLabels[event.decision]||decisionLabels[event.decision]||event.decision||"تحديث")+" · "+transition+" · "+dateText(event.createdAt,true);
               card.append(line);
               if(event.note){const note=document.createElement("p");note.className="m-0 text-sm";note.textContent="الملاحظة: "+event.note;card.append(note);}
             });
@@ -619,7 +685,7 @@
         const box=$("leave-balance");box.replaceChildren();const card=document.createElement("div");card.className="balance-card";
         const top=document.createElement("div");top.className="balance-top";const title=document.createElement("strong");title.textContent="رصيد "+(balance&&balance.year!=null?String(balance.year):"الإجازات");const note=document.createElement("span");note.className="pill";note.textContent="يوم";top.append(title,note);
         const nums=document.createElement("div");nums.className="balance-numbers";
-        [["المستحق",balance&&balance.entitlement],["المستخدم",balance&&balance.used],["المتبقي",balance&&balance.remaining]].forEach(pair=>{const item=document.createElement("div"),label=document.createElement("small"),value=document.createElement("b");label.textContent=pair[0];value.textContent=pair[1]==null?"—":String(pair[1]);item.append(label,value);nums.append(item)});
+        [["المستحق",balance&&balance.entitlement],["المستخدم",balance&&balance.used],["المحجوز",balance&&balance.pending],["المتاح للطلب",balance&&balance.available]].forEach(pair=>{const item=document.createElement("div"),label=document.createElement("small"),value=document.createElement("b");label.textContent=pair[0];value.textContent=pair[1]==null?"—":String(pair[1]);item.append(label,value);nums.append(item)});
         card.append(top,nums);box.append(card);
       }
       function renderSessions(items){

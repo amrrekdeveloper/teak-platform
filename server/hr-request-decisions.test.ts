@@ -63,6 +63,15 @@ describe("request decision authorization (mocked database)",()=>{
     await expect(decideHrRequest("leave",2,12,"clarify")).rejects.toMatchObject({status:400});
     await expect(decideHrRequest("leave",2,12,"reject")).rejects.toMatchObject({status:400});
   });
+  it("allows a reasoned explicit HR override and refuses an unreasoned bypass",async()=>{
+    await expect(decideHrRequest("leave",2,9,"approve",null,{overrideManager:true})).rejects.toMatchObject({status:400});
+    await decideHrRequest("leave",2,9,"approve","تعذر وصول المدير؛ اعتماد الموارد البشرية",{overrideManager:true});
+    expect(state.status).toBe("approved");
+  });
+  it("never permits an unrelated role to use the administrative override",async()=>{
+    state.role="sales";
+    await expect(decideHrRequest("leave",2,9,"approve","سبب واضح",{overrideManager:true})).rejects.toMatchObject({status:403});
+  });
   it("retains HR stage after HR requests clarification",async()=>{
     state.row.status="clarification_requested";state.approved=true;
     await decideHrRequest("permission",2,9,"approve");

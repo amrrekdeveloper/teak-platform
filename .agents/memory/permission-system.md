@@ -16,4 +16,4 @@ Owner/IT can grant/revoke per-account module access without changing a user's ro
 
 **Why:** keeps RBAC roles stable while allowing fine exceptions; protected-owner immunity prevents an admin from locking themselves/the owners out.
 
-**How to apply:** when adding a new page, add its route-path module to `PERMISSION_MODULES` in `shared/permissions.ts` (with `group` + role defaults) or it won't appear in the editor or be grantable. Persist schema via idempotent startup migration in routes.ts (NOT db:push).
+**How to apply:** when adding a new grantable ERP page, add its route-path module to `PERMISSION_MODULES` in `shared/permissions.ts` (with `group` + role defaults) or it won't appear in the editor or be grantable. The maintenance HR workspace is a separate narrow scope, not a grant of ERP access. Schema changes belong in the schema source and development database, then Publish; never add startup/deploy-time DDL.

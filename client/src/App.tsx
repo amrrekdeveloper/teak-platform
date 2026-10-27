@@ -320,7 +320,7 @@ function DashboardRoutes() {
         <Route path="/employees" component={EmployeesPage} />
         <Route path="/payroll" component={PayrollPage} />
         <Route path="/advances" component={AdvancesPage} />
-        <Route path="/leaves" component={LeavesPage} />
+        <Route path="/leaves"><LeavesPage /></Route>
         <Route path="/evaluations" component={EvaluationsPage} />
         <Route path="/order-center" component={OrderCenterPage} />
         <Route path="/orders/:id" component={OrderDetailPage} />

@@ -4,6 +4,29 @@
   "use strict";
   var KEY = "teak-lang";
   var copy = {
+    "الموارد البشرية":"Human resources",
+    "الإدارة":"Administration",
+    "اعتماد إداري":"Administrative approval",
+    "رفض إداري":"Administrative rejection",
+    "طلب توضيح إداري":"Administrative clarification",
+    "إلغاء الطلب":"Request cancellation",
+    "المدة أيام تقويمية تشمل يوم البداية والنهاية. الاعتماد النهائي لدى الموارد البشرية.":"Duration uses calendar days, including both dates. HR gives final approval.",
+    "طلب إجازة جديد":"New leave request",
+    "سحب طلب الإجازة":"Withdraw leave request",
+    "يمكن سحب الطلب قبل اعتماد المدير. يبقى السجل محفوظًا.":"You can withdraw before manager approval. The history is retained.",
+    "سبب السحب":"Withdrawal reason",
+    "تأكيد السحب":"Confirm withdrawal",
+    "سحب الطلب":"Withdraw request",
+    "الإجراء":"Action",
+    "رجوع":"Back",
+    "المحجوز":"Reserved",
+    "المتاح للطلب":"Available to request",
+    "أدخل سببًا من 3 أحرف على الأقل.":"Enter a reason of at least 3 characters.",
+    "تم سحب الطلب مع حفظ سجله.":"Request withdrawn; history retained.",
+    "يمكن سحب الطلب قبل موافقة المدير فقط. تواصل مع الموارد البشرية.":"You can withdraw only before manager approval. Contact HR.",
+    "الطلب منتهٍ بالفعل.":"This request has already been closed.",
+    "الطلب غير موجود.":"Request not found.",
+    "أدخل سبب الإلغاء من 3 إلى 2000 حرف.":"Enter a cancellation reason of 3 to 2,000 characters.",
     "تيك · الموظفون":"TEAK · People",
     "تيك · لكل بيت، تفاصيله.":"TEAK · Every home, its own details.",
     "تيك · مطابخ تُصمّم لك":"TEAK · Kitchens designed for you",
@@ -243,6 +266,7 @@
       return copy[passwordControl[1]] + " " + copy[passwordControl[2]];
     }
     var patterns = [
+      [/^رصيد (\d{4})$/, "Balance $1"],
       [/^تاريخ الإنشاء: (.+)$/, "Created: $1"],
       [/^آخر نشاط: (.+) · تنتهي الجلسة: (.+)$/, "Last active: $1 · Session expires: $2"],
       [/^يمكنك طلب رمز جديد بعد (.+) ثانية\.$/, "You can request a new code in $1 seconds."],

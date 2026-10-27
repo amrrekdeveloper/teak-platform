@@ -17,6 +17,7 @@ import { scheduledShiftsForDay } from "../attendance-schedule-history";
 import { calendarForDay, weekPolicies } from "../attendance-workweek";
 import { resolveWeekPolicy } from "../../shared/attendance-workweek";
 import { selectPunchShift, EARLY_CHECKIN_MINUTES } from "../../shared/attendance-shift-selection";
+import { annualLeaveBalance, cancelLeave } from "../hr-operations";
 
 const dateInput = z.string().refine(validDate, "التاريخ غير صالح");
 const reasonInput = z.string().trim().min(3).max(1000);
@@ -50,9 +51,7 @@ const attendanceInput = z.object({
 
 async function leaveBalance(employee: PortalEmployee) {
   const year = riyadhDay().slice(0, 4);
-  const entitlement = annualEntitlementAt(employee.contract_start, riyadhDay());
-  const used = annualUsage(await storage.getLeaveRequests(employee.id), Number(year));
-  return { entitlement, used, remaining: Math.max(0, entitlement - used), year };
+  return annualLeaveBalance(employee.id,Number(year));
 }
 async function notifyApprovers(employee: PortalEmployee, kind: "leave" | "permission", requestId: number) {
   try {
@@ -79,6 +78,11 @@ async function notifyApprovers(employee: PortalEmployee, kind: "leave" | "permis
 }
 
 export function registerEmployeeServices(router: Router) {
+  router.post("/leaves/:id/cancel",asyncRoute(async(req,res)=>{
+    const {employee}=identity(res);
+    const input=z.object({reason:reasonInput}).strict().parse(req.body);
+    res.json(await cancelLeave(Number(req.params.id),input.reason,{employeeId:employee.id}));
+  }));
   router.get("/summary", asyncRoute(async (_req, res) => {
     const { employee, sessionId } = identity(res);
     const [records, leaves, permissions, balance, devices] = await Promise.all([
