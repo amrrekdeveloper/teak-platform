@@ -468,7 +468,7 @@ export default function SalesMapPage() {
                   key={rep.rep_id}
                   onClick={() => setRepIdFilter(isActive ? "all" : String(rep.rep_id))}
                   className={`flex items-center gap-2 min-w-[130px] rounded-xl px-3 py-2 transition-colors ${isActive ? "ring-2" : "bg-muted/50 hover:bg-muted"}`}
-                  style={isActive ? { ringColor: repColor, background: repColor + "18" } : {}}
+                  style={isActive ? { boxShadow: `0 0 0 2px ${repColor}`, background: repColor + "18" } : {}}
                   data-testid={`button-rep-filter-${rep.rep_id}`}
                 >
                   <div className="w-3.5 h-3.5 rounded-full shrink-0" style={{ background: repColor }} />

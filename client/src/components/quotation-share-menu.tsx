@@ -26,8 +26,8 @@ interface QuotationShareMenuProps {
   quotationId: number;
   quotationNumber?: string | number;
   customerName?: string;
-  customerPhone?: string;
-  customerEmail?: string;
+  customerPhone?: string | null;
+  customerEmail?: string | null;
   totalPrice?: number | string;
   status?: string;
   triggerLabel?: string;

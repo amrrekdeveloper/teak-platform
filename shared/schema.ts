@@ -1682,7 +1682,10 @@ export const insertJournalEntrySchema = createInsertSchema(journalEntries).omit(
   entryNumber: true,
   createdAt: true,
 });
-export type InsertJournalEntry = z.infer<typeof insertJournalEntrySchema>;
+// drizzle-zod's inferred JSON-array methods do not match the column's array type.
+// Keep the input fields unchanged and use the actual column type for attachments.
+export type InsertJournalEntry = Omit<z.infer<typeof insertJournalEntrySchema>, "attachments">
+  & Pick<typeof journalEntries.$inferInsert, "attachments">;
 export type JournalEntry = typeof journalEntries.$inferSelect;
 
 export const journalEntryLines = pgTable("journal_entry_lines", {

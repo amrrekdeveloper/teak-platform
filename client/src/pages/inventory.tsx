@@ -117,7 +117,7 @@ export default function InventoryPage() {
       return;
     }
     try {
-      const QRCode: any = await import("qrcode");
+      const QRCode = await import("qrcode");
       const qrDataUrl = await QRCode.toDataURL(code, { margin: 1, width: 300, errorCorrectionLevel: "M" });
       const jsPDFModule = await import("jspdf");
       const jsPDF = jsPDFModule.default || (jsPDFModule as any).jsPDF;

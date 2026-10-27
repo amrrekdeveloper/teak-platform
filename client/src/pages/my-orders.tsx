@@ -88,7 +88,7 @@ function getLastActivityDate(order: EnrichedOrder): Date {
     order._appointment?.createdAt,
     order.createdAt,
   ];
-  const dates = candidates.filter(Boolean).map(d => new Date(d as string).getTime()).filter(n => !isNaN(n));
+  const dates = candidates.filter(d => d != null).map(d => new Date(d).getTime()).filter(n => !isNaN(n));
   const latest = Math.max(...dates);
   return isFinite(latest) ? new Date(latest) : new Date(order.createdAt ?? 0);
 }
@@ -668,11 +668,11 @@ export default function MyOrdersPage() {
     }
   }
 
-  function formatDate(dateStr: string) {
+  function formatDate(dateStr: string | Date) {
     if (!dateStr) return "—";
     return new Date(dateStr).toLocaleDateString(lang === "ar" ? "ar-SA" : "en-US", { month: "short", day: "numeric" });
   }
-  function formatDateTime(dateStr: string) {
+  function formatDateTime(dateStr: string | Date) {
     if (!dateStr) return "—";
     return new Date(dateStr).toLocaleString(lang === "ar" ? "ar-SA" : "en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
   }

@@ -334,11 +334,11 @@ export default function OrderDetailPage() {
   const allOrderAppts = appointments.filter(a => a.quotationId === quotation.id)
     .sort((a, b) => new Date(`${a.appointmentDate}T${a.startTime || "00:00"}`).getTime() - new Date(`${b.appointmentDate}T${b.startTime || "00:00"}`).getTime());
 
-  function formatDate(d: string | null | undefined) {
+  function formatDate(d: string | Date | null | undefined) {
     if (!d) return "—";
     return new Date(d).toLocaleDateString(lang === "ar" ? "ar-SA" : "en-US", { year: "numeric", month: "long", day: "numeric" });
   }
-  function formatDateTime(d: string | null | undefined) {
+  function formatDateTime(d: string | Date | null | undefined) {
     if (!d) return "—";
     return new Date(d).toLocaleString(lang === "ar" ? "ar-SA" : "en-US", { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" });
   }
@@ -441,9 +441,7 @@ export default function OrderDetailPage() {
       <SectionCard title={t("بيانات العميل", "Customer Information")} icon={User}>
         <InfoRow label={t("الاسم", "Name")} value={customer?.fullName} />
         <InfoRow label={t("الجوال", "Phone")} value={customer?.phone} dir="ltr" />
-        {(customer?.phone2) && <InfoRow label={t("هاتف 2", "Phone 2")} value={customer.phone2} dir="ltr" />}
         <InfoRow label={t("المدينة", "City")} value={quotation.city || customer?.city} />
-        {customer?.address && <InfoRow label={t("العنوان", "Address")} value={customer.address} />}
         {assignedUser && (
           <InfoRow
             label={t("المندوب", "Sales Rep")}
@@ -465,7 +463,7 @@ export default function OrderDetailPage() {
             <p className="text-xs">{quotation.notes}</p>
           </div>
         )}
-        {quotation.items && quotation.items.length > 0 && (
+        {Array.isArray(quotation.items) && quotation.items.length > 0 && (
           <div className="mt-2 pt-2 border-t">
             <p className="text-xs font-medium mb-2">{t("البنود", "Line Items")}</p>
             <div className="border rounded-lg overflow-hidden">
@@ -513,7 +511,6 @@ export default function OrderDetailPage() {
                        appt.status === "attended" ? t("حضر", "Attended") :
                        appt.status === "rescheduled" ? t("أُعيد جدولته", "Rescheduled") :
                        appt.status === "cancelled" ? t("ملغى", "Cancelled") :
-                       appt.status === "expired" ? t("منتهٍ", "Expired") :
                        isPast ? t("منتهٍ", "Expired") : t("مجدول", "Scheduled")}
                     </Badge>
                   </div>
@@ -563,13 +560,12 @@ export default function OrderDetailPage() {
               return (
                 <div key={survey.id} className="rounded-lg border bg-violet-50/50 dark:bg-violet-950/20 border-violet-200 dark:border-violet-900 text-xs overflow-hidden">
                   <div className="flex items-center justify-between px-3 py-2 border-b border-violet-200 dark:border-violet-800">
-                    <span className="font-semibold">{survey.projectType || t("مسح ميداني", "Site Survey")} #{survey.id}</span>
+                    <span className="font-semibold">{t("مسح ميداني", "Site Survey")} #{survey.id}</span>
                     <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-violet-700 border-violet-300">{t("مكتمل", "Complete")}</Badge>
                   </div>
                   <div className="px-3 py-2 space-y-1">
-                    {survey.city && <p className="flex items-center gap-1 text-muted-foreground"><MapPin className="w-3 h-3" />{survey.city}</p>}
-                    {survey.totalArea && <InfoRow label={t("المساحة الكلية", "Total Area")} value={`${survey.totalArea} م²`} />}
-                    {survey.roomsCount && <InfoRow label={t("عدد الغرف", "Rooms")} value={String(survey.roomsCount)} />}
+                    {survey.buildingStatus && <InfoRow label={t("حالة المبنى", "Building Status")} value={survey.buildingStatus} />}
+                    {survey.doorsCount != null && <InfoRow label={t("عدد الأبواب", "Doors")} value={String(survey.doorsCount)} />}
                     {survey.notes && <p className="text-muted-foreground border-t pt-1 mt-1">{survey.notes}</p>}
 
                     {spaces.length > 0 && (
@@ -909,7 +905,7 @@ export default function OrderDetailPage() {
             value={
               <Badge variant="secondary" className="text-[10px] px-2">
                 {linkedWorkOrder.status === "pending" ? t("معلق", "Pending") :
-                 linkedWorkOrder.status === "in_progress" ? t("قيد التنفيذ", "In Progress") :
+                 linkedWorkOrder.status === "in_production" ? t("قيد التصنيع", "In Production") :
                  linkedWorkOrder.status === "completed" ? t("مكتمل", "Completed") :
                  linkedWorkOrder.status === "delivered" ? t("تم التسليم", "Delivered") :
                  linkedWorkOrder.status}
@@ -1008,7 +1004,7 @@ export default function OrderDetailPage() {
                         </Badge>
                       )}
                     </div>
-                    <p className="text-[11px] text-muted-foreground">{formatDate(payment.paymentDate || payment.createdAt)}</p>
+                    <p className="text-[11px] text-muted-foreground">{formatDate(payment.createdAt)}</p>
                     {payment.notes && <p className="text-[11px] text-muted-foreground mt-0.5">{payment.notes}</p>}
                   </div>
                   <div className="text-end">

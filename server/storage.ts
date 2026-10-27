@@ -59,6 +59,9 @@ import {
 import { toLatinDigits, parseNum } from "@shared/digits";
 import { activeMovementSql } from "./attendance-movement-state";
 
+// The storage transaction supplies the parent ID after creating the entry.
+type JournalEntryLineInput = Omit<InsertJournalEntryLine, "entryId"> & { entryId?: number };
+
 export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
@@ -315,9 +318,9 @@ export interface IStorage {
   getJournalEntries(from?: string, to?: string, typeFilter?: string): Promise<JournalEntry[]>;
   getJournalEntry(id: number): Promise<JournalEntry | undefined>;
   findJournalEntryByReference(referenceType: string, referenceId: number): Promise<JournalEntry | undefined>;
-  createJournalEntry(entry: InsertJournalEntry, lines: InsertJournalEntryLine[]): Promise<JournalEntry>;
+  createJournalEntry(entry: InsertJournalEntry, lines: JournalEntryLineInput[]): Promise<JournalEntry>;
   updateJournalEntry(id: number, data: Partial<InsertJournalEntry>): Promise<JournalEntry | undefined>;
-  updateJournalEntryWithLines(id: number, data: Partial<InsertJournalEntry>, lines: InsertJournalEntryLine[]): Promise<JournalEntry | undefined>;
+  updateJournalEntryWithLines(id: number, data: Partial<InsertJournalEntry>, lines: JournalEntryLineInput[]): Promise<JournalEntry | undefined>;
   deleteJournalEntry(id: number): Promise<void>;
   getJournalEntryLines(entryId: number): Promise<JournalEntryLine[]>;
   getJournalEntryLinesForAccount(accountCode: string, from?: string, to?: string): Promise<(JournalEntryLine & { entryDate: string; entryDescription: string; entryNumber: number })[]>;
@@ -1543,7 +1546,7 @@ export class DatabaseStorage implements IStorage {
     return row;
   }
 
-  async createJournalEntry(entry: InsertJournalEntry, lines: InsertJournalEntryLine[]): Promise<JournalEntry> {
+  async createJournalEntry(entry: InsertJournalEntry, lines: JournalEntryLineInput[]): Promise<JournalEntry> {
     // Normalize Arabic-Indic/Persian digits so numeric casts never fail at the DB.
     const safeLines = lines.map(l => ({ ...l, debit: toLatinDigits(l.debit ?? "0") || "0", credit: toLatinDigits(l.credit ?? "0") || "0" }));
     const totalDebit = safeLines.reduce((s, l) => s + parseNum(l.debit), 0);
@@ -1567,7 +1570,7 @@ export class DatabaseStorage implements IStorage {
   // in one transaction so a failure never wipes balances without a replacement.
   async replaceOpeningBalances(
     entry: InsertJournalEntry,
-    lines: InsertJournalEntryLine[],
+    lines: JournalEntryLineInput[],
   ): Promise<JournalEntry> {
     const safeLines = lines.map(l => ({ ...l, debit: toLatinDigits(l.debit ?? "0") || "0", credit: toLatinDigits(l.credit ?? "0") || "0" }));
     const totalDebit = safeLines.reduce((s, l) => s + parseNum(l.debit), 0);
@@ -1603,7 +1606,7 @@ export class DatabaseStorage implements IStorage {
   async updateJournalEntryWithLines(
     id: number,
     data: Partial<InsertJournalEntry>,
-    lines: InsertJournalEntryLine[],
+    lines: JournalEntryLineInput[],
   ): Promise<JournalEntry | undefined> {
     const safeLines = lines.map(l => ({ ...l, debit: toLatinDigits(l.debit ?? "0") || "0", credit: toLatinDigits(l.credit ?? "0") || "0" }));
     const totalDebit = safeLines.reduce((s, l) => s + parseNum(l.debit), 0);
@@ -1644,6 +1647,8 @@ export class DatabaseStorage implements IStorage {
         debit: journalEntryLines.debit,
         credit: journalEntryLines.credit,
         notes: journalEntryLines.notes,
+        partyType: journalEntryLines.partyType,
+        partyId: journalEntryLines.partyId,
         entryDate: journalEntries.date,
         entryDescription: journalEntries.description,
         entryNumber: journalEntries.entryNumber,

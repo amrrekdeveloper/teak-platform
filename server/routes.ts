@@ -4336,7 +4336,7 @@ export async function registerRoutes(
 
       res.json({
         leaves: allLeaves.filter(relevantLeave).map(l => ({ ...l, reviewerStage: managerFor(l.employeeId,l.leaveFormData).manager_id && !l.managerApprovedBy && l.status!=="manager_approved" ? "manager" : "hr",employee: empInfo(l.employeeId), history: historyFor(l.employeeId) })),
-        permissions: allPerms.filter(relevantPerm).map(p => ({ ...p, reviewerStage: managerFor(p.employeeId,p.formDetails).manager_id && !permissionManagerApprovals.has(p.id) && p.status!=="manager_approved" ? "manager" : "hr",employee: empInfo(p.employeeId), history: historyFor(p.employeeId) })),
+        permissions: allPerms.filter(relevantPerm).map(p => ({ ...p, reviewerStage: managerFor(p.employeeId,p.formDetails).manager_id && !permissionManagerApprovals.has(p.id) ? "manager" : "hr",employee: empInfo(p.employeeId), history: historyFor(p.employeeId) })),
       });
     } catch {
       res.status(500).json({ message: "حدث خطأ" });

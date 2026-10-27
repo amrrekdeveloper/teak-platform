@@ -280,6 +280,12 @@ export default function QuotationBuilderPage() {
           const adeko = sp.productId ? adekoProducts.find((p: any) => p.id === sp.productId) : null;
           return {
             id: Date.now().toString() + Math.random().toString(36).slice(2),
+            mode: "product",
+            adekoProductId: sp.productId || null,
+            adekoCode: sp.code || adeko?.code || "",
+            adekoNameAr: sp.name || sp.nameAr || adeko?.descriptionAr || "",
+            adekoNameEn: sp.nameEn || adeko?.descriptionEn || "",
+            qty: sp.quantity || 1,
             productId: sp.productId || null,
             productType: "",
             woodType: "",

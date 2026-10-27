@@ -77,7 +77,7 @@ export default function WorkOrdersPage() {
     return customers.find(c => c.id === customerId)?.fullName || "";
   };
 
-  const getContractNumber = (contractId: number) => {
+  const getContractNumber = (contractId: number | null) => {
     return contracts.find(c => c.id === contractId)?.contractNumber || "";
   };
 

@@ -256,7 +256,9 @@ export default function ContractDetailPage() {
                           {isPaid ? (
                             <CheckCircle2 className="w-4 h-4 text-green-600" />
                           ) : hasPending ? (
-                            <Clock className="w-4 h-4 text-amber-500" title={t("بانتظار الاعتماد", "Pending approval")} />
+                            <span title={t("بانتظار الاعتماد", "Pending approval")}>
+                              <Clock className="w-4 h-4 text-amber-500" aria-label={t("بانتظار الاعتماد", "Pending approval")} />
+                            </span>
                           ) : (
                             <div className="w-4 h-4 rounded-full border-2 border-muted-foreground/30" />
                           )}
