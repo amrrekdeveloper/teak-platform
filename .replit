@@ -61,7 +61,7 @@ VITE_FIREBASE_MEASUREMENT_ID = "G-4PJVCELR5Q"
 EMPLOYEE_PORTAL_DEV_OTP = "true"
 
 [userenv.production]
-TEAK_SYSTEM_ADMIN_RECOVERY_ID = "dcd031de-1a8a-49da-9706-3c90829ab468"
+TEAK_SYSTEM_ADMIN_RECOVERY_ID = "97f203ba-56bb-4a73-9b03-fa83ceb6dddd"
 
 [postMerge]
 path = "scripts/post-merge.sh"
