@@ -38,7 +38,7 @@ export async function calendarForDay(employeeId:number, day:string, executor:Exe
 }
 
 const inputSchema=z.object({
-  mode:z.enum(["policy","review"]),scope:z.enum(["all","employees"]),
+  mode:z.enum(["policy","review","bootstrap"]),scope:z.enum(["all","employees"]),
   employeeIds:z.array(z.number().int().positive()).max(500).default([]),
   workingDays:z.array(z.number().int().min(0).max(6)).max(7).nullable(),
   effectiveFrom:z.string().refine(validDate).optional(),businessDay:z.string().refine(validDate).optional(),
@@ -52,6 +52,9 @@ export function parseWeekInput(body:unknown, today=riyadhDateKey(new Date())) {
   const parsed=inputSchema.safeParse(body);
   if(!parsed.success)throw new WeekError(400,"تحقق من الأيام والتاريخ والسبب والموظفين.","Check the weekdays, date, reason and employees.");
   const input=parsed.data;
+  if(input.mode==="bootstrap" && (input.scope!=="all" || input.employeeIds.length ||
+    input.effectiveFrom!==today || input.businessDay || input.includeOverrides || !input.workingDays?.length))
+    throw new WeekError(400,"التفعيل الأول يتطلب جميع الموظفين وتاريخ اليوم وأيام العمل.","Initial activation requires all employees, today and working days.");
   if(input.mode==="policy"&&input.workingDays?.length===0)
     throw new WeekError(400,"اختر يوم عمل واحدًا على الأقل.","Choose at least one working day.");
   if(new Set(input.employeeIds).size!==input.employeeIds.length ||
@@ -98,12 +101,14 @@ function expectedStatuses(workingDay:boolean|null, evidence:Awaited<ReturnType<t
 export async function buildWeekPreview(input:WorkweekInput, executor:Executor=pool) {
   const day=(input.mode==="review"?input.businessDay:input.effectiveFrom)!;
   const policies=await weekPolicies(executor);
+  if(input.mode==="bootstrap" && policies.length)
+    throw new WeekError(409,"سبق اعتماد أسبوع العمل. حدّث الشاشة واستخدم تعديل السياسة.","A workweek policy already exists. Refresh and use policy changes.");
   const employees=(await executor.query(`SELECT id,employee_number AS "employeeNumber",full_name_ar AS name,status,
-    contract_start AS "contractStart" FROM employees ORDER BY id`)).rows;
+    COALESCE(hire_date,contract_start) AS "contractStart" FROM employees ORDER BY id`)).rows;
   const chosen=employees.filter(e=>input.scope==="all"?e.status==="active":input.employeeIds.includes(e.id));
   if(input.scope==="employees"&&chosen.length!==input.employeeIds.length)
     throw new WeekError(404,"تعذر العثور على أحد الموظفين. أعد المعاينة.","An employee was not found. Refresh the preview.");
-  if(input.mode==="policy"&&chosen.some(e=>e.status!=="active"))
+    if(input.mode!=="review"&&chosen.some(e=>e.status!=="active"))
     throw new WeekError(400,"اختر موظفين نشطين لتعديل أسبوع العمل.","Select active employees for a workweek policy.");
   const rows:any[]=[]; let excludedCount=0;
   for(const employee of chosen) {
@@ -154,7 +159,7 @@ export async function applyWeekChange(input:WorkweekInput, token:string, actor:n
     const preview=await buildWeekPreview(input,client);
     if(token!==preview.previewToken)throw new WeekError(409,"تغيرت البيانات منذ المعاينة. أعد المعاينة قبل الاعتماد.","Data changed since preview. Preview again before confirming.");
     if(!preview.rows.length)throw new WeekError(400,"لا يوجد موظفون متأثرون بهذا الاختيار.","No employees are affected by this selection.");
-    if(input.mode==="policy"){
+    if(input.mode!=="review"){
       if(input.scope==="all"){
         await client.query(`INSERT INTO attendance_week_policies(employee_id,working_days,effective_from,reason,created_by)
           VALUES(NULL,$1::jsonb,$2,$3,$4)`,[JSON.stringify(input.workingDays),input.effectiveFrom,input.reason,actor]);

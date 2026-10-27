@@ -3,11 +3,17 @@ name: Historical attendance evidence
 description: Preserve observed daily schedules without inventing missing historical policy.
 ---
 
-Treat the schedule attached to an observed business day as immutable. Configuration edits must not silently reinterpret that day; explicit attendance corrections remain audited.
+Treat an observed period's saved schedule as immutable. Explicit HR configuration edits may update today's unused periods, but must retain periods with punches, earlier days, and an audit of before/after schedules. Reading a report must never refresh evidence.
 
 **Why:** The owner requires accurate historical attendance when HR changes schedules. Legacy records do not contain enough information to reconstruct every original schedule.
 
 **How to apply:** Use captured daily schedules for reporting and reconciliation. Clearly mark older days lacking schedule evidence for HR review rather than fabricating a history or generating automatic penalties from current settings. Never describe this as a reconstruction of missing past policy.
+
+Do not delete attendance or leave data from the most recent four Riyadh calendar days, including today, in either environment.
+
+**Why:** On 2026-10-27 the owner authorized discarding older attendance/leave history if truly needed, but explicitly prohibited deleting the most recent four days. This is permission, not an instruction to erase older history unnecessarily.
+
+**How to apply:** Prefer non-destructive repairs. Any proposed cleanup must preserve recent records and their dependent evidence/audits; never treat development data as automatically disposable. Isolated synthetic test fixtures can be cleaned up without touching real employees.
 
 Unknown schedule-dependent metrics must be unavailable at their source, not merely hidden behind an “unverified” status. Every risk calculation, alert and export must explicitly require verified schedule evidence.
 

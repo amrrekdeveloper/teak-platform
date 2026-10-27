@@ -24,7 +24,7 @@ type PreviewRow = {
 };
 type Preview = {
   previewToken: string; rows: PreviewRow[]; affectedCount: number; excludedCount: number; warnings: string[];
-  mode: "policy" | "review"; effectiveFrom?: string; businessDay?: string;
+  mode: "policy" | "bootstrap" | "review"; effectiveFrom?: string; businessDay?: string;
 };
 type ApiErrorBody = { message?: string; messageEn?: string; error?: string };
 
@@ -76,7 +76,7 @@ export default function AttendanceSettingsPage() {
   const { t, isRTL } = useLanguage();
   const qc = useQueryClient();
   const [viewDate, setViewDate] = useState(() => addDays(todayLocal(), 1));
-  const [mode, setMode] = useState<"policy" | "review">("policy");
+  const [mode, setMode] = useState<"policy" | "bootstrap" | "review">("policy");
   const [scope, setScope] = useState<"all" | "employees">("all");
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [search, setSearch] = useState("");
@@ -111,6 +111,7 @@ export default function AttendanceSettingsPage() {
     setPreview(null); setError(""); setSuccess(""); setConfirmChecked(false);
   };
   const toggleDay = (day: number) => {
+    if (mode === "bootstrap") return;
     invalidatePreview();
     setResetInherit(false);
     setWorkingDays(current => current.includes(day) ? current.filter(value => value !== day) : [...current, day].sort((a, b) => a - b));
@@ -119,11 +120,24 @@ export default function AttendanceSettingsPage() {
     invalidatePreview();
     setSelectedIds(current => current.includes(id) ? current.filter(value => value !== id) : [...current, id]);
   };
-  const setModeSafe = (value: "policy" | "review") => {
+  const setModeSafe = (value: "policy" | "bootstrap" | "review") => {
     invalidatePreview();
     setMode(value);
     if (value === "review") setScope("employees");
-    setViewDate(value === "policy" ? effectiveFrom : businessDay);
+    else if (value === "bootstrap") {
+      setScope("all");
+      setResetInherit(false);
+      setIncludeOverrides(false);
+      setWorkingDays(DEFAULT_DAYS);
+      setEffectiveFrom(settings?.today || todayLocal());
+      setViewDate(settings?.today || todayLocal());
+    } else {
+      const futureStart = settings?.tomorrow || addDays(settings?.today || todayLocal(), 1);
+      const nextEffective = effectiveFrom < futureStart ? futureStart : effectiveFrom;
+      setEffectiveFrom(nextEffective);
+      setViewDate(nextEffective);
+    }
+    if (value === "review") setViewDate(businessDay);
   };
   const changeScope = (value: "all" | "employees") => {
     invalidatePreview();
@@ -134,6 +148,7 @@ export default function AttendanceSettingsPage() {
     invalidatePreview(); fn(event.target.value);
   };
   const changeEffectiveDate = (value: string) => {
+    if (mode === "bootstrap") return;
     invalidatePreview();
     setEffectiveFrom(value);
     if (value) setViewDate(value);
@@ -144,7 +159,7 @@ export default function AttendanceSettingsPage() {
     if (value) setViewDate(value);
   };
   const changeViewDate = (value: string) => {
-    if (!value) return;
+    if (!value || mode === "bootstrap") return;
     invalidatePreview();
     setViewDate(value);
     if (mode === "policy") setEffectiveFrom(value);
@@ -158,10 +173,11 @@ export default function AttendanceSettingsPage() {
       : Array.from(new Set([...current, ...filteredEmployees.map(employee => employee.id)])));
   };
   const currentDate = settings?.today || todayLocal();
-  const minimumEffectiveDate = settings?.tomorrow || addDays(currentDate, 1);
+  const minimumEffectiveDate = mode === "bootstrap" ? currentDate : settings?.tomorrow || addDays(currentDate, 1);
   const formValid = reason.trim().length >= 3 && reason.trim().length <= 1000 &&
     (scope !== "employees" || selectedIds.length > 0) &&
-    (mode !== "policy" || (!!effectiveFrom && effectiveFrom >= minimumEffectiveDate)) &&
+    (mode === "bootstrap" ? (settings?.policies.length === 0 && effectiveFrom === currentDate && scope === "all") :
+      mode !== "policy" || (!!effectiveFrom && effectiveFrom >= minimumEffectiveDate)) &&
     (mode !== "review" || (!!businessDay && businessDay <= currentDate));
   const showError = (cause: unknown) => {
     const e = cause as Error & { messageEn?: string; status?: number };
@@ -175,10 +191,10 @@ export default function AttendanceSettingsPage() {
   const makeBody = () => ({
     mode, scope,
     employeeIds: scope === "employees" ? selectedIds : [],
-    workingDays: mode === "review"
+    workingDays: mode === "bootstrap" ? DEFAULT_DAYS : mode === "review"
       ? (reviewWorkingDay ? [new Date(`${businessDay}T12:00:00`).getDay()] : [])
       : scope === "employees" && resetInherit ? null : workingDays,
-    ...(mode === "policy" ? { effectiveFrom } : { businessDay }),
+    ...(mode === "review" ? { businessDay } : { effectiveFrom: mode === "bootstrap" ? currentDate : effectiveFrom }),
     includeOverrides:mode==="policy"&&scope==="all"&&includeOverrides,
     reason: reason.trim(),
   });
@@ -289,8 +305,8 @@ export default function AttendanceSettingsPage() {
           <h1>{t("أيام العمل والراحة", "Working week")}</h1>
           <p>{t("اضبط سياسة الأسبوع، وراجع الحالات السابقة دون المساس بسجلات البصمة.", "Set the weekly policy and review past dates without changing punch records.")}</p>
         </div>
-        <div className="wk-heading-date"><CalendarDays size={17} /><span>{mode === "policy" ? t("تاريخ عرض السياسة", "Policy date") : t("تاريخ المراجعة", "Review date")}</span>
-          <Input type="date" aria-label={mode === "policy" ? t("تاريخ عرض السياسة", "Policy display date") : t("تاريخ المراجعة", "Review date")} value={viewDate} min={mode === "policy" ? minimumEffectiveDate : undefined} max={mode === "review" ? currentDate : undefined} onChange={event => changeViewDate(event.target.value)} />
+        <div className="wk-heading-date"><CalendarDays size={17} /><span>{mode !== "review" ? t(mode === "bootstrap" ? "تاريخ بدء السياسة الأولية" : "تاريخ عرض السياسة", mode === "bootstrap" ? "Initial policy date" : "Policy date") : t("تاريخ المراجعة", "Review date")}</span>
+          <Input type="date" aria-label={mode !== "review" ? t("تاريخ عرض السياسة", "Policy display date") : t("تاريخ المراجعة", "Review date")} value={viewDate} min={mode !== "review" ? minimumEffectiveDate : undefined} max={mode === "review" || mode === "bootstrap" ? currentDate : undefined} disabled={mode === "bootstrap"} onChange={event => changeViewDate(event.target.value)} />
         </div>
       </header>
 
@@ -320,11 +336,33 @@ export default function AttendanceSettingsPage() {
         </div>
       </section>
 
+      {settings.policies.length === 0 && <section className="wk-bootstrap-banner" aria-labelledby="wk-bootstrap-title">
+        <span className="wk-bootstrap-mark"><CalendarDays size={19} /></span>
+        <div className="wk-bootstrap-copy">
+          <h2 id="wk-bootstrap-title">{t("تفعيل سياسة أسبوع العمل لأول مرة", "Activate the workweek policy")}</h2>
+          <p>{t(
+            "لا توجد سياسة أسبوع عامة بعد. راجع نمط العمل المعروض، ثم عاين ووافق على سياسة تبدأ اليوم. لن تُطبّق تلقائياً، ولن تُعدّل تقويمات الأيام السابقة؛ راجع أي يوم تمت مراجعته بشكل منفصل عند الحاجة.",
+            "No general workweek policy exists yet. Review the displayed workweek pattern, then preview and approve a policy effective today. Nothing is applied automatically, and past day calendars are unchanged; review any previously reviewed day separately if needed."
+          )}</p>
+        </div>
+        {mode !== "bootstrap" && <Button type="button" className="wk-primary wk-bootstrap-action" onClick={() => setModeSafe("bootstrap")}>
+          <CalendarDays size={17} />{t("إعداد سياسة اليوم", "Set up today’s policy")}
+        </Button>}
+      </section>}
+
+      {mode === "policy" && <div className="wk-policy-context" role="note">
+        <CalendarDays size={17} />
+        <p>{t(
+          `العرض يوضح السياسة السارية في ${formatDate(viewDate, isRTL ? "ar-SA" : "en-US")}. أي تعديل هنا سياسة مستقبلية تبدأ في التاريخ المحدد، ولا يغيّر الأيام السابقة.`,
+          `The panel shows the policy effective on ${formatDate(viewDate, "en-US")}. Changes here create a future policy from the selected date; they do not change past days.`
+        )}</p>
+      </div>}
+
       <div className="wk-main-grid">
         <main className="wk-builder">
           <div className="wk-mode-tabs" role="tablist" aria-label={t("نوع الإجراء", "Change type")}>
-            <button type="button" role="tab" aria-selected={mode === "policy"} data-testid="workweek-mode-policy" className={mode === "policy" ? "is-active" : ""} onClick={() => setModeSafe("policy")}>
-              <CalendarDays size={17} /><span>{t("سياسة مستقبلية", "Future policy")}</span><small>{t("تبدأ من تاريخ لاحق", "Starts on a future date")}</small>
+            <button type="button" role="tab" aria-selected={mode === "policy" || mode === "bootstrap"} data-testid="workweek-mode-policy" className={mode === "policy" || mode === "bootstrap" ? "is-active" : ""} onClick={() => setModeSafe(mode === "bootstrap" ? "bootstrap" : "policy")}>
+              <CalendarDays size={17} /><span>{mode === "bootstrap" ? t("تفعيل أولي", "Initial activation") : t("سياسة مستقبلية", "Future policy")}</span><small>{mode === "bootstrap" ? t("سياسة عامة تبدأ اليوم", "General policy starts today") : t("تبدأ من تاريخ لاحق", "Starts on a future date")}</small>
             </button>
             <button type="button" role="tab" aria-selected={mode === "review"} data-testid="workweek-mode-review" className={mode === "review" ? "is-active" : ""} onClick={() => setModeSafe("review")}>
               <FileClock size={17} /><span>{t("مراجعة يوم سابق", "Review a day")}</span><small>{t("تحديد يوم عمل أو راحة", "Mark work or rest")}</small>
@@ -339,10 +377,10 @@ export default function AttendanceSettingsPage() {
           <section className="wk-form-section">
             <div className="wk-section-title"><span className="wk-number">02</span><div><h2>{t("نطاق التطبيق", "Who does this apply to?")}</h2><p>{t("اختر الجميع أو حدّد الموظفين المطلوبين.", "Apply to everyone or choose specific employees.")}</p></div></div>
             <div className="wk-scope-options">
-              <button type="button" data-testid="workweek-scope" aria-pressed={scope === "all"} disabled={mode === "review"} className={`wk-scope-option ${scope === "all" ? "selected" : ""}`} onClick={() => changeScope("all")}>
+              <button type="button" data-testid="workweek-scope" aria-pressed={scope === "all"} disabled={mode === "review" || mode === "bootstrap"} className={`wk-scope-option ${scope === "all" ? "selected" : ""}`} onClick={() => changeScope("all")}>
                 <UsersRound size={18} /><span><strong>{t("كل الموظفين", "All employees")}</strong><small>{t("سيُظهر العرض من يشمله أو يستثنيه", "Preview shows included and excluded staff")}</small></span>{scope === "all" && <Check size={17} />}
               </button>
-              <button type="button" aria-pressed={scope === "employees"} className={`wk-scope-option ${scope === "employees" ? "selected" : ""}`} onClick={() => changeScope("employees")}>
+              <button type="button" aria-pressed={scope === "employees"} disabled={mode === "bootstrap"} className={`wk-scope-option ${scope === "employees" ? "selected" : ""}`} onClick={() => changeScope("employees")}>
                 <CheckCircle2 size={18} /><span><strong>{t("موظفون محددون", "Selected employees")}</strong><small>{t("تحديد صريح لكل موظف", "Choose each employee explicitly")}</small></span>{scope === "employees" && <Check size={17} />}
               </button>
             </div>
@@ -367,12 +405,16 @@ export default function AttendanceSettingsPage() {
           </section>
 
           <section className="wk-form-section">
-            <div className="wk-section-title"><span className="wk-number">03</span><div><h2>{mode === "policy" ? t("أيام العمل الأسبوعية", "Weekly workdays") : t("حالة اليوم المختار", "Selected day status")}</h2>
-              <p>{mode === "policy" ? t("اختر الأيام التي تُعد أيام عمل. الأيام غير المختارة أيام راحة.", "Choose workdays. Unselected days are rest days.") : t("تُطبّق الحالة على التاريخ المحدد فقط.", "This status applies to the selected date only.")}</p></div></div>
-            {mode === "policy" ? <div className="wk-day-grid" aria-label={t("اختيار أيام العمل", "Select working days")}>
+            <div className="wk-section-title"><span className="wk-number">03</span><div><h2>{mode !== "review" ? t("أيام العمل الأسبوعية", "Weekly workdays") : t("حالة اليوم المختار", "Selected day status")}</h2>
+              <p>{mode === "bootstrap"
+                ? t(`نمط التفعيل الأولي: ${workingDays.length} أيام عمل و${7 - workingDays.length} أيام راحة. هذا النمط ثابت في التفعيل الأول؛ يمكن إنشاء سياسة مستقبلية مختلفة لاحقاً.`, `Initial activation pattern: ${workingDays.length} workdays and ${7 - workingDays.length} rest days. The initial pattern is fixed; a different future policy can be created later.`)
+                : mode === "policy"
+                  ? t(`اختر أيام العمل؛ غير المختارة أيام راحة. ${workingDays.length} أيام عمل و${7 - workingDays.length} أيام راحة.`, `Choose workdays; unselected days are rest days. ${workingDays.length} workdays, ${7 - workingDays.length} rest days.`)
+                : t(`تصنيف ${formatDate(businessDay, isRTL ? "ar-SA" : "en-US")} (${dayLabel(new Date(`${businessDay}T12:00:00`).getDay())}) فقط.`, `Classification for ${formatDate(businessDay, "en-US")} (${dayLabel(new Date(`${businessDay}T12:00:00`).getDay())}) only.`)}</p></div></div>
+            {mode !== "review" ? <div className="wk-day-grid" aria-label={t("اختيار أيام العمل", "Select working days")}>
               {DAYS.map(day => {
                 const active = workingDays.includes(day.n);
-                return <button key={day.n} type="button" data-testid={`workweek-day-${day.n}`} aria-pressed={active} className={`wk-day-button ${active ? "is-working" : "is-rest"}`} onClick={() => toggleDay(day.n)}>
+                return <button key={day.n} type="button" data-testid={`workweek-day-${day.n}`} aria-pressed={active} disabled={mode === "bootstrap"} className={`wk-day-button ${active ? "is-working" : "is-rest"}`} onClick={() => toggleDay(day.n)}>
                   <span>{day[isRTL ? "ar" : "en"]}</span><small>{active ? t("عمل", "WORK") : t("راحة", "REST")}</small>
                 </button>;
               })}
@@ -397,12 +439,15 @@ export default function AttendanceSettingsPage() {
           <section className="wk-form-section wk-date-section">
             <div className="wk-section-title"><span className="wk-number">04</span><div><h2>{t("التاريخ وسبب التغيير", "Date & reason")}</h2><p>{t("سبب موثّق مطلوب قبل المعاينة والتطبيق.", "A documented reason is required before preview and apply.")}</p></div></div>
             <div className="wk-date-reason-grid">
-              <div className="wk-field"><label htmlFor="wk-change-date">{mode === "policy" ? t("تاريخ بدء السياسة", "Policy effective date") : t("تاريخ يوم المراجعة", "Review business date")}<b>*</b></label>
-                <Input id="wk-change-date" data-testid={mode === "policy" ? "workweek-effective-date" : "workweek-review-date"} type="date"
-                  min={mode === "policy" ? minimumEffectiveDate : undefined} max={mode === "review" ? currentDate : undefined}
-                  value={mode === "policy" ? effectiveFrom : businessDay}
-                  onChange={event => mode === "policy" ? changeEffectiveDate(event.target.value) : changeReviewDate(event.target.value)} />
-                <small>{mode === "policy" ? t(`يبدأ في ${formatDate(minimumEffectiveDate, isRTL ? "ar-SA" : "en-US")} أو بعده.`, `Must start on ${formatDate(minimumEffectiveDate, "en-US")} or later.`) : t("اليوم أو تاريخ سابق فقط.", "Today or an earlier date only.")}</small>
+              <div className="wk-field"><label htmlFor="wk-change-date">{mode !== "review" ? t(mode === "bootstrap" ? "تاريخ بدء السياسة الأولية" : "تاريخ بدء السياسة", mode === "bootstrap" ? "Initial policy effective date" : "Policy effective date") : t("تاريخ يوم المراجعة", "Review business date")}<b>*</b></label>
+                <Input id="wk-change-date" data-testid={mode !== "review" ? "workweek-effective-date" : "workweek-review-date"} type="date"
+                  min={mode !== "review" ? minimumEffectiveDate : undefined} max={mode === "review" ? currentDate : mode === "bootstrap" ? currentDate : undefined}
+                  disabled={mode === "bootstrap"}
+                  value={mode !== "review" ? effectiveFrom : businessDay}
+                  onChange={event => mode !== "review" ? changeEffectiveDate(event.target.value) : changeReviewDate(event.target.value)} />
+                <small>{mode === "bootstrap"
+                  ? t(`تبدأ السياسة العامة اليوم ${formatDate(currentDate, isRTL ? "ar-SA" : "en-US")} بعد المعاينة والموافقة.`, `The general policy starts today, ${formatDate(currentDate, "en-US")}, after preview and approval.`)
+                  : mode === "policy" ? t(`يبدأ في ${formatDate(minimumEffectiveDate, isRTL ? "ar-SA" : "en-US")} أو بعده.`, `Must start on ${formatDate(minimumEffectiveDate, "en-US")} or later.`) : t("اليوم أو تاريخ سابق فقط.", "Today or an earlier date only.")}</small>
               </div>
               <div className="wk-field"><label htmlFor="wk-reason">{t("سبب التغيير", "Reason")}<b>*</b></label>
                 <Textarea id="wk-reason" data-testid="workweek-reason" value={reason} onChange={changeField(setReason)} maxLength={1000} rows={3} placeholder={t("اكتب سبباً واضحاً للتغيير (3 أحرف على الأقل)", "Enter a clear reason (at least 3 characters)")} />
@@ -427,7 +472,7 @@ export default function AttendanceSettingsPage() {
         </main>
 
         <aside className="wk-current">
-          <div className="wk-current-heading"><span className="wk-number">LIVE</span><div><h2>{t("السياسة الفعلية", "Current effective policy")}</h2><p>{t("حسب التاريخ المحدد أعلاه", "For the selected date above")}</p></div></div>
+          <div className="wk-current-heading"><span className="wk-number">{viewDate > currentDate ? t("لاحقاً", "FUTURE") : t("ساري", "LIVE")}</span><div><h2>{t("السياسة السارية", "Effective policy")}</h2><p>{t(`كما في ${formatDate(viewDate, isRTL ? "ar-SA" : "en-US")}`, `Effective on ${formatDate(viewDate, "en-US")}`)}</p></div></div>
           {settings.employees.length === 0 ? <div className="wk-empty"><UsersRound size={20} /><p>{t("لا يوجد موظفون ضمن هذا النطاق.", "No employees are in this scope.")}</p></div> :
             <div className="wk-current-list">{settings.employees.slice(0, 8).map(employee => <article key={employee.id} className="wk-current-employee">
               <div className="wk-current-employee-head"><strong>{employee.name}</strong><span>{employee.employeeNumber}</span></div>
@@ -460,8 +505,8 @@ export default function AttendanceSettingsPage() {
           <DialogHeader className="wk-dialog-header">
             <div className="wk-dialog-icon"><ShieldAlert size={21} /></div>
             <DialogTitle>{t("مراجعة التغييرات قبل التطبيق", "Review before applying")}</DialogTitle>
-            <DialogDescription>{preview?.mode === "policy"
-              ? t(`سياسة تبدأ في ${formatDate(preview.effectiveFrom || "", isRTL ? "ar-SA" : "en-US")}`, `Policy effective ${formatDate(preview?.effectiveFrom || "", "en-US")}`)
+            <DialogDescription>{preview?.mode !== "review"
+              ? t(`سياسة تبدأ في ${formatDate(preview?.effectiveFrom || "", isRTL ? "ar-SA" : "en-US")}`, `Policy effective ${formatDate(preview?.effectiveFrom || "", "en-US")}`)
               : t(`مراجعة يوم ${formatDate(preview?.businessDay || "", isRTL ? "ar-SA" : "en-US")}`, `Review for ${formatDate(preview?.businessDay || "", "en-US")}`)}</DialogDescription>
           </DialogHeader>
           {preview && <div className="wk-preview-content">
@@ -477,7 +522,7 @@ export default function AttendanceSettingsPage() {
             </div>}
             <div className={`wk-preview-table-wrap ${preview.mode === "review" ? "is-review-preview" : ""}`}><table className="wk-preview-table"><thead><tr><th>{t("الموظف", "Employee")}</th><th>{t("قبل", "Before")}</th><th>{t("بعد", "After")}</th></tr></thead>
               <tbody>{preview.rows.map(row => {
-                const renderState = (state: PreviewRow["before"], side: "before" | "after") => preview.mode === "policy"
+                const renderState = (state: PreviewRow["before"], side: "before" | "after") => preview.mode !== "review"
                   ? <><span className={side === "after" ? "wk-after" : "wk-before"}>{daySummary(state.workingDays)}</span><small>{sourceName(state.source)}</small></>
                   : <>
                     <div className="wk-status-chips">{(state.statuses || []).length > 0
@@ -488,8 +533,8 @@ export default function AttendanceSettingsPage() {
                   </>;
                 return <tr key={row.employeeId}>
                   <td><strong>{row.name}</strong><small>{row.employeeNumber}</small></td>
-                  <td>{renderState(row.before, "before")}</td>
-                  <td>{renderState(row.after, "after")}{row.warning && <em className={preview.mode === "review" ? "wk-row-warning" : ""}>{localizedMessage(row.warning)}</em>}</td>
+                  <td data-label={t("قبل", "Before")}>{renderState(row.before, "before")}</td>
+                  <td data-label={t("بعد", "After")}>{renderState(row.after, "after")}{row.warning && <em className={preview.mode === "review" ? "wk-row-warning" : ""}>{localizedMessage(row.warning)}</em>}</td>
                 </tr>;
               })}</tbody>
             </table></div>
@@ -510,6 +555,9 @@ export default function AttendanceSettingsPage() {
 }
 
 const styles = `
+.wk-dialog{--wk-red:#9e0a0a;--wk-red-dark:#780808;--wk-paper:#f6f2ea;--wk-ivory:#fffdf8;--wk-ink:#382a27;--wk-muted:#786c64;--wk-line:#e7ded3;--wk-soft:#f1ebe2;--wk-sage:#526b52;min-width:0;gap:0!important}
+.wk-dialog *{box-sizing:border-box}.wk-dialog-header,.wk-dialog-footer{flex-shrink:0}.wk-dialog button,.wk-dialog input{font:inherit}
+@media(max-width:767px){.wk-preview-table,.wk-preview-table tbody{display:block;width:100%}.wk-preview-table thead{display:none}.wk-preview-table tr{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);border-bottom:1px solid #e7ded3;padding:8px 0}.wk-preview-table td{display:block;min-width:0!important;overflow-wrap:anywhere;border:0!important}.wk-preview-table td:first-child{grid-column:1/-1}.wk-preview-table td[data-label]:before{content:attr(data-label);display:block;font-size:11px;color:#786c64;margin-bottom:4px}.wk-preview-table-wrap{max-height:none!important;overflow:visible!important}.wk-dialog-footer{flex-direction:column!important}.wk-dialog-footer button{width:100%;min-height:44px;flex:none!important}.wk-preview-content{flex:1;min-height:0}}
 .wk-page{--wk-red:#9e0a0a;--wk-red-dark:#780808;--wk-paper:#f6f2ea;--wk-ivory:#fffdf8;--wk-ink:#382a27;--wk-muted:#786c64;--wk-line:#e7ded3;--wk-soft:#f1ebe2;--wk-sage:#526b52;max-width:1320px;margin:0 auto;color:var(--wk-ink);font-family:"Zain",Tahoma,sans-serif}
 .wk-page *{box-sizing:border-box}.wk-page button,.wk-page input,.wk-page textarea{font:inherit}.wk-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;padding:10px 0 22px}.wk-eyebrow{display:flex;align-items:center;gap:8px;color:var(--wk-red);font-size:12px;letter-spacing:.1em;font-weight:800}.wk-eyebrow-mark{width:7px;height:7px;background:var(--wk-red);border-radius:50%}.wk-heading h1{margin:5px 0 1px;font-size:clamp(27px,3vw,36px);line-height:1.16;letter-spacing:-.035em;font-weight:700}.wk-heading p{margin:4px 0 0;color:var(--wk-muted);font-size:15px}.wk-heading-date{display:grid;grid-template-columns:auto 1fr;align-items:center;gap:5px 8px;width:225px;color:var(--wk-muted);font-size:13px}.wk-heading-date svg{color:var(--wk-red)}.wk-heading-date input{grid-column:1/3;width:100%;height:43px;padding-inline:11px;border:1px solid var(--wk-line);border-radius:8px;background:var(--wk-ivory);font-size:16px}
 .wk-shortcuts{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:11px 14px;margin-bottom:16px;border-block:1px solid var(--wk-line);background:#faf7f1}.wk-shortcuts>span{margin-inline-end:5px;color:#a2968e;font-size:11px;font-weight:800;letter-spacing:.1em}.wk-shortcut{min-height:34px;display:inline-flex;align-items:center;gap:5px;padding:0 10px;border:1px solid var(--wk-line);border-radius:6px;background:var(--wk-ivory);color:#5e5049;text-decoration:none;font-size:13px;transition:background .16s,color .16s}.wk-shortcut:hover{color:var(--wk-red);background:#f8eeea}
@@ -529,4 +577,6 @@ const styles = `
 .wk-page :focus-visible{outline:2px solid var(--wk-red);outline-offset:2px}.wk-page button:disabled{cursor:not-allowed}@media(max-width:980px){.wk-main-grid{grid-template-columns:minmax(0,1.4fr) minmax(240px,.8fr)}.wk-form-section{padding-inline:14px}.wk-day-grid{gap:4px}.wk-day-button span{font-size:11px}}@media(max-width:767px){.wk-heading{align-items:stretch;flex-direction:column;gap:13px;padding:5px 0 17px}.wk-heading-date{width:100%;max-width:310px}.wk-heading h1{font-size:28px}.wk-shortcuts{gap:6px;padding:9px 0;border-inline:0;background:transparent}.wk-shortcuts>span{width:100%}.wk-shortcut{min-height:39px;padding-inline:8px;font-size:12px}.wk-overview{grid-template-columns:1fr}.wk-default-block{border-inline-start:0;border-top:1px solid var(--wk-line)}.wk-main-grid{grid-template-columns:minmax(0,1fr);gap:13px}.wk-current{position:static}.wk-current-list{max-height:315px}.wk-mode-tabs{padding:6px;gap:5px}.wk-mode-tabs button{min-height:66px;padding:6px 7px;column-gap:6px}.wk-mode-tabs button span{font-size:14px}.wk-mode-tabs button small{font-size:11px}.wk-form-section{padding:15px 12px}.wk-scope-options{grid-template-columns:1fr}.wk-scope-option{min-height:58px}.wk-employee-toolbar{gap:6px}.wk-search{flex-basis:100%}.wk-day-grid{gap:4px}.wk-day-button{min-height:59px}.wk-day-button span{font-size:clamp(10px,2.7vw,13px)}.wk-day-button small{font-size:8px}.wk-date-reason-grid{grid-template-columns:1fr}.wk-submit-bar{align-items:stretch;flex-direction:column;padding:12px}.wk-submit-bar .wk-primary{width:100%}.wk-audit-columns{grid-template-columns:1fr}.wk-audit-columns>div+div{border-inline-start:0;border-top:1px solid var(--wk-line)}.wk-audit-row{grid-template-columns:minmax(63px,.3fr) minmax(0,1fr) auto;gap:6px}.wk-dialog{width:calc(100vw - 20px)!important;max-height:calc(100dvh - 24px)}.wk-dialog-header{padding:16px 15px 12px}.wk-preview-content{padding:11px}.wk-preview-table th,.wk-preview-table td{padding:8px 7px}.wk-preview-table{font-size:12px}.wk-preview-table td:first-child{min-width:95px}.wk-dialog-footer{padding:10px 11px;gap:8px}.wk-dialog-footer button{flex:1;font-size:13px}.wk-preview-stats>div{gap:5px;padding:8px}.wk-preview-stats strong{font-size:19px}.wk-preview-stats span{font-size:12px}.wk-audit-heading{padding-inline:12px}.wk-skeleton-head{grid-template-columns:1fr}.wk-skeleton-grid{grid-template-columns:1fr}.wk-skeleton-grid i:nth-child(2){display:none}.wk-skeleton-panel{padding:12px;gap:8px}}@media(prefers-reduced-motion:reduce){.wk-page *, .wk-dialog *{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
 @media(max-width:767px){.wk-page,.wk-builder,.wk-current,.wk-audit,.wk-overview,.wk-main-grid,.wk-audit-columns,.wk-date-reason-grid{width:100%;min-width:0;max-width:100%}.wk-page .wk-main-grid{grid-template-columns:minmax(0,1fr)}.wk-page .wk-audit-row{grid-template-columns:minmax(0,1fr) auto;gap:4px 8px}.wk-page .wk-audit-row>div{grid-column:1;grid-row:2}.wk-page .wk-audit-row time{grid-column:2;grid-row:1}.wk-dialog{width:calc(100vw - 20px)!important;max-width:calc(100vw - 20px)!important;max-height:calc(100dvh - 24px)}}
 .wk-page,.wk-dialog{--wk-red:#9e0a0a;--wk-red-dark:#780808;--wk-paper:#f6f2ea;--wk-ivory:#fffdf8;--wk-ink:#382a27;--wk-muted:#786c64;--wk-line:#e7ded3;--wk-soft:#f1ebe2;--wk-sage:#526b52}.wk-page{width:100%;min-width:0;overflow-x:clip}.wk-page :where(.wk-overview,.wk-main-grid,.wk-builder,.wk-current,.wk-audit,.wk-audit-columns,.wk-date-reason-grid){min-width:0;max-width:100%}.wk-dialog{background-color:#fffdf8!important;color:#382a27!important;border:1px solid #e7ded3!important}.wk-dialog .wk-primary{background-color:#9e0a0a!important;color:#fff!important;border:1px solid #9e0a0a!important;opacity:1}.wk-dialog .wk-primary:hover:not(:disabled){background-color:#780808!important;border-color:#780808!important}.wk-dialog .wk-dialog-footer button:not(.wk-primary){background:#fffdf8!important;color:#5d5048!important;border:1px solid #e7ded3!important}.wk-dialog .wk-dialog-footer button:focus-visible{outline:2px solid #9e0a0a!important;outline-offset:2px}
+.wk-policy-context{display:flex;align-items:flex-start;gap:9px;margin:-7px 0 17px;padding:11px 13px;border:1px solid #e7d4c5;border-inline-start:3px solid var(--wk-red);border-radius:7px;background:#faf4ec;color:#66564d}.wk-policy-context svg{flex:0 0 auto;margin-top:2px;color:var(--wk-red)}.wk-policy-context p{margin:0;font-size:13px;line-height:1.55}.wk-heading-date input,.wk-field input{max-width:100%;min-width:0}.wk-day-button{touch-action:manipulation}.wk-day-button:focus-visible,.wk-mode-tabs button:focus-visible,.wk-shortcut:focus-visible{outline:2px solid var(--wk-red);outline-offset:2px}
+.wk-bootstrap-banner{display:flex;align-items:center;gap:12px;margin:0 0 16px;padding:14px 16px;border:1px solid #d9b7a9;border-inline-start:4px solid var(--wk-red);border-radius:9px;background:#fff7f1;color:var(--wk-ink)}.wk-bootstrap-mark{display:grid;place-items:center;width:38px;height:38px;flex:0 0 auto;border-radius:8px;background:#f5e5dd;color:var(--wk-red)}.wk-bootstrap-copy{flex:1;min-width:0}.wk-bootstrap-copy h2{margin:0;font-size:16px;line-height:1.3}.wk-bootstrap-copy p{margin:3px 0 0;color:var(--wk-muted);font-size:13px;line-height:1.5}.wk-bootstrap-action{flex:0 0 auto}.wk-bootstrap-action:focus-visible{outline:2px solid var(--wk-red);outline-offset:3px}@media(max-width:767px){.wk-bootstrap-banner{align-items:flex-start;flex-wrap:wrap;padding:12px}.wk-bootstrap-copy{flex-basis:calc(100% - 52px)}.wk-bootstrap-action{width:100%;justify-content:center}}
 `;

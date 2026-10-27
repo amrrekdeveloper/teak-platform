@@ -1,6 +1,45 @@
 import { pool } from "./db";
 import { resolveAttendanceShifts, riyadhDateKey, type AttendanceShift, type WorkScheduleLike, type AttendanceEmployeeAssignment } from "../shared/attendance";
 import { calendarForDay } from "./attendance-workweek";
+import type { PoolClient } from "pg";
+
+/** An explicit HR edit may update only periods with no punches today, never observed periods or earlier days. */
+export async function refreshUnobservedTodaySchedules(client: Pick<PoolClient, "query">, actorId: number, employeeId?: number, scheduleId?: number) {
+  const day = riyadhDateKey(new Date());
+  const settings = (await client.query(`SELECT id,scope_type AS "scopeType",department,employee_id AS "employeeId",
+    work_start_time AS "workStartTime",work_end_time AS "workEndTime",grace_minutes AS "graceMinutes",
+    location_zone_id AS "locationZoneId",shifts FROM work_schedule_settings ORDER BY id`)).rows;
+  const people = (await client.query(`SELECT e.id,e.department,e.attendance_zone_id AS "attendanceZoneId",
+    e.attendance_schedule_id AS "attendanceScheduleId",s.shifts FROM employees e
+    JOIN attendance_day_schedules s ON s.employee_id=e.id AND s.business_day=$1
+    WHERE ($2::integer IS NULL OR e.id=$2) FOR UPDATE OF s`, [day, employeeId ?? null])).rows;
+  for (const employee of people) {
+    const selected = settings.find(s => employee.attendanceScheduleId && s.id === employee.attendanceScheduleId && s.locationZoneId === employee.attendanceZoneId)
+      || settings.find(s => s.scopeType === "employee" && s.employeeId === employee.id)
+      || settings.find(s => s.scopeType === "department" && s.department === employee.department)
+      || settings.find(s => s.scopeType === "default");
+    if (scheduleId !== undefined && selected?.id !== scheduleId) continue;
+    await client.query("SELECT pg_advisory_xact_lock(51701,$1)", [employee.id]);
+    const records = (await client.query(`SELECT shift_key FROM attendance_records WHERE employee_id=$1
+      AND check_time >= $2::timestamptz AT TIME ZONE 'UTC'
+      AND check_time < ($2::timestamptz AT TIME ZONE 'UTC')+interval '1 day'`, [employee.id, `${day}T00:00:00+03:00`])).rows;
+    // A legacy unkeyed punch cannot safely be reassigned to new periods.
+    if (records.some(r => !r.shift_key)) continue;
+    const observed = new Set(records.map(r => r.shift_key));
+    const previous: AttendanceShift[] = employee.shifts;
+    const preserved = previous.filter(s => observed.has(s.id));
+    const fresh = resolveAttendanceShifts(settings, employee).filter(s => !observed.has(s.id));
+    const next = [...preserved, ...fresh].sort((a,b) => a.start.localeCompare(b.start));
+    // Do not create overlapping new periods around an already observed period.
+    if (next.some((s,i) => i > 0 && next[i-1].end && next[i-1].end >= s.start)) continue;
+    if (JSON.stringify(next) === JSON.stringify(previous)) continue;
+    await client.query("UPDATE attendance_day_schedules SET shifts=$3::jsonb WHERE employee_id=$1 AND business_day=$2",
+      [employee.id,day,JSON.stringify(next)]);
+    await client.query(`INSERT INTO hr_audit_log(employee_id,performed_by,action,details)
+      VALUES($1,$2,'unobserved_periods_updated',$3)`,
+      [employee.id,actorId,JSON.stringify({day,before:previous,after:next,preservedShiftIds:[...observed]})]);
+  }
+}
 
 export async function initAttendanceScheduleHistory() {
   await pool.query(`CREATE TABLE IF NOT EXISTS attendance_day_schedules(

@@ -16,6 +16,7 @@ import { riyadhMinutesOfDay } from "../../shared/attendance";
 import { scheduledShiftsForDay } from "../attendance-schedule-history";
 import { calendarForDay, weekPolicies } from "../attendance-workweek";
 import { resolveWeekPolicy } from "../../shared/attendance-workweek";
+import { selectPunchShift, EARLY_CHECKIN_MINUTES } from "../../shared/attendance-shift-selection";
 
 const dateInput = z.string().refine(validDate, "التاريخ غير صالح");
 const reasonInput = z.string().trim().min(3).max(1000);
@@ -92,6 +93,8 @@ export function registerEmployeeServices(router: Router) {
     ]);
     res.json({
       employee: publicEmployee(employee), balance,
+      attendanceLocationMode: employee.attendanceLocationMode ?? "assigned",
+      earlyCheckinMinutes: EARLY_CHECKIN_MINUTES,
       workweek:{...resolveWeekPolicy(await weekPolicies(),employee.id,riyadhDay()),
         todayCalendar:await calendarForDay(employee.id,riyadhDay())},
       assignedZones: (await storage.getLocationZones()).filter(z=>z.isActive&&z.id===employee.attendanceZoneId)
@@ -151,20 +154,17 @@ export function registerEmployeeServices(router: Router) {
     const now = Date.now();
     if (now - input.locationTimestamp > 90000 || input.locationTimestamp - now > 10000)
       portalError(400, "قراءة الموقع قديمة أو غير قابلة للتحقق. حدّث وقت الجهاز وأعد تحديد الموقع.");
-    if (!employee.attendanceZoneId) portalError(403, "لم يحدد موقع بصمتك. راجع الموارد البشرية لتحديد موقع البصمة والدوام.");
+    const unrestricted = employee.attendanceLocationMode === "unrestricted";
+    if (!unrestricted && !employee.attendanceZoneId) portalError(403, "لم يحدد موقع بصمتك. راجع الموارد البشرية لتحديد موقع البصمة أو تصريح العمل خارج المقر.");
     const shifts = await scheduledShiftsForDay(await attendanceSchedules(), employee);
     const minute = riyadhMinutesOfDay(new Date(now));
-    const hhmm = `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
-    const shift = input.shiftId ? shifts.find(s => s.id === input.shiftId)
-      : shifts.length === 1 ? shifts[0] : shifts.find(s => hhmm >= s.start && hhmm <= s.end);
-    if (!shift) portalError(400, "لا توجد فترة دوام مسندة تغطي الوقت الحالي. راجع الموارد البشرية.");
-    if (shifts.length > 1 && (hhmm < shift!.start || hhmm > shift!.end))
-      portalError(400, "أنت خارج وقت الوردية المحددة. راجع الموارد البشرية لتصحيح الحركة.");
+    const shift = selectPunchShift(shifts, minute, input.type, input.shiftId);
+    if (!shift) portalError(400, "لا توجد فترة متاحة الآن. يُسمح بالحضور قبل بداية كل فترة بساعة؛ تحقق من فترات دوامك أو راجع الموارد البشرية.");
     if (!await takeLimit(`attendance:${employee.id}`, 20, 900))
       portalError(429, "محاولات متكررة. انتظر قليلًا ثم أعد المحاولة.");
     const zones = await storage.getLocationZones();
     const zone = permittedZone(zones.filter(z=>z.id===employee.attendanceZoneId), { lat: input.latitude, lng: input.longitude }, input.accuracy);
-    if (!zone) {
+    if (!zone && !unrestricted) {
       await recordAttendanceViolation(employee.id, riyadhDay(new Date(now)), shift!.id, "out_of_zone", input.type);
       portalError(403, "أنت خارج نطاق الحضور المسموح أو دقة الموقع غير كافية. انتقل إلى مقر العمل وأعد المحاولة.");
     }
@@ -210,9 +210,10 @@ export function registerEmployeeServices(router: Router) {
          latitude,longitude,is_out_of_zone,device_info,device_fingerprint,is_manual_edit,shift_key)
         VALUES ($1,$2,$3,$4,now() AT TIME ZONE 'UTC',$5,$6,$7,false,$8,$9,false,$10)
         RETURNING id,type,check_time AT TIME ZONE 'UTC' AS "checkTime",location_name AS "locationName"`,
-      [employee.id, employeePhone(employee), employee.full_name_ar, input.type, zone.nameAr,
+      [employee.id, employeePhone(employee), employee.full_name_ar, input.type, unrestricted ? "عمل خارج المقر — مصرح" : zone!.nameAr,
         input.latitude, input.longitude,
-        JSON.stringify({ source: "employee-self-service", accuracyMeters: input.accuracy, requestId: input.requestId }),
+        JSON.stringify({ source: "employee-self-service", accuracyMeters: input.accuracy, requestId: input.requestId,
+          locationMode: unrestricted ? "unrestricted" : "assigned" }),
         `employee-device:${sessionId}`, shift!.id]);
       record = inserted.rows[0];
       await client.query("COMMIT");

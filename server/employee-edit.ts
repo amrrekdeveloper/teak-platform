@@ -4,11 +4,11 @@ import { employees, hrAuditLog, insertEmployeeSchema } from "../shared/schema";
 import { attendanceAssignmentMatches } from "../shared/employee-edit";
 import { withDepartmentCatalogWrite } from "./department-catalog";
 import { validateEmployeeAttendanceAssignment } from "./attendance-workspace";
-import { freezeCurrentAttendanceSchedules } from "./attendance-schedule-history";
+import { freezeCurrentAttendanceSchedules, refreshUnobservedTodaySchedules } from "./attendance-schedule-history";
 
 /** Row lock + compare-and-set + audit form one atomic operation, never a full stale overwrite. */
 export async function saveEmployeeEdit(id: number, input: Record<string, unknown>, actorId: number) {
-  const { expectedAttendanceAssignment, ...raw } = input;
+  const { expectedAttendanceAssignment, expectedAttendanceLocationMode, ...raw } = input;
   const data = insertEmployeeSchema.partial().parse(raw);
   return withDepartmentCatalogWrite(async client => {
     await client.query("BEGIN");
@@ -19,6 +19,8 @@ export async function saveEmployeeEdit(id: number, input: Record<string, unknown
       const tx = drizzle(client);
       const [before] = await tx.select().from(employees).where(eq(employees.id, id)).for("update");
       if (!before) { await client.query("ROLLBACK"); return undefined; }
+      if (Object.hasOwn(data, "attendanceLocationMode") && expectedAttendanceLocationMode !== before.attendanceLocationMode)
+        throw Object.assign(new Error("تغير تصريح موقع الموظف. أعد فتح بياناته قبل تعديل التصريح."), {status:409});
       const assignmentKeys = ["attendanceZoneId", "attendanceScheduleId"] as const;
       const touchesAssignment = assignmentKeys.some(key => Object.hasOwn(data, key));
       if (touchesAssignment && !attendanceAssignmentMatches(expectedAttendanceAssignment, before)) {
@@ -31,6 +33,14 @@ export async function saveEmployeeEdit(id: number, input: Record<string, unknown
         await freezeCurrentAttendanceSchedules(client, id);
       if (!Object.keys(data).length) { await client.query("COMMIT"); return before; }
       const [after] = await tx.update(employees).set(data).where(eq(employees.id, id)).returning();
+      if (touchesAssignment || Object.hasOwn(data, "department"))
+        await refreshUnobservedTodaySchedules(client, actorId, id);
+      if (Object.hasOwn(data, "attendanceLocationMode") && before.attendanceLocationMode !== after.attendanceLocationMode) {
+        await tx.insert(hrAuditLog).values({
+          performedBy: actorId, employeeId: id, action: "attendance_location_permission_changed",
+          details: JSON.stringify({ before: before.attendanceLocationMode, after: after.attendanceLocationMode }),
+        });
+      }
       if (assignmentKeys.some(key => before[key] !== after[key])) {
         await tx.insert(hrAuditLog).values({
           performedBy: actorId, employeeId: id, action: "attendance_assignment_changed",

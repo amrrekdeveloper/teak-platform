@@ -131,6 +131,8 @@ export const employees = pgTable("employees", {
   department: departmentEnum("department").$type<string>().notNull(),
   monthlySalary: decimal("monthly_salary", { precision: 10, scale: 2 }).notNull(),
   iqamaNumber: text("iqama_number"),
+  nationalId: text("national_id"),
+  hireDate: date("hire_date"),
   dateOfBirth: date("date_of_birth"),
   iqamaExpiry: date("iqama_expiry"),
   contractStart: date("contract_start").notNull(),
@@ -146,6 +148,7 @@ export const employees = pgTable("employees", {
   attendanceEnabled: boolean("attendance_enabled").notNull().default(true),
   attendanceZoneId: integer("attendance_zone_id"),
   attendanceScheduleId: integer("attendance_schedule_id"),
+  attendanceLocationMode: text("attendance_location_mode").$type<"assigned" | "unrestricted">().notNull().default("assigned"),
   managerId: integer("manager_id"), // المدير المباشر (اختياري) — بدونه يذهب الاعتماد لـ HR/المالك
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (table) => ({
@@ -159,7 +162,12 @@ export const employees = pgTable("employees", {
 export const insertEmployeeSchema = createInsertSchema(employees).omit({
   id: true,
   createdAt: true,
-}).extend({ department: z.string().trim().min(1).max(80) });
+}).extend({
+  department: z.string().trim().min(1).max(80),
+  nationalId: z.string().regex(/^\d{10}$/, "رقم الهوية يجب أن يكون عشرة أرقام.").nullable().optional(),
+  hireDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+  attendanceLocationMode: z.enum(["assigned", "unrestricted"]).optional(),
+});
 export type InsertEmployee = z.infer<typeof insertEmployeeSchema>;
 export type Employee = typeof employees.$inferSelect;
 

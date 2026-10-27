@@ -53,7 +53,10 @@ afterAll(async () => {
     await pool.query("DELETE FROM attendance_day_calendars WHERE employee_id=$1", [employee]);
     await pool.query("DELETE FROM employees WHERE id=$1", [employee]);
   }
-  if (actor) await pool.query("DELETE FROM users WHERE id=$1", [actor]);
+  if (actor) {
+    await pool.query("DELETE FROM notifications WHERE user_id=$1", [actor]);
+    await pool.query("DELETE FROM users WHERE id=$1", [actor]);
+  }
 });
 describe("PostgreSQL attendance movement corrections", () => {
   it("saves the real administrative override with an optional time", async () => {

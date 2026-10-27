@@ -1,5 +1,6 @@
 /** API evidence, not a calculation against the viewer's current settings. */
 export interface AttendanceReportRow {
+  operationalStatus?: string;
   day:string;shiftId:string;shiftLabel:string;status:string;
   checkIn:string|Date|null;checkOut:string|Date|null;
   scheduleVerified:boolean;late:boolean|null;lateMinutes:number|null;earlyDepartureMinutes:number|null;

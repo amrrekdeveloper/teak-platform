@@ -110,7 +110,9 @@ interface EmployeeForm {
   department: string;
   monthlySalary: string;
   iqamaNumber: string;
+  nationalId: string;
   dateOfBirth: string;
+  hireDate: string;
   iqamaExpiry: string;
   contractStart: string;
   contractEnd: string;
@@ -122,6 +124,7 @@ interface EmployeeForm {
   phone: string;
   email: string;
   attendanceEnabled: boolean;
+  attendanceLocationMode: "assigned" | "unrestricted";
   managerId: string;
   attendanceZoneId: string;
   attendanceScheduleId: string;
@@ -136,7 +139,9 @@ const emptyForm: EmployeeForm = {
   department: "production",
   monthlySalary: "",
   iqamaNumber: "",
+  nationalId: "",
   dateOfBirth: "",
+  hireDate: "",
   iqamaExpiry: "",
   contractStart: "",
   contractEnd: "",
@@ -148,6 +153,7 @@ const emptyForm: EmployeeForm = {
   phone: "",
   email: "",
   attendanceEnabled: true,
+  attendanceLocationMode: "assigned",
   managerId: "",
   attendanceZoneId: "",
   attendanceScheduleId: "",
@@ -255,18 +261,6 @@ function FormFields({ data, onChange, users, jobTitlesList }: {
           placeholder="8000" data-testid="input-salary" dir="ltr" className="text-start" />
       </div>
       <div className="space-y-1">
-        <Label>{t("نوع العقد", "Contract Type")}</Label>
-        <Select value={data.contractType || "none"} onValueChange={v => onChange({ ...data, contractType: v === "none" ? "" : v })}>
-          <SelectTrigger data-testid="select-contract-type"><SelectValue placeholder={t("اختر نوع العقد", "Select type")} /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="none">{t("غير محدد", "Not specified")}</SelectItem>
-            {Object.entries(contractTypeLabels).map(([k, v]) => (
-              <SelectItem key={k} value={k}>{t(v.ar, v.en)}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="space-y-1">
         <Label>{t("رقم الجوال", "Phone")} *</Label>
         <Input type="tel" inputMode="numeric" maxLength={15} value={data.phone}
           onChange={e => onChange({ ...data, phone: toLatinDigits(e.target.value).replace(/[^0-9+]/g, "") })}
@@ -275,6 +269,11 @@ function FormFields({ data, onChange, users, jobTitlesList }: {
       <div className="space-y-1">
         <Label>{t("تاريخ الميلاد", "Date of birth")}</Label>
         <Input type="date" value={data.dateOfBirth} onChange={e => onChange({ ...data, dateOfBirth: e.target.value })} data-testid="input-birth-date" />
+      </div>
+      <div className="space-y-1">
+        <Label>{t("رقم الهوية الوطنية (للسعوديين)", "National ID (Saudi nationals)")}</Label>
+        <Input value={data.nationalId} onChange={e => onChange({ ...data, nationalId: toLatinDigits(e.target.value) })}
+          data-testid="input-national-id" inputMode="numeric" dir="ltr" className="text-start" />
       </div>
       <div className="space-y-1">
         <Label>{t("البريد الإلكتروني", "Email")}</Label>
@@ -332,12 +331,31 @@ function FormFields({ data, onChange, users, jobTitlesList }: {
         value={data.insuranceExpiry} onChange={v => onChange({ ...data, insuranceExpiry: v })}
         testId="input-insurance-expiry" />
 
-      <DateInput label={t("بداية العقد", "Contract Start")} required
+      <div className="sm:col-span-2 border-t pt-3 mt-1">
+        <p className="text-sm font-semibold">{t("العقد الحالي", "Current contract")}</p>
+        <p className="text-xs text-muted-foreground mt-0.5">{t("تاريخ التوظيف مستقل عن تواريخ العقد الحالي.", "Hire date is separate from the dates of the current contract.")}</p>
+      </div>
+      <DateInput label={t("تاريخ التوظيف", "Hire date")}
+        value={data.hireDate} onChange={v => onChange({ ...data, hireDate: v })}
+        testId="input-hire-date" />
+      <DateInput label={t("بداية العقد الحالي", "Current contract start")} required
         value={data.contractStart} onChange={v => onChange({ ...data, contractStart: v })}
         testId="input-contract-start" />
-      <DateInput label={t("نهاية العقد", "Contract End")}
+      <DateInput label={t("نهاية العقد الحالي", "Current contract end")}
         value={data.contractEnd} onChange={v => onChange({ ...data, contractEnd: v })}
         testId="input-contract-end" />
+      <div className="space-y-1 sm:col-span-2">
+        <Label>{t("نوع العقد الحالي", "Current Contract Type")}</Label>
+        <Select value={data.contractType || "none"} onValueChange={v => onChange({ ...data, contractType: v === "none" ? "" : v })}>
+          <SelectTrigger data-testid="select-contract-type"><SelectValue placeholder={t("اختر نوع العقد", "Select type")} /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">{t("غير محدد", "Not specified")}</SelectItem>
+            {Object.entries(contractTypeLabels).map(([k, v]) => (
+              <SelectItem key={k} value={k}>{t(v.ar, v.en)}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
 
       <div className="space-y-1 sm:col-span-2">
         <Label>{t("الحالة", "Status")}</Label>
@@ -358,11 +376,24 @@ function AttendanceAssignmentFields({ data, onChange }: {
   data: EmployeeForm;
   onChange: (data: EmployeeForm) => void;
 }) {
+  const { t } = useLanguage();
   const { data: zones = [] } = useQuery<{ id: number; nameAr: string; radiusMeters?: number }[]>({ queryKey: ["/api/attendance/zones"] });
   const { data: schedules = [] } = useQuery<any[]>({ queryKey: ["/api/attendance/work-settings"] });
   return (
     <div className="space-y-3 rounded-md border p-3 sm:col-span-2">
       <p className="text-sm font-semibold">تعيين موقع البصمة وجدول الدوام</p>
+      <div className="space-y-1">
+        <Label>{t("نطاق السماح بالبصمة", "Punch geofence mode")}</Label>
+        <Select value={data.attendanceLocationMode} onValueChange={value => onChange({ ...data, attendanceLocationMode: value as EmployeeForm["attendanceLocationMode"] })}>
+          <SelectTrigger className="min-h-11" data-testid="select-attendance-location-mode"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="assigned">{t("موقع العمل المعيّن فقط", "Assigned workplace only")}</SelectItem>
+            <SelectItem value="unrestricted">{t("السماح من أي موقع", "Allow from any location")}</SelectItem>
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">{t("في وضع السماح من أي موقع، يمكن تسجيل البصمة من أي مكان وتظل الإحداثيات الدقيقة محفوظة. احتفظ بتعيين موقع العمل وجدول الدوام لاستخدامهما في حساب الساعات.", "Unrestricted mode permits punches from any location; precise location is still recorded. Keep the assigned workplace and schedule for work-hour calculations.")}</p>
+        {data.attendanceLocationMode === "unrestricted" && <p className="rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900" role="note">{t("تنبيه: هذا الخيار لا يعطّل تسجيل الموقع الدقيق، بل يزيل شرط التواجد داخل النطاق المعيّن.", "Warning: this does not turn off precise location recording; it removes the requirement to be inside the assigned geofence.")}</p>}
+      </div>
       <div className="space-y-1">
         <Label>موقع البصمة المخصص</Label>
         <Select value={data.attendanceZoneId || "none"} onValueChange={value => onChange({ ...data, attendanceZoneId: value === "none" ? "" : value, attendanceScheduleId: "" })}>
@@ -436,14 +467,16 @@ function exportEmployeePDF(emp: Employee, users: any[], t: (ar: string, en: stri
   <tr><th>المسمى الوظيفي</th><td>${emp.position}</td></tr>
   <tr><th>القسم</th><td>${dept.ar}</td></tr>
   <tr><th>الجنسية</th><td>${nat.ar}</td></tr>
+  <tr><th>رقم الهوية الوطنية</th><td>${(emp as any).nationalId || "—"}</td></tr>
   <tr><th>الراتب الشهري</th><td>${parseFloat(emp.monthlySalary?.toString() || "0").toLocaleString()} ر.س</td></tr>
   <tr><th>الحالة</th><td><span class="badge active">${status.ar}</span></td></tr>
 </table>
-<h2>تفاصيل العقد</h2>
+<h2>العقد الحالي</h2>
 <table>
-  <tr><th>نوع العقد</th><td>${ct.ar}</td></tr>
-  <tr><th>تاريخ بداية العقد</th><td>${emp.contractStart || "—"}</td></tr>
-  <tr><th>تاريخ نهاية العقد</th><td>${emp.contractEnd || "—"}</td></tr>
+  <tr><th>تاريخ التوظيف</th><td>${(emp as any).hireDate || "—"}</td></tr>
+  <tr><th>تاريخ بداية العقد الحالي</th><td>${emp.contractStart || "—"}</td></tr>
+  <tr><th>تاريخ نهاية العقد الحالي</th><td>${emp.contractEnd || "—"}</td></tr>
+  <tr><th>نوع العقد الحالي</th><td>${ct.ar}</td></tr>
   <tr><th>مدة الخدمة</th><td>${serviceDuration}</td></tr>
   <tr><th>موقع البصمة</th><td>${(emp as any).fingerScanLocation || "—"}</td></tr>
 </table>
@@ -1116,7 +1149,9 @@ function EmployeeDetailDialog({ emp, users, onClose, initialTab }: { emp: Employ
     department: emp.department,
     monthlySalary: emp.monthlySalary?.toString() || "",
     iqamaNumber: emp.iqamaNumber || "",
+    nationalId: (emp as any).nationalId || "",
     dateOfBirth: emp.dateOfBirth || "",
+    hireDate: (emp as any).hireDate || "",
     iqamaExpiry: emp.iqamaExpiry || "",
     contractStart: emp.contractStart || "",
     contractEnd: emp.contractEnd || "",
@@ -1128,6 +1163,7 @@ function EmployeeDetailDialog({ emp, users, onClose, initialTab }: { emp: Employ
     phone: (emp as any).phone || "",
     email: (emp as any).email || "",
     attendanceEnabled: emp.attendanceEnabled !== false,
+    attendanceLocationMode: (emp as any).attendanceLocationMode === "unrestricted" ? "unrestricted" : "assigned",
     managerId: (emp as any).managerId?.toString() || "",
     attendanceZoneId: (emp as any).attendanceZoneId?.toString() || "",
     attendanceScheduleId: (emp as any).attendanceScheduleId?.toString() || "",
@@ -1173,9 +1209,12 @@ function EmployeeDetailDialog({ emp, users, onClose, initialTab }: { emp: Employ
       insuranceExpiry: editForm.insuranceExpiry || null,
       fingerScanLocation: editForm.fingerScanLocation || null,
       phone: editForm.phone || null,
+      nationalId: editForm.nationalId || null,
+      hireDate: editForm.hireDate || null,
       dateOfBirth: editForm.dateOfBirth || null,
       email: editForm.email || null,
       attendanceEnabled: editForm.attendanceEnabled,
+      attendanceLocationMode: editForm.attendanceLocationMode,
       attendanceZoneId: editForm.attendanceZoneId ? Number(editForm.attendanceZoneId) : null,
       attendanceScheduleId: editForm.attendanceScheduleId ? Number(editForm.attendanceScheduleId) : null,
     };
@@ -1186,6 +1225,8 @@ function EmployeeDetailDialog({ emp, users, onClose, initialTab }: { emp: Employ
     if (editForm.iqamaExpiry) data.iqamaExpiry = editForm.iqamaExpiry;
     if (editForm.contractEnd) data.contractEnd = editForm.contractEnd;
     const patch = changedEmployeeFields(data, editForm, editBaseline.current);
+    if ("attendanceLocationMode" in patch)
+      patch.expectedAttendanceLocationMode = editBaseline.current.attendanceLocationMode;
     if (!Object.keys(patch).length) {
       toast({ title: t("لم تعدّل أي بيانات.", "No fields were changed.") });
       return;
@@ -1236,7 +1277,7 @@ function EmployeeDetailDialog({ emp, users, onClose, initialTab }: { emp: Employ
         <TabsContent value="info" className="space-y-4">
           <div className="flex justify-end">
             <Button variant="outline" size="sm" onClick={() => exportEmployeePDF(emp, users, t)} data-testid="button-export-pdf">
-              <Download className="w-4 h-4 me-1" />{t("تصدير PDF", "Export PDF")}
+              <Download className="w-4 h-4 me-1" />{t("مستند الموظف للطباعة", "Printable employee document")}
             </Button>
           </div>
           <FormFields data={editForm} onChange={setEditForm} users={users} jobTitlesList={jobTitlesList} />
@@ -1487,6 +1528,8 @@ export default function EmployeesPage() {
       department: form.department,
       monthlySalary: form.monthlySalary,
       contractStart: form.contractStart,
+      nationalId: form.nationalId || null,
+      hireDate: form.hireDate || null,
       status: form.status,
       contractType: form.contractType || null,
       insuranceExpiry: form.insuranceExpiry || null,
@@ -1495,6 +1538,7 @@ export default function EmployeesPage() {
       dateOfBirth: form.dateOfBirth || null,
       email: form.email || null,
       attendanceEnabled: form.attendanceEnabled,
+      attendanceLocationMode: form.attendanceLocationMode,
       attendanceZoneId: form.attendanceZoneId ? Number(form.attendanceZoneId) : null,
       attendanceScheduleId: form.attendanceScheduleId ? Number(form.attendanceScheduleId) : null,
     };
@@ -1798,7 +1842,9 @@ export default function EmployeesPage() {
       </Card>
 
       <Dialog open={!!selectedEmployee} onOpenChange={open => { if (!open) setSelectedEmployee(null); }}>
-        <DialogContent className={employeeDialogExpanded ? "w-[98vw] max-w-[98vw] h-[96dvh] overflow-y-auto" : "w-[96vw] max-w-2xl max-h-[94dvh] overflow-y-auto"}>
+        <DialogContent dir={isRTL ? "rtl" : "ltr"}
+          style={{ width: employeeDialogExpanded ? "98vw" : "96vw", maxWidth: employeeDialogExpanded ? "98vw" : "42rem", minWidth: 0 }}
+          className={employeeDialogExpanded ? "h-[96dvh] overflow-y-auto overflow-x-hidden p-4 sm:p-6" : "max-h-[94dvh] overflow-y-auto overflow-x-hidden p-4 sm:p-6"}>
           <DialogHeader>
             <DialogTitle>{t("ملف الموظف", "Employee Profile")} — #{selectedEmployee?.employeeNumber}</DialogTitle>
           </DialogHeader>

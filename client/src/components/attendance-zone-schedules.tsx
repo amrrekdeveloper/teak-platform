@@ -30,7 +30,7 @@ export default function AttendanceZoneSchedules() {
         workStartTime: shifts[0].start, workEndTime: shifts[shifts.length - 1].end, graceMinutes: shifts[0].graceMinutes, shifts };
       return args.id ? apiRequest("PATCH", `/api/attendance/work-settings/${args.id}`, body) : apiRequest("POST", "/api/attendance/work-settings", body);
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/attendance/work-settings"] }); setEditId(null); setLabel(""); setPeriods(onePeriod()); toast({ title: "تم حفظ خيار الجدول" }); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/attendance/work-settings"] }); qc.invalidateQueries({queryKey:["/api/attendance/shift-monitor"]}); setEditId(null); setLabel(""); setPeriods(onePeriod()); toast({ title: "تم حفظ الجدول", description: "تُحدّث فترات اليوم غير المستخدمة فقط؛ تبقى البصمات والفترات المسجلة والأيام السابقة محفوظة." }); },
     onError: (e: Error) => toast({ title: e.message || "تعذر حفظ الجدول", variant: "destructive" }),
   });
   const remove = useMutation({

@@ -494,7 +494,7 @@
         const tbody=document.createElement("tbody");rows.forEach((row,rowIndex)=>{const tr=document.createElement("tr");if(rowIds&&rowIds[rowIndex])tr.id=rowIds[rowIndex];row.forEach((value,index)=>{if(value&&value.statusPill){const td=document.createElement("td"),pill=document.createElement("span");pill.className="pill "+statusClass(value.value);pill.textContent=statusLabel(value.value);td.append(pill);tr.append(td)}else tr.append(cell(value))});tbody.append(tr)});
         table.append(tbody);wrap.append(table);container.append(wrap);
       }
-      function reportStatus(status){return ({present:"مكتمل",late:"متأخر",absent:"غياب",missing_checkin:"نقص حضور",missing_checkout:"نقص انصراف",pending:"لم ينتهِ الدوام",approved_leave:"إجازة معتمدة",rest_day:"يوم راحة",not_started:"قبل المباشرة",unverified_schedule:"جدول تاريخي غير موثق",unverified:"غير موثق",excused:"معذور"})[status]||status||"—"}
+      function reportStatus(status){return ({working:"على رأس العمل",completed:"أنهى الفترة",unknown:"لا توجد حركة",present:"حاضر",late:"متأخر",absent:"غياب",missing_checkin:"نقص حضور",missing_checkout:"نقص انصراف",pending:"بانتظار الحضور",approved_leave:"إجازة معتمدة",rest_day:"يوم راحة",not_started:"قبل المباشرة",unverified_schedule:"إعداد الدوام يحتاج مراجعة",unverified:"غير موثق",excused:"معذور"})[status]||status||"—"}
       function renderAttendanceRows(report,corrections){
         const host=$("attendance-history");host.replaceChildren();
         const rows=Array.isArray(report?.rows)?report.rows:[];
@@ -513,7 +513,10 @@
           const rawMinutes=deficiencyKnown?(row.late===true?row.lateMinutes:0)+row.earlyDepartureMinutes:null;
           const minutes=correction?.status==="approved"||row.excused?0:rawMinutes;
           const minutesText=minutes===null?"غير متاح":String(minutes);
+          const displayStatus=reportStatus(row.operationalStatus||row.status)
+            +(row.scheduleVerified===false?" · إعداد الدوام غير مكتمل":"");
           const values=[new Intl.DateTimeFormat(document.documentElement.lang==="en"?"en-US":"ar-SA",{weekday:"long"}).format(new Date(`${row.day}T12:00:00+03:00`)),dateText(row.day),row.shiftLabel||row.shiftId||"—",row.checkIn?dateText(row.checkIn,true):"—",row.checkOut?dateText(row.checkOut,true):"—",reportStatus(row.status),minutesText];
+          values[5]=displayStatus;
           const desktopValues=[values[0],attendanceDateCompact(row.day),values[2],row.checkIn?attendanceTimeCompact(row.checkIn):"—",row.checkOut?attendanceTimeCompact(row.checkOut):"—",values[5],minutesText];
           const tr=document.createElement("tr");desktopValues.forEach((v,index)=>{
             if([1,3,4].includes(index)){const td=document.createElement("td");td.className="attendance-ltr";const isolated=document.createElement("bdi");isolated.dir="ltr";isolated.textContent=v;td.append(isolated);tr.append(td)}
@@ -527,7 +530,7 @@
           } else if(correction){const pill=document.createElement("span");pill.className="pill "+(correction.status==="approved"?"ok":"wait");pill.textContent=correction.status==="approved"?"تم الاعتماد":correction.status==="pending"?"قيد المراجعة":correction.status==="rejected"?"مرفوض":"—";actionCell.append(pill);if(correction.reviewNote){const note=document.createElement("small");note.textContent=" · "+correction.reviewNote;actionCell.append(note)}}
           else actionCell.textContent="—";
           tr.append(actionCell);desktopRows.push({day:row.day,element:tr});
-          const card=document.createElement("article");card.className="attendance-mobile-card";const heading=document.createElement("header");const day=document.createElement("span");day.textContent=values[0]+" · "+values[1];const status=document.createElement("span");status.className="pill "+(row.status==="present"?"ok":"");status.textContent=reportStatus(row.status);heading.append(day,status);
+          const card=document.createElement("article");card.className="attendance-mobile-card";const heading=document.createElement("header");const day=document.createElement("span");day.textContent=values[0]+" · "+values[1];const status=document.createElement("span");status.className="pill "+(row.checkIn?"ok":"");status.textContent=displayStatus;heading.append(day,status);
           const dl=document.createElement("dl");[["الفترة",values[2]],["الحضور الفعلي",values[3]],["الانصراف الفعلي",values[4]],["دقائق التقصير",minutesText]].forEach(([label,value])=>{const wrap=document.createElement("div"),dt=document.createElement("dt"),dd=document.createElement("dd");dt.textContent=label;dd.textContent=value;wrap.append(dt,dd);dl.append(wrap)});
           card.append(heading,dl);
           if(requiresProcessing&&correction?.status!=="pending"&&correction?.status!=="approved"){const b=document.createElement("button");b.className="btn secondary";b.textContent=correction?.status==="rejected"?"إعادة التقديم":"معالجة التقصير";b.onclick=()=>openCorrection(row,correction);card.append(b)}
@@ -636,7 +639,9 @@
         $("employee-department").textContent=employee.departmentNameAr||employee.department||"—";$("employee-position").textContent=employee.position||"—";
         $("today-date").textContent=new Intl.DateTimeFormat(document.documentElement.lang==="en"?"en-US":"ar-SA",{weekday:"long",day:"numeric",month:"long",year:"numeric"}).format(new Date());
         const zone=(data.assignedZones||[]).find(z=>String(z.id)===String(employee.attendanceZoneId));
-        $("assigned-zone").textContent=zone?`${zone.nameAr} · نطاق ${zone.radiusMeters||50} متر`:"موقع البصمة غير محدد. يرجى مراجعة الموارد البشرية.";
+        $("assigned-zone").textContent=data.attendanceLocationMode==="unrestricted"
+          ?(document.documentElement.lang==="en"?"Off-site work authorized · location is recorded":"مصرح بالبصمة خارج المقر · يُحفظ موقع البصمة")
+          :zone?`${zone.nameAr} · نطاق ${zone.radiusMeters||50} متر`:"موقع البصمة غير محدد. يرجى مراجعة الموارد البشرية.";
         renderWorkweek();
         setAttendanceBusy(false);
         $("logout").hidden=false;
@@ -830,7 +835,7 @@
       function setAttendanceBusy(busy){
         attendanceBusy=busy;
         const assigned=(summary?.assignedZones||[]).some(z=>String(z.id)===String(summary?.employee?.attendanceZoneId));
-        const disabled=busy||!assigned||summary?.employee?.attendanceEnabled===false;
+        const disabled=busy||(!assigned&&summary?.attendanceLocationMode!=="unrestricted")||summary?.employee?.attendanceEnabled===false;
         $("check-in").disabled=disabled;$("check-out").disabled=disabled;
       }
       async function attendance(type){
@@ -840,7 +845,7 @@
           :"تأكيد الانصراف؟ هذه الحركة تسجل خروجك وتنهي الوردية الحالية. لا تستخدمها لإعادة تسجيل الحضور."))return;
         message($("dashboard-error"),"");
         const status=$("attendance-message");show($("location-help"),false);
-        if(!(summary?.assignedZones||[]).some(z=>String(z.id)===String(summary?.employee?.attendanceZoneId))){
+        if(summary?.attendanceLocationMode!=="unrestricted"&&!(summary?.assignedZones||[]).some(z=>String(z.id)===String(summary?.employee?.attendanceZoneId))){
           errorText(status,new Error("موقع البصمة غير محدد. يرجى مراجعة الموارد البشرية."));return;
         }
         message(status,"جارٍ تحديد موقع الجوال…");setAttendanceBusy(true);
@@ -1016,6 +1021,8 @@
         if(week?.workingDays)parts.push((en?"Working days: ":"أيام العمل: ")+week.workingDays.map(d=>names[d]).join(en?", ":"، "));
         const calendar=week?.todayCalendar;
         parts.push(calendar?.verified?(calendar.workingDay?(en?"Today is a working day":"اليوم يوم عمل"):(en?"Today is a rest day":"اليوم يوم راحة")):(en?"Today's workweek is not approved. Contact HR.":"أيام العمل لهذا اليوم غير معتمدة. راجع الموارد البشرية."));
+        if(summary.shifts?.length)parts.push(summary.shifts.map(s=>`${s.label}: ${s.start}–${s.end||"—"}`).join(" / "));
+        parts.push(en?"Check-in opens 60 minutes before each period":"الحضور متاح قبل بداية كل فترة بساعة");
         $("assigned-week").textContent=parts.join(" · ");
       }
       window.addEventListener("teak-language-change",function(){

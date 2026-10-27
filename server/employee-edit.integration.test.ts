@@ -24,7 +24,10 @@ afterAll(async () => {
     await pool.query("DELETE FROM employees WHERE id=$1", [employeeId]);
   }
   if (zoneId) await pool.query("DELETE FROM location_zones WHERE id=$1", [zoneId]);
-  if (actorId) await pool.query("DELETE FROM users WHERE id=$1", [actorId]);
+  if (actorId) {
+    await pool.query("DELETE FROM notifications WHERE user_id=$1", [actorId]);
+    await pool.query("DELETE FROM users WHERE id=$1", [actorId]);
+  }
 });
 it("returns the full selected range and unmatched original punches, and rejects invalid ranges", async () => {
   const recordId = (await pool.query(`INSERT INTO attendance_records(employee_id,type,check_time,shift_key)
@@ -62,5 +65,14 @@ it("persists assignments, audits them, preserves unrelated edits, and rejects st
   expect((await pool.query("SELECT id FROM hr_audit_log WHERE employee_id=$1 AND action='attendance_assignment_changed'", [employeeId])).rowCount).toBe(1);
   await saveEmployeeEdit(employeeId, { attendanceZoneId: null,
     expectedAttendanceAssignment: { attendanceZoneId: zoneId, attendanceScheduleId: null } }, actorId);
-  expect((await pool.query("SELECT id FROM hr_audit_log WHERE employee_id=$1", [employeeId])).rowCount).toBe(2);
+  expect((await pool.query("SELECT id FROM hr_audit_log WHERE employee_id=$1 AND action='attendance_assignment_changed'", [employeeId])).rowCount).toBe(2);
+});
+it("saves identity and hire date, audits offsite permission, and rejects stale permission edits", async () => {
+  const saved = await saveEmployeeEdit(employeeId, { nationalId: "1234567890", hireDate: "2025-06-01",
+    attendanceLocationMode: "unrestricted", expectedAttendanceLocationMode: "assigned" }, actorId);
+  expect(saved).toMatchObject({ nationalId: "1234567890", hireDate: "2025-06-01", attendanceLocationMode: "unrestricted" });
+  await expect(saveEmployeeEdit(employeeId, {attendanceLocationMode:"assigned",expectedAttendanceLocationMode:"assigned"},actorId))
+    .rejects.toMatchObject({status:409});
+  expect((await pool.query("SELECT id FROM hr_audit_log WHERE employee_id=$1 AND action='attendance_location_permission_changed'",[employeeId])).rowCount).toBe(1);
+  await expect(saveEmployeeEdit(employeeId,{nationalId:"short"},actorId)).rejects.toThrow();
 });

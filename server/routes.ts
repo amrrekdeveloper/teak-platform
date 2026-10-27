@@ -15,6 +15,7 @@ import { initializeSystemAdmin } from "./system-admin";
 import { recoverSystemAdminPassword } from "./system-admin-recovery";
 import { ensureAttendanceExtensions } from "./attendance-support";
 import { freezeCurrentAttendanceSchedules } from "./attendance-schedule-history";
+import { saveAttendanceSchedule } from "./attendance-settings-edit";
 import { runAttendanceCatchup } from "./attendance-scheduler";
 import { registerAttendanceOverride } from "./attendance-override";
 import { registerAttendanceMovements } from "./attendance-movements";
@@ -8579,8 +8580,7 @@ export async function registerRoutes(
         }
         if(!data.shifts)data.graceMinutes = g;
       }
-      await freezeCurrentAttendanceSchedules();
-      const updated = await storage.updateWorkScheduleSetting(Number(req.params.id), data);
+      const updated = await saveAttendanceSchedule(Number(req.params.id), data, req.session.userId!);
       if (!updated) return res.status(404).json({ message: "الإعداد غير موجود" });
       res.json(updated);
     } catch {

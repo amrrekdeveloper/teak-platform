@@ -145,6 +145,8 @@ type DailyMonitorRow = AttendanceReportRow & {
   started?: boolean | null;
   shiftStartTime?: string | null;
   startTime?: string | null;
+  operationalStatus?: "working" | "completed" | "pending" | "absent" | "unknown" | string | null;
+  scheduleVerified?: boolean | null;
 };
 
 function formatTime(ts: string) {
@@ -865,7 +867,7 @@ export default function AttendanceMonitorPage() {
             <CardHeader className="pb-2"><CardTitle className="text-base">تعيينات مواقع البصمة وجداول الموظفين</CardTitle></CardHeader>
             <CardContent className="flex flex-col items-start gap-3 pt-0">
               <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
-                اختر الموظف ثم عدّل موقع البصمة وخيار جدول الدوام من نموذج الموظف الحالي. تبقى صلاحيات الحفظ وقواعد التحقق كما هي.
+                اختر الموظف وحدد موقع البصمة ثم جدول الساعات المناسب. للعمل في جيزان أو خارج المقر اختر «مصرح خارج المقر» في بيانات الموظف؛ ترك الموقع فارغًا لا يمنح هذا التصريح. تبقى فترات اليوم التي سُجلت عليها بصمات محفوظة، وتُحدّث الفترات التي لم تُستخدم بعد.
               </p>
               <Button asChild className="min-h-11">
                 <Link href="/employees?tab=attendance"><Users className="me-2 h-4 w-4" />اختيار موظف وتعديل التعيين</Link>
@@ -890,7 +892,7 @@ export default function AttendanceMonitorPage() {
             </div>
             <Input aria-label="بحث بالموظف" placeholder="اسم أو رقم الموظف" value={liveSearch} onChange={e=>setLiveSearch(e.target.value)} className="min-h-11 min-w-0 sm:w-52"/>
             <Select value={liveStatus} onValueChange={setLiveStatus}><SelectTrigger className="min-h-11"><SelectValue placeholder="كل الحالات"/></SelectTrigger><SelectContent>
-              <SelectItem value="all">كل الحالات</SelectItem><SelectItem value="working">على رأس العمل</SelectItem><SelectItem value="completed">أنهى ورديته</SelectItem><SelectItem value="pending">لم يسجل الوصول بعد</SelectItem><SelectItem value="future">لم تبدأ الوردية بعد</SelectItem><SelectItem value="not_started">قبل تاريخ المباشرة</SelectItem><SelectItem value="absent">غياب بعد نهاية الوردية</SelectItem><SelectItem value="approved_leave">إجازة معتمدة</SelectItem><SelectItem value="out_of_zone">خارج النطاق</SelectItem><SelectItem value="unverified_schedule">جدول غير موثق</SelectItem>
+              <SelectItem value="all">كل الحالات</SelectItem><SelectItem value="working">على رأس العمل</SelectItem><SelectItem value="completed">أنهى ورديته</SelectItem><SelectItem value="pending">لم يسجل الوصول بعد</SelectItem><SelectItem value="future">لم تبدأ الوردية بعد</SelectItem><SelectItem value="not_started">قبل تاريخ المباشرة</SelectItem><SelectItem value="absent">غياب بعد نهاية الوردية</SelectItem><SelectItem value="approved_leave">إجازة معتمدة</SelectItem><SelectItem value="unknown">الحالة غير معروفة</SelectItem><SelectItem value="out_of_zone">خارج النطاق</SelectItem><SelectItem value="unverified_schedule">جدول غير موثق</SelectItem>
             </SelectContent></Select>
             <Select value={liveLocation} onValueChange={setLiveLocation}><SelectTrigger className="min-h-11 col-span-2 sm:col-span-1"><SelectValue placeholder="جميع المواقع"/></SelectTrigger><SelectContent><SelectItem value="all">جميع المواقع</SelectItem>{Array.from(new Set((todayEvidence.data?.rows||[]).flatMap(r=>[...(r.locationNames||[]),r.homeLocation||""]).filter(Boolean))).map(location=><SelectItem key={location} value={location}>{location}</SelectItem>)}</SelectContent></Select>
           </div>
@@ -901,6 +903,7 @@ export default function AttendanceMonitorPage() {
           const rowState=(r:DailyMonitorRow)=>{
             if(r.status==="approved_leave")return "approved_leave";
             if(r.status==="not_started")return "not_started";
+            if(["working","completed","pending","absent","unknown"].includes(r.operationalStatus || "")) return r.operationalStatus!;
             if(monitorDay===todayKey&&r.started===false)return "future";
             const start=r.shiftStartTime||r.startTime;
             if(monitorDay===todayKey&&!r.checkIn&&start){const [h,m]=start.split(":").map(Number);if(Number.isFinite(h)&&Number.isFinite(m)&&currentMinutes<h*60+m)return "future"}
@@ -925,10 +928,11 @@ export default function AttendanceMonitorPage() {
             leave:employeeHas(r=>rowState(r)==="approved_leave"),
           };
           const normalizedSearch=liveSearch.trim().toLocaleLowerCase("ar");
+          const scheduleUnverified=(r:DailyMonitorRow)=>r.scheduleVerified===false||(r.scheduleVerified==null&&r.status==="unverified_schedule");
           const visibleRows=rows.filter(r=>{
             const state=rowState(r),location=(r.locationNames||[]).join("، ")||r.homeLocation||"";
             return (!normalizedSearch||`${r.employeeName||""} ${r.employeeNumber||""} ${r.department||""}`.toLocaleLowerCase("ar").includes(normalizedSearch))
-              &&(liveStatus==="all"||(liveStatus==="out_of_zone"?r.outOfZone:state===liveStatus))
+              &&(liveStatus==="all"||(liveStatus==="out_of_zone"?r.outOfZone:liveStatus==="unverified_schedule"?scheduleUnverified(r):state===liveStatus))
               &&(liveLocation==="all"||location.includes(liveLocation));
           });
           const statusText=(r:DailyMonitorRow)=>{
@@ -938,6 +942,7 @@ export default function AttendanceMonitorPage() {
             if(state==="pending")return "لم يسجل الوصول بعد";
             if(state==="future")return "لم تبدأ الوردية بعد";
             if(state==="not_started")return "قبل تاريخ المباشرة";
+            if(state==="unknown")return "الحالة غير معروفة";
             return attendanceStatusLabels[r.status]||r.status||"—";
           };
           const metrics=[["سجّلوا حركة",counts.punched],["بانتظار الوصول",counts.waiting],["لم تبدأ الوردية",counts.future],["قبل مباشرة الموظف",counts.notStarted],["على رأس العمل",counts.working],["أنهوا الوردية",counts.completed],["غياب بعد النهاية",counts.absent],["إجازة",counts.leave]];
@@ -954,8 +959,8 @@ export default function AttendanceMonitorPage() {
               todayEvidence.isLoading?<div className="space-y-2 rounded-lg border bg-card p-4" aria-label="تحميل بيانات اليوم"><div className="h-4 w-1/4 animate-pulse rounded bg-muted"/><div className="h-10 animate-pulse rounded bg-muted"/><div className="h-10 animate-pulse rounded bg-muted"/></div>:
               <Card><CardHeader className="pb-2"><CardTitle className="text-base flex items-center justify-between gap-2"><span className="truncate">سجل الموظفين · {monitorDay===todayKey?"اليوم":monitorDay===riyadhDateKey(new Date(Date.now()-86400000))?"أمس":new Intl.DateTimeFormat("ar-SA",{day:"numeric",month:"short",timeZone:"Asia/Riyadh"}).format(new Date(`${monitorDay}T12:00:00+03:00`))}</span><Badge variant="outline" className="shrink-0">{visibleRows.length} وردية معروضة</Badge></CardTitle></CardHeader><CardContent className="p-0">
                 {!visibleRows.length?<div className="p-8 text-center text-sm text-muted-foreground">{rows.length?"لا توجد نتائج مطابقة للتصفية.":"لا توجد ورديات مجدولة اليوم."}</div>:
-                   <><div className="hidden md:block overflow-x-auto"><table className="w-full min-w-[1040px] text-sm"><thead><tr className="border-y bg-muted/40 text-muted-foreground">{["الموظف","الرقم الوظيفي","الوردية","الحضور","الانصراف","الحالة","الموقع","النطاق","الحركات"].map(x=><th key={x} className="p-3 text-start font-medium">{x}</th>)}</tr></thead><tbody>{visibleRows.map((r,i)=><tr key={`${r.employeeId}-${r.day}-${r.shiftId}-${i}`} className="border-b last:border-0">{cells(r).map((value,j)=><td key={j} className="p-3">{j===5?<Badge variant={rowState(r)==="absent"?"destructive":rowState(r)==="working"?"default":"outline"}>{value}</Badge>:value}</td>)}<td className="p-2"><Button size="sm" variant="outline" className="h-9 gap-1 whitespace-nowrap" onClick={()=>openMovementDialog(r.employeeId,r.employeeName||`#${r.employeeId}`,String(r.day||monitorDay),r.shiftId ? String(r.shiftId) : undefined)} data-testid={`button-correct-movements-employee-${r.employeeId}`}><History className="h-3.5 w-3.5"/>تصحيح الحركات</Button></td></tr>)}</tbody></table></div>
-                     <div className="divide-y md:hidden">{visibleRows.map((r,i)=><article key={`${r.employeeId}-${r.day}-${r.shiftId}-${i}`} className="p-4"><header className="flex items-start justify-between gap-2"><div><strong>{r.employeeName||`#${r.employeeId}`}</strong><p className="text-xs text-muted-foreground">{r.employeeNumber||"—"} · {r.shiftLabel||r.shiftId}</p></div><Badge variant={rowState(r)==="absent"?"destructive":rowState(r)==="working"?"default":"outline"}>{statusText(r)}</Badge></header><dl className="mt-3 grid grid-cols-2 gap-3 text-sm"><div><dt className="text-xs text-muted-foreground">الحضور</dt><dd>{r.checkIn?formatTime(String(r.checkIn)):"—"}</dd></div><div><dt className="text-xs text-muted-foreground">الانصراف</dt><dd>{r.checkOut?formatTime(String(r.checkOut)):"—"}</dd></div><div><dt className="text-xs text-muted-foreground">الموقع</dt><dd>{(r.locationNames||[]).join("، ")||r.homeLocation||"—"}</dd></div><div><dt className="text-xs text-muted-foreground">النطاق</dt><dd>{r.outOfZone?"خارج النطاق":"داخل/غير محدد"}</dd></div></dl><Button size="sm" variant="outline" className="mt-3 min-h-10 w-full gap-2" onClick={()=>openMovementDialog(r.employeeId,r.employeeName||`#${r.employeeId}`,String(r.day||monitorDay),r.shiftId ? String(r.shiftId) : undefined)} data-testid={`button-correct-movements-employee-${r.employeeId}`}><History className="h-4 w-4"/>تصحيح الحركات</Button></article>)}</div></>}
+                    <><div className="hidden md:block overflow-x-auto"><table className="w-full min-w-[1040px] text-sm"><thead><tr className="border-y bg-muted/40 text-muted-foreground">{["الموظف","الرقم الوظيفي","الوردية","الحضور","الانصراف","الحالة","الموقع","النطاق","الحركات"].map(x=><th key={x} className="p-3 text-start font-medium">{x}</th>)}</tr></thead><tbody>{visibleRows.map((r,i)=><tr key={`${r.employeeId}-${r.day}-${r.shiftId}-${i}`} className="border-b last:border-0">{cells(r).map((value,j)=><td key={j} className="p-3">{j===5?<div className="flex flex-col items-start gap-1"><Badge variant={rowState(r)==="absent"?"destructive":rowState(r)==="working"?"default":"outline"}>{value}</Badge>{scheduleUnverified(r)&&<span className="inline-flex items-center gap-1 text-[11px] text-amber-700"><AlertTriangle className="h-3 w-3"/>جدول غير موثق</span>}</div>:value}</td>)}<td className="p-2"><Button size="sm" variant="outline" className="h-9 gap-1 whitespace-nowrap" onClick={()=>openMovementDialog(r.employeeId,r.employeeName||`#${r.employeeId}`,String(r.day||monitorDay),r.shiftId ? String(r.shiftId) : undefined)} data-testid={`button-correct-movements-employee-${r.employeeId}`}><History className="h-3.5 w-3.5"/>تصحيح الحركات</Button></td></tr>)}</tbody></table></div>
+                      <div className="divide-y md:hidden">{visibleRows.map((r,i)=><article key={`${r.employeeId}-${r.day}-${r.shiftId}-${i}`} className="p-4"><header className="flex items-start justify-between gap-2"><div><strong>{r.employeeName||`#${r.employeeId}`}</strong><p className="text-xs text-muted-foreground">{r.employeeNumber||"—"} · {r.shiftLabel||r.shiftId}</p></div><div className="flex flex-col items-end gap-1"><Badge variant={rowState(r)==="absent"?"destructive":rowState(r)==="working"?"default":"outline"}>{statusText(r)}</Badge>{scheduleUnverified(r)&&<span className="inline-flex items-center gap-1 text-[11px] text-amber-700"><AlertTriangle className="h-3 w-3"/>جدول غير موثق</span>}</div></header><dl className="mt-3 grid grid-cols-2 gap-3 text-sm"><div><dt className="text-xs text-muted-foreground">الحضور</dt><dd>{r.checkIn?formatTime(String(r.checkIn)):"—"}</dd></div><div><dt className="text-xs text-muted-foreground">الانصراف</dt><dd>{r.checkOut?formatTime(String(r.checkOut)):"—"}</dd></div><div><dt className="text-xs text-muted-foreground">الموقع</dt><dd>{(r.locationNames||[]).join("، ")||r.homeLocation||"—"}</dd></div><div><dt className="text-xs text-muted-foreground">النطاق</dt><dd>{r.outOfZone?"خارج النطاق":"داخل/غير محدد"}</dd></div></dl><Button size="sm" variant="outline" className="mt-3 min-h-10 w-full gap-2" onClick={()=>openMovementDialog(r.employeeId,r.employeeName||`#${r.employeeId}`,String(r.day||monitorDay),r.shiftId ? String(r.shiftId) : undefined)} data-testid={`button-correct-movements-employee-${r.employeeId}`}><History className="h-4 w-4"/>تصحيح الحركات</Button></article>)}</div></>}
               </CardContent></Card>}
            </>;
         })()}

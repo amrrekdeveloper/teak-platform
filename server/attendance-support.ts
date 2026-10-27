@@ -16,6 +16,7 @@ import type { AttendanceReportRow } from "../shared/attendance-report";
 import type { Employee } from "../shared/schema";
 import type { WeekPolicy } from "../shared/attendance-workweek";
 import { activeMovementSql } from "./attendance-movement-state";
+import { saveAttendanceSchedule } from "./attendance-settings-edit";
 
 /** Additive only. Call during startup after existing attendance tables have been initialized. */
 export async function ensureAttendanceExtensions() {
@@ -164,14 +165,19 @@ export async function employeeAttendanceReport(employeeId: number, from: string,
       const attempts = violations.rows.filter(v => v.business_day === day && v.shift_key === shift.id);
       const leave = leaves.some(l => l.startDate <= day && l.endDate >= day);
       const rest=calendar.workingDay===false||(!calendar.verified&&legacyRestDay(day));
-      let status = events.length ? (rest?"present":state.status) : day < employee.contractStart ? "not_started"
+      let status = events.length ? (rest?"present":state.status) : day < (employee.hireDate || employee.contractStart) ? "not_started"
         : leave ? "approved_leave" : rest ? "rest_day"
         : attempts.some(v => v.violation_type === "missing_checkin") ? "missing_checkin" : state.status;
       const scheduleVerified = calendar.verified && completeShiftEvidence(shifts) &&
         (savedDays.has(day) || day === riyadhDateKey(new Date()));
+      const operationalStatus = state.checkIn
+        ? (state.checkOut ? "completed" : "working")
+        : status === "approved_leave" || status === "not_started" || status === "rest_day" ? status
+        : scheduleVerified ? (state.ended ? "absent" :
+          now.getTime() < +new Date(`${day}T${shift.start}:00+03:00`) ? "future" : "pending") : "unknown";
       if (!scheduleVerified && !["not_started","approved_leave","rest_day"].includes(status)) status="unverified_schedule";
       const correction=corrections.find(c=>c.businessDay===day&&c.shiftKey===shift.id);
-      rows.push(applyAttendanceCorrection({ day, shiftId: shift.id, shiftLabel: shift.label, ...state, status,
+      rows.push(applyAttendanceCorrection({ day, shiftId: shift.id, shiftLabel: shift.label, ...state, status, operationalStatus,
         // Current settings cannot establish historical schedule-dependent facts.
         late: scheduleVerified ? (rest?false:state.late) : null,
         lateMinutes: scheduleVerified ? (rest?0:state.lateMinutes) : null,
@@ -352,11 +358,11 @@ export function registerAttendanceSupport(app: Express, authorize: RequestHandle
     const parsed = schema.safeParse(req.body.shifts);
     if (!parsed.success || !validateShifts(parsed.data)) return res.status(400).json({ message: "حدد وردية أو ورديتين بلا تداخل. الدوام العابر لمنتصف الليل يحتاج سياسة معتمدة." });
     try {
-      await freezeCurrentAttendanceSchedules();
-      const result = await pool.query(`UPDATE work_schedule_settings SET shifts=$2::jsonb,
-        work_start_time=$3,work_end_time=$4,grace_minutes=$5 WHERE id=$1 RETURNING id`,
-      [Number(req.params.id), JSON.stringify(parsed.data), parsed.data[0].start, parsed.data[0].end, parsed.data[0].graceMinutes]);
-      if (!result.rowCount) return res.status(404).json({ message: "إعداد الدوام غير موجود." });
+      const result = await saveAttendanceSchedule(Number(req.params.id), {
+        shifts: parsed.data, workStartTime: parsed.data[0].start,
+        workEndTime: parsed.data[0].end, graceMinutes: parsed.data[0].graceMinutes,
+      }, req.session.userId!);
+      if (!result) return res.status(404).json({ message: "إعداد الدوام غير موجود." });
       res.json({ success: true });
     } catch { res.status(500).json({ message: "تعذّر حفظ الورديات." }); }
   });
