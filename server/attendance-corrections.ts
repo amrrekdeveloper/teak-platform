@@ -21,9 +21,12 @@ export async function attendanceCorrections(employeeId: number, from?: string,to
   [employeeId,from??null,to??null])).rows;
 }
 export function applyAttendanceCorrection<T extends {status:string;late:boolean|null;lateMinutes:number|null;
-  earlyDepartureMinutes:number|null;outOfZone:boolean}>(row:T,correction?:{id:number;status:string}) {
+  earlyDepartureMinutes:number|null;outOfZone:boolean;scheduleVerified?:boolean}>(row:T,correction?:{id:number;status:string}) {
   if(!correction)return row;
   if(correction.status!=="approved")return {...row,correctionStatus:correction.status,correctionId:correction.id,excused:false};
+  // Acceptance of an explanation is not evidence for a missing historical timetable.
+  if(row.scheduleVerified===false)return {...row,correctionStatus:"approved",correctionId:correction.id,
+    explanationAccepted:true,excused:false};
   return {...row,observedStatus:row.status,observedLateMinutes:row.lateMinutes,
     observedEarlyDepartureMinutes:row.earlyDepartureMinutes,observedOutOfZone:row.outOfZone,
     status:"excused",late:false,lateMinutes:0,earlyDepartureMinutes:0,outOfZone:false,
@@ -106,18 +109,46 @@ export function registerEmployeeCorrections(router:Router) {
   }));
   router.get("/attendance/corrections/:id/attachment",asyncRoute(async(req,res)=>download(Number(req.params.id),res,identity(res).employee.id)));
 }
+export async function attendanceCorrectionReview(item:{employeeId:number;businessDay:string;shiftKey:string;status:string}) {
+  const report=await employeeAttendanceReport(item.employeeId,item.businessDay,item.businessDay);
+  const row=report.rows.find(r=>r.shiftId===item.shiftKey);
+  const periodEnded=typeof row?.periodEnded==="boolean"
+    ? row.periodEnded : item.businessDay<riyadhDateKey(new Date());
+  const scheduleVerified=row?.scheduleVerified===true;
+  return {
+    canApprove:item.status==="pending"&&periodEnded,
+    waitingForPeriodEnd:item.status==="pending"&&!periodEnded,
+    periodEnded,scheduleVerified,shiftLabel:row?.shiftLabel??item.shiftKey,
+    status:row?.status??"unverified_schedule",checkIn:row?.checkIn??null,checkOut:row?.checkOut??null,
+    lateMinutes:row?.lateMinutes??null,earlyDepartureMinutes:row?.earlyDepartureMinutes??null,
+    outOfZone:row?.outOfZone??false,
+    warning:!periodEnded
+      ? "الوردية لم تنتهِ بعد. يمكنك رفض الطلب الآن، أو اعتماد معالجة الفترة بعد انتهائها؛ حتى لا يشمل الاعتماد تقصيرًا لاحقًا."
+      :!scheduleVerified
+        ?"يمكن اعتماد العذر، لكن احتساب التقصير ينتظر توثيق جدول الدوام. لا يُحتسب غياب أو تأخير افتراضي."
+        :null,
+    warningEn:!periodEnded
+      ?"The shift has not ended. You can reject the request now or approve it after the shift ends, without excusing any later shortfall."
+      :!scheduleVerified
+        ?"You can accept the explanation, but shortfall calculations await a verified schedule. No absence or lateness is assumed."
+        :null,
+  };
+}
 export async function decideAttendanceCorrection(id:number,actorId:number,decision:"approved"|"rejected",note:string) {
+  if(!Number.isSafeInteger(id)||id<=0)portalError(400,"معرّف طلب غير صحيح.");
+  if(!Number.isSafeInteger(actorId)||actorId<=0)portalError(401,"يلزم تسجيل الدخول.");
+  if(decision==="rejected"&&note.trim().length<3)portalError(400,"اكتب سبب رفض المعالجة.");
   const client=await pool.connect();
   try{
     await client.query("BEGIN");
     const {rows:[pending]}=await client.query("SELECT employee_id,business_day,shift_key,status FROM attendance_corrections WHERE id=$1 FOR UPDATE",[id]);
     if(!pending||pending.status!=="pending")portalError(409,"الطلب غير موجود أو تمت مراجعته سابقًا.");
     if(decision==="approved"){
-      const report=await employeeAttendanceReport(pending.employee_id,pending.business_day,pending.business_day);
-      const row=report.rows.find(r=>r.shiftId===pending.shift_key);
-      // A day-level approval must not forgive a future missing checkout or early departure.
-      if(!row?.scheduleVerified||row.ended!==true)
-        portalError(409,"يمكن اعتماد المعالجة بعد نهاية الفترة؛ يبقى الطلب قيد المراجعة حتى اكتمالها.");
+      const review=await attendanceCorrectionReview({employeeId:pending.employee_id,businessDay:pending.business_day,
+        shiftKey:pending.shift_key,status:pending.status});
+      if(!review.canApprove)portalError(409,review.warning!);
+      if(!review.scheduleVerified&&note.trim().length<3)
+        portalError(400,"اكتب سبب اعتماد العذر؛ جدول الدوام لهذا اليوم غير موثق.");
     }
     const result=await client.query(`UPDATE attendance_corrections SET status=$2,review_note=$3,reviewed_by=$4,reviewed_at=now()
       WHERE id=$1 AND status='pending' RETURNING id,employee_id`,[id,decision,note,actorId]);
@@ -128,6 +159,44 @@ export async function decideAttendanceCorrection(id:number,actorId:number,decisi
   }catch(error){await client.query("ROLLBACK");throw error;}finally{client.release();}
 }
 export function registerHrCorrections(app:Express,authorize:RequestHandler) {
+  app.get("/api/attendance/approvals",authorize,medicalDocumentRole,asyncRoute(async(req,res)=>{
+    const parsed=z.object({
+      status:z.enum(["pending","approved","rejected","all"]).default("pending"),
+      search:z.string().trim().max(120).default(""),
+      from:z.string().refine(validDate).optional(),to:z.string().refine(validDate).optional(),
+      page:z.coerce.number().int().min(1).max(100000).default(1),
+      pageSize:z.coerce.number().int().min(1).max(50).default(25),
+    }).safeParse(req.query);
+    if(!parsed.success)portalError(400,"تحقق من تاريخ البحث والحالة ورقم الصفحة.");
+    const {status,search,from,to,page,pageSize}=parsed.data!;
+    if(from&&to&&from>to)portalError(400,"تاريخ البداية يجب ألا يتجاوز تاريخ النهاية.");
+    const filter=`($1::text='' OR e.full_name_ar ILIKE '%'||$1||'%' OR e.employee_number ILIKE '%'||$1||'%')
+      AND ($2::text IS NULL OR c.business_day >= $2) AND ($3::text IS NULL OR c.business_day <= $3)`;
+    const params=[search,from??null,to??null];
+    const [countResult,itemResult]=await Promise.all([
+      pool.query(`SELECT c.status,count(*)::integer AS count FROM attendance_corrections c
+        JOIN employees e ON e.id=c.employee_id WHERE ${filter} GROUP BY c.status`,params),
+      pool.query(`SELECT ${columns},e.full_name_ar AS "employeeName",e.employee_number AS "employeeNumber",
+        c.reviewed_at AS "reviewedAt",u.full_name_ar AS "reviewerName"
+        FROM attendance_corrections c JOIN employees e ON e.id=c.employee_id
+        LEFT JOIN users u ON u.id=c.reviewed_by WHERE ${filter} AND ($4='all' OR c.status=$4)
+        ORDER BY c.created_at DESC,c.id DESC LIMIT $5 OFFSET $6`,[...params,status,pageSize,(page-1)*pageSize]),
+    ]);
+    const counts={pending:0,approved:0,rejected:0};
+    for(const row of countResult.rows)if(row.status in counts)counts[row.status as keyof typeof counts]=row.count;
+    res.json({items:itemResult.rows,total:status==="all"?counts.pending+counts.approved+counts.rejected:counts[status],
+      page,pageSize,counts,asOf:new Date().toISOString()});
+  }));
+  app.get("/api/attendance/corrections/:id/review",authorize,medicalDocumentRole,asyncRoute(async(req,res)=>{
+    const id=Number(req.params.id);
+    if(!Number.isSafeInteger(id)||id<=0)portalError(400,"معرّف طلب غير صحيح.");
+    const {rows:[item]}=await pool.query(`SELECT ${columns},e.full_name_ar AS "employeeName",
+      e.employee_number AS "employeeNumber",c.reviewed_at AS "reviewedAt",u.full_name_ar AS "reviewerName"
+      FROM attendance_corrections c JOIN employees e ON e.id=c.employee_id LEFT JOIN users u ON u.id=c.reviewed_by
+      WHERE c.id=$1`,[id]);
+    if(!item)portalError(404,"الطلب غير موجود.");
+    res.json({...item,review:await attendanceCorrectionReview(item)});
+  }));
   app.get("/api/attendance/corrections",authorize,medicalDocumentRole,asyncRoute(async(_req,res)=>{
     res.json((await pool.query(`SELECT ${columns},e.full_name_ar AS "employeeName",e.employee_number AS "employeeNumber"
       FROM attendance_corrections c JOIN employees e ON e.id=c.employee_id ORDER BY c.id DESC LIMIT 500`)).rows);

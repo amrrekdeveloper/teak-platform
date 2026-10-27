@@ -23,6 +23,14 @@ describe("attendance corrections preserve original evidence",()=>{
   it("never permits invented correction of an undocumented schedule",()=>{
     expect(hasAttendanceDeficiency({...row,scheduleVerified:false})).toBe(false);
   });
+  it("accepts an historical explanation without converting unknown metrics to zero or excused attendance",()=>{
+    const unknown={...row,status:"unverified_schedule",scheduleVerified:false,late:null,
+      lateMinutes:null,earlyDepartureMinutes:null};
+    expect(applyAttendanceCorrection(unknown,{id:2,status:"approved"})).toMatchObject({
+      status:"unverified_schedule",lateMinutes:null,earlyDepartureMinutes:null,
+      explanationAccepted:true,correctionStatus:"approved",excused:false,checkIn:row.checkIn,
+    });
+  });
   it("does not classify a not-yet-ended shift as absence at 09:00",()=>{
     expect(shiftAttendanceStatus("2026-10-20",shift,[],new Date("2026-10-20T09:00:00+03:00")).status).toBe("pending");
     expect(shiftAttendanceStatus("2026-10-20",shift,[],new Date("2026-10-20T14:31:00+03:00")).status).toBe("absent");

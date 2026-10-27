@@ -178,6 +178,9 @@ export async function employeeAttendanceReport(employeeId: number, from: string,
       if (!scheduleVerified && !["not_started","approved_leave","rest_day"].includes(status)) status="unverified_schedule";
       const correction=corrections.find(c=>c.businessDay===day&&c.shiftKey===shift.id);
       rows.push(applyAttendanceCorrection({ day, shiftId: shift.id, shiftLabel: shift.label, ...state, status, operationalStatus,
+        // Use documented shift timing when available, separately from weekday verification.
+        periodEnded: (scheduleVerified || (savedDays.has(day) && completeShiftEvidence(shifts)))
+          ? state.ended : day < riyadhDateKey(now),
         // Current settings cannot establish historical schedule-dependent facts.
         late: scheduleVerified ? (rest?false:state.late) : null,
         lateMinutes: scheduleVerified ? (rest?0:state.lateMinutes) : null,

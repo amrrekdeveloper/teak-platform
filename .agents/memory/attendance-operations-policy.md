@@ -38,6 +38,18 @@ An employee explanation is an HR approval request, not permission to overwrite a
 
 **How to apply:** Allow submission while a deficiency exists, but keep an unfinished period pending. Never count a not-yet-ended shift as absence. Keep sick-leave medical documentation separate from attendance explanations.
 
+Period completion and verification of historical working days are separate facts. HR may accept an explanation for a completed historical period without pretending the missing schedule is verified.
+
+**Why:** A missing weekday approval must not be described to HR as an unfinished shift. Accepting an employee's explanation does not supply evidence for calculating absence or lateness.
+
+**How to apply:** Preserve unknown classifications and unavailable minutes when accepting an undocumented historical explanation. Rejection retains the original deficiency. Do not remove the protection against excusing future problems in a genuinely unfinished period.
+
+Do not put approval queues and report builders below the daily attendance monitor.
+
+**Why:** The owner requires a simple operational monitor, a discoverable attendance “Approvals” child item, and one reports center rather than duplicated hidden controls.
+
+**How to apply:** Keep decisions with their reasons and evidence in approvals; keep exports and raw record review in reports. Moving controls must retain punch editing/exclusion and old deep-link access.
+
 Departments may only be deleted after all employees have been moved out, including inactive employees.
 
 **Why:** The owner explicitly made removing employees from a department a prerequisite for deletion; employment history must not be orphaned.

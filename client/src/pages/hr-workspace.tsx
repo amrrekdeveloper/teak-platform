@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { Route, Switch, useLocation } from "wouter";
+import { Route, Switch, useLocation, useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import EmployeesPage from "@/pages/employees";
 import EmployeeDetailPage from "@/pages/employee-detail";
 import AttendanceMonitorPage from "@/pages/attendance-monitor";
+import AttendanceApprovalsPage from "@/pages/attendance-approvals";
 import AttendanceSettingsPage from "@/pages/attendance-settings";
 import LeavesPage from "@/pages/leaves";
 import HrReportsPage from "@/pages/hr-reports";
@@ -250,9 +251,14 @@ function HrLayout() {
           {(["people", "requests", "operations"] as const).map(group => <div key={group} className="hr-nav-group">
             <div className="hr-nav-group-label">{group === "people" ? t("الفريق والحضور", "People & attendance") : group === "requests" ? t("الطلبات", "Requests") : t("الإدارة", "Operations")}</div>
             {navItems.filter(item => item.group === group).map(({ href, key, icon: Icon }) => (
-              <button key={key} type="button" className={`hr-nav-link ${active?.key === key ? "is-active" : ""}`} onClick={() => { setLocation(href); setMenuOpen(false); }}>
+              <div key={key}>
+              <button type="button" className={`hr-nav-link ${active?.key === key ? "is-active" : ""}`} onClick={() => { setLocation(href); setMenuOpen(false); }}>
                 <Icon size={18} strokeWidth={1.8} /><span>{navLabel(key)}</span>{active?.key === key && <ChevronLeft size={15} className={`hr-nav-chevron ${isRTL ? "" : "rotate-180"}`} />}
               </button>
+              {key === "attendance-monitor" && <button type="button" className={`hr-nav-link hr-nav-subitem ${currentPath === "/attendance-monitor/approvals" ? "is-active" : ""}`} aria-current={currentPath === "/attendance-monitor/approvals" ? "page" : undefined} onClick={() => { setLocation("/attendance-monitor/approvals"); setMenuOpen(false); }}>
+                <ClipboardCheck size={17} strokeWidth={1.8} /><span>{t("الموافقات", "Approvals")}</span>{currentPath === "/attendance-monitor/approvals" && <ChevronLeft size={15} className={`hr-nav-chevron ${isRTL ? "" : "rotate-180"}`} />}
+              </button>}
+              </div>
             ))}
           </div>)}
         </nav>
@@ -279,11 +285,13 @@ function HrLayout() {
             <Route path="/"><RedirectToEmployees /></Route>
             <Route path="/employees/:id" component={EmployeeDetailPage} />
             <Route path="/employees" component={EmployeesPage} />
-            <Route path="/attendance-monitor" component={AttendanceMonitorPage} />
+            <Route path="/attendance-monitor/approvals" component={AttendanceApprovalsPage} />
+            <Route path="/attendance-monitor" component={HrAttendanceMonitorRoute} />
             <Route path="/attendance-settings" component={AttendanceSettingsPage} />
             <Route path="/leaves"><LeavesPage /></Route>
              <Route path="/alerts" component={HrAlertsPage} />
             <Route path="/permissions">{() => <LeavesPage section="permissions" />}</Route>
+            <Route path="/reports/attendance-records">{() => <AttendanceMonitorPage recordsOnly />}</Route>
             <Route path="/reports" component={HrReportsPage} />
             <Route path="/access" component={HrAccessManagementPage} />
             <Route path="/actions" component={HrActionsPage} />
@@ -302,6 +310,16 @@ function RedirectToEmployees() {
   const [, setLocation] = useLocation();
   useEffect(() => { setLocation("/employees"); }, [setLocation]);
   return <WorkspaceLoading />;
+}
+
+function HrAttendanceMonitorRoute() {
+  const search = useSearch();
+  const [, setLocation] = useLocation();
+  const legacyRecords = new URLSearchParams(search).get("tab") === "records";
+  useEffect(() => {
+    if (legacyRecords) setLocation("/reports/attendance-records");
+  }, [legacyRecords, setLocation]);
+  return legacyRecords ? <WorkspaceLoading /> : <AttendanceMonitorPage />;
 }
 
 function HrLoginRoute() {
@@ -349,6 +367,8 @@ export default function HrWorkspace() {
         .hr-nav-link:hover { background:#f6f0e9;color:var(--hr-red); }
         .hr-nav-link.is-active { background:var(--hr-red);color:#fff;box-shadow:0 5px 12px #9e0a0a1c; }
         .hr-nav-link span { flex:1; }
+         .hr-nav-subitem { min-height:40px;padding-inline-start:42px;font-size:14px; }
+         .hr-nav-subitem:not(.is-active) { color:var(--hr-muted); }
         .hr-nav-chevron { opacity:.75; }
         .hr-sidebar-bottom { margin-top:auto; }
         .hr-user-summary { display:flex;align-items:center;gap:10px;padding:15px 8px;border-top:1px solid var(--hr-line); }

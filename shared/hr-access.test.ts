@@ -1,5 +1,22 @@
 import { describe, it, expect } from "vitest";
-import { isHrWorkspaceApi, isHrWorkspaceIdentity, isManagerApi, isSystemAdminApi } from "./hr-access";
+import { isHrWorkspaceApi, isHrWorkspacePage, isHrWorkspaceIdentity, isManagerApi, isSystemAdminApi } from "./hr-access";
+describe("attendance approvals stay within the narrow HR maintenance scope",()=>{
+  it("allows list/review GETs without granting mutation or other workspaces access",()=>{
+    for(const path of ["/api/attendance/approvals","/api/attendance/corrections/12/review"]){
+      expect(isHrWorkspaceApi("GET",path)).toBe(true);
+      expect(isHrWorkspaceApi("DELETE",path)).toBe(false);
+      expect(isManagerApi("GET",path)).toBe(false);
+      expect(isSystemAdminApi("GET",path)).toBe(false);
+    }
+    expect(isHrWorkspaceApi("POST","/api/attendance/approvals")).toBe(false);
+  });
+  it("allows direct refresh of the two new pages without opening arbitrary HR subroutes",()=>{
+    expect(isHrWorkspacePage("/hr/attendance-monitor/approvals")).toBe(true);
+    expect(isHrWorkspacePage("/hr/reports/attendance-records")).toBe(true);
+    expect(isHrWorkspacePage("/hr/reports/finance")).toBe(false);
+    expect(isHrWorkspacePage("/hr/attendance-monitor/unrelated")).toBe(false);
+  });
+});
 describe("maintenance domain scope", () => {
   it("allows HR onboarding and preparation, not unrelated administration", () => {
     expect(isHrWorkspaceApi("POST", "/api/employees")).toBe(true);

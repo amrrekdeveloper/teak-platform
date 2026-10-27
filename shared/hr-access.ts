@@ -1,6 +1,6 @@
 // Narrow maintenance workspace. These are HR modules, not a grant of ERP access.
 export const HR_WORKSPACE_PERMISSIONS = [
-  "/employees", "/attendance-monitor", "/attendance-settings", "/leaves", "/permissions", "/reports", "/access", "/actions", "/alerts", "/payroll", "/advances", "/evaluations",
+  "/employees", "/attendance-monitor", "/attendance-monitor/approvals", "/attendance-settings", "/leaves", "/permissions", "/reports", "/access", "/actions", "/alerts", "/payroll", "/advances", "/evaluations",
 ];
 
 const rules: [string[], RegExp][] = [
@@ -17,7 +17,8 @@ const rules: [string[], RegExp][] = [
   [["GET"], /^\/api\/attendance\/events$/],
   [["GET","POST"], /^\/api\/hr\/departments$/],
   [["DELETE"], /^\/api\/hr\/departments\/\d+$/],
-  [["GET"], /^\/api\/attendance\/corrections(?:\/\d+\/attachment)?$/],
+  [["GET"], /^\/api\/attendance\/approvals$/],
+  [["GET"], /^\/api\/attendance\/corrections(?:\/\d+\/(?:attachment|review))?$/],
   [["POST"], /^\/api\/attendance\/corrections\/\d+\/decision$/],
   [["GET"], /^\/uploads\/hr-documents\/[a-zA-Z0-9._-]+$/],
   [["POST"], /^\/api\/hr-access\/login$/],
@@ -66,7 +67,7 @@ export function isHrWorkspaceApi(method: string, path: string) {
   return rules.some(([methods, pattern]) => methods.includes(method) && pattern.test(path));
 }
 export function isHrWorkspacePage(path: string) {
-  return /^\/hr(?:\/(?:login|employees(?:\/\d+)?|attendance-monitor|attendance-settings|leaves|permissions|reports|access|actions|alerts|payroll|advances|evaluations))?\/?$/.test(path);
+  return /^\/hr(?:\/(?:login|employees(?:\/\d+)?|attendance-monitor(?:\/approvals)?|attendance-settings|leaves|permissions|reports(?:\/attendance-records)?|access|actions|alerts|payroll|advances|evaluations))?\/?$/.test(path);
 }
 
 export function isManagerApi(method: string, path: string) {

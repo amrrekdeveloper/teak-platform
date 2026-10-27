@@ -67,6 +67,7 @@ export const PERMISSION_MODULES: PermissionModule[] = [
   { key: "/leaves", titleAr: "الإجازات", titleEn: "Leaves", group: "hr", roles: ["owner", "assistant", "hr"] },
   { key: "/evaluations", titleAr: "تقييم الأداء", titleEn: "Evaluations", group: "hr", roles: ["owner", "assistant", "hr"] },
   { key: "/attendance-monitor", titleAr: "مراقبة الدوام", titleEn: "Attendance Monitor", group: "hr", roles: ["owner", "it"] },
+  { key: "/attendance-monitor/approvals", titleAr: "موافقات الحضور والانصراف", titleEn: "Attendance Approvals", group: "hr", roles: ["owner", "hr"] },
   { key: "/settings", titleAr: "الإعدادات", titleEn: "Settings", group: "admin", roles: ["owner", "it"] },
   { key: "/my-profile", titleAr: "ملفي الشخصي", titleEn: "My Profile", group: "admin", roles: ["owner", "assistant", "sales", "designer", "production", "purchasing", "warehouse", "accountant", "customer_service", "delivery", "installation", "quality", "hr", "it"], base: true },
 ];

@@ -4,6 +4,7 @@ import { Link } from "wouter";
 import type { Employee } from "@shared/schema";
 import { HR_STATUS_LABELS, HR_WORKFLOWS } from "@shared/hr-workflows";
 import { useLanguage } from "@/components/language-provider";
+import { AttendancePeriodReport } from "@/components/attendance-period-report";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -92,6 +93,12 @@ export default function HrReportsPage() {
     const name = `${employee.fullNameAr || ""} ${employee.fullNameEn || ""} ${employee.employeeNumber || ""}`.toLocaleLowerCase();
     return name.includes(employeeSearch.toLocaleLowerCase());
   }), [employees, employeeSearch]);
+  const attendanceEmployees = useMemo(() => employees.map(employee => ({
+    id: employee.id,
+    employeeNumber: employee.employeeNumber,
+    nameAr: employee.fullNameAr || "",
+    nameEn: employee.fullNameEn,
+  })), [employees]);
   const span = dateSpan(from, to);
   const valid = !!span && span > 0 && span <= 366 && (employeeId === "all" || /^[1-9]\d*$/.test(employeeId));
   const queryKey = ["/api/hr/reports", type, from, to, employeeId, status];
@@ -167,6 +174,7 @@ export default function HrReportsPage() {
   return <div className="space-y-5">
     <header><div className="mb-1 flex items-center gap-2 text-xs text-muted-foreground"><TableProperties className="h-4 w-4" />{t("مركز التقارير", "Reports center")}</div>
       <h1 className="text-2xl font-bold">{t("التقارير", "Reports")}</h1><p className="mt-1 text-sm text-muted-foreground">{t("اختر نطاقاً واضحاً ثم اعرض أو صدّر البيانات.", "Choose a clear date range, then view or export the data.")}</p></header>
+    <AttendancePeriodReport employees={attendanceEmployees} />
     <Card><CardHeader className="pb-3"><CardTitle className="text-base">{t("إعداد التقرير", "Report setup")}</CardTitle></CardHeader>
       <CardContent className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <div className="space-y-1"><Label>{t("نوع التقرير", "Report type")}</Label><Select value={type} onValueChange={value => { setType(value as ReportType); setStatus(""); }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{REPORT_TYPES.map(item => <SelectItem key={item.key} value={item.key}>{t(item.ar, item.en)}</SelectItem>)}</SelectContent></Select></div>
@@ -197,7 +205,7 @@ export default function HrReportsPage() {
       : t("لتقرير الرواتب، اختر شهراً كاملاً من أول يوم إلى آخر يوم.", "For payroll reports, select complete calendar months from the first through the last day.")}</p>}
     <Card>
       <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 pb-3"><div><CardTitle className="text-base">{reportLabel && t(reportLabel.ar, reportLabel.en)}</CardTitle><p className="mt-1 text-sm text-muted-foreground">{from} — {to}{data ? ` · ${data.rows.length.toLocaleString()} ${t("صف", "rows")}` : ""}</p></div>
-        <Link href="/attendance-monitor?tab=records" className="text-sm underline underline-offset-4">{t("سجلات الحضور", "Attendance records")}</Link>
+        <Link href="/reports/attendance-records" className="text-sm underline underline-offset-4">{t("سجلات الحضور التفصيلية", "Detailed attendance records")}</Link>
       </CardHeader>
       <CardContent className="p-0">
         {isLoading || isFetching ? <div className="space-y-3 p-4" aria-label={t("جارٍ التحميل", "Loading")}><div className="h-8 animate-pulse rounded bg-muted" /><div className="h-16 animate-pulse rounded bg-muted" /><div className="h-16 animate-pulse rounded bg-muted" /></div>

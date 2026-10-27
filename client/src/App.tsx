@@ -64,6 +64,7 @@ import MyMapPage from "@/pages/my-map";
 import SalesMapPage from "@/pages/sales-map";
 import AttendancePage from "@/pages/attendance";
 import AttendanceMonitorPage from "@/pages/attendance-monitor";
+import AttendanceApprovalsPage from "@/pages/attendance-approvals";
 import FinanceLoginPage from "@/pages/finance-login";
 import FinanceAccountsPage from "@/pages/finance-accounts";
 import FinanceLedgerPage from "@/pages/finance-ledger";
@@ -164,7 +165,7 @@ function KitchenToolV2Studio() {
 
 import teakLogo from "@assets/TEAK-LOGO_(1)_(1)_1772710617816.png";
 import FloatingContact from "@/components/floating-contact";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 
 function GuardedMyMapPage() {
   const { user: authUser } = useAuth();
@@ -287,6 +288,16 @@ function PermissionGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function LegacyOwnerAttendanceMonitor() {
+  const search = useSearch();
+  const [, setLocation] = useLocation();
+  const recordsTab = new URLSearchParams(search).get("tab") === "records";
+  useEffect(() => {
+    if (recordsTab) setLocation("/attendance-monitor/records");
+  }, [recordsTab, setLocation]);
+  return recordsTab ? <div className="mx-auto max-w-4xl p-6"><div className="h-8 w-52 animate-pulse rounded bg-muted" /><div className="mt-4 h-40 animate-pulse rounded-xl bg-muted" /></div> : <AttendanceMonitorPage />;
+}
+
 function DashboardRoutes() {
   return (
     <AppLayout>
@@ -348,7 +359,9 @@ function DashboardRoutes() {
         <Route path="/sales-performance" component={SalesPerformancePage} />
         <Route path="/my-map" component={GuardedMyMapPage} />
         <Route path="/sales-map" component={GuardedSalesMapPage} />
-        <Route path="/attendance-monitor" component={AttendanceMonitorPage} />
+        <Route path="/attendance-monitor/approvals" component={AttendanceApprovalsPage} />
+        <Route path="/attendance-monitor/records">{() => <AttendanceMonitorPage recordsOnly recordsBackHref="/attendance-monitor" />}</Route>
+        <Route path="/attendance-monitor" component={LegacyOwnerAttendanceMonitor} />
         <Route path="/settings/users" component={GuardedSettingsUsersPage} />
         <Route path="/settings/products" component={SettingsProductsPage} />
         <Route path="/settings">{() => <SettingsPage />}</Route>

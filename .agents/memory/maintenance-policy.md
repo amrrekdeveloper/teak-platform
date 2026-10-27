@@ -26,3 +26,9 @@ Maintenance must remain compatible with Replit's root-path deployment health che
 **Why:** Replit checks `/` when publishing; rejecting every request as unavailable can interfere with deployment health.
 
 **How to apply:** Keep the root page healthy while returning only maintenance content, and block protected APIs separately. Do not interpret the healthy root response as permission to bypass maintenance.
+
+Verify new HR pages and APIs through the real maintenance gate, including direct refresh of nested pages, not only an isolated route handler.
+
+**Why:** A new authenticated HR route can pass its isolated integration tests while the live application's maintenance allowlist rejects it with 503 before its handler runs.
+
+**How to apply:** Add only the exact required HTML paths and HTTP-method/API patterns to the existing HR scope. Cover both permitted requests and denied neighboring/manager/system-admin routes; never solve this by reopening the general platform.
