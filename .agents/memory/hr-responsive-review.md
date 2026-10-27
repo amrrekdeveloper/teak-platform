@@ -14,3 +14,9 @@ Verify Arabic RTL visually as well as English LTR. A normal document width does 
 **Why:** Cross-axis overflow can create a second vertical body scroll container; this produced RTL-only right-edge clipping despite normal document/body width metrics and an acceptable LTR screenshot.
 
 **How to apply:** Check actual scroll ancestors and overflow behavior when a mobile edge is cut. Prefer one page scroll surface; reserve local scroll surfaces for deliberate wide tables and bounded dialogs, not generic clipping wrappers.
+
+HR day/night modes must share a coherent palette across the custom shell, shared controls, and portaled dialogs/menus. Do not keep a fixed ivory shell while honoring dark mode only inside its cards.
+
+**Why:** The inherited device theme produced black forms inside a light workspace and unreadable labels. The owner explicitly requested selectable, remembered day/night modes and standard accessible colors.
+
+**How to apply:** Check actual inherited values, not just palette definitions: a child defining its own fixed colors can defeat root theme tokens. Verify normal core text at 4.5:1 and interactive boundaries at 3:1 in both modes; preserve keyboard date entry alongside native picker behavior.

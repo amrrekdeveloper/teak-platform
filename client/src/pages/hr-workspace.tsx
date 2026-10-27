@@ -20,6 +20,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LanguageToggle, useLanguage } from "@/components/language-provider";
+import HrThemeToggle from "@/components/hr-theme-toggle";
+import "@/styles/hr-theme.css";
 import {
   ArrowLeft, CalendarDays, ChevronLeft, CircleDollarSign, Eye, EyeOff, BriefcaseBusiness,
   ClipboardCheck, Clock3, DoorOpen, LoaderCircle, LockKeyhole, Menu,
@@ -119,7 +121,7 @@ function HrLogin({ sessionUser }: { sessionUser: HrUser | null }) {
     <main className="hr-login-page" dir={isRTL ? "rtl" : "ltr"}>
       <div className="hr-login-frame">
         <section className="hr-login-copy">
-          <div className="hr-wordmark"><img src="/__maintenance/logo.png" alt="TEAK" /><span>{t("إدارة الموارد البشرية", "Human Resources")}</span><LanguageToggle /></div>
+          <div className="hr-wordmark"><img src="/__maintenance/logo.png" alt="TEAK" /><span>{t("إدارة الموارد البشرية", "Human Resources")}</span><HrThemeToggle /><LanguageToggle /></div>
           <div className="hr-login-title">
             <span className="hr-kicker">{t("مساحة الموارد البشرية", "HR workspace")}</span>
             <h1>{t("تسجيل الدخول", "Sign in")}</h1>
@@ -233,6 +235,7 @@ function HrLayout() {
         </button>
          <div className="hr-mobile-brand"><img src="/__maintenance/logo.png" alt="TEAK" /><span>{t("تيك", "TEAK")}</span></div>
          <button type="button" className="hr-alert-bell" aria-label={t("فتح التنبيهات", "Open alerts")} onClick={() => setLocation("/alerts")}><Bell size={19} />{(alertSnapshot?.items || []).filter(item => item.severity === "critical" && !item.readAt).length > 0 && <span>{Math.min(99, (alertSnapshot?.items || []).filter(item => item.severity === "critical" && !item.readAt).length)}</span>}</button>
+         <HrThemeToggle compact />
         <LanguageToggle testId="button-hr-mobile-language" />
         <span className="hr-avatar">{(hrUser.fullNameAr || hrUser.username || "HR").slice(0, 1)}</span>
       </header>
@@ -267,6 +270,7 @@ function HrLayout() {
           <div className="hr-topbar-actions">
              <button type="button" className="hr-alert-bell" aria-label={t("فتح التنبيهات", "Open alerts")} onClick={() => setLocation("/alerts")}><Bell size={18} />{(alertSnapshot?.items || []).filter(item => item.severity === "critical" && !item.readAt).length > 0 && <span>{Math.min(99, (alertSnapshot?.items || []).filter(item => item.severity === "critical" && !item.readAt).length)}</span>}</button>
             <div className="hr-topbar-state"><span className="hr-topbar-dot" /> {t("مساحة الموارد البشرية", "HR workspace")}</div>
+             <HrThemeToggle />
             <LanguageToggle testId="button-hr-desktop-language" />
           </div>
         </header>
@@ -320,7 +324,7 @@ export default function HrWorkspace() {
       <style>{`
         html.teak-hr-surface { overflow-x:clip; }
         html.teak-hr-surface body { overflow-x:clip;overflow-y:visible;min-width:0;max-width:100%; }
-        .hr-workspace, .hr-login-page { --hr-red:#9e0a0a; --hr-red-deep:#780808; --hr-paper:#f6f2ea; --hr-ivory:#fffdf8; --hr-ink:#382a27; --hr-muted:#786c64; --hr-line:#e7ded3; --hr-soft:#f1ebe2; color:var(--hr-ink); font-family:"Zain",Tahoma,sans-serif; }
+        .hr-workspace, .hr-login-page { color:var(--hr-ink); font-family:"Zain",Tahoma,sans-serif; }
         .hr-workspace { min-height:100dvh; width:100%;max-width:100%;overflow-x:clip;display:flex; background:var(--hr-paper); }
         @media(max-width:767px) {
           .hr-workspace table.hr-responsive,.hr-workspace .hr-responsive tbody { display:block;width:100%;min-width:0; }

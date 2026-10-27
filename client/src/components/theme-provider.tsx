@@ -15,9 +15,11 @@ const ThemeContext = createContext<ThemeContextType>({
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setTheme] = useState<Theme>(() => {
     if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("teak-theme") as Theme;
-      if (saved) return saved;
-      return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      try {
+        const saved = localStorage.getItem("teak-theme");
+        if (saved === "light" || saved === "dark") return saved;
+      } catch { /* Browser privacy settings may disallow preference storage. */ }
+      return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
     }
     return "light";
   });
@@ -26,7 +28,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     const root = document.documentElement;
     root.classList.remove("light", "dark");
     root.classList.add(theme);
-    localStorage.setItem("teak-theme", theme);
+    root.style.colorScheme = theme;
+    try {
+      localStorage.setItem("teak-theme", theme);
+    } catch { /* Keep theme selection usable for the current page session. */ }
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) {
       meta.setAttribute("content", theme === "dark" ? "#121212" : "#ffffff");

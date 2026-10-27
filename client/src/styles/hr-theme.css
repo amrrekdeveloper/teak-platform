@@ -1,0 +1,257 @@
+/*
+ * TEAK HR has its own surface system so a system-level dark preference never
+ * mixes dark shadcn portals with the ivory workspace (or vice versa).
+ */
+html.teak-hr-surface.light {
+  color-scheme: light;
+  --background: 42 43% 96%;
+  --foreground: 17 22% 17%;
+  --border: 30 18% 50%;
+  --card: 42 50% 99%;
+  --card-foreground: 17 22% 17%;
+  --card-border: 30 18% 50%;
+  --sidebar: 42 50% 99%;
+  --sidebar-foreground: 17 22% 17%;
+  --sidebar-border: 30 18% 50%;
+  --sidebar-primary: 2 88% 33%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 36 38% 91%;
+  --sidebar-accent-foreground: 17 22% 17%;
+  --sidebar-ring: 2 88% 33%;
+  --popover: 42 50% 99%;
+  --popover-foreground: 17 22% 17%;
+  --popover-border: 30 18% 50%;
+  --primary: 2 88% 33%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 36 38% 91%;
+  --secondary-foreground: 17 22% 17%;
+  --muted: 36 28% 92%;
+  --muted-foreground: 20 12% 37%;
+  --accent: 36 38% 91%;
+  --accent-foreground: 17 22% 17%;
+  --destructive: 3 70% 38%;
+  --destructive-foreground: 0 0% 100%;
+  --input: 30 18% 50%;
+  --ring: 2 88% 33%;
+  --chart-1: 2 72% 38%;
+  --chart-2: 145 34% 34%;
+  --chart-3: 33 61% 40%;
+  --chart-4: 215 38% 40%;
+  --chart-5: 278 27% 44%;
+  --button-outline: rgba(45, 28, 23, .16);
+  --badge-outline: rgba(45, 28, 23, .12);
+  --elevate-1: rgba(45, 28, 23, .035);
+  --elevate-2: rgba(45, 28, 23, .075);
+}
+
+html.teak-hr-surface.dark {
+  color-scheme: dark;
+  --background: 24 12% 13%;
+  --foreground: 36 35% 91%;
+  --border: 25 12% 48%;
+  --card: 25 13% 18%;
+  --card-foreground: 36 35% 91%;
+  --card-border: 25 12% 48%;
+  --sidebar: 25 13% 18%;
+  --sidebar-foreground: 36 35% 91%;
+  --sidebar-border: 25 12% 48%;
+  --sidebar-primary: 5 68% 67%;
+  --sidebar-primary-foreground: 20 24% 13%;
+  --sidebar-accent: 25 12% 25%;
+  --sidebar-accent-foreground: 36 35% 91%;
+  --sidebar-ring: 5 68% 67%;
+  --popover: 25 13% 20%;
+  --popover-foreground: 36 35% 91%;
+  --popover-border: 25 12% 48%;
+  --primary: 5 68% 67%;
+  --primary-foreground: 20 24% 13%;
+  --secondary: 25 12% 27%;
+  --secondary-foreground: 36 35% 91%;
+  --muted: 25 12% 25%;
+  --muted-foreground: 34 20% 76%;
+  --accent: 25 12% 27%;
+  --accent-foreground: 36 35% 91%;
+  --destructive: 4 64% 64%;
+  --destructive-foreground: 20 24% 13%;
+  --input: 25 12% 48%;
+  --ring: 5 68% 67%;
+  --chart-1: 5 68% 67%;
+  --chart-2: 145 43% 62%;
+  --chart-3: 35 75% 67%;
+  --chart-4: 210 67% 72%;
+  --chart-5: 278 45% 74%;
+  --button-outline: rgba(255, 239, 222, .20);
+  --badge-outline: rgba(255, 239, 222, .15);
+  --elevate-1: rgba(255, 239, 222, .045);
+  --elevate-2: rgba(255, 239, 222, .09);
+}
+
+html.teak-hr-surface {
+  --hr-red: #9e0a0a;
+  --hr-red-deep: #780808;
+  --hr-paper: #f6f2ea;
+  --hr-ivory: #fffdf8;
+  --hr-ink: #382a27;
+  --hr-muted: #625650;
+  --hr-line: #95816d;
+  --hr-soft: #f1ebe2;
+}
+
+html.teak-hr-surface.dark {
+  --hr-red: #9e0a0a;
+  --hr-red-deep: #780808;
+  --hr-paper: #25211e;
+  --hr-ivory: #302a26;
+  --hr-ink: #f2e9df;
+  --hr-muted: #c9bbae;
+  --hr-line: #89786c;
+  --hr-soft: #3a322d;
+}
+
+html.teak-hr-surface body {
+  color: hsl(var(--foreground));
+  background: hsl(var(--background));
+}
+
+/* Portaled dialogs, calendars, select menus and popovers inherit the HR tokens. */
+html.teak-hr-surface :where(
+  [data-radix-popper-content-wrapper],
+  [role="dialog"],
+  [role="alertdialog"],
+  [role="listbox"],
+  [data-radix-menu-content],
+  [data-radix-select-content],
+  [data-radix-popover-content]
+) {
+  color: hsl(var(--foreground));
+}
+
+html.teak-hr-surface :where(.bg-background, [data-radix-dialog-content]) {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
+
+html.teak-hr-surface :where(.bg-card, .bg-popover) {
+  background-color: hsl(var(--card));
+  color: hsl(var(--card-foreground));
+}
+
+html.teak-hr-surface :where(.text-foreground) { color: hsl(var(--foreground)); }
+html.teak-hr-surface :where(.text-muted-foreground) { color: hsl(var(--muted-foreground)); }
+html.teak-hr-surface.dark :where(.text-destructive) { color: #ffb4ab; }
+html.teak-hr-surface :where(.border-border, .border-input) { border-color: hsl(var(--border)); }
+html.teak-hr-surface :where(input, textarea, select) { color-scheme: inherit; }
+
+.hr-theme-toggle {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  padding: 0 11px;
+  border: 1px solid var(--hr-line);
+  border-radius: 9px;
+  background: var(--hr-ivory);
+  color: var(--hr-ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color .16s ease, border-color .16s ease, color .16s ease;
+}
+
+.hr-theme-toggle:hover { border-color: var(--hr-red); color: var(--hr-red); }
+.hr-theme-toggle:focus-visible { outline: 3px solid var(--hr-red); outline-offset: 2px; }
+.hr-theme-toggle.is-compact { width: 36px; min-height: 36px; padding: 0; }
+.hr-theme-toggle:disabled { opacity: .7; cursor: not-allowed; }
+
+/* Contrast corrections for text that was previously fixed to pale beige. */
+.hr-side-label, .hr-nav-group-label { color: var(--hr-muted) !important; }
+.hr-nav-link:not(.is-active) { color: var(--hr-ink); }
+html.teak-hr-surface .hr-breadcrumb-root,
+html.teak-hr-surface .hr-breadcrumb-slash { color: var(--hr-muted); }
+html.teak-hr-surface .hr-field label,
+html.teak-hr-surface .hr-remember label { color: var(--hr-ink); }
+html.teak-hr-surface .hr-login-footnote { color: var(--hr-muted); }
+.hr-aside-top, .hr-aside-bottom { color: #fff0e8 !important; }
+.hr-art-index { color: #fff0e8 !important; }
+html.teak-hr-surface .hr-login-frame { border-color: var(--hr-line); }
+html.teak-hr-surface .hr-field input {
+  color: var(--hr-ink);
+  background: var(--hr-ivory);
+  border-color: var(--hr-line);
+}
+html.teak-hr-surface .hr-field input::placeholder { color: var(--hr-muted); opacity: 1; }
+html.teak-hr-surface .hr-field input:disabled { color: var(--hr-muted); opacity: 1; }
+html.teak-hr-surface .hr-logout { color: var(--hr-ink); }
+html.teak-hr-surface .hr-loading-mark,
+html.teak-hr-surface .hr-loading-lines i {
+  background: linear-gradient(90deg, var(--hr-soft) 25%, var(--hr-ivory) 50%, var(--hr-soft) 75%);
+  background-size: 200% 100%;
+}
+
+html.teak-hr-surface.dark .hr-workspace,
+html.teak-hr-surface.dark .hr-login-page { color: var(--hr-ink); }
+html.teak-hr-surface.dark .hr-topbar { background: var(--hr-ivory); }
+html.teak-hr-surface.dark .hr-nav-link:hover { background: var(--hr-soft); color: #ffaaa3; }
+html.teak-hr-surface.dark .hr-nav-link.is-active { background: var(--hr-red); color: #fff; }
+html.teak-hr-surface.dark .hr-nav-link.is-active { box-shadow: inset 0 0 0 1px #e47b72; }
+html.teak-hr-surface.dark .hr-theme-toggle:hover { color: #ffd2cb; border-color: #e47b72; }
+html.teak-hr-surface .hr-workspace [role="tab"][data-state="active"] { box-shadow: inset 0 -2px 0 hsl(var(--primary)); }
+html.teak-hr-surface.dark .hr-wordmark,
+html.teak-hr-surface.dark .hr-kicker,
+html.teak-hr-surface.dark .hr-mobile-brand { color: #ffaaa3; }
+html.teak-hr-surface.dark .hr-avatar { background: #4a3933; color: #ffaaa3; }
+html.teak-hr-surface.dark .hr-logout:hover:not(:disabled) {
+  color: #ffaaa3;
+  border-color: #a75f58;
+  background: #3b2d29;
+}
+html.teak-hr-surface.dark .hr-alert-bell { background: var(--hr-ivory); color: var(--hr-ink); }
+html.teak-hr-surface.dark .hr-alert-bell:hover,
+html.teak-hr-surface.dark .hr-password-toggle { color: #e47b72; }
+html.teak-hr-surface.dark .hr-session-error { color: #ffaaa3; }
+html.teak-hr-surface.dark .hr-icon-button:focus-visible,
+html.teak-hr-surface.dark .hr-nav-link:focus-visible,
+html.teak-hr-surface.dark .hr-logout:focus-visible,
+html.teak-hr-surface.dark .hr-alert-bell:focus-visible,
+html.teak-hr-surface.dark .hr-theme-toggle:focus-visible,
+html.teak-hr-surface.dark .hr-password-toggle:focus-visible {
+  outline-color: #e47b72;
+}
+html.teak-hr-surface.dark .hr-field input:focus-visible {
+  border-color: #e47b72;
+  box-shadow: 0 0 0 2px rgba(228, 123, 114, .34);
+}
+html.teak-hr-surface.dark .hr-login-error {
+  border-color: #9f5a52;
+  background: #452b28;
+  color: #ffd2cb;
+}
+html.teak-hr-surface.dark .hr-mobile-scrim { background: rgba(12, 9, 8, .74); }
+html.teak-hr-surface.dark .hr-sidebar { box-shadow: -12px 0 30px rgba(0, 0, 0, .22); }
+html.teak-hr-surface.dark .hr-aside-caption span { color: #ffe2d8; }
+
+@media (max-width: 767px) {
+  html.teak-hr-surface .hr-wordmark { flex-wrap: wrap; }
+  html.teak-hr-surface .hr-mobile-header { gap: 5px; padding-inline: 8px; }
+  html.teak-hr-surface .hr-mobile-header .hr-theme-toggle { min-height: 34px; }
+  html.teak-hr-surface .hr-mobile-header .hr-theme-toggle.is-compact { width: 34px; }
+  html.teak-hr-surface .hr-mobile-brand { gap: 4px; }
+  html.teak-hr-surface .hr-mobile-brand img { width: 38px; }
+}
+
+@media (max-width: 390px) {
+  html.teak-hr-surface .hr-mobile-header .hr-avatar { display: none; }
+  html.teak-hr-surface .hr-mobile-brand span { display: none; }
+  html.teak-hr-surface .hr-mobile-brand img { width: 38px; }
+  html.teak-hr-surface .hr-wordmark { gap: 7px; }
+  html.teak-hr-surface .hr-wordmark img { width: 48px; }
+  html.teak-hr-surface .hr-theme-toggle:not(.is-compact) { padding-inline: 8px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hr-theme-toggle { transition: none; }
+}
