@@ -227,13 +227,15 @@ export function registerAttendanceSupport(app: Express, authorize: RequestHandle
     if (!validDate(from) || !validDate(to) || from > to || Date.parse(to) - Date.parse(from) > 366 * 86400000)
       return res.status(400).json({ message: "اختر فترة صحيحة لا تتجاوز سنة." });
     try {
-      const employees = (await storage.getEmployees()).filter(e => e.attendanceEnabled && e.status === "active");
-      const zones=await storage.getLocationZones();
+      const [allEmployees,zones,settings,policies]=await Promise.all([
+        storage.getEmployees(),storage.getLocationZones(),attendanceSchedules(),weekPolicies(),
+      ]);
+      const employees=allEmployees.filter(e=>e.attendanceEnabled&&e.status==="active"),now=new Date();
       const rows = [];
       const warnings: string[] = [];
       for(let offset=0;offset<employees.length;offset+=4) {
         const group=employees.slice(offset,offset+4);
-        const reports=await Promise.all(group.map(employee=>employeeAttendanceReport(employee.id,from,to)));
+        const reports=await Promise.all(group.map(employee=>employeeAttendanceReport(employee.id,from,to,now,{employee,settings,policies})));
         for(let i=0;i<group.length;i++){
         const employee=group[i],report=reports[i];
         for (const row of report.rows) rows.push({ ...row, employeeId: employee.id,

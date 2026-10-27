@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useLanguage } from "@/components/language-provider";
 import { MedicalDocumentLinks } from "@/components/medical-document-links";
+import { RequestAttachments } from "@/components/request-attachments";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -33,7 +34,8 @@ type DecisionEntry = {
   createdAt: string;
   actorName: string | null;
 };
-type RequestDetailsResponse = { request: RequestRecord; history: DecisionEntry[]; managerName: string | null };
+type RequestDetailsResponse = { request: RequestRecord; history: DecisionEntry[]; managerName: string | null;
+  approvalRoute?:{captured:boolean;managerRequired:boolean;managerComplete:boolean;stage:string} };
 
 const STATUSES: Record<string, { ar: string; en: string }> = {
   pending: { ar: "قيد الانتظار", en: "Pending" },
@@ -83,7 +85,7 @@ const PERMISSION_TYPE_LABELS: Record<string, { ar: string; en: string }> = {
 const recordOf = (value: unknown): Record<string, unknown> =>
   value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 
-export function HrRequestDetails({ kind, requestId, employeeName, onClose }: { kind: RequestKind; requestId: number; employeeName: string; onClose: () => void }) {
+export function HrRequestDetails({ kind, requestId, employeeName, onClose,onDecision }: { kind: RequestKind; requestId: number; employeeName: string; onClose: () => void;onDecision?:(action:"approve"|"reject"|"clarify",stage:string)=>void }) {
   const { t, isRTL } = useLanguage();
   const { data, isLoading, isError, error, refetch } = useQuery<RequestDetailsResponse>({
     queryKey: ["/api/hr/requests", kind, requestId, "history"],
@@ -158,6 +160,21 @@ export function HrRequestDetails({ kind, requestId, employeeName, onClose }: { k
               {typeof request.notes === "string" && request.notes && <div className="min-[380px]:col-span-2"><dt className="text-xs text-muted-foreground">{t("ملاحظات", "Notes")}</dt><dd className="mt-0.5 break-words whitespace-pre-wrap">{request.notes}</dd></div>}
             </dl>
           </section>
+          <section className="rounded-xl border p-3">
+            <h3 className="mb-3 font-semibold">{t("سلسلة الموافقات","Approval route")}</h3>
+            <ol className="space-y-2 text-sm">
+              <li>{t("١. تقديم الموظف — مسجل","1. Employee submission — recorded")}</li>
+              {data.approvalRoute?.managerRequired&&<li>{t("٢. المدير المباشر","2. Direct manager")}{data.managerName?` · ${data.managerName}`:""} — {data.approvalRoute.managerComplete?t("تمت الموافقة","Approved"):stage==="manager"?t("بانتظار القرار","Awaiting decision"):stage==="closed"?t("راجع سجل القرارات","See decision history"):t("المرحلة التالية","Next stage")}</li>}
+              <li>{t("الموارد البشرية — القرار النهائي","HR — final decision")} · {stage==="hr"?t("بانتظار القرار","Awaiting decision"):stage==="closed"?friendlyStatus(request.status):t("بعد مراجعة المدير","After manager review")}</li>
+            </ol>
+            <p className="mt-3 text-xs text-muted-foreground">{data.approvalRoute?.captured?t("المسار محفوظ مع الطلب؛ تغيير الإعدادات لا يغيّر طلبًا جاريًا.","The route is captured with the request; settings changes do not reroute it."):t("طلب سابق؛ يُحافظ على قراراته ومساره السابق دون إعادة تقديمه.","Existing request: its original decisions and route are preserved.")}</p>
+            {onDecision&&stage!=="closed"&&<div className="mt-4 flex flex-wrap gap-2">
+              <Button size="sm" onClick={()=>onDecision("approve",stage||"unknown")}>{t("اعتماد","Approve")}</Button>
+              <Button size="sm" variant="destructive" onClick={()=>onDecision("reject",stage||"unknown")}>{t("رفض","Reject")}</Button>
+              <Button size="sm" variant="outline" onClick={()=>onDecision("clarify",stage||"unknown")}>{t("طلب توضيح","Request clarification")}</Button>
+            </div>}
+          </section>
+          <RequestAttachments kind={kind} id={requestId}/>
           {kind === "leave" && <details className="rounded-xl border p-3">
             <summary className="cursor-pointer font-medium">{t("البيانات المحفوظة مع الطلب", "Captured leave form")}</summary>
             {submittedRows.length ? <dl className="mt-3 grid grid-cols-1 gap-3 text-sm min-[380px]:grid-cols-2">

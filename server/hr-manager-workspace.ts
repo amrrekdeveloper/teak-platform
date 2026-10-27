@@ -3,13 +3,16 @@ import { pool } from "./db";
 import { storage } from "./storage";
 import { HR_WORKFLOWS } from "../shared/hr-workflows";
 import { permissionDocument } from "./hr-permission-document";
+import { effectiveRequestManager,approvalSnapshot } from "./hr-request-routing";
 
 export function registerManagerWorkspace(app: Express, requireAuth: RequestHandler) {
   app.get("/api/hr-permissions/:id/document", requireAuth, async (req,res) => {
     try {
       const permitted = (await pool.query(`SELECT 1 FROM attendance_permissions p
         LEFT JOIN employees e ON e.id=p.employee_id LEFT JOIN employees m ON m.id=e.manager_id
-        JOIN users u ON u.id=$2 WHERE p.id=$1 AND (u.role IN ('owner','assistant','hr') OR m.user_id=u.id)`,
+        JOIN users u ON u.id=$2 WHERE p.id=$1 AND (u.role IN ('owner','assistant','hr') OR
+          CASE WHEN p.form_details ? '_approval' THEN p.form_details->'_approval'->>'managerReview'='true'
+            AND p.form_details->'_approval'->>'managerUserId'=u.id::text ELSE m.user_id=u.id END)`,
         [Number(req.params.id),req.session.userId])).rowCount;
       if (!permitted) return res.status(403).json({message:"غير مصرح"});
       res.type("html").send(await permissionDocument(Number(req.params.id)));
@@ -20,15 +23,28 @@ export function registerManagerWorkspace(app: Express, requireAuth: RequestHandl
       const ids = (await pool.query(`SELECT e.id FROM employees e JOIN employees m ON m.id=e.manager_id
         WHERE m.user_id=$1 AND e.id<>m.id`, [req.session.userId])).rows.map(r => r.id);
       // Do not expose salary, identity documents, or unrelated HR records.
-      const employees = (await storage.getEmployees()).filter(e => ids.includes(e.id))
+      const [allEmployees,allLeaves,allPermissions,allActions]=await Promise.all([
+        storage.getEmployees(),storage.getLeaveRequests(),storage.getAttendancePermissions(),storage.getHrActions(),
+      ]);
+      const assigned=(data:unknown)=>approvalSnapshot(data)?.managerUserId===req.session.userId&&approvalSnapshot(data)?.managerReview;
+      const leaves = allLeaves.filter(r=>ids.includes(r.employeeId)||assigned(r.leaveFormData));
+      const permissions = allPermissions.filter(r=>ids.includes(r.employeeId)||assigned(r.formDetails))
+        .map(r=>({...r,returnDate:r.formDetails?.returnDate||r.date}));
+      const visibleIds=new Set([...ids,...leaves.map(r=>r.employeeId),...permissions.map(r=>r.employeeId)]);
+      const employees = allEmployees.filter(e => visibleIds.has(e.id))
         .map(e => ({ id:e.id, name:e.fullNameAr, number:e.employeeNumber, department:e.department, position:e.position }));
-      const leaves = (await storage.getLeaveRequests()).filter(r => ids.includes(r.employeeId));
-      const permissions = (await storage.getAttendancePermissions()).filter(r => ids.includes(r.employeeId))
-        .map(r=>({...r,returnDate:r.formDetails?.returnDate || r.date}));
-      const actions = (await storage.getHrActions()).filter(a => ids.includes(a.employeeId) &&
+      const actions = allActions.filter(a => ids.includes(a.employeeId) &&
         ["wf04","wf06b","wf10"].includes(a.workflow));
-      const history = (await pool.query(`SELECT * FROM hr_request_history WHERE employee_id=ANY($1::int[]) ORDER BY id DESC`, [ids])).rows;
-      res.json({ employees,leaves,permissions,actions,history });
+      const history = (await pool.query(`SELECT * FROM hr_request_history WHERE employee_id=ANY($1::int[]) ORDER BY id DESC`, [[...visibleIds].filter(Boolean)])).rows
+        .filter(h=>h.kind==="leave"?leaves.some(r=>r.id===h.request_id):h.kind==="permission"?permissions.some(r=>r.id===h.request_id):ids.includes(h.employee_id));
+      const canReview=(data:unknown,employeeId:number|null,status:string,kind:string,id:number)=>{
+        const employee=allEmployees.find(e=>e.id===employeeId),manager=allEmployees.find(e=>e.id===employee?.managerId);
+        const binding=effectiveRequestManager(data,{manager_id:employee?.managerId,manager_user_id:manager?.userId});
+        return binding.manager_user_id===req.session.userId&&["pending","clarification_requested"].includes(status)
+          && !history.some(h=>h.kind===kind&&h.request_id===id&&h.next_status==="manager_approved");
+      };
+      res.json({ employees,leaves:leaves.map(r=>({...r,canReview:canReview(r.leaveFormData,r.employeeId,r.status,"leave",r.id)})),
+        permissions:permissions.map(r=>({...r,canReview:canReview(r.formDetails,r.employeeId,r.status,"permission",r.id)})),actions,history });
     } catch { res.status(500).json({ message:"تعذر تحميل مساحة المدير" }); }
   });
   app.post("/api/manager/warnings", requireAuth, async (req,res) => {

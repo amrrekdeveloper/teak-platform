@@ -21,6 +21,7 @@ vi.mock("./db",()=>({
   })},
 }));
 import { decideHrRequest } from "./hr-workflow-support";
+import { captureRequestRouting } from "./hr-request-routing";
 
 beforeEach(()=>{
   state.row={id:2,employee_id:7,status:"pending"};
@@ -28,6 +29,35 @@ beforeEach(()=>{
   state.role="hr";state.approved=false;state.statements=[];state.status="";state.release.mockClear();
 });
 describe("request decision authorization (mocked database)",()=>{
+  it("uses the explicit HR fallback for unavailable manager accounts and blocks when a valid manager is required",async()=>{
+    let required=false;
+    const client={query:async(sql:string)=>({rows:sql.includes("FROM hr_request_settings")
+      ?[{manager_review:true,require_manager:required,version:3}]
+      :[{id:7,manager_id:10,manager_user_id:12,active:false,archived:false}]})};
+    const captured=await captureRequestRouting("leave",7,{},client as any);
+    expect(captured._approval).toMatchObject({managerEmployeeId:null,managerUserId:null,fallbackReason:"manager_account_unavailable"});
+    required=true;
+    await expect(captureRequestRouting("leave",7,{},client as any)).rejects.toMatchObject({status:409});
+  });
+  it("keeps the captured manager when an employee is reassigned",async()=>{
+    state.employee={manager_id:null,manager_user_id:null};
+    state.row.form_details={_approval:{version:1,managerReview:true,requireManager:false,
+      managerEmployeeId:10,managerUserId:12,capturedAt:"2026-10-27T00:00:00Z"}};
+    await expect(decideHrRequest("permission",2,9,"approve")).rejects.toMatchObject({status:403});
+    await decideHrRequest("permission",2,12,"approve");
+    expect(state.status).toBe("manager_approved");
+  });
+  it("does not add a manager step to an HR-only captured request",async()=>{
+    state.row.form_details={_approval:{version:2,managerReview:false,requireManager:false,
+      managerEmployeeId:null,managerUserId:null,capturedAt:"2026-10-27T00:00:00Z"}};
+    await decideHrRequest("permission",2,9,"approve");
+    expect(state.status).toBe("approved");
+  });
+  it("rejects self-approval without altering the request",async()=>{
+    state.employee={user_id:9,manager_id:null,manager_user_id:null};
+    await expect(decideHrRequest("permission",2,9,"approve")).rejects.toMatchObject({status:403});
+    expect(state.status).toBe("");
+  });
   it("denies HR bypass and rolls back without mutation",async()=>{
     await expect(decideHrRequest("leave",2,9,"approve")).rejects.toMatchObject({status:403});
     expect(state.status).toBe("");

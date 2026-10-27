@@ -14,6 +14,7 @@ import { developmentOtpEnabled } from "./mode";
 import { toLatinDigits } from "../../shared/digits";
 import { registerEmployeeMedicalDocuments } from "./medical-documents";
 import { registerEmployeeCorrections } from "../attendance-corrections";
+import { registerEmployeeRequestAttachments } from "../hr-request-center";
 
 const production = process.env.NODE_ENV === "production";
 export const DEVICE_COOKIE = production ? "__Host-teak-employee" : "teak-employee";
@@ -228,6 +229,7 @@ export function createEmployeePortalRouter() {
     res.json({ success: true });
   }));
   registerEmployeeServices(router);
+  registerEmployeeRequestAttachments(router);
   registerEmployeeCorrections(router);
   registerEmployeeMedicalDocuments(router);
   registerEmployeeAcknowledgments(router);

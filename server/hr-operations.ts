@@ -8,6 +8,7 @@ import { riyadhDateKey } from "../shared/attendance";
 import { HR_WORKSPACE_PERMISSIONS } from "../shared/hr-access";
 import type { InsertLeaveRequest } from "../shared/schema";
 import { registerHrAlerts } from "./hr-alerts";
+import { captureRequestRouting,effectiveRequestManager } from "./hr-request-routing";
 
 export async function createAdministrativeLeave(data: InsertLeaveRequest, userId:number) {
   const client=await pool.connect();
@@ -22,8 +23,9 @@ export async function createAdministrativeLeave(data: InsertLeaveRequest, userId
     if((await client.query(`SELECT id FROM leave_requests WHERE employee_id=$1
       AND status::text NOT IN ('rejected','cancelled') AND start_date<=$3 AND end_date>=$2 LIMIT 1`,
       [data.employeeId,data.startDate,data.endDate])).rowCount) workflowError(409,"يوجد طلب إجازة يتداخل مع الفترة المختارة.");
+    const formData=await captureRequestRouting("leave",data.employeeId,data.leaveFormData,client);
     const {rows:[row]}=await client.query(`INSERT INTO leave_requests(employee_id,leave_type,start_date,end_date,days,reason,status,leave_form_data)
-      VALUES($1,$2,$3,$4,$5,$6,'pending',$7) RETURNING id`,[data.employeeId,data.leaveType,data.startDate,data.endDate,data.days,data.reason||null,JSON.stringify(data.leaveFormData||{})]);
+      VALUES($1,$2,$3,$4,$5,$6,'pending',$7) RETURNING id`,[data.employeeId,data.leaveType,data.startDate,data.endDate,data.days,data.reason||null,JSON.stringify(formData)]);
     await client.query(`INSERT INTO hr_request_history(kind,request_id,employee_id,actor_user_id,decision,previous_status,next_status,note)
       VALUES('leave',$1,$2,$3,'submit','new','pending',$4)`,[row.id,data.employeeId,userId,data.reason||null]);
     await client.query("COMMIT");
@@ -157,7 +159,9 @@ export function registerHrOperations(app:Express, authorize:RequestHandler) {
     const request=kind==="leave"?await storage.getLeaveRequest(id):(await storage.getAttendancePermissions()).find(p=>p.id===id);
     if(!request) workflowError(404,"الطلب غير موجود.");
     const employee=request.employeeId ? await storage.getEmployee(request.employeeId) : null;
-    const manager=employee?.managerId ? await storage.getEmployee(employee.managerId) : null;
+    const routeData=kind==="leave"?(request as any).leaveFormData:(request as any).formDetails;
+    const assigned=effectiveRequestManager(routeData,{manager_id:employee?.managerId});
+    const manager=assigned.manager_id ? await storage.getEmployee(assigned.manager_id) : null;
     const {rows:history}=await pool.query(`SELECT h.id,h.decision,h.previous_status AS "previousStatus",h.next_status AS "nextStatus",
       h.note,h.created_at AS "createdAt",COALESCE(u.full_name_ar,u.username,e.full_name_ar,'—') AS "actorName"
       FROM hr_request_history h LEFT JOIN users u ON u.id=h.actor_user_id LEFT JOIN employees e ON e.id=h.actor_employee_id
@@ -165,8 +169,10 @@ export function registerHrOperations(app:Express, authorize:RequestHandler) {
     const managerApproved=kind==="leave" && (request as any).managerApprovedBy ||
       history.some(h=>h.nextStatus==="manager_approved");
     const reviewerStage=["approved","rejected","cancelled","auto_approved"].includes(request.status) ? "closed" :
-      request.status==="manager_approved" || managerApproved || !employee?.managerId ? "hr" : "manager";
-    res.json({request:{...request,reviewerStage},history,managerName:manager?.fullNameAr || manager?.fullNameEn || null});
+      request.status==="manager_approved" || managerApproved || !assigned.manager_id ? "hr" : "manager";
+    res.json({request:{...request,reviewerStage},history,managerName:manager?.fullNameAr || manager?.fullNameEn || null,
+      approvalRoute:{captured:!!(routeData as any)?._approval,managerRequired:!!assigned.manager_id,
+        managerComplete:!!managerApproved,stage:reviewerStage}});
   }));
   app.post("/api/leaves/:id/cancel",authorize,endpoint(async(req,res)=>{
     const reason=z.string().trim().min(3).max(2000).parse(req.body.reason);

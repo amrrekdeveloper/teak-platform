@@ -10,6 +10,8 @@ import { decideHrRequest, annualUsage, annualEntitlementAt, initHrWorkflowSuppor
 import { captureLeaveForm, initHrLeaveForm } from "./hr-leave-form";
 import { registerManagerWorkspace } from "./hr-manager-workspace";
 import { registerHrOperations, annualLeaveBalance, createAdministrativeLeave } from "./hr-operations";
+import { registerHrRequestCenter } from "./hr-request-center";
+import { captureRequestRouting,effectiveRequestManager } from "./hr-request-routing";
 import { setupAuth, requireAuth, requireRole, comparePasswords, hashPassword, getEffectivePermissionsForUser } from "./auth";
 import { initializeHrDataIntegrity, deleteUnusedEmployee } from "./hr-data-integrity";
 import { initializeSystemAdmin } from "./system-admin";
@@ -294,6 +296,7 @@ export async function registerRoutes(
 ): Promise<Server> {
   setupAuth(app);
   registerHrOperations(app,requireRole("owner","assistant","hr"));
+  registerHrRequestCenter(app,requireRole("owner","hr"));
   registerAttendanceEvents(app, requireRole("owner", "it", "hr"));
   const systemAdminStatus = await initializeSystemAdmin({ hashPassword, comparePasswords });
   console.log(`System administrator setup: ${systemAdminStatus}`);
@@ -4280,22 +4283,28 @@ export async function registerRoutes(
       const userId = req.session.userId!;
       const user = await storage.getUser(userId);
       const isHrRole = !!user && ["owner", "assistant", "hr"].includes(user.role);
-      const allEmployees = await storage.getEmployees();
+      const [allEmployees,allLeaves,allPerms,approvalRows,historyRows] = await Promise.all([
+        storage.getEmployees(),storage.getLeaveRequests(),storage.getAttendancePermissions(),
+        pool.query("SELECT DISTINCT request_id FROM hr_request_history WHERE kind='permission' AND next_status='manager_approved'"),
+        pool.query("SELECT * FROM hr_request_history ORDER BY id DESC"),
+      ]);
       const myEmp = allEmployees.find(e => e.userId === userId);
       const managedIds = myEmp ? allEmployees.filter(e => e.managerId === myEmp.id).map(e => e.id) : [];
 
-      const allLeaves = await storage.getLeaveRequests();
-      const allPerms = await storage.getAttendancePermissions();
-      const permissionManagerApprovals = new Set((await pool.query(
-        "SELECT DISTINCT request_id FROM hr_request_history WHERE kind='permission' AND next_status='manager_approved'",
-      )).rows.map(r => r.request_id));
-      const decisionHistory = (await pool.query("SELECT * FROM hr_request_history ORDER BY id DESC")).rows;
+      const permissionManagerApprovals = new Set(approvalRows.rows.map(r=>r.request_id));
+      const decisionHistory = historyRows.rows;
+      const employeeById=new Map(allEmployees.map(e=>[e.id,e]));
+      const managerFor=(id:number|null,data:unknown)=>{
+        const emp=id?employeeById.get(id):undefined;
+        const manager=emp?.managerId?employeeById.get(emp.managerId):undefined;
+        return effectiveRequestManager(data,{manager_id:emp?.managerId,manager_user_id:manager?.userId});
+      };
 
       const relevantLeave = (l: typeof allLeaves[number]) => {
         if (isHrRole && ["pending","manager_approved","clarification_requested"].includes(l.status)) return true;
         if (l.status === "pending" || l.status === "clarification_requested") {
-          const emp = allEmployees.find(e => e.id === l.employeeId);
-          if (emp?.managerId && !l.managerApprovedBy) return managedIds.includes(l.employeeId);
+          const manager=managerFor(l.employeeId,l.leaveFormData);
+          if (manager.manager_id && !l.managerApprovedBy) return manager.manager_user_id===userId;
           return isHrRole;
         }
         if (l.status === "manager_approved") return isHrRole;
@@ -4306,8 +4315,8 @@ export async function registerRoutes(
         if (String(p.status) === "manager_approved") return isHrRole;
         if (p.status !== "pending" && p.status !== "clarification_requested") return false;
         if (!p.employeeId) return isHrRole;
-        const emp = allEmployees.find(e => e.id === p.employeeId);
-        if (emp?.managerId && !permissionManagerApprovals.has(p.id)) return managedIds.includes(p.employeeId);
+        const manager=managerFor(p.employeeId,p.formDetails);
+        if (manager.manager_id && !permissionManagerApprovals.has(p.id)) return manager.manager_user_id===userId;
         return isHrRole;
       };
 
@@ -4326,8 +4335,8 @@ export async function registerRoutes(
       };
 
       res.json({
-        leaves: allLeaves.filter(relevantLeave).map(l => ({ ...l, reviewerStage: allEmployees.find(e=>e.id===l.employeeId)?.managerId && !l.managerApprovedBy && l.status!=="manager_approved" ? "manager" : "hr",employee: empInfo(l.employeeId), history: historyFor(l.employeeId) })),
-        permissions: allPerms.filter(relevantPerm).map(p => ({ ...p, reviewerStage: allEmployees.find(e=>e.id===p.employeeId)?.managerId && !permissionManagerApprovals.has(p.id) && p.status!=="manager_approved" ? "manager" : "hr",employee: empInfo(p.employeeId), history: historyFor(p.employeeId) })),
+        leaves: allLeaves.filter(relevantLeave).map(l => ({ ...l, reviewerStage: managerFor(l.employeeId,l.leaveFormData).manager_id && !l.managerApprovedBy && l.status!=="manager_approved" ? "manager" : "hr",employee: empInfo(l.employeeId), history: historyFor(l.employeeId) })),
+        permissions: allPerms.filter(relevantPerm).map(p => ({ ...p, reviewerStage: managerFor(p.employeeId,p.formDetails).manager_id && !permissionManagerApprovals.has(p.id) && p.status!=="manager_approved" ? "manager" : "hr",employee: empInfo(p.employeeId), history: historyFor(p.employeeId) })),
       });
     } catch {
       res.status(500).json({ message: "حدث خطأ" });
@@ -8382,6 +8391,7 @@ export async function registerRoutes(
     const { employeeId, employeePhone, date, type, startTime, endTime, hoursRequested, reason } = req.body;
     if (!date || !type) return res.status(400).json({ message: "البيانات غير مكتملة", messageEn: "Incomplete data" });
     try {
+      const routedDetails=await captureRequestRouting("permission",Number(employeeId),req.body.formDetails);
       const perm = await storage.createAttendancePermission({
         employeeId: employeeId || null,
         employeePhone: employeePhone || null,
@@ -8393,6 +8403,7 @@ export async function registerRoutes(
         reason: reason || null,
         status: "pending", // المرحلة 7: لا اعتماد تلقائي — كل طلب يبدأ معلّقاً
         reviewedBy: null,
+        formDetails:routedDetails,
       });
       // إشعار المدير المباشر (أو HR/المالك إن لم يوجد مدير)
       try {

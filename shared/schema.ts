@@ -278,6 +278,14 @@ export type InsertEmployeeAdvance = z.infer<typeof insertEmployeeAdvanceSchema>;
 export type EmployeeAdvance = typeof employeeAdvances.$inferSelect;
 
 // ===== Leave Management (الإجازات) =====
+export const hrRequestSettings = pgTable("hr_request_settings", {
+  kind: text("kind").primaryKey(),
+  managerReview: boolean("manager_review").notNull().default(true),
+  requireManager: boolean("require_manager").notNull().default(false),
+  version: integer("version").notNull().default(1),
+  updatedBy: integer("updated_by").references(() => users.id),
+  updatedAt: timestamp("updated_at", {withTimezone:true}).notNull().defaultNow(),
+});
 export const leaveTypeEnum = pgEnum("leave_type", ["annual", "sick", "unpaid", "emergency", "maternity", "other"]);
 export const leaveStatusEnum = pgEnum("leave_status", ["pending", "manager_approved", "approved", "rejected", "clarification_requested", "cancelled"]);
 

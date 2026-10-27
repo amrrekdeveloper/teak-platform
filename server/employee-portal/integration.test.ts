@@ -310,7 +310,7 @@ describe.sequential("isolated employee protocol", () => {
       checkIn:before.checkIn,checkOut:before.checkOut});
     expect((await pool.query("SELECT count(*)::int AS n FROM attendance_correction_history WHERE correction_id=$1 AND decision='approved'",[id])).rows[0].n).toBe(1);
     const {rows:[openPeriod]}=await pool.query(`INSERT INTO attendance_corrections(employee_id,business_day,shift_key,reason)
-      VALUES($1,$2,'single','طلب فترة لم تكتمل للاختبار') RETURNING id`,[employeeId,riyadhDateKey(new Date())]);
+      VALUES($1,$2,'single','طلب فترة لم تكتمل للاختبار') RETURNING id`,[employeeId,riyadhDateKey(new Date(Date.now()+86400000))]);
     expect((await call(`/api/attendance/corrections/${openPeriod.id}/decision`,"POST",
       {decision:"approved",note:"محاولة اعتماد مبكر"},deviceCookie,{"X-Fixture-Role":"hr"})).status).toBe(409);
     expect((await pool.query("SELECT status FROM attendance_corrections WHERE id=$1",[openPeriod.id])).rows[0].status).toBe("pending");
@@ -364,7 +364,7 @@ describe.sequential("isolated employee protocol", () => {
     form.append("file",new Blob(["%PDF-1.7 synthetic"],{type:"application/pdf"}),"test.pdf");
     form.append("kind","attendance");form.append("recordId",String(record.id));form.append("reason","عذر طبي اختباري");
     const uploaded=await fetch(base+"/medical-documents",{method:"POST",headers:{Cookie:deviceCookie,"X-Portal-Request":"1"},body:form});
-    expect(uploaded.status).toBe(201);attendanceMedicalId=(await uploaded.json()).id;
+    expect(uploaded.status,await uploaded.clone().text()).toBe(201);attendanceMedicalId=(await uploaded.json()).id;
     expect((await pool.query("SELECT id FROM attendance_medical_attachments WHERE record_id=$1",[record.id])).rowCount).toBe(0);
     const accepted=await call(path,"POST",input,"",{"X-Fixture-Role":"hr"});
     expect(accepted.status).toBe(200);

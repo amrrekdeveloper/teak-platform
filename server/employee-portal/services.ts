@@ -5,6 +5,7 @@ import { attendanceCorrections } from "../attendance-corrections";
 import { pool } from "../db";
 import { storage } from "../storage";
 import { captureLeaveForm } from "../hr-leave-form";
+import { captureRequestRouting,approvalSnapshot } from "../hr-request-routing";
 import { leaveFormInputSchema } from "../../shared/hr-leave-form";
 import { asyncRoute, identity, portalError } from "./router";
 import { employeePhone, publicEmployee, takeLimit, type PortalEmployee } from "./database";
@@ -21,6 +22,10 @@ import { annualLeaveBalance, cancelLeave } from "../hr-operations";
 import { employeeComplianceAlerts } from "../hr-alerts";
 
 const dateInput = z.string().refine(validDate, "التاريخ غير صالح");
+function publicApproval(data:unknown,managerId:number|null|undefined) {
+  const snapshot=approvalSnapshot(data);
+  return {captured:!!snapshot,managerRequired:snapshot?!!(snapshot.managerReview&&snapshot.managerEmployeeId):!!managerId};
+}
 const reasonInput = z.string().trim().min(3).max(1000);
 const leaveInput = z.object({
   leaveType: z.enum(["annual", "sick", "unpaid", "emergency", "maternity", "other"]),
@@ -56,7 +61,10 @@ async function leaveBalance(employee: PortalEmployee) {
 }
 async function notifyApprovers(employee: PortalEmployee, kind: "leave" | "permission", requestId: number) {
   try {
-    const manager = employee.manager_id ? await storage.getEmployee(employee.manager_id) : undefined;
+    const request=kind==="leave"?await storage.getLeaveRequest(requestId):(await storage.getAttendancePermissions({employeeId:employee.id})).find(r=>r.id===requestId);
+    const captured=approvalSnapshot(kind==="leave"?(request as any)?.leaveFormData:(request as any)?.formDetails);
+    const managerId=captured?(captured.managerReview?captured.managerEmployeeId:null):employee.manager_id;
+    const manager = managerId ? await storage.getEmployee(managerId) : undefined;
     const users = await storage.getUsers();
     const ids = manager?.userId
       ? [manager.userId]
@@ -112,11 +120,13 @@ export function registerEmployeeServices(router: Router) {
       leaves: leaves.map(r => ({
         id: r.id, leaveType: r.leaveType, startDate: r.startDate, endDate: r.endDate,
         days: r.days, status: r.status, reason: r.reason,
+        approval:publicApproval(r.leaveFormData,employee.manager_id),
       })),
       permissions: permissions.map(r => ({
         id: r.id, type: r.type, date: r.date, startTime: r.startTime, endTime: r.endTime,
         returnDate: r.formDetails?.returnDate || r.date,
         status: r.status, reason: r.reason, hoursRequested: r.hoursRequested,
+        approval:publicApproval(r.formDetails,employee.manager_id),
       })),
       sessions: devices.rows.map(d => ({ ...d, current: d.id === sessionId })),
       requestHistory: (await pool.query(`SELECT kind,request_id AS "requestId",decision,previous_status AS "previousStatus",
@@ -253,9 +263,10 @@ export function registerEmployeeServices(router: Router) {
       if (input.medicalAttachmentId && !(await client.query(`SELECT id FROM hr_medical_documents
         WHERE id=$1 AND employee_id=$2 AND kind='leave' AND leave_id IS NULL FOR UPDATE`,
       [input.medicalAttachmentId, employee.id])).rowCount) portalError(400, "المرفق غير صالح أو مرتبط بطلب آخر.");
+      const routedForm=await captureRequestRouting("leave",employee.id,form,client);
       created = (await client.query(`INSERT INTO leave_requests(employee_id,leave_type,start_date,end_date,days,reason,status,leave_form_data)
         VALUES($1,$2,$3,$4,$5,$6,'pending',$7) RETURNING id`,
-      [employee.id,input.leaveType,input.startDate,input.endDate,days,input.reason,JSON.stringify(form)])).rows[0];
+      [employee.id,input.leaveType,input.startDate,input.endDate,days,input.reason,JSON.stringify(routedForm)])).rows[0];
       if (input.medicalAttachmentId) await client.query("UPDATE hr_medical_documents SET leave_id=$2 WHERE id=$1", [input.medicalAttachmentId,created.id]);
       await client.query("COMMIT");
     } catch(error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
@@ -297,7 +308,8 @@ export function registerEmployeeServices(router: Router) {
         (employee_id,employee_phone,date,type,start_time,end_time,hours_requested,reason,status,form_details)
         VALUES($1,$2,$3,$4,$5,$6,$7,$8,'pending',$9) RETURNING id`,
         [employee.id,employeePhone(employee),input.date,legacy ? "permission" : input.type,input.startTime,input.endTime,
-          ((end-start)/3600000).toFixed(2),legacy ? `${label}: ${input.reason}` : input.reason,JSON.stringify(formDetails)])).rows[0];
+          ((end-start)/3600000).toFixed(2),legacy ? `${label}: ${input.reason}` : input.reason,
+          JSON.stringify(await captureRequestRouting("permission",employee.id,formDetails,client))])).rows[0];
       await client.query("COMMIT");
     } catch(e) { await client.query("ROLLBACK"); throw e; }
     finally { client.release(); }

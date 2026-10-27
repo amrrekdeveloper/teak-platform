@@ -17,6 +17,9 @@ import PayrollPage from "@/pages/payroll";
 import AdvancesPage from "@/pages/advances";
 import EvaluationsPage from "@/pages/evaluations";
 import HrAlertsPage from "@/pages/hr-alerts";
+import HrOverviewPage from "@/pages/hr-overview";
+import HrSystemSettingsPage from "@/pages/hr-system-settings";
+import HrRequestsCenterPage from "@/pages/hr-requests-center";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,11 +29,11 @@ import "@/styles/hr-theme.css";
 import {
   ArrowLeft, CalendarDays, ChevronLeft, CircleDollarSign, Eye, EyeOff, BriefcaseBusiness,
   ClipboardCheck, Clock3, DoorOpen, LoaderCircle, LockKeyhole, Menu,
-  ShieldCheck, UsersRound, X, Settings, FileBarChart2, KeyRound, Bell,
+  ShieldCheck, UsersRound, X, Settings, FileBarChart2, KeyRound, Bell, LayoutDashboard, Inbox,
 } from "lucide-react";
 
 type HrUser = { role?: string; maintenanceScope?: string; fullNameAr?: string; fullNameEn?: string; username?: string };
-type HrPage = "employees" | "attendance-monitor" | "attendance-settings" | "leaves" | "permissions" | "reports" | "access" | "actions" | "payroll" | "advances" | "evaluations" | "alerts";
+type HrPage = "overview" | "requests" | "settings" | "employees" | "attendance-monitor" | "attendance-settings" | "leaves" | "permissions" | "reports" | "access" | "actions" | "payroll" | "advances" | "evaluations" | "alerts";
 type RememberedLogin = { username: string; rememberMe: boolean };
 const HR_REMEMBER_KEY = "teak.auth.remember.hr";
 function readRememberedHrLogin(): RememberedLogin {
@@ -43,7 +46,10 @@ function saveRememberedHrLogin(username: string, rememberMe: boolean) {
   try { window.localStorage.setItem(HR_REMEMBER_KEY, JSON.stringify({ username: rememberMe ? username : "", rememberMe })); } catch { /* Storage may be blocked; authentication still works. */ }
 }
 
-const navItems: { href: string; key: HrPage; group: "people" | "requests" | "operations"; icon: typeof UsersRound }[] = [
+const navItems: { href: string; key: HrPage; group: "workspace" | "people" | "requests" | "operations"; icon: typeof UsersRound }[] = [
+  { href: "/overview", key: "overview", group: "workspace", icon: LayoutDashboard },
+  { href: "/requests", key: "requests", group: "workspace", icon: Inbox },
+  { href: "/settings", key: "settings", group: "workspace", icon: Settings },
   { href: "/employees", key: "employees", group: "people", icon: UsersRound },
   { href: "/attendance-monitor", key: "attendance-monitor", group: "people", icon: Clock3 },
   { href: "/attendance-settings", key: "attendance-settings", group: "people", icon: Settings },
@@ -104,7 +110,7 @@ function HrLogin({ sessionUser }: { sessionUser: HrUser | null }) {
       await queryClient.cancelQueries();
       queryClient.clear();
       queryClient.setQueryData(["/api/auth/me"], user);
-      setLocation("/employees");
+      setLocation("/overview");
     } catch (cause: any) {
       let message = typeof cause?.message==="string" ? cause.message : "تعذّر تسجيل الدخول. تحقق من البيانات وحاول مرة أخرى.";
       try {
@@ -175,6 +181,9 @@ function HrLogin({ sessionUser }: { sessionUser: HrUser | null }) {
 function HrLayout() {
   const { t, isRTL } = useLanguage();
   const navLabel = (key: HrPage) => ({
+    overview: t("نظرة عامة", "Overview"),
+    requests: t("الطلبات والموافقات", "Requests & approvals"),
+    settings: t("إعدادات الموارد البشرية", "HR settings"),
     employees: t("الموظفون", "Employees"),
     "attendance-monitor": t("مراقبة الدوام", "Attendance"),
     "attendance-settings": t("إعدادات الدوام", "Attendance settings"),
@@ -202,14 +211,24 @@ function HrLayout() {
   });
   const [menuOpen, setMenuOpen] = useState(false);
   const [logoutError, setLogoutError] = useState("");
-  const currentPath = location.replace(/^\/hr/, "") || "/";
-  const active = navItems.find(item => currentPath === item.href || currentPath.startsWith(`${item.href}/`));
+  const currentPath = location.replace(/^\/hr/, "").split(/[?#]/)[0] || "/";
+  const active = navItems.find(item => item.href !== "/requests" && item.href !== "/settings" && (currentPath === item.href || (item.href !== "/attendance-monitor" && currentPath.startsWith(`${item.href}/`))))
+    || (currentPath === "/requests" ? navItems.find(item => item.key === "requests") : undefined)
+    || (currentPath === "/settings" ? navItems.find(item => item.key === "settings") : undefined);
   const hrUser = user as HrUser | null;
   const authorized = hrUser?.role === "hr" && hrUser?.maintenanceScope === "hr";
 
   useEffect(() => {
     if (!isLoading && !authorized) setLocation("/login");
   }, [isLoading, authorized, setLocation]);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMenuOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [menuOpen]);
 
   if (isLoading) return <WorkspaceLoading />;
   if (!hrUser || !authorized) return <WorkspaceLoading />;
@@ -231,7 +250,7 @@ function HrLayout() {
   return (
     <div className="hr-workspace" dir={isRTL ? "rtl" : "ltr"}>
        <header className="hr-mobile-header">
-        <button type="button" className="hr-icon-button" aria-label={menuOpen ? "إغلاق القائمة" : "فتح القائمة"} aria-expanded={menuOpen} onClick={() => setMenuOpen(v => !v)}>
+        <button type="button" className="hr-icon-button" aria-label={menuOpen ? "إغلاق القائمة" : "فتح القائمة"} aria-expanded={menuOpen} aria-controls="hr-primary-navigation" onClick={() => setMenuOpen(v => !v)}>
           {menuOpen ? <X size={21} /> : <Menu size={21} />}
         </button>
          <div className="hr-mobile-brand"><img src="/__maintenance/logo.png" alt="TEAK" /><span>{t("تيك", "TEAK")}</span></div>
@@ -246,13 +265,12 @@ function HrLayout() {
           <img src="/__maintenance/logo.png" alt="TEAK" />
           <div><strong>{t("تيك", "TEAK")}</strong><small>{t("إدارة الموارد البشرية", "Human Resources")}</small></div>
         </div>
-        <div className="hr-side-label">{t("مساحة العمل", "Workspace")}</div>
-        <nav className="hr-nav" aria-label="التنقل في الموارد البشرية">
-          {(["people", "requests", "operations"] as const).map(group => <div key={group} className="hr-nav-group">
-            <div className="hr-nav-group-label">{group === "people" ? t("الفريق والحضور", "People & attendance") : group === "requests" ? t("الطلبات", "Requests") : t("الإدارة", "Operations")}</div>
+        <nav id="hr-primary-navigation" className="hr-nav" aria-label={t("التنقل في الموارد البشرية", "HR navigation")}>
+          {(["workspace", "people", "requests", "operations"] as const).map(group => <div key={group} className="hr-nav-group">
+            <div className="hr-nav-group-label">{group === "workspace" ? t("مساحة العمل", "Workspace") : group === "people" ? t("الفريق والحضور", "People & attendance") : group === "requests" ? t("الطلبات", "Requests") : t("الإدارة", "Operations")}</div>
             {navItems.filter(item => item.group === group).map(({ href, key, icon: Icon }) => (
               <div key={key}>
-              <button type="button" className={`hr-nav-link ${active?.key === key ? "is-active" : ""}`} onClick={() => { setLocation(href); setMenuOpen(false); }}>
+              <button type="button" className={`hr-nav-link ${active?.key === key ? "is-active" : ""}`} aria-current={active?.key === key ? "page" : undefined} onClick={() => { setLocation(href); setMenuOpen(false); }}>
                 <Icon size={18} strokeWidth={1.8} /><span>{navLabel(key)}</span>{active?.key === key && <ChevronLeft size={15} className={`hr-nav-chevron ${isRTL ? "" : "rotate-180"}`} />}
               </button>
               {key === "attendance-monitor" && <button type="button" className={`hr-nav-link hr-nav-subitem ${currentPath === "/attendance-monitor/approvals" ? "is-active" : ""}`} aria-current={currentPath === "/attendance-monitor/approvals" ? "page" : undefined} onClick={() => { setLocation("/attendance-monitor/approvals"); setMenuOpen(false); }}>
@@ -272,7 +290,7 @@ function HrLayout() {
       </aside>
       <section className="hr-main-column">
         <header className="hr-topbar" data-page={active?.key}>
-          <div><span className="hr-breadcrumb-root">{t("تيك", "TEAK")}</span><span className="hr-breadcrumb-slash">/</span><span>{active ? navLabel(active.key) : t("الموظف", "Employee")}</span></div>
+          <div><span className="hr-breadcrumb-root">{t("تيك", "TEAK")}</span><span className="hr-breadcrumb-slash">/</span><span>{currentPath === "/attendance-monitor/approvals" ? t("الموافقات", "Approvals") : active ? navLabel(active.key) : t("الموظف", "Employee")}</span></div>
           <div className="hr-topbar-actions">
              <button type="button" className="hr-alert-bell" aria-label={t("فتح التنبيهات", "Open alerts")} onClick={() => setLocation("/alerts")}><Bell size={18} />{(alertSnapshot?.items || []).filter(item => item.severity === "critical" && !item.readAt).length > 0 && <span>{Math.min(99, (alertSnapshot?.items || []).filter(item => item.severity === "critical" && !item.readAt).length)}</span>}</button>
             <div className="hr-topbar-state"><span className="hr-topbar-dot" /> {t("مساحة الموارد البشرية", "HR workspace")}</div>
@@ -282,7 +300,10 @@ function HrLayout() {
         </header>
         <main className="hr-content">
           {isLoggingOut ? <WorkspaceLoading /> : <Switch>
-            <Route path="/"><RedirectToEmployees /></Route>
+            <Route path="/"><RedirectToOverview /></Route>
+            <Route path="/overview" component={HrOverviewPage} />
+            <Route path="/requests" component={HrRequestsCenterPage} />
+            <Route path="/settings" component={HrSystemSettingsPage} />
             <Route path="/employees/:id" component={EmployeeDetailPage} />
             <Route path="/employees" component={EmployeesPage} />
             <Route path="/attendance-monitor/approvals" component={AttendanceApprovalsPage} />
@@ -298,7 +319,7 @@ function HrLayout() {
             <Route path="/payroll" component={PayrollPage} />
             <Route path="/advances" component={AdvancesPage} />
             <Route path="/evaluations" component={EvaluationsPage} />
-            <Route><RedirectToEmployees /></Route>
+            <Route><RedirectToOverview /></Route>
           </Switch>}
         </main>
       </section>
@@ -306,9 +327,9 @@ function HrLayout() {
   );
 }
 
-function RedirectToEmployees() {
+function RedirectToOverview() {
   const [, setLocation] = useLocation();
-  useEffect(() => { setLocation("/employees"); }, [setLocation]);
+  useEffect(() => { setLocation("/overview"); }, [setLocation]);
   return <WorkspaceLoading />;
 }
 
@@ -327,7 +348,7 @@ function HrLoginRoute() {
   const [, setLocation] = useLocation();
   const hrUser = user as HrUser | null;
   useEffect(() => {
-    if (hrUser?.role === "hr" && hrUser.maintenanceScope === "hr") setLocation("/employees");
+    if (hrUser?.role === "hr" && hrUser.maintenanceScope === "hr") setLocation("/overview");
   }, [hrUser?.role, hrUser?.maintenanceScope, setLocation]);
   return <HrLogin sessionUser={hrUser} />;
 }

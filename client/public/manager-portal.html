@@ -32,7 +32,7 @@ for(const emp of data.employees){const o=node("option",emp.name);o.value=emp.id;
 const section=node("article","");section.append(node("h2",emp.name+" · "+emp.number));
 const ls=data.leaves.filter(r=>r.employeeId===emp.id),ps=data.permissions.filter(r=>r.employeeId===emp.id);
 section.append(detail("السجل الكامل للإجازات والاستئذان والقرارات",{leaves:ls,permissions:ps,history:data.history.filter(r=>r.employee_id===emp.id)}));
-for(const [kind,items] of [["leave",ls],["permission",ps]])for(const item of items){if(!["pending","clarification_requested"].includes(item.status))continue;
+for(const [kind,items] of [["leave",ls],["permission",ps]])for(const item of items){if(!item.canReview)continue;
 const card=node("div","");card.append(node("h3",(kind==="leave"?"إجازة":"استئذان")+" #"+item.id),detail("تفاصيل الطلب",item));
 for(const [decision,label] of [["approve","موافقة المدير"],["reject","رفض"],["clarify","طلب توضيح"]]){const b=node("button",label);b.onclick=()=>decide(kind==="leave"?`/api/leaves/${item.id}/decision`:`/api/attendance/permission/${item.id}/decision`,decision);card.append(b)}section.append(card)}
 for(const action of data.actions.filter(a=>a.employeeId===emp.id)){section.append(detail("إجراء "+action.workflow+" · "+action.status,action));

@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect,useMemo,useRef,useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Link } from "wouter";
+import { Link,useSearch } from "wouter";
 import { useLanguage } from "@/components/language-provider";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -8,6 +8,7 @@ import { useAttendanceLive } from "@/hooks/use-attendance-live";
 import { HrLeaveFormFields } from "@/components/hr-leave-form-fields";
 import { MedicalDocumentLinks } from "@/components/medical-document-links";
 import { HrRequestDetails } from "@/components/hr-request-details";
+import { uploadRequestAttachment } from "@/components/request-attachments";
 import HrReportsPage from "@/pages/hr-reports";
 import type { LeaveFormInput } from "@shared/hr-leave-form";
 import type { LeaveRequest, Employee, AttendancePermission } from "@shared/schema";
@@ -71,6 +72,8 @@ function LeavesContent({ section, legacy }: { section: Section; legacy: boolean 
   const [medicalId, setMedicalId] = useState<number | null>(null);
   const [detailTarget, setDetailTarget] = useState<{ kind: "leave" | "permission"; id: number; employeeName: string } | null>(null);
   const [pendingQueueOpen, setPendingQueueOpen] = useState(false);
+  const [formFile,setFormFile]=useState<File|null>(null);
+  const searchQuery=useSearch(),openedLink=useRef("");
   const listQueryKey = isLeaves ? ["/api/leaves"] : ["/api/attendance/permissions"];
   const { data: leaves = [], isLoading, isError, refetch } = useQuery<LeaveRequest[]>({ queryKey: listQueryKey, enabled: isLeaves });
   const { data: permissions = [], isLoading: permissionsLoading, isError: permissionsError, refetch: refetchPermissions } = useQuery<AttendancePermission[]>({ queryKey: listQueryKey, enabled: !isLeaves });
@@ -94,6 +97,8 @@ function LeavesContent({ section, legacy }: { section: Section; legacy: boolean 
     return item ? t(item.ar, item.en) : value;
   };
   const invalidate = () => {
+    queryClient.invalidateQueries({queryKey:["/api/hr/requests"]});
+    queryClient.invalidateQueries({queryKey:["/api/hr/overview"]});
     queryClient.invalidateQueries({ queryKey: ["/api/leaves"] });
     queryClient.invalidateQueries({ queryKey: ["/api/attendance/permissions"] });
     queryClient.invalidateQueries({ queryKey: ["/api/leaves/balance"] });
@@ -101,11 +106,18 @@ function LeavesContent({ section, legacy }: { section: Section; legacy: boolean 
     queryClient.invalidateQueries({ queryKey: ["/api/hr/alerts"] });
   };
   const createMutation = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/leaves", { ...form, leaveFormData }),
-    onSuccess: () => {
+    mutationFn: async () => {
+      const file=formFile,response=await apiRequest("POST","/api/leaves",{...form,leaveFormData});
+      return {created:await response.json(),file};
+    },
+    onSuccess: async ({created,file}) => {
+      let failedUpload=false;
+      if(file)try{await uploadRequestAttachment("leave",created.id,file);}
+      catch{failedUpload=true;}
       invalidate(); setLeaveFormData({}); setCreateOpen(false);
+      setFormFile(null);setDetailTarget({kind:"leave",id:created.id,employeeName:employees.find(e=>e.id===created.employeeId)?.fullNameAr||""});
       setForm({ employeeId: "", leaveType: "annual", startDate: "", endDate: "", reason: "" });
-      toast({ title: t("تم تسجيل طلب الإجازة", "Leave request submitted") });
+      toast({title:failedUpload?t("تم حفظ الطلب، لكن تعذر رفع المرفق. أعد إرفاقه من التفاصيل.","Request saved, but upload failed. Attach it again from details."):t("تم تسجيل طلب الإجازة","Leave request submitted"),variant:failedUpload?"destructive":"default"});
     },
     onError: (error: Error) => toast({ title: error.message || t("تعذر تسجيل الطلب", "Could not create request"), variant: "destructive" }),
   });
@@ -135,6 +147,17 @@ function LeavesContent({ section, legacy }: { section: Section; legacy: boolean 
 
   const currentPending = isLeaves ? (pending?.leaves || []) : (pending?.permissions || []);
   const rows = isLeaves ? leaves : permissions;
+  useEffect(()=>{
+    const params=new URLSearchParams(searchQuery),key=`${isLeaves}:${searchQuery}`;
+    if(openedLink.current===key)return;
+    if(isLeaves&&params.get("new")==="1"){openedLink.current=key;setCreateOpen(true);return;}
+    const id=Number(params.get("request"));
+    if(id>0&&rows.length&&employees.length){
+      const item=rows.find(row=>row.id===id);
+      if(item){openedLink.current=key;setDetailTarget({kind:isLeaves?"leave":"permission",id,
+        employeeName:employees.find(e=>e.id===item.employeeId)?.fullNameAr||""});}
+    }
+  },[searchQuery,isLeaves,rows,employees]);
   const loading = isLeaves ? isLoading : permissionsLoading;
   const errored = isLeaves ? isError : permissionsError;
   const filtered = useMemo(() => rows.filter((row: any) => {
@@ -274,6 +297,7 @@ function LeavesContent({ section, legacy }: { section: Section; legacy: boolean 
 
     <Dialog open={createOpen} onOpenChange={setCreateOpen}><DialogContent className="max-h-[94dvh] w-[96vw] max-w-3xl overflow-y-auto">
       <DialogHeader><DialogTitle>{t("طلب إجازة", "Leave request")}</DialogTitle><DialogDescription>{t("أدخل بيانات الطلب ومرفقاته قبل الإرسال للمراجعة.", "Enter the request details and any required attachments before submitting for review.")}</DialogDescription></DialogHeader>
+      <label className="block space-y-2 text-sm"><span>{t("مرفق اختياري — PDF أو صورة حتى 5 ميغابايت","Optional attachment — PDF or image up to 5 MB")}</span><Input type="file" accept="application/pdf,image/jpeg,image/png" onChange={event=>{const file=event.target.files?.[0]||null;if(file&&file.size>5242880){event.target.value="";toast({title:t("الحد الأقصى 5 ميغابايت","Maximum 5 MB"),variant:"destructive"});return;}setFormFile(file);}}/>{formFile&&<Button type="button" variant="ghost" size="sm" onClick={()=>setFormFile(null)}>{t("إزالة الملف المحدد","Remove selected file")}</Button>}</label>
       <div className="space-y-3">
         <div className="space-y-1"><Label>{t("الموظف", "Employee")}</Label><Select value={form.employeeId} onValueChange={employeeId => setForm(v => ({ ...v, employeeId }))}><SelectTrigger><SelectValue placeholder={t("اختر الموظف", "Select employee")} /></SelectTrigger><SelectContent>{employees.filter(e => e.status === "active").map(e => <SelectItem key={e.id} value={String(e.id)}>{employeeName(e.id)}</SelectItem>)}</SelectContent></Select></div>
         <div className="space-y-1"><Label>{t("نوع الإجازة", "Leave type")}</Label><Select value={form.leaveType} onValueChange={leaveType => setForm(v => ({ ...v, leaveType }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{LEAVE_TYPES.map(x => <SelectItem key={x.value} value={x.value}>{t(x.ar, x.en)}</SelectItem>)}</SelectContent></Select></div>
@@ -299,7 +323,7 @@ function LeavesContent({ section, legacy }: { section: Section; legacy: boolean 
         <div className="space-y-1"><Label>{t("سبب الإلغاء (٣ أحرف على الأقل)", "Cancellation reason (at least 3 characters)")}</Label><Textarea value={cancelReason} onChange={e => setCancelReason(e.target.value)} /></div></div>
       <DialogFooter><Button variant="destructive" disabled={cancelReason.trim().length < 3 || cancelMutation.isPending} onClick={() => cancelMutation.mutate()}>{cancelMutation.isPending && <Loader2 className="me-2 h-4 w-4 animate-spin" />}{t("تأكيد الإلغاء", "Confirm cancellation")}</Button></DialogFooter>
     </DialogContent></Dialog>
-    {detailTarget && <HrRequestDetails kind={detailTarget.kind} requestId={detailTarget.id} employeeName={detailTarget.employeeName} onClose={() => setDetailTarget(null)} />}
+    {detailTarget && <HrRequestDetails kind={detailTarget.kind} requestId={detailTarget.id} employeeName={detailTarget.employeeName} onClose={() => setDetailTarget(null)} onDecision={(action,stage)=>{setDecisionNote("");setOverrideManager(false);setDecision({id:detailTarget.id,kind:detailTarget.kind==="leave"?"leaves":"permissions",action,stage});setDetailTarget(null);}} />}
   </div>;
 }
 

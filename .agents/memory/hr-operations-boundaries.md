@@ -32,3 +32,17 @@ Expiry alerts describe recorded evidence, not a legal determination. Missing dat
 **Why:** The factory's existing files include missing and potentially stale expiry dates. Treating a warning as verified misconduct, or a shared dismissal as renewal, could affect employee rights unfairly.
 
 **How to apply:** No automatic suspension, payroll deduction, guessed document date, or absence finding from a document alert. Expired snoozes become visible again; renewing a source document produces a fresh alert. External SMS/email sending requires an explicit notification scope rather than being implied by an in-app alert center.
+
+## Preserve the permission-request experience
+Keep the existing employee permission form and printed document intact. Changes inside that experience are limited to approval routing and attachments unless the user explicitly authorizes a redesign.
+
+**Why:** On 2026-10-27 the HR manager explicitly praised its usability and printing and requested these two additions only. ZenHR screenshots and the attached proposal are references, not a mandate to copy every menu or replace TEAK's architecture.
+
+**How to apply:** Improve navigation and operational entry points around the form, without reordering its fields or changing the print layout. Reuse the canonical requests and decision engine.
+
+## Approval responsibility and unavailable managers
+Changes to request-routing settings apply to new submissions, not to requests already in progress. Existing decisions and approval responsibility must not be rewritten automatically after employee reassignment.
+
+**Why:** Changing who approves an ongoing request can invalidate an HR decision or strand the employee. Production contains manager assignments whose associated accounts cannot approve; guessing account links is unsafe.
+
+**How to apply:** For new requests, make the choice explicit: require an active manager account, or send unavailable-manager cases to HR for review, never auto-approve. Requests whose captured manager later becomes unavailable require a reasoned administrative intervention.

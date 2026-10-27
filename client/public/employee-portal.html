@@ -265,6 +265,7 @@
                 <div class="form-row"><label for="permission-end">إلى الساعة</label><input id="permission-end" name="endTime" type="time" required></div>
                 <p class="hint wide" id="permission-duration" role="status" aria-live="polite">اختر تاريخ ووقت المغادرة والعودة لحساب المدة.</p>
                 <div class="form-row wide"><label for="permission-reason">سبب الطلب</label><textarea id="permission-reason" name="reason" required maxlength="1000"></textarea></div>
+                <div class="form-row wide"><label for="permission-attachment">مرفق اختياري</label><input class="file-input" id="permission-attachment" type="file" accept="application/pdf,image/jpeg,image/png"><p class="hint">PDF أو JPEG أو PNG — حتى 5 ميغابايت.</p></div>
                 <div class="actions"><button class="btn" type="submit">إرسال الطلب</button></div>
               </form><p class="live-message" id="permission-message" role="status" aria-live="polite"></p>
             </article>
@@ -591,6 +592,55 @@
         const data=await request("/attendance/history?"+params.toString());
         attendanceReport=data;renderAttendanceRows(data,data.corrections||[]);
       }
+      async function uploadRequestFile(kind,id,file){
+        const epoch=authEpoch;
+        if(file.size>5242880)throw new Error("الحد الأقصى للمرفق 5 ميغابايت.");
+        const form=new FormData();form.append("file",file);
+        const response=await fetch(API+"/requests/"+kind+"/"+encodeURIComponent(id)+"/attachments",
+          {method:"POST",credentials:"same-origin",headers:{"X-Portal-Request":"1"},body:form});
+        if(epoch!==authEpoch){const error=new Error("انتهت الجلسة.");error.stale=true;throw error}
+        const data=await response.json();
+        if(!response.ok)throw new Error(data.message||"تعذر رفع المرفق.");
+        return data;
+      }
+      function requestTools(kind,item,parent){
+        const epoch=authEpoch,details=document.createElement("details");details.className="request-history-card";
+        const title=document.createElement("summary");title.textContent="الموافقات والمرفقات";details.append(title);
+        const route=document.createElement("p");
+        const closed=["approved","auto_approved","rejected","cancelled"].includes(item.status);
+        const managerDone=item.status==="manager_approved"||(summary?.requestHistory||[]).some(h=>h.kind===kind&&h.requestId===item.id&&h.nextStatus==="manager_approved");
+        route.textContent=closed?"الطلب منتهٍ — راجع حالته وسجل القرارات.":item.approval?.managerRequired&&!managerDone?"المرحلة الحالية: المدير المباشر، ثم الموارد البشرية.":"المرحلة الحالية: الموارد البشرية.";
+        details.append(route);
+        const content=document.createElement("div");details.append(content);parent.append(details);
+        let busy=false,loaded=false;
+        const refresh=async()=>{
+          busy=true;content.replaceChildren();
+          try{
+            const data=await request("/requests/"+kind+"/"+item.id+"/attachments");
+            if(epoch!==authEpoch||!details.isConnected)return;
+            loaded=true;
+            for(const file of data.items){
+              const link=document.createElement("a");link.className="btn secondary";link.style.margin="4px";
+              link.href=API+"/requests/"+kind+"/"+item.id+"/attachments/"+file.id;link.target="_blank";link.rel="noopener";
+              link.textContent=file.name;content.append(link);
+            }
+            const hint=document.createElement("p");hint.className="hint";hint.textContent="المرفقات خاصة بالموظف والموارد البشرية.";content.append(hint);
+            if(data.canUpload&&data.items.length<5){
+              const label=document.createElement("label");label.textContent="إرفاق ملف";
+              const picker=document.createElement("input");picker.type="file";picker.accept="application/pdf,image/jpeg,image/png";picker.className="file-input";
+              label.append(picker);content.append(label);
+              picker.addEventListener("change",async()=>{
+                const file=picker.files[0];if(!file)return;
+                picker.disabled=true;const status=document.createElement("p");status.setAttribute("role","status");content.append(status);
+                try{await uploadRequestFile(kind,item.id,file);if(epoch===authEpoch)await refresh()}
+                catch(error){if(epoch===authEpoch&&!error.stale){status.textContent=error.message;picker.disabled=false;picker.value=""}}
+              });
+            }
+          }catch(error){if(epoch===authEpoch&&!error.stale){content.textContent=error.message;loaded=false}}
+          finally{busy=false}
+        };
+        details.addEventListener("toggle",()=>{if(details.open&&!loaded&&!busy)void refresh()});
+      }
       function renderLeaveHistory(leaves){
         const rows=(Array.isArray(leaves)?leaves:[]).map(r=>[typeLabel(r.leaveType),dateText(r.startDate),dateText(r.endDate),r.days==null?"—":String(r.days),{statusPill:true,value:r.status}]);
         renderTable($("leave-history"),["النوع","من","إلى","الأيام","الحالة"],rows,"لا توجد طلبات إجازة","ستجد طلباتك السابقة هنا.",(leaves||[]).map(r=>"leave-request-"+r.id));
@@ -603,6 +653,7 @@
             button.addEventListener("click",()=>{leaveCancelTarget={id:item.id,epoch:authEpoch,returnFocus:button};$("leave-cancel-reason").value="";message($("leave-cancel-message"),"");show($("leave-cancel-dialog"),true);$("leave-cancel-reason").focus()});
             td.append(button);row.append(td);
           }else row.append(cell("—"));
+          requestTools("leave",item,row.lastElementChild);
         });
         const heading=host.querySelector("thead tr");if(heading){const th=document.createElement("th");th.textContent="الإجراء";heading.append(th)}
       }
@@ -634,7 +685,7 @@
       function renderPermissionHistory(items){
         const rows=(Array.isArray(items)?items:[]).map(r=>[typeLabel(r.type),dateText(r.date)+" · "+(r.startTime||"—"),dateText(r.returnDate||r.date)+" · "+(r.endTime||"—"),r.hoursRequested,{statusPill:true,value:r.status}]);
         renderTable($("permission-history"),["النوع","المغادرة","العودة","الساعات","الحالة"],rows,"لا توجد طلبات استئذان","ستظهر طلباتك السابقة هنا.",(items||[]).map(r=>"permission-request-"+r.id));
-        for(const item of items||[]){const link=document.createElement("a");link.href=API+"/permissions/"+item.id+"/document";link.target="_blank";link.rel="noopener";link.textContent="طباعة طلب #"+item.id;link.style.cssText="display:inline-block;margin:8px";$("permission-history").append(link);}
+        for(const item of items||[]){const link=document.createElement("a");link.href=API+"/permissions/"+item.id+"/document";link.target="_blank";link.rel="noopener";link.textContent="طباعة طلب #"+item.id;link.style.cssText="display:inline-block;margin:8px";$("permission-history").append(link);requestTools("permission",item,$("permission-history"));}
       }
       function renderRequestHistory(events,leaves,permissions){
         const groups={leave:{items:Array.isArray(leaves)?leaves:[],container:$("leave-request-history"),label:"إجازة"},
@@ -1062,8 +1113,13 @@
         event.preventDefault();const form=event.currentTarget;if(!form.reportValidity())return;
         const body={type:$("permission-type").value,date:$("permission-date").value,returnDate:$("permission-return-date").value,period:$("permission-period").value,purpose:$("permission-purpose").value,notes:$("permission-notes").value,acknowledged:$("permission-acknowledged").checked,startTime:$("permission-start").value,endTime:$("permission-end").value,reason:$("permission-reason").value.trim()};
         if(body.returnDate+"T"+body.endTime<=body.date+"T"+body.startTime){errorText($("permission-message"),new Error("وقت العودة يجب أن يكون بعد المغادرة."));return;}
+        const attachment=$("permission-attachment").files[0];
+        if(attachment&&attachment.size>5242880){errorText($("permission-message"),new Error("الحد الأقصى للمرفق 5 ميغابايت."));return}
         const button=form.querySelector("button[type=submit]");button.disabled=true;message($("permission-message"),"جارٍ إرسال الطلب…");
-        try{const data=await request("/permissions",{method:"POST",body});message($("permission-message"),data.message||"تم إرسال طلب الاستئذان.","success");form.reset();await loadSummary();}
+        try{const data=await request("/permissions",{method:"POST",body});
+          let failed=false;if(attachment)try{await uploadRequestFile("permission",data.id,attachment)}catch(error){if(error.stale)throw error;failed=true}
+          form.reset();await loadSummary();
+          message($("permission-message"),failed?"تم حفظ الطلب، لكن تعذر رفع المرفق. أعد إرفاقه من السجل.":data.message||"تم إرسال طلب الاستئذان.",failed?"error":"success");}
         catch(error){errorText($("permission-message"),error);}finally{button.disabled=false;}
       });
       async function revokeSession(id,all){
