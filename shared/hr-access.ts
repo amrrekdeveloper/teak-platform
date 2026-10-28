@@ -1,4 +1,4 @@
-import { hasHrAccess, type AccessIdentity } from "./account-access";
+import { hasHrAccess, isUserWorkspaceApi, type AccessIdentity } from "./account-access";
 // Narrow maintenance workspace. These are HR modules, not a grant of ERP access.
 export const HR_WORKSPACE_PERMISSIONS = [
   "/overview", "/requests", "/settings", "/employees", "/attendance-monitor", "/attendance-monitor/approvals", "/attendance-settings", "/leaves", "/permissions", "/reports", "/access", "/actions", "/alerts", "/payroll", "/advances", "/evaluations",
@@ -69,9 +69,10 @@ const rules: [string[], RegExp][] = [
 ];
 
 export function isHrWorkspaceApi(method: string, path: string) {
-  return rules.some(([methods, pattern]) => methods.includes(method) && pattern.test(path));
+  return isUserWorkspaceApi(method, path) || rules.some(([methods, pattern]) => methods.includes(method) && pattern.test(path));
 }
 export function isHrWorkspacePage(path: string) {
+  if (path === "/user-login" || path === "/workspace") return true;
   return /^\/hr(?:\/(?:login|overview|requests|settings|employees(?:\/\d+)?|attendance-monitor(?:\/approvals)?|attendance-settings|leaves|permissions|reports(?:\/attendance-records)?|access|actions|alerts|payroll|advances|evaluations))?\/?$/.test(path);
 }
 

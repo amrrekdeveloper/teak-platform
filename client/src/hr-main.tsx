@@ -31,7 +31,7 @@ createRoot(document.getElementById("root")!).render(
     <QueryClientProvider client={queryClient}>
       <ThemeProvider><LanguageProvider><TooltipProvider>
         <Toaster />
-        <Router base="/hr"><HrWorkspace /></Router>
+        <Router base={/^\/hr(?:\/|$)/.test(window.location.pathname) ? "/hr" : ""}><HrWorkspace /></Router>
       </TooltipProvider></LanguageProvider></ThemeProvider>
     </QueryClientProvider>
   </HrEntryBoundary>,

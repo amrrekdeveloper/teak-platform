@@ -3,6 +3,8 @@ import { storage } from "./storage";
 import { isHrWorkspaceApi, isHrWorkspaceIdentity, isManagerApi, isSystemAdminApi } from "../shared/hr-access";
 import { pool } from "./db";
 import { isDesignatedSystemAdmin } from "./system-admin";
+import { isUserWorkspaceApi } from "../shared/account-access";
+import { accountAuthority } from "./user-workspace";
 
 export async function hasManagerAssignment(userId: number) {
   const { rows } = await pool.query("SELECT 1 FROM employees manager JOIN employees report ON report.manager_id=manager.id WHERE manager.user_id=$1 AND manager.status='active' LIMIT 1", [userId]);
@@ -11,6 +13,8 @@ export async function hasManagerAssignment(userId: number) {
 
 // Runs AFTER administrative sessions, BEFORE any business route handler.
 export const enforceHrWorkspaceScope: RequestHandler = async (req, res, next) => {
+  if (isUserWorkspaceApi(req.method, req.path) ||
+    (req.session.userWorkspace && ["/api/auth/me", "/api/auth/logout"].includes(req.path))) return next();
   if (res.locals.warehouseAccessGranted) return next();
   if (!req.path.startsWith("/api/") && !req.path.startsWith("/uploads/hr-documents/")) return next();
   const restricted = res.locals.hrMaintenanceRequest || req.session.hrWorkspace || req.session.managerWorkspace || req.session.systemAdminWorkspace || isSystemAdminApi(req.method, req.path);
@@ -34,8 +38,9 @@ export const enforceHrWorkspaceScope: RequestHandler = async (req, res, next) =>
       (systemAdmin ? !req.session.systemAdminWorkspace : manager ? !req.session.managerWorkspace : !req.session.hrWorkspace))
     return res.status(401).json({ message: "سجّل الدخول إلى إدارة الموارد البشرية أولًا." });
   try {
-    const user = await storage.getUser(req.session.userId);
-    if (systemAdmin ? !await isDesignatedSystemAdmin(user) : manager ? (!user?.active || user.archived || !await hasManagerAssignment(user.id)) : !isHrWorkspaceIdentity(user, req.session))
+    const user = res.locals.authenticatedWorkspaceUser || await storage.getUser(req.session.userId);
+    if (systemAdmin ? !(await accountAuthority(user)).canManageAccounts : manager ? (!user?.active || user.archived || !await hasManagerAssignment(user.id)) :
+      (!isHrWorkspaceIdentity(user, req.session) && !(req.session.userWorkspace && await isDesignatedSystemAdmin(user))))
       return res.status(403).json({ message: "الدخول متاح لحساب موارد بشرية فعّال فقط." });
     next();
   } catch { res.status(500).json({ message: "تعذّر التحقق من صلاحية الحساب." }); }

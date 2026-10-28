@@ -1,10 +1,12 @@
 import type { RequestHandler } from "express";
 import { storage } from "./storage";
 import { isWarehouseWorkspaceApi, WAREHOUSE_WORKSPACE_ROLES, canManageWarehouse, canDecideWarehousePurchase } from "../shared/warehouse-access";
-import { hasWarehouseAccess } from "../shared/account-access";
+import { hasWarehouseAccess, isUserWorkspaceApi } from "../shared/account-access";
 
 export const enforceWarehouseWorkspaceScope: RequestHandler = async (req, res, next) => {
   if (req.path.startsWith("/api/employee-portal/")) return next();
+  if (isUserWorkspaceApi(req.method, req.path) ||
+    (req.session.userWorkspace && ["/api/auth/me", "/api/auth/logout"].includes(req.path))) return next();
   if (req.method === "POST" && ["/api/hr-access/login", "/api/system-admin/login", "/api/manager-access/login"].includes(req.path)) return next();
   const login = req.method === "POST" && req.path === "/api/warehouse-access/login";
   if (!login && !req.session.warehouseWorkspace && !res.locals.warehouseMaintenanceRequest) return next();
@@ -18,7 +20,7 @@ export const enforceWarehouseWorkspaceScope: RequestHandler = async (req, res, n
   if (!req.session.warehouseWorkspace || !req.session.adminAuthenticated || !req.session.userId)
     return res.status(401).json({ message: "سجّل الدخول إلى مساحة المستودعات أولًا" });
   try {
-    const user = await storage.getUser(req.session.userId);
+    const user = res.locals.authenticatedWorkspaceUser || await storage.getUser(req.session.userId);
     if (!user?.active || user.archived || !hasWarehouseAccess(user))
       return res.status(403).json({ message: "الحساب غير مخوّل للعمل في المستودعات" });
     if (!["GET", "HEAD"].includes(req.method) && !/^\/api\/(?:auth\/|notifications(?:\/|$))/.test(req.path)) {

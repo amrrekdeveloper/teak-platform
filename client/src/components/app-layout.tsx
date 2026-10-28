@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Sun, Moon, LogOut, Bell, Loader2, Check, Info, AlertTriangle, Zap, CheckCircle2, Camera, Mail, Phone, Shield, Eye, EyeOff, User as UserIcon, KeyRound } from "lucide-react";
+import { Sun, Moon, LogOut, Bell, Loader2, Check, Info, AlertTriangle, Zap, CheckCircle2, Camera, Mail, Phone, Shield, Eye, EyeOff, User as UserIcon, KeyRound, PanelsTopLeft } from "lucide-react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -325,7 +325,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
-      window.location.href = /^\/dashboard\/(?:warehouses|purchases|suppliers|inventory)/.test(window.location.pathname) ? "/warehouse-login" : "/login";
+      window.location.href = "/user-login";
     }
   }, [isLoading, isAuthenticated]);
 
@@ -378,6 +378,18 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </div>
 
           <div className="flex items-center gap-1">
+            <Button
+              size="sm"
+              variant="ghost"
+              className="gap-1.5 px-2"
+              onClick={() => window.location.assign("/workspace")}
+              data-testid="button-workspace-switch"
+              aria-label={t("أنظمتي", "My systems")}
+              title={t("أنظمتي", "My systems")}
+            >
+              <PanelsTopLeft className="w-4 h-4" />
+              <span className="hidden sm:inline text-xs">{t("أنظمتي", "My systems")}</span>
+            </Button>
             <div className="relative">
               <UserAvatar user={user} onClick={() => setProfileOpen(!profileOpen)} />
               {profileOpen && (
@@ -421,8 +433,17 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                       </Button>
                       <Button
                         variant="ghost"
+                        className="w-full justify-start text-xs h-8 gap-2"
+                        onClick={() => window.location.assign("/workspace")}
+                        data-testid="button-my-systems"
+                      >
+                        <PanelsTopLeft className="w-3.5 h-3.5" />
+                        {t("أنظمتي", "My systems")}
+                      </Button>
+                      <Button
+                        variant="ghost"
                         className="w-full justify-start text-xs h-8 gap-2 text-destructive hover:text-destructive"
-                        onClick={async () => { setProfileOpen(false); await logout(); window.location.href = user.maintenanceScope === "warehouse" ? "/warehouse-login" : "/login"; }}
+                        onClick={async () => { setProfileOpen(false); await logout(); window.location.href = "/user-login"; }}
                         disabled={isLoggingOut}
                         data-testid="button-popover-logout"
                       >

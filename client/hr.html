@@ -6,15 +6,33 @@
     <meta name="robots" content="noindex,nofollow" />
     <meta name="theme-color" content="#9e0a0a" />
     <link rel="icon" href="/__maintenance/logo.png" />
-    <title>TEAK | الموارد البشرية</title>
+    <title>TEAK | أنظمة تيك</title>
+    <style>
+      html, body { margin: 0; min-height: 100%; background: #f5f1e8; }
+      #entry-error { max-width: 520px; margin: 10vh auto; padding: 28px; font: 16px/1.8 Tahoma, sans-serif; color: #382a27; }
+      #entry-error a { color: #9e0a0a; }
+    </style>
+    <script>
+      window.addEventListener("error", function (event) {
+        if (!event.target || event.target.tagName !== "SCRIPT" || event.target.type !== "module") return;
+        function showEntryError() {
+          var root = document.getElementById("root");
+          var error = document.getElementById("entry-error");
+          if (root && !root.hasChildNodes() && error) error.hidden = false;
+        }
+        if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", showEntryError, { once: true });
+        else showEntryError();
+      }, true);
+    </script>
   </head>
   <body>
-    <div id="root"><main id="hr-entry-status" dir="rtl" style="font:18px Tahoma,sans-serif;padding:48px;color:#382a27;background:#fffdf8">
-      <p role="status">جارٍ تحميل الموارد البشرية… / Loading HR…</p>
-      <p>إذا استمر الانتظار، أعد تحميل الصفحة. / If loading does not finish, reload the page.</p>
+    <div id="root"></div>
+    <main id="entry-error" dir="rtl" role="alert" hidden>
+      <p>تعذّر فتح الصفحة. تحقق من اتصالك ثم أعد المحاولة. / Could not open the page. Check your connection and try again.</p>
       <button type="button" onclick="location.reload()">إعادة التحميل / Reload</button>
       <a href="/">الرئيسية / Home</a>
-    </main></div>
+    </main>
+    <noscript>يلزم تفعيل JavaScript لفتح الصفحة. / JavaScript is required to open this page.</noscript>
     <script type="module" src="/src/hr-main.tsx"></script>
   </body>
 </html>

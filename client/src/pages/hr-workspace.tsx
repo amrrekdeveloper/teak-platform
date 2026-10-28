@@ -30,10 +30,12 @@ import "@/styles/hr-theme.css";
 import {
   ArrowLeft, CalendarDays, ChevronLeft, CircleDollarSign, Eye, EyeOff, BriefcaseBusiness,
   ClipboardCheck, Clock3, DoorOpen, LoaderCircle, LockKeyhole, Menu,
-  ShieldCheck, UsersRound, X, Settings, FileBarChart2, KeyRound, Bell, LayoutDashboard, Inbox,
+  ShieldCheck, UsersRound, X, Settings, FileBarChart2, KeyRound, Bell, LayoutDashboard, Inbox, PanelsTopLeft,
 } from "lucide-react";
 
-type HrUser = { role?: string; maintenanceScope?: string; permissions?: string[]; fullNameAr?: string; fullNameEn?: string; username?: string };
+type HrUser = { role?: string; maintenanceScope?: string; userWorkspace?: boolean; permissions?: string[]; fullNameAr?: string; fullNameEn?: string; username?: string };
+type UserWorkspace = { id: "hr" | "warehouse" | "purchasing" | "accounts" | "manager"; titleAr: string; titleEn: string; path: string };
+type UserAccess = HrUser & { id?: number; isOwner?: boolean; canManageAccounts?: boolean; delegatedSystems?: string[]; activeWorkspace?: string | null; workspaces?: UserWorkspace[]; redirectTo?: string; userWorkspace?: boolean };
 type HrPage = "overview" | "requests" | "settings" | "employees" | "attendance-monitor" | "attendance-settings" | "leaves" | "permissions" | "reports" | "access" | "actions" | "payroll" | "advances" | "evaluations" | "alerts";
 type RememberedLogin = { username: string; rememberMe: boolean };
 const HR_REMEMBER_KEY = "teak.auth.remember.hr";
@@ -74,6 +76,61 @@ function WorkspaceLoading() {
   );
 }
 
+function UserWorkspacePage() {
+  const { t, isRTL } = useLanguage();
+  const [message, setMessage] = useState("");
+  const { data: access, isLoading, isError, refetch } = useQuery<UserAccess>({
+    queryKey: ["/api/user-access/me"],
+    queryFn: async () => {
+      const response = await fetch("/api/user-access/me", { credentials: "include" });
+      if (response.status === 401) {
+        window.location.assign("/user-login");
+        throw new Error("session");
+      }
+      if (!response.ok) throw new Error("access");
+      return response.json();
+    },
+    retry: false,
+  });
+  const changeWorkspace = async (workspace: UserWorkspace) => {
+    setMessage("");
+    try {
+      const response = await apiRequest("POST", "/api/user-access/workspace", { workspace: workspace.id });
+      const result = await response.json() as { redirectTo: string };
+      await queryClient.cancelQueries();
+      queryClient.clear();
+      window.location.assign(result.redirectTo);
+    } catch (error: any) {
+      setMessage(error?.message || t("تعذّر فتح مساحة العمل. حاول مرة أخرى.", "Could not open this workspace. Try again."));
+    }
+  };
+  if (isLoading) return <WorkspaceLoading />;
+  if (isError || !access) return <main className="user-workspace-page" dir={isRTL ? "rtl" : "ltr"}>
+    <section className="user-workspace-panel"><ShieldCheck size={30} /><h1>{t("تعذّر تحميل أنظمتك", "We couldn’t load your systems")}</h1><p>{t("تحقق من اتصالك ثم أعد المحاولة.", "Check your connection and try again.")}</p><Button onClick={() => void refetch()}>{t("إعادة المحاولة", "Try again")}</Button></section>
+  </main>;
+  const systems = access.workspaces || [];
+  return <main className="user-workspace-page" dir={isRTL ? "rtl" : "ltr"}>
+    <header className="user-workspace-heading">
+      <div className="hr-wordmark"><img src="/__maintenance/logo.png" alt="TEAK" /><span>{t("أنظمتي", "My systems")}</span><HrThemeToggle /><LanguageToggle /></div>
+      <p className="hr-kicker">{t("مساحة العمل", "WORKSPACE")}</p>
+      <h1>{t("مرحباً، ", "Welcome, ")}{access.fullNameAr || access.fullNameEn || access.username}</h1>
+      <p>{t("اختر النظام الذي تريد العمل فيه. تظهر هنا الأنظمة المصرّح بها لحسابك فقط.", "Choose a system to continue. Only systems authorized for your account appear here.")}</p>
+    </header>
+    {message && <p className="hr-login-error" role="alert">{message}</p>}
+    {systems.length ? <section className="user-system-list" aria-label={t("الأنظمة المتاحة", "Available systems")}>
+      {systems.map((system, index) => <button key={system.id} className="user-system-card" type="button" onClick={() => void changeWorkspace(system)}>
+        <span className="user-system-number">0{index + 1}</span><span className="user-system-title">{t(system.titleAr, system.titleEn)}</span><span className="user-system-arrow" aria-hidden="true">{isRTL ? "←" : "→"}</span>
+      </button>)}
+    </section> : <section className="user-no-access">
+      <ShieldCheck size={28} strokeWidth={1.6} /><h2>{t("لا توجد أنظمة متاحة حالياً", "No systems available yet")}</h2>
+      <p>{t("لا يملك حسابك صلاحية لأي مساحة عمل حالياً. تواصل مع مسؤول النظام للمساعدة.", "Your account is not currently assigned to a workspace. Contact your system administrator for help.")}</p>
+    </section>}
+    <button className="user-workspace-signout" type="button" onClick={async () => { try { await apiRequest("POST", "/api/auth/logout", {}); await queryClient.cancelQueries(); queryClient.clear(); window.location.assign("/user-login"); } catch { setMessage(t("تعذّر تسجيل الخروج. حاول مرة أخرى.", "Could not sign out. Try again.")); } }}>
+      <DoorOpen size={16} />{t("تسجيل الخروج", "Sign out")}
+    </button>
+  </main>;
+}
+
 function HrLogin({ sessionUser }: { sessionUser: HrUser | null }) {
   const { t, isRTL } = useLanguage();
   const [, setLocation] = useLocation();
@@ -102,16 +159,13 @@ function HrLogin({ sessionUser }: { sessionUser: HrUser | null }) {
       await queryClient.cancelQueries();
       queryClient.setQueryData(["/api/auth/me"], null);
       queryClient.clear();
-      const response = await apiRequest("POST", "/api/hr-access/login", { username: submittedUsername, password: submittedPassword, rememberMe: submittedRemember });
-      const user = await response.json() as HrUser;
-      if (user?.role !== "hr" || user?.maintenanceScope !== "hr") {
-        setError("تعذّر التحقق من صلاحية حساب الموارد البشرية.");
-        return;
-      }
+      const response = await apiRequest("POST", "/api/user-access/login", { username: submittedUsername, password: submittedPassword, rememberMe: submittedRemember });
+      const user = await response.json() as UserAccess;
       await queryClient.cancelQueries();
       queryClient.clear();
-      queryClient.setQueryData(["/api/auth/me"], user);
-      setLocation("/overview");
+      // A new entry bundle and fresh scoped auth query are needed across workspaces.
+      // Publishing the login response to the old router races its authenticated redirect.
+      window.location.assign(user.redirectTo || "/workspace");
     } catch (cause: any) {
       let message = typeof cause?.message==="string" ? cause.message : "تعذّر تسجيل الدخول. تحقق من البيانات وحاول مرة أخرى.";
       try {
@@ -124,16 +178,16 @@ function HrLogin({ sessionUser }: { sessionUser: HrUser | null }) {
     }
   };
 
-  const wrongRole = !!sessionUser && (sessionUser.role !== "hr" || sessionUser.maintenanceScope !== "hr");
+  const wrongRole = !!sessionUser && sessionUser.maintenanceScope !== "user" && sessionUser.maintenanceScope !== "hr" && sessionUser.maintenanceScope !== "warehouse" && !(sessionUser as UserAccess).userWorkspace;
   return (
     <main className="hr-login-page" dir={isRTL ? "rtl" : "ltr"}>
       <div className="hr-login-frame">
         <section className="hr-login-copy">
-          <div className="hr-wordmark"><img src="/__maintenance/logo.png" alt="TEAK" /><span>{t("إدارة الموارد البشرية", "Human Resources")}</span><HrThemeToggle /><LanguageToggle /></div>
+          <div className="hr-wordmark"><img src="/__maintenance/logo.png" alt="TEAK" /><span>{t("دخول المستخدمين", "User login")}</span><HrThemeToggle /><LanguageToggle /></div>
           <div className="hr-login-title">
-            <span className="hr-kicker">{t("مساحة الموارد البشرية", "HR workspace")}</span>
+            <span className="hr-kicker">{t("دخول المستخدمين", "User login")}</span>
             <h1>{t("تسجيل الدخول", "Sign in")}</h1>
-            <p>{t("استخدم حساب الموارد البشرية المعتمد.", "Use your authorized HR account.")}</p>
+            <p>{t("استخدم حسابك المعتمد للوصول إلى أنظمتك.", "Use your authorized account to access your systems.")}</p>
           </div>
           <form className="hr-login-form" onSubmit={submit} noValidate autoComplete="on">
             <div className="hr-field">
@@ -153,7 +207,7 @@ function HrLogin({ sessionUser }: { sessionUser: HrUser | null }) {
             </div>
             {(error || wrongRole) && (
               <p className="hr-login-error" role="alert">
-                {error || t("هذا الحساب لا يملك صلاحية الدخول إلى مساحة الموارد البشرية.", "This account cannot access the HR workspace.")}
+                {error || t("هذا الحساب لا يملك صلاحية الدخول إلى أنظمة تيك.", "This account cannot access TEAK systems.")}
               </p>
             )}
             <Button type="submit" disabled={pending} className="hr-login-submit">
@@ -162,17 +216,17 @@ function HrLogin({ sessionUser }: { sessionUser: HrUser | null }) {
               <ArrowLeft size={17} className={isRTL ? "" : "rotate-180"} />
             </Button>
           </form>
-          <p className="hr-login-footnote"><LockKeyhole size={14} /> {t("دخول مخصص لإدارة الموارد البشرية", "Dedicated access for HR administration")}</p>
+          <p className="hr-login-footnote"><LockKeyhole size={14} /> {t("دخول آمن إلى أنظمة تيك", "Secure access to TEAK systems")}</p>
         </section>
-        <aside className="hr-login-aside" aria-label="نظام الموارد البشرية">
-          <div className="hr-aside-top"><span>TEAK / PEOPLE</span><span className="hr-status-dot" /> بيئة داخلية</div>
+        <aside className="hr-login-aside" aria-label={t("أنظمة تيك", "TEAK systems")}>
+          <div className="hr-aside-top"><span>TEAK / SYSTEMS</span><span className="hr-status-dot" /> {t("بيئة داخلية", "Private access")}</div>
           <div className="hr-aside-art">
             <div className="hr-art-ring hr-art-ring-one" /><div className="hr-art-ring hr-art-ring-two" />
             <div className="hr-art-core"><UsersRound size={49} strokeWidth={1.15} /></div>
             <span className="hr-art-index">01 — 06</span>
           </div>
-          <div className="hr-aside-caption"><span>{t("إدارة الفريق", "People management")}</span><strong>{t("من أول يوم،", "From day one,")}<br />{t("إلى كل يوم.", "to every day.")}</strong></div>
-          <div className="hr-aside-bottom"><span>{t("الموارد البشرية", "Human Resources")}</span><span>HR / 2026</span></div>
+          <div className="hr-aside-caption"><span>{t("مساحة عمل موحدة", "One trusted entry")}</span><strong>{t("أنظمتك،", "Your systems,")}<br />{t("في مكان واحد.", "in one place.")}</strong></div>
+          <div className="hr-aside-bottom"><span>{t("دخول المستخدمين", "User access")}</span><span>TEAK / 2026</span></div>
         </aside>
       </div>
     </main>
@@ -217,10 +271,10 @@ function HrLayout() {
     || (currentPath === "/requests" ? navItems.find(item => item.key === "requests") : undefined)
     || (currentPath === "/settings" ? navItems.find(item => item.key === "settings") : undefined);
   const hrUser = user as HrUser | null;
-  const authorized = hrUser?.role === "hr" && hrUser?.maintenanceScope === "hr";
+  const authorized = (hrUser?.role === "hr" || hrUser?.userWorkspace === true) && hrUser?.maintenanceScope === "hr";
 
   useEffect(() => {
-    if (!isLoading && !authorized) setLocation("/login");
+    if (!isLoading && !authorized) window.location.assign(hrUser?.userWorkspace ? "/workspace" : "/user-login");
   }, [isLoading, authorized, setLocation]);
   useEffect(() => {
     if (!menuOpen) return;
@@ -242,7 +296,7 @@ function HrLayout() {
       await queryClient.cancelQueries();
       queryClient.clear();
       queryClient.setQueryData(["/api/auth/me"], null);
-      setLocation("/login");
+      window.location.assign("/user-login");
     } catch {
       setLogoutError("تعذّر تسجيل الخروج. تحقق من الاتصال وحاول مرة أخرى.");
     }
@@ -267,6 +321,9 @@ function HrLayout() {
           <div><strong>{t("تيك", "TEAK")}</strong><small>{t("إدارة الموارد البشرية", "Human Resources")}</small></div>
         </div>
         <nav id="hr-primary-navigation" className="hr-nav" aria-label={t("التنقل في الموارد البشرية", "HR navigation")}>
+          <button type="button" className="hr-nav-link" onClick={() => { setMenuOpen(false); window.location.assign("/workspace"); }}>
+            <PanelsTopLeft size={18} strokeWidth={1.8} /><span>{t("أنظمتي", "My systems")}</span>
+          </button>
           {(["workspace", "people", "requests", "operations"] as const).map(group => <div key={group} className="hr-nav-group">
             <div className="hr-nav-group-label">{group === "workspace" ? t("مساحة العمل", "Workspace") : group === "people" ? t("الفريق والحضور", "People & attendance") : group === "requests" ? t("الطلبات", "Requests") : t("الإدارة", "Operations")}</div>
             {navItems.filter(item => item.group === group).map(({ href, key, icon: Icon }) => (
@@ -301,6 +358,11 @@ function HrLayout() {
         </header>
         <main className="hr-content">
           {isLoggingOut ? <WorkspaceLoading /> : <Switch>
+            <Route path="/workspace" component={UserWorkspacePage} />
+            <Route path="/user-login" component={HrLoginRoute} />
+            <Route path="/hr/login" component={HrLoginRoute} />
+            <Route path="/warehouse-login" component={HrLoginRoute} />
+            <Route path="/login" component={HrLoginRoute} />
             <Route path="/"><RedirectToOverview /></Route>
             <Route path="/overview" component={HrOverviewPage} />
             <Route path="/requests" component={HrRequestsCenterPage} />
@@ -347,11 +409,11 @@ function HrAttendanceMonitorRoute() {
 
 function HrLoginRoute() {
   const { user } = useAuth();
-  const [, setLocation] = useLocation();
-  const hrUser = user as HrUser | null;
+  const hrUser = user as UserAccess | null;
   useEffect(() => {
-    if (hrUser?.role === "hr" && hrUser.maintenanceScope === "hr") setLocation("/overview");
-  }, [hrUser?.role, hrUser?.maintenanceScope, setLocation]);
+    if (hrUser?.userWorkspace) window.location.replace("/workspace");
+    else if (hrUser?.maintenanceScope === "hr" && hrUser.role === "hr") window.location.replace("/hr/overview");
+  }, [hrUser?.role, hrUser?.maintenanceScope, hrUser?.userWorkspace]);
   return <HrLogin sessionUser={hrUser} />;
 }
 
@@ -421,6 +483,24 @@ export default function HrWorkspace() {
         .hr-content .hr-loading { min-height:50dvh; }
         .hr-mobile-header,.hr-mobile-scrim { display:none; }
         .hr-login-page { min-height:100dvh;display:grid;place-items:center;padding:26px;background:var(--hr-paper); }
+         .user-workspace-page { min-height:100dvh;width:100%;display:flex;flex-direction:column;justify-content:center;padding:clamp(24px,6vw,76px);background:var(--hr-paper);color:var(--hr-ink);font-family:"Zain",Tahoma,sans-serif; }
+         .user-workspace-heading { width:min(100%,900px);margin:0 auto 30px; }
+         .user-workspace-heading .hr-wordmark { margin-bottom:54px; }
+         .user-workspace-heading .hr-kicker { margin:0 0 9px; }
+         .user-workspace-heading h1 { margin:0;color:var(--hr-ink);font-size:clamp(30px,5vw,48px);line-height:1.2; }
+         .user-workspace-heading>p:last-child { margin:12px 0 0;color:var(--hr-muted);font-size:18px;line-height:1.7; }
+         .user-system-list { width:min(100%,900px);display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,245px),1fr));gap:14px;margin:0 auto; }
+         .user-system-card { position:relative;min-height:156px;display:flex;flex-direction:column;align-items:flex-start;justify-content:space-between;padding:23px;border:1px solid var(--hr-line);border-radius:12px;background:var(--hr-ivory);color:var(--hr-ink);text-align:start;font:inherit;cursor:pointer;transition:transform .2s; }
+         .user-system-card:hover { transform:translateY(-3px);border-color:var(--hr-red);box-shadow:0 14px 30px #49352b12; }
+         .user-system-number { color:var(--hr-red);font:12px/1.2 ui-monospace,monospace;letter-spacing:.12em; }
+         .user-system-title { font-size:23px;font-weight:700; }
+         .user-system-arrow { position:absolute;inset-inline-end:22px;bottom:22px;color:var(--hr-red);font-size:22px; }
+         .user-no-access,.user-workspace-panel { width:min(100%,900px);margin:0 auto;padding:30px;border:1px dashed var(--hr-line);border-radius:12px;background:var(--hr-ivory);color:var(--hr-muted);text-align:center; }
+         .user-no-access svg,.user-workspace-panel svg { color:var(--hr-red);margin:0 auto 8px; }
+         .user-no-access h2,.user-workspace-panel h1 { margin:0;color:var(--hr-ink);font-size:23px; }
+         .user-no-access p,.user-workspace-panel p { max-width:550px;margin:8px auto 0;line-height:1.7; }
+         .user-workspace-signout { display:flex;align-items:center;justify-content:center;gap:8px;margin:28px auto 0;padding:10px 15px;border:1px solid var(--hr-line);border-radius:8px;background:transparent;color:var(--hr-muted);font:inherit;cursor:pointer; }
+         .user-workspace-signout:hover { color:var(--hr-red);border-color:var(--hr-red); }
         .hr-login-frame { width:min(100%,970px);min-height:610px;display:grid;grid-template-columns:minmax(0,1fr) 39%;overflow:hidden;background:var(--hr-ivory);border:1px solid #e8ded2;border-radius:16px;box-shadow:0 22px 70px #49352b12; }
         .hr-login-copy { display:flex;flex-direction:column;padding:clamp(30px,6vw,64px); }
         .hr-wordmark { display:flex;align-items:center;gap:10px;color:var(--hr-red);font-weight:700;font-size:18px; }
@@ -511,7 +591,11 @@ export default function HrWorkspace() {
         @media(prefers-reduced-motion:reduce) { .hr-nav-link,.hr-sidebar,.hr-loading-mark,.hr-loading-lines i,.hr-spinning { animation:none;transition:none; } }
       `}</style>
       <Switch>
-        <Route path="/login"><HrLoginRoute /></Route>
+        <Route path="/user-login" component={HrLoginRoute} />
+        <Route path="/hr/login" component={HrLoginRoute} />
+        <Route path="/warehouse-login" component={HrLoginRoute} />
+        <Route path="/login" component={HrLoginRoute} />
+        <Route path="/workspace" component={UserWorkspacePage} />
         <Route><HrLayout /></Route>
       </Switch>
     </>

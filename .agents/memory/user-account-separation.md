@@ -15,8 +15,14 @@ Expand the current owner account-management screen into user administration firs
 
 **How to apply:** Separate account-administrator authority from merely belonging to the IT department. Do not automatically give the existing technical IT role, global owner powers or payroll access to an employee based on their job title.
 
-In the first phase, only the designated owner may administer user accounts and application access; IT delegation is not part of the approved scope.
+The designated owner controls delegation of account administration. Explicitly authorized administrators or IT accounts may provision and maintain ordinary accounts within the programs the owner permits.
 
-**Why:** The owner explicitly selected “المالك فقط” on 2026-10-28 when asked who would administer accounts.
+**Why:** On 2026-10-28 the owner expanded the earlier owner-only phase, requesting unified user sign-in and the ability to authorize other administrators and IT staff to administer accounts.
 
-**How to apply:** Keep account-management authorization independent of both employment placement and the legacy technical IT role. Do not leave an alternate IT/HR provisioning endpoint that bypasses the owner console.
+**How to apply:** Keep account-management authorization independent of employment placement and the legacy technical IT role. Only the owner grants or withdraws bounded delegation; delegates cannot administer owners, themselves, other administrators, or accounts with access outside their assigned programs. Do not leave alternate provisioning endpoints that bypass these checks.
+
+Staff use one username/password entry and a dashboard of their authorized systems; employee self-service retains its separate entry.
+
+**Why:** The owner explicitly requested one shield-based login for HR, warehouses, purchasing and future systems, without duplicating identities or changing the employee entry.
+
+**How to apply:** Extend the shared workspace registry and existing authentication, not a parallel user/session store. A single available system may open directly; multiple systems require an authorized selector. Preserve server-side workspace isolation and the public maintenance boundary.

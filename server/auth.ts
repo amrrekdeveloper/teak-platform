@@ -16,6 +16,7 @@ import { accountPermissionKeys, explicitAccess, hasHrAccess, hasWarehouseAccess,
 import { setLoginPersistence } from "./login-session";
 import { enforceWarehouseWorkspaceScope } from "./warehouse-access";
 import { WAREHOUSE_WORKSPACE_PERMISSIONS, WAREHOUSE_WORKSPACE_ROLES } from "../shared/warehouse-access";
+import { enforceUserWorkspace, registerUserWorkspace, workspaceIdentity, activateWorkspace } from "./user-workspace";
 
 const scryptAsync = promisify(scrypt);
 
@@ -52,6 +53,9 @@ declare module "express-session" {
     managerWorkspace?: boolean;
     systemAdminWorkspace?: boolean;
     warehouseWorkspace?: boolean;
+    userWorkspace?: boolean;
+    activeWorkspace?: "hr" | "warehouse" | "purchasing" | "accounts" | "manager" | null;
+    credentialStamp?: string;
     rememberMe?: boolean;
   }
 }
@@ -79,13 +83,14 @@ export function setupAuth(app: Express) {
       },
     })
   );
+  app.use(enforceUserWorkspace);
   app.use(enforceWarehouseWorkspaceScope);
   app.use(enforceHrWorkspaceScope);
   app.use(async (req, res, next) => {
     // Explicit workspace access must not fall back to an old unrestricted ERP session.
     if (!req.path.startsWith("/api/") || req.path.startsWith("/api/employee-portal/") ||
       !req.session.userId || req.session.hrWorkspace || req.session.warehouseWorkspace ||
-      req.session.managerWorkspace || req.session.systemAdminWorkspace ||
+      req.session.managerWorkspace || req.session.systemAdminWorkspace || req.session.userWorkspace ||
       ["/api/auth/me", "/api/auth/logout", "/api/hr-access/login", "/api/warehouse-access/login",
         "/api/manager-access/login", "/api/system-admin/login"].includes(req.path)) return next();
     try {
@@ -95,8 +100,9 @@ export function setupAuth(app: Express) {
     } catch { res.status(500).json({ message: "تعذر التحقق من صلاحية الحساب." }); }
   });
 
-  app.post(["/api/auth/login", "/api/hr-access/login", "/api/manager-access/login", "/api/system-admin/login", "/api/warehouse-access/login"], async (req: Request, res: Response) => {
+  app.post(["/api/auth/login", "/api/hr-access/login", "/api/manager-access/login", "/api/system-admin/login", "/api/warehouse-access/login", "/api/user-access/login"], async (req: Request, res: Response) => {
     try {
+      const unifiedLogin = req.path === "/api/user-access/login";
       const hrLogin = req.path === "/api/hr-access/login";
       const managerLogin = req.path === "/api/manager-access/login";
       const systemAdminLogin = req.path === "/api/system-admin/login";
@@ -111,7 +117,7 @@ export function setupAuth(app: Express) {
       }
       if(req.body.rememberMe!==undefined&&typeof req.body.rememberMe!=="boolean")
         return res.status(400).json({message:"خيار تذكّر الدخول غير صالح."});
-      if ((hrLogin || managerLogin || systemAdminLogin || warehouseLogin) && (!await takeLimit(`hr-login-ip:${tokenHash(req.ip || "unknown")}`, 30, 900) ||
+      if ((hrLogin || managerLogin || systemAdminLogin || warehouseLogin || unifiedLogin) && (!await takeLimit(`hr-login-ip:${tokenHash(req.ip || "unknown")}`, 30, 900) ||
         !await takeLimit(`hr-login-user:${tokenHash(username.trim().toLowerCase())}`, 10, 900)))
         return res.status(429).json({ message: "محاولات دخول متكررة. حاول بعد 15 دقيقة." });
 
@@ -129,7 +135,7 @@ export function setupAuth(app: Express) {
           messageEn: "Account is disabled. Please contact administrator",
         });
       }
-      if (explicitAccess(user) && !hrLogin && !warehouseLogin && !managerLogin && !systemAdminLogin)
+      if (explicitAccess(user) && !hrLogin && !warehouseLogin && !managerLogin && !systemAdminLogin && !unifiedLogin)
         return res.status(403).json({ message: "استخدم مدخل البرنامج المصرّح لك: الموارد البشرية أو المستودعات." });
       if (hrLogin && !hasHrAccess(user))
         return res.status(403).json({ message: "هذا المدخل مخصص لحسابات الموارد البشرية فقط." });
@@ -145,11 +151,22 @@ export function setupAuth(app: Express) {
       await new Promise<void>((resolve, reject) => req.session.regenerate(err => err ? reject(err) : resolve()));
       req.session.userId = user.id;
       req.session.adminAuthenticated = true;
+      req.session.credentialStamp = tokenHash(user.password);
       req.session.hrWorkspace = hrLogin;
       req.session.managerWorkspace = managerLogin;
       req.session.systemAdminWorkspace = systemAdminLogin;
       req.session.warehouseWorkspace = warehouseLogin;
       setLoginPersistence(req.session,req.body.rememberMe===true);
+      if (unifiedLogin) {
+        const identity = await workspaceIdentity(user);
+        req.session.userWorkspace = true;
+        req.session.credentialStamp = tokenHash(user.password);
+        const sole = identity.workspaces.length === 1 ? identity.workspaces[0] : undefined;
+        activateWorkspace(req, sole?.id ?? null);
+        await new Promise<void>((resolve, reject) => req.session.save(error => error ? reject(error) : resolve()));
+        const { password: _password, employeePin: _employeePin, financePin: _financePin, ...safe } = user;
+        return res.json({ ...safe, userWorkspace: true, redirectTo: sole?.path ?? "/workspace" });
+      }
       const { password: _, employeePin: _pin, financePin: _financePin, ...safeUser } = scopedAccount(user, hrLogin ? "hr" : warehouseLogin ? "warehouse" : undefined);
       const effective = await getEffectivePermissionsForUser(user);
       const permissions = (managerLogin || systemAdminLogin) ? [] : hrLogin ? HR_WORKSPACE_PERMISSIONS
@@ -166,6 +183,7 @@ export function setupAuth(app: Express) {
   });
 
   registerSystemAdminRoutes(app, { hashPassword, comparePasswords });
+  registerUserWorkspace(app, { hashPassword, comparePasswords, takeLimit });
 
   app.post("/api/auth/logout", (req: Request, res: Response) => {
     req.session.destroy((err) => {
@@ -189,7 +207,7 @@ export function setupAuth(app: Express) {
     }
 
     try {
-      const user = await storage.getUser(req.session.userId);
+      const user = res.locals.authenticatedWorkspaceUser || await storage.getUser(req.session.userId);
       if (!user || !user.active) {
         return res.status(401).json({
           message: "المستخدم غير موجود",
@@ -198,7 +216,9 @@ export function setupAuth(app: Express) {
       }
       const { password: _, employeePin: _pin, financePin: _financePin, ...safeUser } = scopedAccount(user, req.session.hrWorkspace ? "hr" : req.session.warehouseWorkspace ? "warehouse" : undefined);
       const permissions = req.session.managerWorkspace ? [] : req.session.hrWorkspace ? HR_WORKSPACE_PERMISSIONS : await getEffectivePermissionsForUser(user);
-      return res.json({ ...safeUser, permissions: req.session.warehouseWorkspace ? permissions.filter(key => WAREHOUSE_WORKSPACE_PERMISSIONS.includes(key)) : permissions,
+      return res.json({ ...safeUser, userWorkspace: !!req.session.userWorkspace, permissions: req.session.warehouseWorkspace ? permissions.filter(key => WAREHOUSE_WORKSPACE_PERMISSIONS.includes(key)) : permissions,
+        ...(req.session.userWorkspace && !req.session.hrWorkspace && !req.session.warehouseWorkspace && !req.session.managerWorkspace ?
+          { maintenanceScope: req.session.systemAdminWorkspace ? "system-admin" : "user" } : {}),
         ...(req.session.warehouseWorkspace ? { maintenanceScope: "warehouse" } : req.session.hrWorkspace ? { maintenanceScope: "hr" } : req.session.managerWorkspace ? { maintenanceScope: "manager" } : {}) });
     } catch (error) {
       return res.status(500).json({
@@ -265,7 +285,7 @@ export function requireRole(...roles: string[]) {
     }
 
     try {
-      const storedUser = await storage.getUser(req.session.userId);
+      const storedUser = res.locals.authenticatedWorkspaceUser || await storage.getUser(req.session.userId);
       const user = storedUser && scopedAccount(storedUser, req.session.hrWorkspace ? "hr" : req.session.warehouseWorkspace ? "warehouse" : undefined);
       if (!user || !user.active) {
         return res.status(401).json({

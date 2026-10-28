@@ -17,6 +17,12 @@ The current maintenance page, not the hidden original application homepage, is t
 
 The owner separately authorized a system-administrator entry to provision HR administrative accounts during maintenance, using owner-selected secrets.
 
+The owner later authorized unified staff sign-in and explicitly delegated account administration during maintenance. This permits the existing narrowly scoped HR, warehouse, purchasing and account-administration workspaces, not reopening the general ERP.
+
+**Why:** The owner requested a shared entry and owner-controlled delegation on 2026-10-28 while retaining the separate employee portal.
+
+**How to apply:** Allow only the actual shared entry/control routes and check each granted workspace independently. The maintenance countdown or successful user login must never enable unrelated programs.
+
 **Why:** The owner needs to create production HR credentials without reopening the general administrative platform.
 
 **How to apply:** Restrict this entry to the explicitly designated owner and HR account management only. Bootstrap once per database; never overwrite existing accounts or passwords on restart or silently promote a conflicting username. Development account rows do not imply production provisioning.

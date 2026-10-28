@@ -1,14 +1,40 @@
 import { z } from "zod";
 
+export const administrationSystemSchema = z.enum(["hr", "warehouse", "purchasing"]);
+export type AdministrationSystem = z.infer<typeof administrationSystemSchema>;
 // Explicit per-account workspace access. null/absent preserves legacy accounts.
 export const accountAccessSchema = z.object({
   version: z.literal(1),
   hr: z.enum(["none", "manage"]),
   warehouse: z.enum(["none", "view", "manage"]),
   purchasing: z.enum(["none", "view", "manage"]),
+  administration: z.object({ systems: z.array(administrationSystemSchema).min(1).max(3) }).strict().optional(),
 }).strict();
 export type AccountAccessPolicy = z.infer<typeof accountAccessSchema>;
 export interface AccessIdentity { role: string; accessPolicy?: AccountAccessPolicy | null }
+export function administrationSystems(user: AccessIdentity): AdministrationSystem[] {
+  return [...new Set(explicitAccess(user)?.administration?.systems ?? [])];
+}
+export function policyWithinDelegation(policy: AccountAccessPolicy, systems: readonly string[]) {
+  return !policy.administration && (["hr", "warehouse", "purchasing"] as const)
+    .every(key => policy[key] === "none" || systems.includes(key));
+}
+/** Do not let a limited administrator reset credentials for unrelated ERP roles. */
+export function delegateMayManage(user: AccessIdentity & { employees?: unknown[] }, systems: readonly string[]) {
+  if (user.role === "owner") return false;
+  if (user.accessPolicy != null) {
+    const parsed = accountAccessSchema.safeParse(user.accessPolicy);
+    return parsed.success && policyWithinDelegation(parsed.data, systems);
+  }
+  return (user.role === "hr" && systems.includes("hr")) ||
+    (user.role === "warehouse" && systems.includes("warehouse")) ||
+    (user.role === "purchasing" && systems.includes("purchasing")) ||
+    (user.role === "customer" && !!user.employees?.length);
+}
+export function isUserWorkspaceApi(method: string, path: string) {
+  return (method === "GET" && path === "/api/user-access/me") ||
+    (method === "POST" && /^\/api\/user-access\/(?:login|workspace|password)$/.test(path));
+}
 export const EMPTY_ACCOUNT_ACCESS: AccountAccessPolicy = { version: 1, hr: "none", warehouse: "none", purchasing: "none" };
 export function explicitAccess(user: AccessIdentity): AccountAccessPolicy | null {
   if (user.accessPolicy == null) return null;

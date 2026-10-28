@@ -9,7 +9,6 @@ import { LanguageProvider, useLanguage } from "@/components/language-provider";
 import { useAuth } from "@/hooks/use-auth";
 import { motion, AnimatePresence } from "framer-motion";
 import LandingPage from "@/pages/landing";
-import WarehouseLogin from "@/pages/warehouse-login";
 import LoginPage from "@/pages/login";
 import ProductsPage from "@/pages/products";
 import RequestQuotePage from "@/pages/request-quote";
@@ -53,7 +52,6 @@ import DesignStudioPage from "@/pages/design-studio";
 import CustomerPortalLogin from "@/pages/customer-portal-login";
 import CustomerPortal from "@/pages/customer-portal";
 import EmployeeLoginPage from "@/pages/employee-login";
-import SystemAdminLogin from "@/pages/system-admin-login";
 import MyCalendarPage from "@/pages/my-calendar";
 import SiteSurveyPage from "@/pages/site-survey";
 import Scene3DPage from "@/pages/scene-3d";
@@ -189,6 +187,11 @@ function GuardedSettingsUsersPage() {
 function LegacyInventoryRoute() {
   const [, setLocation] = useLocation();
   useEffect(() => { setLocation("/warehouses/items"); }, [setLocation]);
+  return null;
+}
+
+function UnifiedLoginAlias() {
+  useEffect(() => { window.location.replace("/user-login"); }, []);
   return null;
 }
 
@@ -384,8 +387,11 @@ function DashboardRoutes() {
 function Router() {
   return (
     <Switch>
+      <Route path="/hr/login" component={UnifiedLoginAlias} />
+      <Route path="/user-login" component={HrWorkspace} />
+      <Route path="/workspace" component={HrWorkspace} />
+      <Route path="/warehouse-login" component={UnifiedLoginAlias} />
       <Route path="/hr" nest component={HrWorkspace} />
-      <Route path="/warehouse-login" component={WarehouseLogin} />
       <Route path="/warehouses/:section?">{() => { window.location.replace("/dashboard" + window.location.pathname + window.location.search); return null; }}</Route>
       <Route path="/" component={LandingPage} />
       <Route path="/login">{() => { window.location.replace("/employee-login"); return null; }}</Route>
@@ -397,7 +403,6 @@ function Router() {
       <Route path="/employee-login" component={EmployeeLoginPage} />
       <Route path="/attendance" component={AttendancePage} />
       <Route path="/finance-login" component={FinanceLoginPage} />
-      <Route path="/system-admin" component={SystemAdminLogin} />
       <Route path="/kitchen-designer/space" component={KitchenToolSpace} />
       <Route path="/kitchen-designer/details" component={KitchenToolDetails} />
       {/* Legacy 5-step wizard routes → new 3-stage wizard */}
@@ -425,6 +430,8 @@ function FloatingContactWrapper() {
   const isPublicPage =
     location !== "/hr" &&
     !location.startsWith("/hr/") &&
+    !location.startsWith("/user-login") &&
+    !location.startsWith("/workspace") &&
     !location.startsWith("/warehouse-login") &&
     !location.startsWith("/dashboard") &&
     !location.startsWith("/login") &&
@@ -439,7 +446,7 @@ function FloatingContactWrapper() {
 
 function App() {
   const [showSplash, setShowSplash] = useState(() => {
-    if (window.location.pathname === "/hr" || window.location.pathname.startsWith("/hr/") || window.location.pathname === "/warehouse-login" || window.location.pathname.startsWith("/dashboard/warehouses")) return false;
+    if (window.location.pathname === "/hr" || window.location.pathname.startsWith("/hr/") || window.location.pathname === "/user-login" || window.location.pathname === "/workspace" || window.location.pathname === "/warehouse-login" || window.location.pathname.startsWith("/dashboard/warehouses")) return false;
     if (sessionStorage.getItem("splashShown")) return false;
     return true;
   });

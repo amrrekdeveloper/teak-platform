@@ -1,9 +1,11 @@
 import type { Express, RequestHandler } from "express";
 import { z } from "zod";
 import { pool } from "./db";
-import { accountAccessSchema } from "../shared/account-access";
+import { accountAccessSchema, delegateMayManage, policyWithinDelegation } from "../shared/account-access";
 import { isValidHrPassword, HR_PASSWORD_MESSAGE } from "../shared/hr-password-policy";
 import { isProtectedOwner } from "../shared/permissions";
+import { accountAuthority } from "./user-workspace";
+import { tokenHash } from "./employee-portal/security";
 
 const username = z.string().trim().min(3).max(80).regex(/^[a-zA-Z0-9._-]+$/);
 const name = z.string().trim().min(1).max(150);
@@ -45,11 +47,16 @@ export function registerUserAdministration(app: Express, requireOwner: RequestHa
   app.use((req, res, next) => {
     if (!["GET", "HEAD"].includes(req.method) &&
       (/^\/api\/users(?:\/\d+(?:\/permissions)?)?$/.test(req.path) || /^\/api\/users\/reset-requests\/\d+\/resolve$/.test(req.path)))
-      return res.status(403).json({ message: "إدارة الحسابات والصلاحيات متاحة للمالك فقط من شاشة المستخدمين." });
+      return res.status(403).json({ message: "إدارة الحسابات من شاشة المستخدمين وبصلاحية إدارة معتمدة." });
     next();
   });
   app.get("/api/system-admin/accounts", requireOwner, async (_req, res) => {
-    try { res.json({ rows: (await pool.query(accountSelect + " ORDER BY u.created_at DESC,u.id DESC")).rows }); }
+    try {
+      const rows = (await pool.query(accountSelect + " ORDER BY u.created_at DESC,u.id DESC")).rows;
+      const authority = res.locals.accountAuthority;
+      res.json({ rows: authority.isOwner ? rows : rows.filter(row => row.id !== _req.session.userId &&
+        row.role !== "owner" && !isProtectedOwner(row) && delegateMayManage(row, authority.delegatedSystems)) });
+    }
     catch { res.status(500).json({ message: "تعذر تحميل المستخدمين." }); }
   });
   app.get("/api/system-admin/employees", requireOwner, async (_req, res) => {
@@ -72,10 +79,22 @@ export function registerUserAdministration(app: Express, requireOwner: RequestHa
       const hash = data.password ? await tools.hashPassword(data.password) : null;
       client = await pool.connect();
       await client.query("BEGIN");
-      const actor = (await client.query(`SELECT u.id FROM teak_system_admin a JOIN users u ON u.id=a.user_id
-        WHERE a.singleton=true AND u.id=$1 AND u.active=true AND u.archived=false AND u.role='owner' FOR SHARE OF a,u`,
+      const actor = (await client.query(`SELECT u.*,u.access_policy AS "accessPolicy" FROM users u
+        WHERE u.id=$1 AND u.active=true AND u.archived=false FOR SHARE OF u`,
       [req.session.userId])).rows[0];
       if (!actor) throw Object.assign(new Error("انتهت صلاحية إدارة المستخدمين."), { status: 403 });
+      if (req.session.credentialStamp && req.session.credentialStamp !== tokenHash(actor.password))
+        throw Object.assign(new Error("تغيّرت بيانات الدخول؛ سجّل الدخول مجددًا."), { status: 401 });
+      const authority = await accountAuthority(actor, client);
+      if (!authority.canManageAccounts || (!authority.isOwner && data.accessPolicy &&
+        !policyWithinDelegation(data.accessPolicy, authority.delegatedSystems)))
+        throw Object.assign(new Error("لا يمكنك منح تفويض إداري أو صلاحية خارج الأنظمة التي فوّضك بها المالك."), { status: 403 });
+      if (!creating && !authority.isOwner) {
+        const candidate = (await client.query(accountSelect + " AND u.id=$1", [id])).rows[0];
+        if (!candidate || candidate.id === actor.id || candidate.role === "owner" || isProtectedOwner(candidate) ||
+          !delegateMayManage(candidate, authority.delegatedSystems))
+          throw Object.assign(new Error("هذا الحساب خارج نطاق تفويضك؛ حسابك وحسابات المالك والمديرين محمية."), { status: 403 });
+      }
       if (data.username) {
         await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", ["account-username:" + data.username.toLowerCase()]);
         const duplicate = await client.query("SELECT id FROM users WHERE lower(username)=lower($1) AND ($2::int IS NULL OR id<>$2)", [data.username, id]);
@@ -94,13 +113,21 @@ export function registerUserAdministration(app: Express, requireOwner: RequestHa
         if (!target || target.archived) throw Object.assign(new Error("الحساب غير موجود."), { status: 404 });
         if (target.role === "owner" || isProtectedOwner(target) || target.id === req.session.userId)
           throw Object.assign(new Error("حسابات المالك محمية؛ تغيير كلمة مرور المالك من الإجراء المخصص فقط."), { status: 403 });
+        if (!authority.isOwner) {
+          const links = target.role === "customer" && target.access_policy == null
+            ? (await client.query("SELECT id FROM employees WHERE user_id=$1", [id])).rows : [];
+          if (!delegateMayManage({ role: target.role, accessPolicy: target.access_policy, employees: links }, authority.delegatedSystems))
+            throw Object.assign(new Error("تغير نطاق الحساب؛ لم يعد تعديل هذا الحساب ضمن تفويضك."), { status: 403 });
+        }
         if (target.version !== data.expectedVersion)
           throw Object.assign(new Error("تغير الحساب منذ فتحه؛ حدّث القائمة وافتحه من جديد."), { status: 409 });
         userId = target.id;
         invalidateSessions = !!hash || (data.username !== undefined && data.username !== target.username) ||
           (data.active !== undefined && data.active !== target.active) ||
           (!!data.accessPolicy && ["version", "hr", "warehouse", "purchasing"].some(
-            key => (data.accessPolicy as any)[key] !== target.access_policy?.[key]));
+            key => (data.accessPolicy as any)[key] !== target.access_policy?.[key])) ||
+          (!!data.accessPolicy && JSON.stringify(data.accessPolicy.administration?.systems.slice().sort() ?? []) !==
+            JSON.stringify(target.access_policy?.administration?.systems?.slice().sort() ?? []));
         await client.query(`UPDATE users SET username=COALESCE($2,username),full_name_ar=COALESCE($3,full_name_ar),
           full_name_en=COALESCE($4,full_name_en),active=COALESCE($5,active),password=COALESCE($6,password),
           access_policy=COALESCE($7::jsonb,access_policy) WHERE id=$1`,

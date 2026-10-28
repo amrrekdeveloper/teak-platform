@@ -25,6 +25,9 @@ try {
       await client.query("DELETE FROM users WHERE id=ANY($1::int[])", [ids]);
       await client.query("COMMIT");
       await unlink(file);
+      await unlink("/tmp/teak-unified-access-fixture.json").catch((error: NodeJS.ErrnoException) => {
+        if (error.code !== "ENOENT") throw error;
+      });
       console.log("Disposable account fixtures and their exact sessions removed.");
     } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
   } else if (mode === "prepare") {

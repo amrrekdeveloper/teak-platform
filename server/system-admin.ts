@@ -3,6 +3,7 @@ import { z } from "zod";
 import { pool } from "./db";
 import { isProtectedOwner } from "../shared/permissions";
 import { registerUserAdministration } from "./user-administration";
+import { accountAuthority } from "./user-workspace";
 import { HR_PASSWORD_MESSAGE,isValidHrPassword } from "../shared/hr-password-policy";
 import { takeLimit } from "./employee-portal/database";
 
@@ -100,12 +101,24 @@ export function registerSystemAdminRoutes(app: Express, tools: PasswordTools) {
       return res.status(403).json({ message: "هذا الإجراء متاح لمدير النظام المعتمد فقط." });
     next();
   };
-  app.get("/api/system-admin/me", requireOwner, async (req, res) => {
+  const requireAccountAdmin: RequestHandler = async (req, res, next) => {
+    if (!req.session.systemAdminWorkspace || !req.session.adminAuthenticated || !req.session.userId)
+      return res.status(401).json({ message: "سجّل الدخول إلى إدارة المستخدمين." });
+    try {
+      const user = res.locals.authenticatedWorkspaceUser || (await pool.query('SELECT id,role,active,archived,access_policy AS "accessPolicy" FROM users WHERE id=$1', [req.session.userId])).rows[0];
+      const authority = await accountAuthority(user);
+      if (!authority.canManageAccounts) return res.status(403).json({ message: "إدارة المستخدمين تتطلب تفويضًا صريحًا من المالك." });
+      res.locals.accountAuthority = authority;
+      next();
+    } catch { res.status(500).json({ message: "تعذر التحقق من صلاحية إدارة المستخدمين." }); }
+  };
+  app.get("/api/system-admin/me", requireAccountAdmin, async (req, res) => {
     const { rows: [user] } = await pool.query("SELECT id,username,full_name_ar FROM users WHERE id=$1", [req.session.userId]);
-    res.json({ id: user.id, username: user.username, fullNameAr: user.full_name_ar, maintenanceScope: "system-admin" });
+    res.json({ id: user.id, username: user.username, fullNameAr: user.full_name_ar, maintenanceScope: "system-admin",
+      ...res.locals.accountAuthority, userWorkspace: !!req.session.userWorkspace });
   });
-  registerUserAdministration(app, requireOwner, tools);
-  app.post("/api/system-admin/logout", requireOwner, (req, res) => {
+  registerUserAdministration(app, requireAccountAdmin, tools);
+  app.post("/api/system-admin/logout", requireAccountAdmin, (req, res) => {
     req.session.destroy(error => {
       if (error) return res.status(500).json({ message: "تعذّر تسجيل الخروج. حاول مجددًا." });
       res.clearCookie("connect.sid");
