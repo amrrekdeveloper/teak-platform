@@ -1,3 +1,4 @@
+import { hasHrAccess, type AccessIdentity } from "./account-access";
 // Narrow maintenance workspace. These are HR modules, not a grant of ERP access.
 export const HR_WORKSPACE_PERMISSIONS = [
   "/overview", "/requests", "/settings", "/employees", "/attendance-monitor", "/attendance-monitor/approvals", "/attendance-settings", "/leaves", "/permissions", "/reports", "/access", "/actions", "/alerts", "/payroll", "/advances", "/evaluations",
@@ -80,15 +81,15 @@ export function isManagerApi(method: string, path: string) {
 }
 
 export function isSystemAdminApi(method: string, path: string) {
-  return (method === "POST" && /^\/api\/system-admin\/(?:login|logout|password|hr-accounts)$/.test(path)) ||
-    (method === "GET" && /^\/api\/system-admin\/(?:me|hr-accounts)$/.test(path)) ||
-    (method === "PATCH" && /^\/api\/system-admin\/hr-accounts\/\d+$/.test(path));
+  return (method === "POST" && /^\/api\/system-admin\/(?:login|logout|password|hr-accounts|accounts)$/.test(path)) ||
+    (method === "GET" && /^\/api\/system-admin\/(?:me|hr-accounts|accounts|employees)$/.test(path)) ||
+    (method === "PATCH" && /^\/api\/system-admin\/(?:hr-accounts|accounts)\/\d+$/.test(path));
 }
 
 export function isHrWorkspaceIdentity(
-  user: { role: string; active: boolean; archived?: boolean } | undefined,
+  user: (AccessIdentity & { active: boolean; archived?: boolean }) | undefined,
   session: { userId?: number; adminAuthenticated?: boolean; hrWorkspace?: boolean },
 ) {
   return !!session.userId && session.adminAuthenticated === true &&
-    session.hrWorkspace === true && user?.active === true && !user.archived && user.role === "hr";
+    session.hrWorkspace === true && user?.active === true && !user.archived && hasHrAccess(user);
 }

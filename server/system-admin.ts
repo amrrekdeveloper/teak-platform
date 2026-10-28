@@ -2,6 +2,7 @@ import type { Express, RequestHandler } from "express";
 import { z } from "zod";
 import { pool } from "./db";
 import { isProtectedOwner } from "../shared/permissions";
+import { registerUserAdministration } from "./user-administration";
 import { HR_PASSWORD_MESSAGE,isValidHrPassword } from "../shared/hr-password-policy";
 import { takeLimit } from "./employee-portal/database";
 
@@ -103,6 +104,7 @@ export function registerSystemAdminRoutes(app: Express, tools: PasswordTools) {
     const { rows: [user] } = await pool.query("SELECT id,username,full_name_ar FROM users WHERE id=$1", [req.session.userId]);
     res.json({ id: user.id, username: user.username, fullNameAr: user.full_name_ar, maintenanceScope: "system-admin" });
   });
+  registerUserAdministration(app, requireOwner, tools);
   app.post("/api/system-admin/logout", requireOwner, (req, res) => {
     req.session.destroy(error => {
       if (error) return res.status(500).json({ message: "تعذّر تسجيل الخروج. حاول مجددًا." });

@@ -1,3 +1,4 @@
+import { hrWriteAccess } from "../shared/account-access";
 import { Router,type Express,type RequestHandler } from "express";
 import { z } from "zod";
 import multer from "multer";
@@ -37,8 +38,8 @@ async function fileRequest(kind:RequestKind,id:number,actor:{userId?:number;empl
   if(actor.employeeId!==undefined) {
     if(row.employee_id!==actor.employeeId)fail(404,"الطلب غير موجود.");
   } else {
-    const {rows:[user]}=await client.query("SELECT role,active,archived FROM users WHERE id=$1",[actor.userId]);
-    if(!user?.active||user.archived||!["owner","hr"].includes(user.role))fail(403,"المرفقات خاصة بالموظف والموارد البشرية.");
+    const {rows:[user]}=await client.query('SELECT role,access_policy AS "accessPolicy",active,archived FROM users WHERE id=$1',[actor.userId]);
+    if(!user?.active||user.archived||!hrWriteAccess(user,false))fail(403,"المرفقات خاصة بالموظف والموارد البشرية.");
   }
   return row;
 }

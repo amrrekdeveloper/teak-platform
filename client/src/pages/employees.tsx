@@ -287,19 +287,14 @@ function FormFields({ data, onChange, users, jobTitlesList }: {
           placeholder={t("اختياري، لا يُستخدم كنطاق بصمة", "Optional; not used as attendance zone")} data-testid="input-finger-scan" />
       </div>
       <div className="space-y-1">
-        <Label>{t("حساب إداري مرتبط (اختياري)", "Linked admin account (optional)")}</Label>
-        <Select value={data.userId || "none"} onValueChange={v => onChange({ ...data, userId: v === "none" ? "" : v })}>
-          <SelectTrigger data-testid="select-user"><SelectValue placeholder={t("بدون حساب", "No account")} /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="none">{t("بدون حساب", "No account")}</SelectItem>
-            {users.map((u: any) => (
-              <SelectItem key={u.id} value={u.id.toString()}>
-                {t(u.fullNameAr, u.fullNameEn)} <span className="text-muted-foreground">(@{u.username})</span>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <p className="text-xs text-muted-foreground">{t("لا يلزم حساب إداري لدخول الموظف للخدمة الذاتية.", "Self-service does not require an admin account.")}</p>
+        <Label>{t("الحساب الإداري المرتبط", "Linked admin account")}</Label>
+        <div className="flex min-h-10 items-center rounded-md border bg-muted/40 px-3 text-sm">
+          {data.userId ? (() => {
+            const linked = users.find((account: any) => String(account.id) === String(data.userId));
+            return linked ? `${t(linked.fullNameAr || linked.fullNameEn || linked.username, linked.fullNameEn || linked.fullNameAr || linked.username)} (@${linked.username})` : t("حساب مرتبط", "Account linked");
+          })() : t("بدون حساب مرتبط", "No linked account")}
+        </div>
+        <p className="text-xs text-muted-foreground">{t("الربط اختياري ويُدار من إدارة الحسابات بواسطة مالك النظام فقط. لا يلزم حساب إداري لدخول الموظف للخدمة الذاتية.", "Linking is optional and managed by the system owner in User administration. Employee self-service does not require an admin account.")}</p>
       </div>
       <div className="space-y-1">
         <Label>{t("المدير المباشر (اختياري)", "Direct Manager (optional)")}</Label>
@@ -1220,8 +1215,6 @@ function EmployeeDetailDialog({ emp, users, onClose, initialTab }: { emp: Employ
       attendanceZoneId: editForm.attendanceZoneId ? Number(editForm.attendanceZoneId) : null,
       attendanceScheduleId: editForm.attendanceScheduleId ? Number(editForm.attendanceScheduleId) : null,
     };
-    if (editForm.userId && editForm.userId !== "none") data.userId = parseInt(editForm.userId);
-    else data.userId = null;
     data.managerId = editForm.managerId && parseInt(editForm.managerId) !== emp.id ? parseInt(editForm.managerId) : null;
     if (editForm.iqamaNumber) data.iqamaNumber = editForm.iqamaNumber;
     if (editForm.iqamaExpiry) data.iqamaExpiry = editForm.iqamaExpiry;
@@ -1546,7 +1539,6 @@ export default function EmployeesPage() {
       attendanceZoneId: form.attendanceZoneId ? Number(form.attendanceZoneId) : null,
       attendanceScheduleId: form.attendanceScheduleId ? Number(form.attendanceScheduleId) : null,
     };
-    if (form.userId && form.userId !== "none") data.userId = parseInt(form.userId);
     if (form.managerId) data.managerId = parseInt(form.managerId);
     if (form.iqamaNumber) data.iqamaNumber = form.iqamaNumber;
     if (form.iqamaExpiry) data.iqamaExpiry = form.iqamaExpiry;

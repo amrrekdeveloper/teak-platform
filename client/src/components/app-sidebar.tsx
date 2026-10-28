@@ -59,6 +59,7 @@ interface MenuItem {
   roles: string[];
   group?: string;
   strictRoles?: boolean;
+  fullNavigation?: boolean;
 }
 
 const menuItems: MenuItem[] = [
@@ -111,6 +112,7 @@ const menuItems: MenuItem[] = [
   { titleAr: "مراقبة الدوام", titleEn: "Attendance Monitor", icon: Clock, path: "/attendance-monitor", roles: ["owner", "it"], group: "hr" },
   // 8. Administration
   { titleAr: "الإعدادات", titleEn: "Settings", icon: Settings, path: "/settings", roles: ["owner", "it"], group: "admin" },
+  { titleAr: "إدارة الحسابات", titleEn: "User administration", icon: KeyRound, path: "/system-admin", roles: ["owner"], group: "admin", strictRoles: true, fullNavigation: true },
   { titleAr: "ملفي الشخصي", titleEn: "My Profile", icon: UserCircle, path: "/my-profile", roles: ["owner", "assistant", "sales", "designer", "production", "purchasing", "warehouse", "accountant", "customer_service", "delivery", "installation", "quality", "hr", "it"], group: "admin" },
 ];
 
@@ -168,8 +170,7 @@ function NavLink({
 }) {
   const Icon = item.icon;
   const showBadge = (item.path === "/order-center" || item.path === "/my-orders") && (newOrderCount || 0) > 0;
-  return (
-    <Link href={item.path}>
+  const content = (
       <div
         ref={isActive ? activeRef : undefined}
         className={`relative flex items-center gap-3 rounded-lg cursor-pointer transition-colors mb-0.5 ${
@@ -198,8 +199,10 @@ function NavLink({
           </span>
         )}
       </div>
-    </Link>
   );
+  return item.fullNavigation
+    ? <a href={item.path} className="block no-underline">{content}</a>
+    : <Link href={item.path}>{content}</Link>;
 }
 
 function SidebarContent({
@@ -371,7 +374,7 @@ export function AppSidebar({
 
   const perms = (user as any).permissions as string[] | undefined;
   const filteredItems = perms
-    ? menuItems.filter((item) => perms.includes(item.path) || (item.path === "/warehouses" && perms.includes("/inventory")))
+    ? menuItems.filter((item) => perms.includes(item.path) || (item.path === "/system-admin" && user.role === "owner") || (item.path === "/warehouses" && perms.includes("/inventory")))
     : menuItems.filter(
         (item) => item.roles.includes(user.role) || (user.role === "owner" && !item.strictRoles)
       );
@@ -445,7 +448,7 @@ export function MobileMenuButton() {
 
   const perms = (user as any).permissions as string[] | undefined;
   const filteredItems = perms
-    ? menuItems.filter((item) => perms.includes(item.path) || (item.path === "/warehouses" && perms.includes("/inventory")))
+    ? menuItems.filter((item) => perms.includes(item.path) || (item.path === "/system-admin" && user.role === "owner") || (item.path === "/warehouses" && perms.includes("/inventory")))
     : menuItems.filter(
         (item) => item.roles.includes(user.role) || (user.role === "owner" && !item.strictRoles)
       );

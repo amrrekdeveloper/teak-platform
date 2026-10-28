@@ -21,7 +21,7 @@ import {
 import { WarehouseEmpty, WarehouseError, WarehousePanel, WarehouseSkeleton } from "@/components/warehouse/warehouse-ui";
 import { WarehouseRequests } from "@/components/warehouse/warehouse-requests";
 import { useWarehouseMovements, useWarehouseReceipts, useWarehouseSummary } from "@/components/warehouse/use-warehouse";
-import { canManageWarehouse } from "@shared/warehouse-access";
+import { stockWriteAccess } from "@shared/account-access";
 import { BASE, downloadWarehouseCsv, operationKey, warehouseInvalidate, warehouseReason, warehouseStatus, warehouseUnit } from "@/components/warehouse/warehouse-utils";
 import type { Item, Unit, Warehouse } from "@/components/warehouse/types";
 
@@ -55,7 +55,7 @@ export default function WarehousesPage() {
   const params = useParams<{ section?: string }>();
   const [, setLocation] = useLocation();
   const section = sections.includes(params.section as Section) ? params.section as Section : "overview";
-  const canManage = canManageWarehouse(user?.role);
+  const canManage = !!user && stockWriteAccess(user);
   const [search, setSearch] = useState("");
   const [warehouseFilter, setWarehouseFilter] = useState("all");
   const [stockFilter, setStockFilter] = useState("all");
@@ -311,7 +311,7 @@ export default function WarehousesPage() {
 
     {section === "movements" && <MovementSection warehouses={warehouses} items={items} t={t} query={movementsQuery} warehouseFilter={warehouseFilter} setWarehouseFilter={(value)=>{setWarehouseFilter(value);setMovementPage(1);}} dates={filterDates} setDates={(value)=>{setFilterDates(value);setMovementPage(1);}} page={movementPage} setPage={setMovementPage} />}
     {section === "requests" && <WarehousePanel eyebrow={t("إعادة التوريد", "Replenishment")} title={t("طلبات الشراء", "Purchase requests")}><WarehouseRequests /></WarehousePanel>}
-    {section === "receipts" && <ReceiptsSection query={receiptsQuery} t={t} onReceive={openReceipt} canReceive={["owner","assistant","warehouse"].includes(user?.role ?? "")} />}
+    {section === "receipts" && <ReceiptsSection query={receiptsQuery} t={t} onReceive={openReceipt} canReceive={!!user && stockWriteAccess(user)} />}
     {section === "reports" && <WarehousePanel eyebrow={t("تصدير ومراجعة", "Export & review")} title={t("تقارير المستودعات", "Warehouse reports")}>
       <div className="rounded-2xl border bg-card p-4 sm:p-6 print:hidden">
         <div className="mb-5 flex items-start gap-3"><div className="rounded-xl bg-primary/10 p-2.5 text-primary"><FileText className="h-5 w-5" /></div><div><h3 className="font-semibold">{t("تقرير واضح، بلا رسوم مشتتة", "A clean report, without chart clutter")}</h3><p className="mt-1 text-sm text-muted-foreground">{t("اختر نطاق التقرير والفترة ثم صدّره أو اطبعه.", "Choose a report scope and date range, then export or print.")}</p></div></div>
@@ -405,7 +405,7 @@ function SignalRow({ title, value, color, onClick }: { title:string; value:numbe
 
 function ItemsList({ items, warehouses, t, unitName, onEdit, onMove, onRequest, onTransfer, onToggleActive, emptyTitle = "لا توجد أصناف" }: { items:Item[]; warehouses:Warehouse[]; t:(ar:string,en:string)=>string; unitName:(u:string)=>string; onEdit:(i:Item)=>void; onMove:(i:Item)=>void; onRequest:(i:Item)=>void; onTransfer?:(i:Item)=>void; onToggleActive?:(i:Item)=>void; emptyTitle?:string }) {
   const { user } = useAuth();
-  const canEdit = ["owner","assistant","warehouse"].includes(user?.role ?? "");
+  const canEdit = !!user && stockWriteAccess(user);
   if (!items.length) return <WarehouseEmpty title={emptyTitle} detail={t("جرّب تعديل البحث أو أضف صنفاً جديداً.", "Adjust your search or add a new item.")} />;
   return <div className="space-y-2">{items.map((item) => {
     const qty = Number(item.quantity) || 0, min = Number(item.minQuantity) || 0, low = min > 0 && qty <= min;

@@ -19,6 +19,8 @@ export async function saveEmployeeEdit(id: number, input: Record<string, unknown
       const tx = drizzle(client);
       const [before] = await tx.select().from(employees).where(eq(employees.id, id)).for("update");
       if (!before) { await client.query("ROLLBACK"); return undefined; }
+      if (Object.hasOwn(data, "userId") && (data.userId ?? null) !== (before.userId ?? null))
+        throw Object.assign(new Error("ربط حساب المستخدم بالموظف يتم من شاشة المستخدمين لدى المالك."), { status: 400 });
       if (Object.hasOwn(data, "attendanceLocationMode") && expectedAttendanceLocationMode !== before.attendanceLocationMode)
         throw Object.assign(new Error("تغير تصريح موقع الموظف. أعد فتح بياناته قبل تعديل التصريح."), {status:409});
       const assignmentKeys = ["attendanceZoneId", "attendanceScheduleId"] as const;

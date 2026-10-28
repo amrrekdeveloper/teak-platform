@@ -1,8 +1,9 @@
+import { stockWriteAccess, buyingWriteAccess, type AccountAccessPolicy } from "./account-access";
 // A narrow authenticated warehouse workspace; never reopens the rest of the ERP.
 export const WAREHOUSE_WORKSPACE_PERMISSIONS = ["/warehouses", "/inventory", "/purchases", "/suppliers"];
 export const WAREHOUSE_WORKSPACE_ROLES = ["owner", "assistant", "warehouse", "purchasing", "it"];
-export const canManageWarehouse = (role?: string) => ["owner", "assistant", "warehouse"].includes(role || "");
-export const canDecideWarehousePurchase = (role?: string) => ["owner", "assistant", "purchasing"].includes(role || "");
+export const canManageWarehouse = (role?: string, accessPolicy?: AccountAccessPolicy | null) => stockWriteAccess({ role: role || "", accessPolicy });
+export const canDecideWarehousePurchase = (role?: string, accessPolicy?: AccountAccessPolicy | null) => buyingWriteAccess({ role: role || "", accessPolicy });
 export function isWarehouseWorkspacePage(path: string) {
   return path === "/warehouse-login" || /^\/(?:dashboard\/)?warehouses(?:\/(?:items|movements|requests|receipts|reports|settings))?\/?$/.test(path) ||
     /^\/dashboard\/(?:inventory|purchases(?:\/\d+)?|suppliers)\/?$/.test(path);

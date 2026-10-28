@@ -6,12 +6,11 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { AlertCircle, Check, CircleUserRound, LockKeyhole, Phone, Search, ShieldCheck, UserRoundCog } from "lucide-react";
+import { AlertCircle, Check, Phone, Search, ShieldCheck } from "lucide-react";
 
 type AccessEmployee = {
   id: number; employeeNumber: string; fullNameAr: string | null; fullNameEn: string | null; phone: string | null;
@@ -84,14 +83,6 @@ export default function HrAccessManagementPage() {
           <tbody>{employees.map(employee => <tr key={employee.id} className="border-t"><td className="p-3"><Link href={`/employees/${employee.id}`} className="font-medium underline-offset-4 hover:underline">{employeeLabel(employee)}</Link><p className="text-xs text-muted-foreground">{employee.employeeNumber}</p></td><td className="p-3">{employeeStatus(employee.status)}</td><td className="p-3">{employee.phone || "—"}<div className="mt-1">{accountStatus(employee)}</div></td><td className="p-3"><div>{employee.username || t("لا يوجد اسم مستخدم", "No admin username")}</div><div className="text-xs text-muted-foreground">{employee.accountActive == null ? t("حساب غير مرتبط", "No linked account") : employee.accountActive ? t("نشط", "Active") : t("غير نشط", "Inactive")}</div></td><td className="p-3">{employee.managerName || "—"}</td><td className="p-3"><div className="flex items-center gap-2"><span>{employee.attendanceEnabled ? t("مفعّل", "Enabled") : t("متوقف", "Disabled")}</span><Button size="sm" variant={employee.attendanceEnabled ? "outline" : "default"} disabled={mutation.isPending || (!employee.attendanceEnabled && (!employee.phoneValid || employee.duplicatePhone))} onClick={() => requestToggle(employee)}>{employee.attendanceEnabled ? t("إيقاف", "Disable") : t("تفعيل", "Enable")}</Button></div></td></tr>)}</tbody></table></div></>
           : <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">{t("لا يوجد موظفون مطابقون.", "No matching employees.")}</div>}
       </section>}
-    <div className="grid gap-4 xl:grid-cols-2">
-      <Card><CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base"><CircleUserRound className="h-4 w-4" />{t("حسابات الموارد البشرية", "HR accounts")}</CardTitle><p className="text-sm text-muted-foreground">{t("معلومات للقراءة فقط؛ إنشاء الحساب وإعادة تعيينه من لوحة مالك النظام.", "Read-only information. Account creation and resets are owner-managed.")}</p></CardHeader><CardContent className="space-y-2">
-        {(data?.hrAccounts || []).length ? data?.hrAccounts.map(account => <div key={account.id} className="flex items-center justify-between gap-3 rounded-lg border p-3"><div className="min-w-0"><p className="font-medium">{account.fullNameAr || account.fullNameEn || account.username}</p><p className="text-xs text-muted-foreground" dir="ltr">{account.username}</p></div><Badge variant="outline">{account.active ? t("نشط", "Active") : t("غير نشط", "Inactive")}</Badge></div>)
-          : <p className="text-sm text-muted-foreground">{t("لا توجد معلومات حسابات.", "No account information.")}</p>}
-        <p className="flex items-start gap-2 pt-2 text-xs text-muted-foreground"><LockKeyhole className="mt-0.5 h-4 w-4 shrink-0" />{t("هاتف الموظف هو معرف بوابة الموظف؛ اسم المستخدم الإداري لا يستخدم لتسجيل الدخول إلى البوابة.", "Employee mobile is used for the employee portal; the admin username is not used for portal sign-in.")}</p>
-      </CardContent></Card>
-      <Card><CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base"><UserRoundCog className="h-4 w-4" />{t("وحدات الموارد البشرية", "HR modules")}</CardTitle><p className="text-sm text-muted-foreground">{t("الوحدات متاحة لأدوار الموارد البشرية؛ لا تُدار صلاحيات إدارية للموظفين هنا.", "Modules remain available to HR roles; employee administrative access is not managed here.")}</p></CardHeader><CardContent><div className="flex flex-wrap gap-2">{(data?.modules || []).map(module => <Badge key={module.key} variant="secondary">{t(module.ar, module.en)}</Badge>)}</div></CardContent></Card>
-    </div>
     <Dialog open={!!toggleTarget} onOpenChange={open => { if (!open && !mutation.isPending) { setToggleTarget(null); setToggleReason(""); } }}>
       <DialogContent className="w-[calc(100vw-2rem)] max-w-md">
         <DialogHeader>

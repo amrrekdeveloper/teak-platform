@@ -18,9 +18,9 @@ export const warehouseEndpoint = (fn: (req: Request, res: Response, next: NextFu
   });
 };
 const read = requireRole("owner", "assistant", "warehouse", "purchasing", "production");
-const write: RequestHandler = (req, res, next) => canManageWarehouse((req as any).user?.role)
+const write: RequestHandler = (req, res, next) => canManageWarehouse((req as any).user?.role, (req as any).user?.accessPolicy)
   ? next() : res.status(403).json({ message: "التعديل والصرف والاستلام من صلاحية أمين المستودع والإدارة" });
-const purchasing: RequestHandler = (req, res, next) => canDecideWarehousePurchase((req as any).user?.role)
+const purchasing: RequestHandler = (req, res, next) => canDecideWarehousePurchase((req as any).user?.role, (req as any).user?.accessPolicy)
   ? next() : res.status(403).json({ message: "قرار طلب الشراء من صلاحية مسؤول المشتريات والإدارة فقط" });
 
 const filterSchema = z.object({

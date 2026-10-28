@@ -1,3 +1,4 @@
+import { hrWriteAccess } from "../shared/account-access";
 import type { Express, RequestHandler } from "express";
 import { z } from "zod";
 import { pool } from "./db";
@@ -71,8 +72,8 @@ export async function cancelLeave(id: number, reason: string, actor: {userId:num
       if (!["pending","clarification_requested"].includes(row.status))
         workflowError(409,"يمكن سحب الطلب قبل موافقة المدير فقط. تواصل مع الموارد البشرية.");
     } else {
-      const {rows:[user]} = await client.query("SELECT role,active,archived FROM users WHERE id=$1",[actor.userId]);
-      if (!user?.active || user.archived || !["owner","assistant","hr"].includes(user.role))
+      const {rows:[user]} = await client.query('SELECT role,access_policy AS "accessPolicy",active,archived FROM users WHERE id=$1',[actor.userId]);
+      if (!user?.active || user.archived || !hrWriteAccess(user))
         workflowError(403,"إلغاء الإجازات للموارد البشرية فقط.");
     }
     if (["cancelled","rejected"].includes(row.status)) workflowError(409,"الطلب منتهٍ بالفعل.");

@@ -14,3 +14,9 @@ Expand the current owner account-management screen into user administration firs
 **Why:** The owner described the IT transformation as gradual and asked for usable, simple screens rather than more HR complexity.
 
 **How to apply:** Separate account-administrator authority from merely belonging to the IT department. Do not automatically give the existing technical IT role, global owner powers or payroll access to an employee based on their job title.
+
+In the first phase, only the designated owner may administer user accounts and application access; IT delegation is not part of the approved scope.
+
+**Why:** The owner explicitly selected “المالك فقط” on 2026-10-28 when asked who would administer accounts.
+
+**How to apply:** Keep account-management authorization independent of both employment placement and the legacy technical IT role. Do not leave an alternate IT/HR provisioning endpoint that bypasses the owner console.

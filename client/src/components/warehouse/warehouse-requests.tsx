@@ -13,6 +13,7 @@ import { useWarehouseRequisitions } from "./use-warehouse";
 import { warehouseInvalidate, operationKey, warehouseStatus, warehouseUnit } from "./warehouse-utils";
 import { WarehouseEmpty } from "./warehouse-ui";
 import { toLatinDigits } from "@shared/digits";
+import { buyingWriteAccess } from "@shared/account-access";
 
 export function WarehouseRequests() {
   const { t } = useLanguage();
@@ -26,7 +27,7 @@ export function WarehouseRequests() {
   const [supplierIds, setSupplierIds] = useState<Record<number, string>>({});
   const [unitPrices, setUnitPrices] = useState<Record<number, string>>({});
   const [fieldErrors, setFieldErrors] = useState<Record<number, { note?: string; supplier?: string; price?: string }>>({});
-  const canDecide = ["owner", "assistant", "purchasing"].includes(user?.role ?? "");
+  const canDecide = !!user && buyingWriteAccess(user);
   const decision = useMutation({
     mutationFn: ({ id, choice }: { id: number; choice: "approved" | "rejected" }) => {
       const key = keys[id] ?? operationKey();

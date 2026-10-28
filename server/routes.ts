@@ -1,3 +1,4 @@
+import { hrWriteAccess } from "../shared/account-access";
 import type { Express, Request, Response, NextFunction } from "express";
 import { registerAttendanceEvents } from "./attendance-live";
 import { saveEmployeeEdit } from "./employee-edit";
@@ -3710,6 +3711,8 @@ export async function registerRoutes(
     try {
       const { insertEmployeeSchema } = await import("@shared/schema");
       const parsed = insertEmployeeSchema.parse(req.body);
+      if (parsed.userId != null)
+        return res.status(403).json({ message: "أضف ملف الموظف دون حساب؛ ربط المستخدم يتم من شاشة المستخدمين لدى المالك." });
       if (!parsed.fullNameAr || !String(parsed.fullNameAr).trim()) {
         return res.status(400).json({ message: "اسم الموظف مطلوب", messageEn: "Employee name is required" });
       }
@@ -4287,7 +4290,7 @@ export async function registerRoutes(
     try {
       const userId = req.session.userId!;
       const user = await storage.getUser(userId);
-      const isHrRole = !!user && ["owner", "assistant", "hr"].includes(user.role);
+      const isHrRole = !!user && hrWriteAccess(user);
       const [allEmployees,allLeaves,allPerms,approvalRows,historyRows] = await Promise.all([
         storage.getEmployees(),storage.getLeaveRequests(),storage.getAttendancePermissions(),
         pool.query("SELECT DISTINCT request_id FROM hr_request_history WHERE kind='permission' AND next_status='manager_approved'"),

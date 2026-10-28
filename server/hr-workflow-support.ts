@@ -1,3 +1,4 @@
+import { hrWriteAccess, scopedAccount } from "../shared/account-access";
 import { createHash } from "node:crypto";
 import { pool, db } from "./db";
 import { and, eq, inArray, sql } from "drizzle-orm";
@@ -151,7 +152,7 @@ export async function decideHrRequest(kind: "leave" | "permission", id: number, 
     if (["approved", "rejected", "auto_approved", "cancelled"].includes(row.status)) workflowError(409, "تمت معالجة الطلب");
     const employee = (await client.query(`SELECT e.manager_id,m.user_id AS manager_user_id,e.user_id
       FROM employees e LEFT JOIN employees m ON m.id=e.manager_id AND m.id<>e.id WHERE e.id=$1`, [row.employee_id])).rows[0];
-    const user = (await client.query("SELECT role,active,archived FROM users WHERE id=$1", [userId])).rows[0];
+    const user = (await client.query('SELECT role,access_policy AS "accessPolicy",active,archived FROM users WHERE id=$1', [userId])).rows[0];
     if (!user || user.active === false || user.archived) workflowError(403, "الحساب غير مخول.");
     const managerApproved = (await client.query(`SELECT 1 FROM hr_request_history
       WHERE kind=$1 AND request_id=$2 AND next_status='manager_approved' LIMIT 1`, [kind, id])).rowCount! > 0;
@@ -160,11 +161,11 @@ export async function decideHrRequest(kind: "leave" | "permission", id: number, 
     let stage = requestStage(row.status, !!manager.manager_id, managerApproved || !!row.manager_approved_by);
     const override = options.overrideManager === true;
     if (override) {
-      if (!["owner","assistant","hr"].includes(user.role)) workflowError(403, "التدخل الإداري للموارد البشرية فقط.");
+      if (!hrWriteAccess(user)) workflowError(403, "التدخل الإداري للموارد البشرية فقط.");
       if (!note?.trim() || note.trim().length < 3) workflowError(400, "سبب التدخل الإداري مطلوب.");
       stage = "hr";
     }
-    if (stage === "manager" ? manager.manager_user_id !== userId : !["owner", "assistant", "hr"].includes(user?.role))
+    if (stage === "manager" ? manager.manager_user_id !== userId : !user || !hrWriteAccess(user))
       workflowError(403, stage === "manager" ? "يلزم قرار المدير المباشر أولاً" : "القرار النهائي للموارد البشرية");
     const status = decision === "clarify" ? "clarification_requested" : decision === "reject" ? "rejected" : stage === "manager" ? "manager_approved" : "approved";
     if (kind === "leave" && status === "approved") {
@@ -245,7 +246,8 @@ export async function workflowClarification(id: number, note: string, actor: { u
       if (timeline.at(-1)?.action !== "clarify") workflowError(409,"لا يوجد توضيح مطلوب");
       entry = {step:step.key,action:"clarification_response",byEmployeeId:actor.employeeId,note,at:new Date().toISOString()};
     } else {
-      const user = (await client.query("SELECT role FROM users WHERE id=$1",[actor.userId])).rows[0];
+      const storedUser = (await client.query('SELECT role,access_policy AS "accessPolicy" FROM users WHERE id=$1',[actor.userId])).rows[0];
+      const user = storedUser && scopedAccount(storedUser,"hr");
       const employee = (await client.query(`SELECT e.id,e.manager_id,m.user_id FROM employees e
         LEFT JOIN employees m ON m.id=e.manager_id AND m.id<>e.id WHERE e.id=$1`,[row.employee_id])).rows[0];
       if (!user || !canPerformAdministrativeHrStep(user.role,step.role,!!employee,!!employee?.manager_id,employee?.user_id === actor.userId))

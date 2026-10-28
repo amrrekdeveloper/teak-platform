@@ -339,7 +339,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   if (!isAuthenticated || !user) return null;
 
-  const roleLabel = roleLabels[user.role] || { ar: user.role, en: user.role };
+  const warehouseViewer = user.maintenanceScope === "warehouse" && user.accessPolicy &&
+    user.accessPolicy.warehouse !== "manage" && user.accessPolicy.purchasing !== "manage";
+  const roleLabel = warehouseViewer
+    ? user.accessPolicy?.purchasing !== "none"
+      ? { ar: "اطلاع المستودعات والمشتريات", en: "Warehouse & purchasing viewer" }
+      : { ar: "اطلاع المستودعات", en: "Warehouse viewer" }
+    : roleLabels[user.role] || { ar: user.role, en: user.role };
 
   return (
     <div className="min-h-screen bg-background flex">

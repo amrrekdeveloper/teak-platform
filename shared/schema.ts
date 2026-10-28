@@ -19,6 +19,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+import { accountAccessSchema, type AccountAccessPolicy } from "./account-access";
 
 export const userRoleEnum = pgEnum("user_role", [
   "owner",
@@ -53,14 +54,15 @@ export const users = pgTable("users", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   financePin: text("finance_pin"),
   employeePin: text("employee_pin"),
+  accessPolicy: jsonb("access_policy").$type<AccountAccessPolicy>(),
 });
 
-export const insertUserSchema = createInsertSchema(users).omit({
+export const insertUserSchema = createInsertSchema(users, { accessPolicy: accountAccessSchema.nullable().optional() }).omit({
   id: true,
   createdAt: true,
 });
 export type InsertUser = z.infer<typeof insertUserSchema>;
-export type User = typeof users.$inferSelect;
+export type User = Omit<typeof users.$inferSelect, "accessPolicy"> & { accessPolicy?: AccountAccessPolicy | null };
 
 // Per-account permission exceptions (grants/revokes) on top of role defaults.
 export const userPermissions = pgTable(

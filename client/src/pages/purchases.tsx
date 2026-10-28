@@ -4,6 +4,8 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLanguage } from "@/components/language-provider";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
+import { buyingWriteAccess } from "@shared/account-access";
 import type { PurchaseOrder, Supplier, InventoryItem } from "@shared/schema";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -38,6 +40,8 @@ const statusConfig: Record<string, { ar: string; en: string; color: string; icon
 export default function PurchasesPage() {
   const { t } = useLanguage();
   const { toast } = useToast();
+  const { user } = useAuth();
+  const canBuy = !!user && buyingWriteAccess(user);
   const [filter, setFilter] = useState("all");
   const [createOpen, setCreateOpen] = useState(false);
   const [detailPO, setDetailPO] = useState<PurchaseOrder | null>(null);
@@ -125,9 +129,9 @@ export default function PurchasesPage() {
           <p className="text-muted-foreground text-sm">{t("إدارة المشتريات وأوامر التوريد", "Manage procurement and supply orders")}</p>
         </div>
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-          <DialogTrigger asChild>
+          {canBuy && <DialogTrigger asChild>
             <Button data-testid="button-new-po"><Plus className="w-4 h-4 me-2" />{t("أمر شراء جديد", "New Purchase Order")}</Button>
-          </DialogTrigger>
+          </DialogTrigger>}
           <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
             <DialogHeader><DialogTitle>{t("إنشاء أمر شراء", "Create Purchase Order")}</DialogTitle></DialogHeader>
             <div className="space-y-4">
@@ -347,12 +351,12 @@ export default function PurchasesPage() {
                 )}
 
                 <div className="flex gap-2">
-                  {detailPO.status === "draft" && (
+                  {canBuy && detailPO.status === "draft" && (
                     <Button className="flex-1" onClick={() => updateMutation.mutate({ id: detailPO.id, data: { status: "pending_approval" } })} disabled={updateMutation.isPending} data-testid="button-submit-for-approval">
                       {t("إرسال للموافقة", "Submit for Approval")}
                     </Button>
                   )}
-                  {detailPO.status === "pending_approval" && (
+                  {canBuy && detailPO.status === "pending_approval" && (
                     <>
                       <Button className="flex-1" onClick={() => updateMutation.mutate({ id: detailPO.id, data: { status: "approved" } })} disabled={updateMutation.isPending} data-testid="button-approve-po">
                         <CheckCircle2 className="w-4 h-4 me-1" />{t("اعتماد", "Approve")}
@@ -362,7 +366,7 @@ export default function PurchasesPage() {
                       </Button>
                     </>
                   )}
-                  {detailPO.status === "approved" && (
+                  {canBuy && detailPO.status === "approved" && (
                     <Button className="flex-1" onClick={() => updateMutation.mutate({ id: detailPO.id, data: { status: "ordered" } })} disabled={updateMutation.isPending} data-testid="button-mark-ordered">
                       <Truck className="w-4 h-4 me-1" />{t("تم الطلب", "Mark as Ordered")}
                     </Button>
