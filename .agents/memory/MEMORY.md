@@ -35,3 +35,4 @@
 - [HR entry loading](hr-entry-loading.md) — keep HR entry independent; Vite can rewrite the request URL, so choose the HTML entry from the original navigation.
 - [Attendance movement corrections](attendance-movement-corrections.md) — reversible exclusions preserve original punches; all calculations and transitions must honor explicit HR decisions.
 - [Warehouse operations](warehouse-operations-policy.md) — mixed factory stock, keeper-owned physical receipts, purchasing separation, and explicit legacy warehouse assignment.
+- [Employee/account separation](user-account-separation.md) — optional employee links, explicit system access, HR-owned placement, and phased user administration before a broader IT system.
