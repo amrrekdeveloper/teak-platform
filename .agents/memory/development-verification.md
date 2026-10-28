@@ -19,3 +19,21 @@ Temporary privileged accounts can receive role-wide notifications from unrelated
 **Why:** A disposable HR login fixture acquired dependent notifications during parallel attendance tests, so an apparently isolated account could not be removed directly.
 
 **How to apply:** Retire disposable privileged accounts before cleanup and remove only their precisely scoped dependent artifacts; never clear notifications belonging to real accounts to make cleanup pass.
+
+Forced termination of a background fixture server does not prove its database cleanup ran, even if the listening process is gone.
+
+**Why:** Stopping a disposable server terminated the process but left its synthetic schema behind; a JavaScript `finally` block is not a cleanup guarantee under forced termination.
+
+**How to apply:** Keep the exact fixture scope available, verify its synthetic markers after stopping, and remove only that confirmed scope. Never delete schemas or rows by a broad prefix to compensate for an interrupted cleanup.
+
+String/wildcard route guards are not parsers for JSON identifiers or scores. Test HTTP payloads with the actual numeric types sent by HR forms, not string-only fixtures or just the workflow engine.
+
+**Why:** A route-level integer parser rejected valid numeric JSON before the HR operation ran. Engine/database tests passed while real HTTP creation failed; silently defaulting scores also concealed localized-number errors.
+
+**How to apply:** Keep strict path-segment validation separate from strict body-number validation. Reject malformed values explicitly, normalize localized digits before numeric conversion, and verify the controller through an authenticated synthetic session.
+
+A single disposable SQL schema is shared state across test files, even if the test runner isolates JavaScript modules. Serialize those files or provision separate schemas; fixtures must never borrow another suite's employee.
+
+**Why:** Parallel runs hid a routing test's dependency on an existing employee and produced attachment/protocol failures that did not recur in isolation. Serial execution exposed the missing fixture instead of relying on incidental test order.
+
+**How to apply:** Give each scenario explicit synthetic records and scoped cleanup/rollback. Retain concurrency inside the scenarios that test races; disabling file-level parallelism must not disable those checks.

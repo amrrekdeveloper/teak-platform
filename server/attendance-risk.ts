@@ -4,7 +4,7 @@ import { employeeAttendanceReport } from "./attendance-support";
 import { pool } from "./db";
 import { storage } from "./storage";
 
-/** Used by the monthly HTTP route; persisted totals contain verified evidence only. */
+/** Read-only projection. Opening a report must not persist scores or send alerts. */
 export async function employeeMonthlyAttendanceRisk(employee:Employee,period:string,to:string,now=new Date(),fallbackName?:string) {
   const report=await employeeAttendanceReport(employee.id,`${period}-01`,to,now);
   const leaves=(await storage.getLeaveRequests(employee.id)).filter(l=>l.status==="approved");
@@ -26,10 +26,6 @@ export async function employeeMonthlyAttendanceRisk(employee:Employee,period:str
     else if(row.status==="absent")absent++;
   }
   const score=late*RISK_POINTS.late+absent*RISK_POINTS.absent+incomplete*RISK_POINTS.incomplete;
-  await pool.query(`INSERT INTO attendance_monthly_risk(employee_id,period,late,absent,incomplete,score)
-    VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(employee_id,period) DO UPDATE
-    SET late=$3,absent=$4,incomplete=$5,score=$6,calculated_at=now()`,
-  [employee.id,period,late,absent,incomplete,score]);
   return {employeeId:employee.id,employeeNumber:employee.employeeNumber,
     nameAr:employee.fullNameAr?.trim()||fallbackName||employee.phone||employee.employeeNumber,
     department:employee.department,late,absent,incomplete,score,level:riskLevel(score),

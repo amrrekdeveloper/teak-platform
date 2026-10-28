@@ -44,6 +44,24 @@ function policy(ids=[employee]){return parseWeekInput({mode:"policy",scope:"empl
 function review(id:number,workingDay=true){return parseWeekInput({mode:"review",scope:"employees",employeeIds:[id],
   businessDay:day,workingDays:workingDay?[6]:[],reason:"مراجعة يوم اختباري"});}
 describe("audited workweek PostgreSQL integration",()=>{
+  it("reads today's report and risk without freezing schedules or calendars or replacing saved risk",async()=>{
+    const today=riyadhDateKey(new Date());
+    const policyId=(await pool.query(`INSERT INTO attendance_week_policies
+      (employee_id,working_days,effective_from,reason,created_by)
+      VALUES($1,'[0,1,2,3,4,5,6]',$2,'Synthetic read-only check',$3) RETURNING id`,
+      [employee,today,actor])).rows[0].id;
+    try {
+      for(let read=0;read<2;read++){
+        await employeeAttendanceReport(employee,today,today);
+        await employeeMonthlyAttendanceRisk((await storage.getEmployee(employee))!,today.slice(0,7),today);
+      }
+      for(const table of ["attendance_day_schedules","attendance_day_calendars"])
+        expect((await pool.query(`SELECT 1 FROM ${table} WHERE employee_id=$1 AND business_day=$2`,[employee,today])).rows).toHaveLength(0);
+      expect((await pool.query("SELECT 1 FROM attendance_monthly_risk WHERE employee_id=$1",[employee])).rows).toHaveLength(0);
+    } finally {
+      await pool.query("DELETE FROM attendance_week_policies WHERE id=$1",[policyId]);
+    }
+  });
   it("requires explicit valid scope/date/days without accepting accidental backdating or broad reviews",()=>{
     expect(()=>parseWeekInput({...policy(),effectiveFrom:riyadhDateKey(new Date())})).toThrow();
     expect(()=>parseWeekInput({...policy(),workingDays:[]})).toThrow();

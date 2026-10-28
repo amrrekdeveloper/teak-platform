@@ -1,4 +1,5 @@
 import {describe,it,expect} from "vitest";
+import { randomUUID } from "node:crypto";
 import { pool } from "./db";
 import { captureRequestRouting,saveRequestSettings,effectiveRequestManager } from "./hr-request-routing";
 if(process.env.NODE_ENV==="production"||process.env.REPLIT_DEPLOYMENT==="1")throw new Error("Development-only tests");
@@ -14,8 +15,13 @@ describe("request routing with PostgreSQL (all configuration writes rolled back)
       expect(saved.version).toBe(current+1);
       await expect(saveRequestSettings("permission",{managerReview:true,requireManager:false,version:current},null,client))
         .rejects.toMatchObject({status:409});
-      const {rows:[employee]}=await client.query("SELECT id FROM employees ORDER BY id LIMIT 1");
-      if(!employee)throw new Error("A development employee is required");
+      // Own fixture, inside the rollback: never depend on a real employee or
+      // another suite temporarily populating this otherwise empty schema.
+      await client.query("INSERT INTO hr_departments(code,name_ar) VALUES('hr','Synthetic HR') ON CONFLICT(code) DO NOTHING");
+      const marker=`ROUTING-${randomUUID()}`;
+      const {rows:[employee]}=await client.query(`INSERT INTO employees
+        (employee_number,full_name_ar,nationality,position,department,monthly_salary,contract_start,status)
+        VALUES($1,$1,'saudi','Synthetic routing','hr',1,'2026-01-01','active') RETURNING id`,[marker]);
       const captured=await captureRequestRouting("permission",employee.id,{purpose:"personal",
         _approval:{managerReview:true,managerUserId:99999},_attachments:[{key:"forged"}]},client);
       expect(captured.purpose).toBe("personal");expect(captured).not.toHaveProperty("_attachments");

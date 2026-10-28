@@ -11,6 +11,16 @@ export function toLatinDigits(input: string | number | null | undefined): string
     .replace(/\u066C/g, ""); // Arabic thousands separator ٬ → removed
 }
 
+// Preserve incomplete/malformed Arabic grouping while editing. Stripping "١٬٢"
+// would silently change an invalid amount into 12 before API validation.
+export function toLatinEditableDigits(input: string | number | null | undefined): string {
+  const text = input == null ? "" : String(input);
+  if (text.includes("\u066C") &&
+      !/^[0-9٠-٩۰-۹]{1,3}(?:٬[0-9٠-٩۰-۹]{3})+(?:[.٫][0-9٠-٩۰-۹]*)?$/.test(text))
+    return text;
+  return toLatinDigits(input);
+}
+
 // Parses a possibly-localized numeric string into a finite number, falling back to 0.
 export function parseNum(input: string | number | null | undefined): number {
   const n = parseFloat(toLatinDigits(input));

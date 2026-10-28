@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLanguage } from "@/components/language-provider";
+import { toLatinEditableDigits } from "@shared/digits";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
@@ -100,11 +101,11 @@ export default function AdvancesPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <Label>{t("المبلغ (ر.س)", "Amount (SAR)")}</Label>
-                  <Input type="number" min="1" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} data-testid="input-advance-amount" />
+                  <Input type="text" inputMode="decimal" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: toLatinEditableDigits(e.target.value) }))} data-testid="input-advance-amount" />
                 </div>
                 <div className="space-y-1">
                   <Label>{t("عدد الأقساط", "Installments")}</Label>
-                  <Input type="number" min="1" value={form.installments} onChange={e => setForm(f => ({ ...f, installments: e.target.value }))} data-testid="input-advance-installments" />
+                  <Input type="text" inputMode="numeric" value={form.installments} onChange={e => setForm(f => ({ ...f, installments: toLatinEditableDigits(e.target.value) }))} data-testid="input-advance-installments" />
                 </div>
               </div>
               {Number(form.amount) > 0 && Number(form.installments) > 0 && (

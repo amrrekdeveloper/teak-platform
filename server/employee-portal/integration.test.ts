@@ -164,7 +164,7 @@ afterAll(async () => {
 }, 30000);
 
 describe.sequential("isolated employee protocol", () => {
-  it("excludes unsnapshotted history after schedule changes from persisted risk and alerts, but retains verified history",async()=>{
+  it("projects unknown history without changing persisted risk; explicit notifications still require verified evidence",async()=>{
     const now=new Date(),today=riyadhDateKey(now);
     const [y,m]=today.split("-").map(Number);
     const period=riyadhDateKey(new Date(Date.UTC(y,m-2,1,12))).slice(0,7);
@@ -194,7 +194,7 @@ describe.sequential("isolated employee protocol", () => {
     expect(risk).toMatchObject({late:0,absent:0,incomplete:0,score:0,verifiedDays:0,assessmentAvailable:false});
     expect(risk.unverifiedDays).toBeGreaterThanOrEqual(3);
     expect((await pool.query("SELECT late,absent,incomplete,score FROM attendance_monthly_risk WHERE employee_id=$1 AND period=$2",[employeeId,period])).rows[0])
-      .toEqual({late:0,absent:0,incomplete:0,score:0});
+      .toEqual({late:3,absent:0,incomplete:0,score:3});
     const recipients=[{id:medicalReviewers.hr,role:"hr" as const,active:true}];
     // Even a stale positive score cannot alert when its evidence is unavailable.
     await notifyMonthlyAttendanceRisk([risk,{...risk,score:6,level:"red"}],period,recipients);

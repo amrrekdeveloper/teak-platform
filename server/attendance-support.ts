@@ -10,7 +10,7 @@ import multer from "multer";
 import { randomUUID } from "node:crypto";
 import { saveObjectFile, streamObjectFile, deleteObjectFile } from "./objectFileStore";
 import { initMedicalDocuments, registerHrMedicalDocuments, medicalDocumentRole } from "./employee-portal/medical-documents";
-import { initAttendanceScheduleHistory, scheduledShiftsForDay, freezeCurrentAttendanceSchedules } from "./attendance-schedule-history";
+import { initAttendanceScheduleHistory, freezeCurrentAttendanceSchedules } from "./attendance-schedule-history";
 import { applyAttendanceCorrection, attendanceCorrections, registerHrCorrections } from "./attendance-corrections";
 import type { AttendanceReportRow } from "../shared/attendance-report";
 import type { Employee } from "../shared/schema";
@@ -154,9 +154,10 @@ export async function employeeAttendanceReport(employeeId: number, from: string,
     [employeeId,from,to])).rows.map(r=>[r.business_day,r]));
   for (let time = +new Date(riyadhDayBounds(from).from); time <= +new Date(riyadhDayBounds(to).to); time += 86400000) {
     const day = riyadhDateKey(new Date(time));
-    const shifts = savedSchedules.get(day) ?? (day===riyadhDateKey(new Date())
-      ? await scheduledShiftsForDay(settings,employee,day) : currentShifts);
-    const calendar=await calendarForDay(employeeId,day,pool,policies,calendars);
+    // A report is a projection, not an attendance observation. Punch submission
+    // and explicit HR settings edits still capture evidence at their own boundary.
+    const shifts = savedSchedules.get(day) ?? currentShifts;
+    const calendar=await calendarForDay(employeeId,day,pool,policies,calendars,{captureCurrent:false});
     for (const shift of shifts) {
       // Legacy unassigned records are safe only for a single shift; never guess morning/evening.
       const events = result.rows.filter(r => riyadhDateKey(new Date(r.checkTime)) === day &&

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLanguage } from "@/components/language-provider";
+import { toLatinEditableDigits } from "@shared/digits";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
@@ -198,12 +199,12 @@ export default function PayrollPage() {
                       <td data-label={t("الموظف", "Employee")} className="p-3 font-medium" data-testid={`text-emp-${r.id}`}>{empName(r.employeeId)}</td>
                       <td data-label={t("الأساسي", "Basic")} className="p-3">{fmt(r.basicSalary)}</td>
                       <td data-label={t("بدلات", "Allowances")} className="p-3">
-                        <Input aria-label={t("بدلات", "Allowances")} type="number" min="0" value={editVal(r, "allowances")} disabled={r.status !== "draft" || !canPrepare}
-                          onChange={e => setEdit(r, "allowances", e.target.value)} className="w-24 h-8" data-testid={`input-allowances-${r.id}`} />
+                        <Input aria-label={t("بدلات", "Allowances")} type="text" inputMode="decimal" value={editVal(r, "allowances")} disabled={r.status !== "draft" || !canPrepare}
+                          onChange={e => setEdit(r, "allowances", toLatinEditableDigits(e.target.value))} className="w-24 h-8" data-testid={`input-allowances-${r.id}`} />
                       </td>
                       <td data-label={t("خصومات", "Deductions")} className="p-3">
-                        <Input aria-label={t("خصومات", "Deductions")} type="number" min="0" value={editVal(r, "deductions")} disabled={r.status !== "draft" || !canPrepare}
-                          onChange={e => setEdit(r, "deductions", e.target.value)} className="w-24 h-8" data-testid={`input-deductions-${r.id}`} />
+                        <Input aria-label={t("خصومات", "Deductions")} type="text" inputMode="decimal" value={editVal(r, "deductions")} disabled={r.status !== "draft" || !canPrepare}
+                          onChange={e => setEdit(r, "deductions", toLatinEditableDigits(e.target.value))} className="w-24 h-8" data-testid={`input-deductions-${r.id}`} />
                       </td>
                       <td data-label={t("سلفة", "Advance")} className="p-3 text-muted-foreground" data-testid={`text-advance-${r.id}`}>{fmt(r.advanceDeduction)}</td>
                       <td data-label={t("الصافي", "Net")} className="p-3 font-semibold" data-testid={`text-net-${r.id}`}>{fmt(isPaid ? r.netSalary : previewNet(r))}</td>

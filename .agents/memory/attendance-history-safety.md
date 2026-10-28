@@ -9,6 +9,12 @@ Treat an observed period's saved schedule as immutable. Explicit HR configuratio
 
 **How to apply:** Use captured daily schedules for reporting and reconciliation. Clearly mark older days lacking schedule evidence for HR review rather than fabricating a history or generating automatic penalties from current settings. Never describe this as a reconstruction of missing past policy.
 
+Opening an HR report is not an attendance observation, even for today. Report reads must not capture calendars/schedules, persist monthly risk, or initiate risk notifications; punch submission and explicit HR changes own evidence capture.
+
+**Why:** First-read capture makes HR inspection itself change the evidence being audited. A report can otherwise freeze current settings or issue warnings before the interruption's scope has been established.
+
+**How to apply:** Audit nested helpers, not only the HTTP method, and verify unchanged evidence/notification state around repeated report reads. Keep legitimate capture in the attendance-write and reasoned configuration paths.
+
 Do not delete attendance or leave data from the most recent four Riyadh calendar days, including today, in either environment.
 
 **Why:** On 2026-10-27 the owner authorized discarding older attendance/leave history if truly needed, but explicitly prohibited deleting the most recent four days. This is permission, not an instruction to erase older history unnecessarily.
@@ -32,3 +38,9 @@ HR must be able to exclude an erroneous checkout while retaining the valid check
 **Why:** The owner reported accidental checkout punches that ended employees' shifts and could not be corrected through the existing excuse dialog. Both movements must remain inspectable; an excuse alone does not reverse a checkout.
 
 **How to apply:** Separate movement correction from absence excuses. Preserve an audit trail and require an explicit HR decision rather than automatically deleting closely spaced punches.
+
+An owner may exclude shutdown-era data and historical outage verification from a current operational-readiness scope. Do not keep requesting outage evidence or make it a prerequisite for that scoped delivery.
+
+**Why:** The owner explicitly said the old shutdown data was not currently important and repeated the instruction to continue without asking for evidence. Treating historical certification as mandatory blocked the requested current-use work.
+
+**How to apply:** When this exclusion is explicit, record it in the acceptance report, preserve the data unchanged, and assess current operations separately. This does not authorize deletion, guessed outage dates, retroactive penalties, or a claim that unknown history was verified.

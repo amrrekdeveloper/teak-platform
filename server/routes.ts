@@ -24,7 +24,7 @@ import { registerAttendanceOverride } from "./attendance-override";
 import { registerAttendanceMovements } from "./attendance-movements";
 import { registerDepartmentCatalog, validateEmployeeAttendanceAssignment, validateAttendanceZone } from "./attendance-workspace";
 import { validateShifts } from "../shared/attendance";
-import { employeeMonthlyAttendanceRisk, notifyMonthlyAttendanceRisk } from "./attendance-risk";
+import { employeeMonthlyAttendanceRisk } from "./attendance-risk";
 import { withUniqueEmployeePhone } from "./employee-portal/hr-onboarding";
 import {
   isProtectedOwner,
@@ -109,6 +109,7 @@ import {
 } from "@shared/schema";
 import { resolveWorkSchedule, isLateCheckIn, riyadhDateKey, isRiyadhWeekend } from "@shared/attendance";
 import { parseNum } from "@shared/digits";
+import { hrEntityIdInput, hrMoneyInput, hrScoreInput } from "./hr-number-inputs";
 
 async function setOrderStage(quotationId: number, stage: OrderStageValue) {
   try {
@@ -4026,23 +4027,22 @@ export async function registerRoutes(
         return res.status(400).json({ message: "لا يمكن تعديل راتب مدفوع", messageEn: "Cannot edit a paid record" });
       }
 
-      const validNum = (v: any) => { const n = Number(v); return /^\d+(\.\d{1,2})?$/.test(String(v)) && Number.isFinite(n) && n >= 0 && n < 10000000000 ? n : null; };
       const updates: any = {};
       let basic = parseFloat(record.basicSalary.toString());
       let allowances = parseFloat(record.allowances.toString());
       let deductions = parseFloat(record.deductions.toString());
       if (req.body.basicSalary !== undefined) {
-        const v = validNum(req.body.basicSalary);
+        const v = hrMoneyInput(req.body.basicSalary);
         if (v === null) return res.status(400).json({ message: "الراتب الأساسي غير صالح", messageEn: "Invalid basic salary" });
         basic = v;
       }
       if (req.body.allowances !== undefined) {
-        const v = validNum(req.body.allowances);
+        const v = hrMoneyInput(req.body.allowances);
         if (v === null) return res.status(400).json({ message: "قيمة البدلات غير صالحة", messageEn: "Invalid allowances" });
         allowances = v;
       }
       if (req.body.deductions !== undefined) {
-        const v = validNum(req.body.deductions);
+        const v = hrMoneyInput(req.body.deductions);
         if (v === null) return res.status(400).json({ message: "قيمة الخصومات غير صالحة", messageEn: "Invalid deductions" });
         deductions = v;
       }
@@ -4113,11 +4113,11 @@ export async function registerRoutes(
   app.post("/api/advances", payrollRole("owner", "hr"), async (req, res) => {
     try {
       const employeeId = Number(req.body.employeeId);
-      const amount = Number(req.body.amount);
-      const installments = Number(req.body.installments);
+      const amount = hrMoneyInput(req.body.amount);
+      const installments = hrEntityIdInput(req.body.installments);
       if (!Number.isInteger(employeeId)) return res.status(400).json({ message: "الموظف مطلوب", messageEn: "Employee required" });
-      if (!/^\d+(\.\d{1,2})?$/.test(String(req.body.amount)) || !Number.isFinite(amount) || amount <= 0 || amount >= 10000000000) return res.status(400).json({ message: "المبلغ غير صالح", messageEn: "Invalid amount" });
-      if (!Number.isInteger(installments) || installments < 1) return res.status(400).json({ message: "عدد الأقساط غير صالح", messageEn: "Invalid installments" });
+      if (amount === null || amount <= 0) return res.status(400).json({ message: "المبلغ غير صالح", messageEn: "Invalid amount" });
+      if (installments === null) return res.status(400).json({ message: "عدد الأقساط غير صالح", messageEn: "Invalid installments" });
 
       const emp = await storage.getEmployee(employeeId);
       if (!emp) return res.status(404).json({ message: "الموظف غير موجود", messageEn: "Employee not found" });
@@ -4192,12 +4192,12 @@ export async function registerRoutes(
 
   app.post("/api/leaves", requireRole("owner", "assistant", "hr"), async (req, res) => {
     try {
-      const employeeId = parseInt(req.body.employeeId);
+      const employeeId = hrEntityIdInput(req.body.employeeId);
       const leaveType = req.body.leaveType;
       const startDate = req.body.startDate;
       const endDate = req.body.endDate;
       const validTypes = ["annual", "sick", "unpaid", "emergency", "maternity", "other"];
-      if (!Number.isInteger(employeeId)) return res.status(400).json({ message: "الموظف مطلوب", messageEn: "Employee required" });
+      if (employeeId === null) return res.status(400).json({ message: "الموظف مطلوب", messageEn: "Employee required" });
       if (!validTypes.includes(leaveType)) return res.status(400).json({ message: "نوع الإجازة غير صالح", messageEn: "Invalid leave type" });
       if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate || "") || !/^\d{4}-\d{2}-\d{2}$/.test(endDate || "")) {
         return res.status(400).json({ message: "التواريخ غير صالحة", messageEn: "Invalid dates" });
@@ -4423,7 +4423,9 @@ export async function registerRoutes(
       const workflow = String(req.body.workflow || "");
       const def = HR_WORKFLOWS[workflow];
       if (!def) return res.status(400).json({ message: "مسار غير معروف", messageEn: "Unknown workflow" });
-      const employeeId = req.body.employeeId != null ? parseInt(req.body.employeeId) : null;
+      const employeeId = req.body.employeeId != null ? hrEntityIdInput(req.body.employeeId) : null;
+      if (req.body.employeeId != null && employeeId === null)
+        return res.status(400).json({ message: "معرّف الموظف غير صالح", messageEn: "Invalid employee identifier" });
       if (employeeId != null && (!Number.isInteger(employeeId) || !await storage.getEmployee(employeeId))) {
         return res.status(400).json({ message: "هوية الموظف المرتبطة غير صالحة" });
       }
@@ -4568,12 +4570,6 @@ export async function registerRoutes(
 
   // ==================== PERFORMANCE EVALUATIONS (تقييم الأداء) ====================
 
-  const clampScore = (v: any): number => {
-    const n = parseInt(v);
-    if (!Number.isFinite(n)) return 3;
-    return Math.min(5, Math.max(1, n));
-  };
-
   app.get("/api/evaluations", requireRole("owner", "assistant", "hr"), async (req, res) => {
     try {
       const employeeId = req.query.employeeId ? parseInt(req.query.employeeId as string) : undefined;
@@ -4585,18 +4581,20 @@ export async function registerRoutes(
 
   app.post("/api/evaluations", requireRole("owner", "assistant", "hr"), async (req, res) => {
     try {
-      const employeeId = parseInt(req.body.employeeId);
+      const employeeId = hrEntityIdInput(req.body.employeeId);
       const period = typeof req.body.period === "string" ? req.body.period.trim() : "";
-      if (!Number.isInteger(employeeId)) return res.status(400).json({ message: "الموظف مطلوب", messageEn: "Employee required" });
+      if (employeeId === null) return res.status(400).json({ message: "الموظف مطلوب", messageEn: "Employee required" });
       if (!period) return res.status(400).json({ message: "الفترة مطلوبة", messageEn: "Period required" });
       const emp = await storage.getEmployee(employeeId);
       if (!emp) return res.status(404).json({ message: "الموظف غير موجود", messageEn: "Employee not found" });
 
-      const q = clampScore(req.body.scoreQuality);
-      const p = clampScore(req.body.scoreProductivity);
-      const a = clampScore(req.body.scoreAttendance);
-      const t = clampScore(req.body.scoreTeamwork);
-      const d = clampScore(req.body.scoreDiscipline);
+      const q = hrScoreInput(req.body.scoreQuality);
+      const p = hrScoreInput(req.body.scoreProductivity);
+      const a = hrScoreInput(req.body.scoreAttendance);
+      const t = hrScoreInput(req.body.scoreTeamwork);
+      const d = hrScoreInput(req.body.scoreDiscipline);
+      if (q === null || p === null || a === null || t === null || d === null)
+        return res.status(400).json({ message: "درجات التقييم يجب أن تكون أعدادًا صحيحة من 1 إلى 5", messageEn: "Evaluation scores must be whole numbers from 1 to 5" });
       const overall = (q + p + a + t + d) / 5;
 
       const created = await storage.createPerformanceEvaluation({
@@ -8493,10 +8491,8 @@ export async function registerRoutes(
         results.push(await employeeMonthlyAttendanceRisk(emp,period,riyadhDateKey(endUtc),now,user?.fullNameAr||undefined));
       }
 
-      // تنبيه HR/المالك عند وصول موظف للبرتقالي أو الأحمر (مرة واحدة لكل موظف/شهر/مستوى)
-      if (period === currentPeriod) {
-        await notifyMonthlyAttendanceRisk(results,period,allUsers);
-      }
+      // Reports are read-only: no persisted score, alert dedup key, or notification.
+      // Any future notification job needs a separately approved operational scope.
 
       results.sort((a, b) => b.score - a.score);
       res.json({ period, results });

@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("./db", () => ({ pool: { connect: mocks.connect, query: mocks.query } }));
 vi.mock("./storage", () => ({ storage: { getUser: mocks.getUser } }));
 import { cents, payrollAmounts, payrollTransaction, payrollAction, approveAdvance, payrollRole, nextAdvanceInstallment } from "./hr-payroll";
+import { payrollStatusEnum } from "../shared/schema";
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -17,6 +18,9 @@ const record = { id: 7, employee_id: 3, period: "2026-05", status: "approved", b
   allowances: "300.00", deductions: "100.00", advance_deduction: "200.00", net_salary: "5000.00", advance_id: 9 };
 
 describe("payroll money", () => {
+  it("declares every persisted payroll state without changing the existing enum order", () => {
+    expect(payrollStatusEnum.enumValues).toEqual(["draft", "paid", "approved"]);
+  });
   it("collects the rounding remainder in the final scheduled installment", async () => {
     expect(await nextAdvanceInstallment({ id: 1, amount: "100.00", remainingAmount: "33.34", monthlyDeduction: "33.33", installments: 3 })).toBe("33.34");
   });

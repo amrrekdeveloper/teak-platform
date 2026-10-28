@@ -20,6 +20,7 @@ import HrAlertsPage from "@/pages/hr-alerts";
 import HrOverviewPage from "@/pages/hr-overview";
 import HrSystemSettingsPage from "@/pages/hr-system-settings";
 import HrRequestsCenterPage from "@/pages/hr-requests-center";
+import HrHelp from "@/components/hr-help";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -32,7 +33,7 @@ import {
   ShieldCheck, UsersRound, X, Settings, FileBarChart2, KeyRound, Bell, LayoutDashboard, Inbox,
 } from "lucide-react";
 
-type HrUser = { role?: string; maintenanceScope?: string; fullNameAr?: string; fullNameEn?: string; username?: string };
+type HrUser = { role?: string; maintenanceScope?: string; permissions?: string[]; fullNameAr?: string; fullNameEn?: string; username?: string };
 type HrPage = "overview" | "requests" | "settings" | "employees" | "attendance-monitor" | "attendance-settings" | "leaves" | "permissions" | "reports" | "access" | "actions" | "payroll" | "advances" | "evaluations" | "alerts";
 type RememberedLogin = { username: string; rememberMe: boolean };
 const HR_REMEMBER_KEY = "teak.auth.remember.hr";
@@ -248,7 +249,7 @@ function HrLayout() {
   };
 
   return (
-    <div className="hr-workspace" dir={isRTL ? "rtl" : "ltr"}>
+    <div className="hr-workspace hr-help-reserve" dir={isRTL ? "rtl" : "ltr"}>
        <header className="hr-mobile-header">
         <button type="button" className="hr-icon-button" aria-label={menuOpen ? "إغلاق القائمة" : "فتح القائمة"} aria-expanded={menuOpen} aria-controls="hr-primary-navigation" onClick={() => setMenuOpen(v => !v)}>
           {menuOpen ? <X size={21} /> : <Menu size={21} />}
@@ -323,6 +324,7 @@ function HrLayout() {
           </Switch>}
         </main>
       </section>
+      <HrHelp user={hrUser} menuOpen={menuOpen} />
     </div>
   );
 }

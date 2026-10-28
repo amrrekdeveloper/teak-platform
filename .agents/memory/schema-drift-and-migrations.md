@@ -40,3 +40,9 @@ This repo has real schema drift between `shared/schema.ts` and the actual Postgr
 **How to apply:** Use only supported enum literals, or an explicit text comparison when interoperating with differing legacy status vocabularies. Exercise new request writes against isolated real PostgreSQL fixtures as well as mocks.
 
 **`getCompanySettings()` selects every `company_settings` column,** so any declared column missing from the live table makes it throw `column ... does not exist` across finance paths. Keep the development schema aligned and have the user publish its schema changes before relying on new fields in production.
+
+Fixed workflow enum states used by the application must remain in the declarative schema, preserving existing database enum order; a legacy runtime-added state is not a reason to omit it from source.
+
+**Why:** A persisted payroll approval state existed in both environments and was required by the workflow while the source enum omitted it. Future schema generation could then propose a needless destructive change.
+
+**How to apply:** Compare actual enum labels as well as column types. If both databases already contain the state, align the source and add a regression test without issuing another ALTER or adding startup DDL. This does not mean hardcoding dynamic department catalog values into source.

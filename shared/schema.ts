@@ -226,7 +226,9 @@ export const insertEmployeeAssetSchema = createInsertSchema(employeeAssets).omit
 export type InsertEmployeeAsset = z.infer<typeof insertEmployeeAssetSchema>;
 export type EmployeeAsset = typeof employeeAssets.$inferSelect;
 
-export const payrollStatusEnum = pgEnum("payroll_status", ["draft", "paid"]);
+// Preserve the existing database enum order, including the approval state used
+// by the payroll workflow. Runtime-added labels must not disappear from source.
+export const payrollStatusEnum = pgEnum("payroll_status", ["draft", "paid", "approved"]);
 
 export const payrollRecords = pgTable("payroll_records", {
   id: serial("id").primaryKey(),

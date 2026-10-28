@@ -19,14 +19,15 @@ export interface DayCalendar {
 }
 /** A missing legacy calendar is NOT established policy. No automatic retrospective capture. */
 export async function calendarForDay(employeeId:number, day:string, executor:Executor=pool, policies?:WeekPolicy[],
-  savedDays?:Map<string,{workingDay:boolean;source:string;policyId:number|null}>):Promise<DayCalendar> {
+  savedDays?:Map<string,{workingDay:boolean;source:string;policyId:number|null}>,
+  options: { captureCurrent?: boolean } = {}):Promise<DayCalendar> {
   const saved=savedDays?savedDays.get(day):(await executor.query(`SELECT working_day AS "workingDay",source,policy_id AS "policyId"
     FROM attendance_day_calendars WHERE employee_id=$1 AND business_day=$2`,[employeeId,day])).rows[0];
   if(saved)return {...saved,verified:true};
   const policy=resolveWeekPolicy(policies??await weekPolicies(executor),employeeId,day);
   const workingDay=workdayFor(policy,day);
   if(workingDay===null)return {workingDay:null,source:"legacy",policyId:null,verified:false};
-  if(day===riyadhDateKey(new Date())) {
+  if(options.captureCurrent !== false && day===riyadhDateKey(new Date())) {
     const {rows:[captured]}=await executor.query(`INSERT INTO attendance_day_calendars
       (employee_id,business_day,working_day,policy_id,source) VALUES($1,$2,$3,$4,$5)
       ON CONFLICT(employee_id,business_day) DO UPDATE SET working_day=attendance_day_calendars.working_day
