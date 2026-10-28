@@ -10,6 +10,8 @@ if (process.env.REPLIT_DEPLOYMENT === "1" || process.env.NODE_ENV === "productio
 const db = new pg.Client({connectionString:process.env.DATABASE_URL});
 const guard = `/tmp/hr-smoke-${randomUUID()}.cjs`;
 const recoveryTest=process.argv.includes("--owner-recovery");
+const recoveryDevelopment=process.argv.includes("--owner-recovery-development");
+if(recoveryDevelopment&&!recoveryTest)throw new Error("Development recovery requires --owner-recovery");
 const hrTest=process.argv.includes("--hr-readiness");
 const hrWrites=process.argv.includes("--hr-fixture-writes");
 const serveHr=process.argv.includes("--serve-hr");
@@ -42,12 +44,14 @@ console.error=(...args)=>{
  process.stderr.write("HR_FIXTURE_DIAGNOSTIC "+JSON.stringify(chain)+"\\n");
 };
 `);
-  const env = {...process.env, NODE_ENV:"production", REPLIT_DEPLOYMENT:recoveryTest?"1":"0", PORT:"5099",
+  const env = {...process.env, NODE_ENV:recoveryDevelopment?"development":"production", REPLIT_DEPLOYMENT:recoveryTest&&!recoveryDevelopment?"1":"0", PORT:"5099",
     DATABASE_URL:fixture.connectionString, SESSION_SECRET:randomUUID()+randomUUID(), NODE_OPTIONS:`--require=${guard}`};
   for (const key of ["TAQNYAT_API_KEY","HR_READINESS_PASSWORD","TEAK_SYSTEM_ADMIN_USERNAME","TEAK_SYSTEM_ADMIN_PASSWORD","TEAK_SYSTEM_ADMIN_RECOVERY_PASSWORD","TEAK_SYSTEM_ADMIN_RECOVERY_ID","FIREBASE_SERVICE_ACCOUNT_KEY","OPENAI_API_KEY","EMPLOYEE_PORTAL_DEV_OTP"])
     delete env[key];
+  for(const key of Object.keys(env))
+    if(key.startsWith("TEAK_SYSTEM_ADMIN_RECOVERY_"))delete env[key];
   const hash=value=>{const salt=randomBytes(16).toString("hex");return`${scryptSync(value,salt,64).toString("hex")}.${salt}`;};
-  const oldPassword="synthetic-old-owner-password",newPassword="synthetic-new-owner-password",laterPassword="synthetic-later-owner-password";
+  const oldPassword="synthetic-old-owner-password",newPassword="Aa1!xx",laterPassword="Later1!synthetic";
   let owner;
   if(hrTest || serveHr || hrWrites) {
     await db.query(`INSERT INTO users(username,password,role,full_name_ar,full_name_en,active,archived)
@@ -59,20 +63,24 @@ console.error=(...args)=>{
   if(recoveryTest){
     const insert=async(name,role)=>(await db.query(`INSERT INTO users(username,password,role,full_name_ar,full_name_en,active,archived)
       VALUES($1,$2,$3,'اختبار معزول','Disposable fixture',true,false) RETURNING id`,[name,hash(oldPassword),role])).rows[0].id;
-    owner=await insert("fixture_owner","owner");
+    // Approved username in a disposable empty schema, never the real account.
+    owner=await insert("khalid90","owner");
     const hr=await insert("fixture_hr","hr");
     await db.query("INSERT INTO teak_system_admin(singleton,user_id) VALUES(true,$1)",[owner]);
     for(const [sid,userId] of [["owner-before-recovery",owner],["hr-session-preserved",hr]])
       await db.query("INSERT INTO user_sessions(sid,sess,expire) VALUES($1,$2::json,now()+interval '1 day')",
         [sid,JSON.stringify({userId,adminAuthenticated:true,systemAdminWorkspace:userId===owner})]);
-    const key=`hr-login-user:${createHash("sha256").update("fixture_owner").digest("hex")}`;
+    const key=`hr-login-user:${createHash("sha256").update("khalid90").digest("hex")}`;
     await db.query("INSERT INTO employee_portal_limits(key,count,resets_at) VALUES($1,10,now()+interval '15 minutes'),('fixture-shared-ip-preserved',30,now()+interval '15 minutes')",[key]);
-    Object.assign(env,{TEAK_SYSTEM_ADMIN_USERNAME:"fixture_owner",TEAK_SYSTEM_ADMIN_PASSWORD:oldPassword,
-      TEAK_SYSTEM_ADMIN_RECOVERY_PASSWORD:newPassword,TEAK_SYSTEM_ADMIN_RECOVERY_ID:randomUUID()});
+    const environment=recoveryDevelopment?"development":"production";
+    Object.assign(env,{TEAK_SYSTEM_ADMIN_USERNAME:"khalid90",TEAK_SYSTEM_ADMIN_PASSWORD:oldPassword,
+      TEAK_SYSTEM_ADMIN_RECOVERY_PASSWORD:newPassword,
+      [`TEAK_SYSTEM_ADMIN_RECOVERY_${environment.toUpperCase()}_ID`]:randomUUID(),
+      [`TEAK_SYSTEM_ADMIN_RECOVERY_${environment.toUpperCase()}_ENABLED`]:environment});
   }
   const start=async()=>{
     let ready=false;
-    child=spawn(process.execPath,["dist/index.cjs"],{env,stdio:["ignore","pipe","pipe"]});
+    child=spawn(process.execPath,recoveryDevelopment?["--import","tsx","server/index.ts"]:["dist/index.cjs"],{env,stdio:["ignore","pipe","pipe"]});
     child.stdout.on("data",data=>{if(String(data).includes("serving on port 5099"))ready=true;});
     child.stderr.on("data",data=>{
       // Print only the guard's redacted class/SQLSTATE, never raw DB errors.
@@ -171,7 +179,7 @@ console.error=(...args)=>{
     const login=async(password,expected)=>{
       const response=await fetch("http://127.0.0.1:5099/api/system-admin/login",{method:"POST",
         headers:{"Content-Type":"application/json","X-Forwarded-Proto":"https"},
-        body:JSON.stringify({username:"fixture_owner",password})});
+         body:JSON.stringify({username:"khalid90",password})});
       if(response.status!==expected)throw new Error(`Synthetic owner login: ${response.status}, expected ${expected}`);
       return response;
     };
@@ -179,20 +187,27 @@ console.error=(...args)=>{
     if(await exists("SELECT 1 FROM user_sessions WHERE sid='owner-before-recovery'"))throw new Error("Owner session was not revoked");
     if(!await exists("SELECT 1 FROM user_sessions WHERE sid='hr-session-preserved'"))throw new Error("Unrelated HR session was changed");
     if(!await exists("SELECT 1 FROM employee_portal_limits WHERE key='fixture-shared-ip-preserved' AND count=30"))throw new Error("Shared IP counter changed");
+    const ownerKey=`hr-login-user:${createHash("sha256").update("khalid90").digest("hex")}`;
+    if(await exists("SELECT 1 FROM employee_portal_limits WHERE key=$1",[ownerKey]))throw new Error("Owner counter was not reset");
     await login(oldPassword,401);
     const signedIn=await login(newPassword,200);
     const cookie=signedIn.headers.getSetCookie().map(v=>v.split(";")[0]).join("; ");
     const me=await fetch("http://127.0.0.1:5099/api/system-admin/me",{headers:{Cookie:cookie,"X-Forwarded-Proto":"https"}});
     if(me.status!==200)throw new Error("Recovered owner session was not usable");
     if(await exists("SELECT 1 FROM teak_system_admin_audit WHERE target_id=$1 HAVING count(*)<>1",[owner]))throw new Error("Recovery audit missing or duplicated");
+    const changed=await fetch("http://127.0.0.1:5099/api/system-admin/password",{
+      method:"POST",headers:{"Content-Type":"application/json",Cookie:cookie,"X-Forwarded-Proto":"https"},
+      body:JSON.stringify({currentPassword:newPassword,newPassword:laterPassword})});
+    if(changed.status!==200)throw new Error("Owner self-change after recovery failed");
+    if((await fetch("http://127.0.0.1:5099/api/system-admin/me",{headers:{Cookie:cookie,"X-Forwarded-Proto":"https"}})).status!==401)
+      throw new Error("Owner session survived self-change");
     await stop();
-    await db.query("UPDATE users SET password=$2 WHERE id=$1",[owner,hash(laterPassword)]);
     await start();
     await login(newPassword,401);
     await login(laterPassword,200);
     const audit=(await db.query("SELECT count(*)::int AS count FROM teak_system_admin_audit WHERE target_id=$1",[owner])).rows[0].count;
-    if(audit!==1)throw new Error("Recovery request replayed on restart");
-    console.log("PASS: isolated production-mode owner recovery, new password login/session, old password rejected, scoped session/counter revocation, audit, restart replay protection; no production data or real credentials.");
+    if(audit!==2)throw new Error("Recovery or self-change audit missing, or recovery replayed on restart");
+    console.log(`PASS: isolated ${recoveryDevelopment?"development":"production"}-mode owner recovery, real login/session, old password rejected, scoped revocation, self-change, restart replay protection; no production data or real credentials.`);
   }
   console.log("PASS: production bundle startup, health, maintenance, scoped entry, production OTP disabled, missing SMS fail-closed; disposable schema; outbound network blocked.");
 } finally {

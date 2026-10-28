@@ -15,8 +15,8 @@ Never use the absence of a historical default username as proof that an installa
 
 **How to apply:** Audit every startup entry point, not just the main seed guard. Production startup must not seed default credentials or clean business records. First-owner provisioning is a separate, narrowly authorized operation.
 
-Owner password recovery must be explicitly requested, production-only, and durably single-use. Bootstrap-secret edits alone must not silently overwrite an existing owner's password.
+Owner password recovery must be explicitly requested, independently authorized per environment, and durably single-use. Bootstrap-secret edits alone must not silently overwrite an existing owner's password.
 
-**Why:** The owner can lose access after first provisioning; continuously applying a configured password would reintroduce startup identity repair and undo later password changes.
+**Why:** Shared credential configuration must not transfer recovery authorization between environments. Continuously applying a configured password would reintroduce startup identity repair and undo later password changes.
 
-**How to apply:** Require an operator-supplied recovery identifier and pending secret, match the existing active designated owner, and atomically hash/update the password, revoke only their administrative sessions, clear only their per-username login limit, and audit consumption. Reusing the identifier must never reapply recovery. Do not add a public secret-based login fallback.
+**How to apply:** Require an environment-specific operator consent and recovery identifier plus the pending secret, match the approved existing active designated owner, and atomically hash/update the password, revoke only their administrative sessions, clear only their per-username login limit, and audit consumption. A shared password alone must never authorize either environment; authorization for one must not authorize the other. Reusing the identifier must never reapply recovery. Preserve historical consumption records and do not add a public secret-based login fallback.

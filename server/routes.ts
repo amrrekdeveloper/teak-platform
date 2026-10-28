@@ -15,7 +15,7 @@ import { captureRequestRouting,effectiveRequestManager } from "./hr-request-rout
 import { setupAuth, requireAuth, requireRole, comparePasswords, hashPassword, getEffectivePermissionsForUser } from "./auth";
 import { initializeHrDataIntegrity, deleteUnusedEmployee } from "./hr-data-integrity";
 import { initializeSystemAdmin } from "./system-admin";
-import { recoverSystemAdminPassword } from "./system-admin-recovery";
+import { recoverSystemAdminPassword, systemAdminRecoveryEnvironment } from "./system-admin-recovery";
 import { registerWarehouseCenter } from "./warehouse-center";
 import { WarehouseError, amount as warehouseAmount } from "./warehouse-domain";
 import { archiveWarehouseItem, createWarehouseItem, editWarehouseItem, moveWarehouseStock } from "./warehouse-stock";
@@ -310,7 +310,8 @@ export async function registerRoutes(
       referenceNumber: String(result.orderNumber), date: new Date().toISOString().slice(0, 10),
       amount: Number(result.totalAmount), createdBy: actor });
   });
-  if (recoveryStatus !== "disabled") console.log(`System administrator password recovery: ${recoveryStatus}`);
+  if (recoveryStatus !== "disabled")
+    console.log(`System administrator password recovery [${systemAdminRecoveryEnvironment()}]: ${recoveryStatus}`);
   await initializeHrDataIntegrity();
 
   // Retired PIN/user-account bridge. Employee identity is now established
@@ -3190,7 +3191,7 @@ export async function registerRoutes(
     }
   });
 
-  // ==================== WORK ORDERS ====================
+  // WORK ORDERS
 
   app.get("/api/work-orders", requireAuth, requireRole("owner", "assistant", "production", "designer", "sales", "delivery", "installation"), async (req, res) => {
     try {
@@ -3270,7 +3271,7 @@ export async function registerRoutes(
     }
   });
 
-  // ==================== PRODUCTION STAGES ====================
+  // PRODUCTION STAGES
 
   app.get("/api/work-orders/:id/stages", requireAuth, requireRole("owner", "assistant", "production", "designer", "quality"), async (req, res) => {
     try {
@@ -3310,7 +3311,7 @@ export async function registerRoutes(
     }
   });
 
-  // ==================== INVENTORY ====================
+  // INVENTORY
 
   app.get("/api/inventory", requireRole("owner", "assistant", "warehouse", "purchasing", "production"), async (_req, res) => {
     try {
@@ -3487,7 +3488,7 @@ export async function registerRoutes(
   app.post("/api/inventory-transactions", requireRole("owner", "assistant", "warehouse"), recordInventoryMovement);
   app.post("/api/warehouse-center/movements", requireRole("owner", "assistant", "warehouse"), recordInventoryMovement);
 
-  // ==================== SUPPLIERS ====================
+  // SUPPLIERS
 
   app.get("/api/suppliers", requireRole("owner", "assistant", "warehouse", "purchasing", "accountant"), async (_req, res) => {
     try {
@@ -3578,7 +3579,7 @@ export async function registerRoutes(
     }
   });
 
-  // ==================== WAREHOUSES ====================
+  // WAREHOUSES
 
   app.get("/api/warehouses", requireRole("owner", "assistant", "warehouse", "purchasing"), async (_req, res) => {
     try {
@@ -3613,7 +3614,7 @@ export async function registerRoutes(
     }
   });
 
-  // ==================== PURCHASE ORDERS ====================
+  // PURCHASE ORDERS
 
   app.get("/api/purchase-orders", requireRole("owner", "assistant", "purchasing", "warehouse"), async (_req, res) => {
     try {
@@ -3683,7 +3684,7 @@ export async function registerRoutes(
     }
   });
 
-  // ==================== EMPLOYEES ====================
+  // EMPLOYEES
   registerDepartmentCatalog(app,requireRole("owner","hr"));
 
   app.get("/api/employees", requireRole("owner", "assistant", "hr", "it"), async (_req, res) => {
@@ -3769,7 +3770,7 @@ export async function registerRoutes(
     }
   });
 
-  // ==================== HR: EMPLOYEE DOCUMENTS ====================
+  // HR: EMPLOYEE DOCUMENTS
 
   const hrDocUpload = multer({
     storage: multer.memoryStorage(),
@@ -3843,7 +3844,7 @@ export async function registerRoutes(
     }
   });
 
-  // ==================== JOB TITLES ====================
+  // JOB TITLES
 
   app.get("/api/job-titles", requireRole("owner", "assistant", "hr", "it"), async (_req, res) => {
     try { res.json(await storage.getJobTitles()); }
@@ -3880,7 +3881,7 @@ export async function registerRoutes(
     }
   });
 
-  // ==================== HR AUDIT LOG ====================
+  // HR AUDIT LOG
 
   app.get("/api/hr-audit-log", requireRole("owner", "it", "hr"), async (req, res) => {
     try {
@@ -3891,7 +3892,7 @@ export async function registerRoutes(
     }
   });
 
-  // ==================== HR: ACCOUNT MANAGEMENT ====================
+  // HR: ACCOUNT MANAGEMENT
 
   app.post("/api/hr/reset-password", requireRole("owner", "hr", "it"), async (req: any, res) => {
     try {
@@ -3934,7 +3935,7 @@ export async function registerRoutes(
     }
   });
 
-  // ==================== EMPLOYEE ASSETS (عُهد) ====================
+  // EMPLOYEE ASSETS (عُهد)
 
   app.get("/api/employees/:id/assets", requireRole("owner", "assistant", "hr"), async (req, res) => {
     try {
@@ -3967,7 +3968,7 @@ export async function registerRoutes(
     }
   });
 
-  // ==================== PAYROLL (مسيّر الرواتب) ====================
+  // PAYROLL (مسيّر الرواتب)
 
   const computeNet = (basic: number, allowances: number, deductions: number, advance: number = 0) =>
     Math.max(0, basic + allowances - deductions - advance);
@@ -4103,7 +4104,7 @@ export async function registerRoutes(
     catch (error) { res.status(error instanceof PayrollError ? error.status : 500).json({ message: payrollFailure(error) }); }
   });
 
-  // ==================== EMPLOYEE ADVANCES (السلف) ====================
+  // EMPLOYEE ADVANCES (السلف)
 
   app.get("/api/advances", payrollRole("owner", "hr", "accountant"), async (req, res) => {
     try {
@@ -4170,7 +4171,7 @@ export async function registerRoutes(
     }
   });
 
-  // ==================== LEAVE REQUESTS (الإجازات) ====================
+  // LEAVE REQUESTS (الإجازات)
 
   app.get("/api/leaves", requireRole("owner", "assistant", "hr"), async (req, res) => {
     try {
@@ -4384,7 +4385,7 @@ export async function registerRoutes(
     }
   });
 
-  // ==================== HR ACTIONS (ملف الموظف — WF-01..WF-10) ====================
+  // HR ACTIONS (ملف الموظف — WF-01..WF-10)
 
   const { HR_WORKFLOWS, canPerformAdministrativeHrStep } = await import("@shared/hr-workflows");
   registerManagerWorkspace(app, requireAuth);
@@ -4572,7 +4573,7 @@ export async function registerRoutes(
     }
   });
 
-  // ==================== PERFORMANCE EVALUATIONS (تقييم الأداء) ====================
+  // PERFORMANCE EVALUATIONS (تقييم الأداء)
 
   app.get("/api/evaluations", requireRole("owner", "assistant", "hr"), async (req, res) => {
     try {
@@ -4616,7 +4617,7 @@ export async function registerRoutes(
     }
   });
 
-  // ==================== DELIVERIES ====================
+  // DELIVERIES
 
   app.get("/api/deliveries", requireRole("owner", "assistant", "delivery", "production"), async (_req, res) => {
     try { res.json(await storage.getDeliveries()); }
@@ -4700,7 +4701,7 @@ export async function registerRoutes(
     }
   });
 
-  // ==================== INSTALLATIONS ====================
+  // INSTALLATIONS
 
   app.get("/api/installations", requireRole("owner", "assistant", "installation"), async (_req, res) => {
     try { res.json(await storage.getInstallations()); }
@@ -4808,7 +4809,7 @@ export async function registerRoutes(
     }
   });
 
-  // ==================== MAINTENANCE REQUESTS ====================
+  // MAINTENANCE REQUESTS
 
   app.get("/api/maintenance-requests", requireRole("owner", "assistant", "installation", "customer_service"), async (_req, res) => {
     try { res.json(await storage.getMaintenanceRequests()); }
@@ -4828,7 +4829,7 @@ export async function registerRoutes(
     } catch (error) { res.status(500).json({ message: "حدث خطأ", messageEn: "Error updating maintenance request" }); }
   });
 
-  // ==================== QUALITY CHECKS ====================
+  // QUALITY CHECKS
 
   app.get("/api/quality-checks", requireRole("owner", "assistant", "quality", "production"), async (_req, res) => {
     try { res.json(await storage.getQualityChecks()); }
@@ -4842,7 +4843,7 @@ export async function registerRoutes(
     } catch (error) { console.error(error); res.status(500).json({ message: "حدث خطأ", messageEn: "Error creating quality check" }); }
   });
 
-  // ==================== DESIGN ASSIGNMENTS ====================
+  // DESIGN ASSIGNMENTS
 
   app.get("/api/design-assignments", requireRole("owner", "assistant", "sales", "designer"), async (req, res) => {
     try {
@@ -4951,7 +4952,7 @@ export async function registerRoutes(
     } catch (error) { console.error(error); res.status(500).json({ message: "حدث خطأ", messageEn: "Error submitting design" }); }
   });
 
-  // ==================== QUOTE REQUESTS (customers from website without quotation) ====================
+  // QUOTE REQUESTS (customers from website without quotation)
 
   app.get("/api/quote-requests", requireRole("owner", "assistant", "sales"), async (req, res) => {
     try {
@@ -4969,7 +4970,7 @@ export async function registerRoutes(
     } catch (error) { res.status(500).json({ message: "حدث خطأ", messageEn: "Error fetching quote requests" }); }
   });
 
-  // ==================== WARRANTIES ====================
+  // WARRANTIES
 
   app.get("/api/warranties", requireRole("owner", "assistant", "sales", "installation"), async (_req, res) => {
     try { res.json(await storage.getWarranties()); }
@@ -4989,7 +4990,7 @@ export async function registerRoutes(
     catch (error) { console.error(error); res.status(500).json({ message: "حدث خطأ", messageEn: "Error creating warranty" }); }
   });
 
-  // ==================== CUSTOMER PORTAL ====================
+  // CUSTOMER PORTAL
 
   function normalizePhone(phone: string): string {
     let cleaned = phone.replace(/[^\d+]/g, "");
@@ -5373,7 +5374,7 @@ export async function registerRoutes(
     } catch (error) { console.error(error); res.status(500).json({ message: "حدث خطأ" }); }
   });
 
-  // ==================== PRODUCTION-WAREHOUSE LINK ====================
+  // PRODUCTION-WAREHOUSE LINK
 
   app.post("/api/production-stages/:id/upload-photo", requireRole("owner", "assistant", "production"), async (req, res) => {
     try {
@@ -5494,7 +5495,7 @@ export async function registerRoutes(
     }
   });
 
-  // ==================== APPOINTMENTS / CALENDAR ====================
+  // APPOINTMENTS / CALENDAR
 
   app.get("/api/appointments", requireAuth, async (req, res) => {
     try {
@@ -5700,7 +5701,7 @@ export async function registerRoutes(
     }
   });
 
-  // ==================== SITE SURVEYS ====================
+  // SITE SURVEYS
 
   app.get("/api/site-surveys", requireAuth, async (_req, res) => {
     try {
@@ -8023,7 +8024,7 @@ export async function registerRoutes(
     scheduleDaily();
   })();
 
-  // ============ FINANCE QUICK LOGIN ============
+  // FINANCE QUICK LOGIN
 
   function makeRateLimiter(maxAttempts: number, windowMs: number) {
     const map = new Map<string, { count: number; resetAt: number }>();
@@ -8115,7 +8116,7 @@ export async function registerRoutes(
     }
   });
 
-  // ============ ATTENDANCE SYSTEM ============
+  // ATTENDANCE SYSTEM
 
   const ATTENDANCE_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 
