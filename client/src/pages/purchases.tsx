@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { WarehousePurchasingRequests } from "@/components/warehouse/warehouse-requests";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLanguage } from "@/components/language-provider";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -60,6 +61,8 @@ export default function PurchasesPage() {
     mutationFn: (data: any) => apiRequest("POST", "/api/purchase-orders", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/warehouse-center/requisitions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/warehouse-center/receipts"] });
       setCreateOpen(false);
       setSelectedSupplier("");
       setPoItems([]);
@@ -71,6 +74,8 @@ export default function PurchasesPage() {
     mutationFn: ({ id, data }: { id: number; data: any }) => apiRequest("PATCH", `/api/purchase-orders/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/warehouse-center/requisitions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/warehouse-center/receipts"] });
       setDetailPO(null);
       toast({ title: t("تم تحديث أمر الشراء", "Purchase order updated") });
     },
@@ -113,6 +118,7 @@ export default function PurchasesPage() {
 
   return (
     <div className="space-y-6">
+      <WarehousePurchasingRequests />
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold" data-testid="text-purchases-title">{t("أوامر الشراء", "Purchase Orders")}</h1>
@@ -361,9 +367,9 @@ export default function PurchasesPage() {
                       <Truck className="w-4 h-4 me-1" />{t("تم الطلب", "Mark as Ordered")}
                     </Button>
                   )}
-                  {detailPO.status === "ordered" && (
-                    <Button className="flex-1" onClick={() => updateMutation.mutate({ id: detailPO.id, data: { status: "received" } })} disabled={updateMutation.isPending} data-testid="button-mark-received">
-                      <PackageCheck className="w-4 h-4 me-1" />{t("تم الاستلام", "Mark as Received")}
+                  {["approved", "ordered", "partially_received"].includes(detailPO.status) && (
+                    <Button className="flex-1" variant="outline" onClick={() => { window.location.href = "/dashboard/warehouses/receipts"; }} data-testid="button-mark-received">
+                      <PackageCheck className="w-4 h-4 me-1" />{t("متابعة استلام المستودع", "Track warehouse receipt")}
                     </Button>
                   )}
                 </div>

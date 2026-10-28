@@ -23,6 +23,12 @@ The owner separately authorized a system-administrator entry to provision HR adm
 
 Maintenance must remain compatible with Replit's root-path deployment health check.
 
+The owner's 2026-10-28 warehouse request authorizes a narrow, authenticated warehouse/purchasing workspace while the general ERP remains closed. It does not authorize reopening the full dashboard or expanding HR sessions.
+
+**Why:** The warehouse keeper and purchasing staff must operate the newly requested module without changing the standing maintenance boundary.
+
+**How to apply:** Keep warehouse access isolated from HR, employee identities, financial payment endpoints, and unrelated ERP sections. A public sign-in page is not permission to expose private data.
+
 **Why:** Replit checks `/` when publishing; rejecting every request as unavailable can interfere with deployment health.
 
 **How to apply:** Keep the root page healthy while returning only maintenance content, and block protected APIs separately. Do not interpret the healthy root response as permission to bypass maintenance.

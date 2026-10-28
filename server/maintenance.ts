@@ -2,6 +2,7 @@ import type { RequestHandler } from "express";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { isHrWorkspaceApi, isHrWorkspacePage, isManagerApi, isSystemAdminApi } from "../shared/hr-access";
+import { isWarehouseWorkspaceApi, isWarehouseWorkspacePage } from "../shared/warehouse-access";
 
 // Disable ONLY when the owner requests reopening, then republish.
 // The deadline is fixed, not relative to server startup or a visitor's session.
@@ -48,13 +49,17 @@ export function createMaintenanceMiddleware(
     res.set("Referrer-Policy", "same-origin");
     // This isolated API is the ONLY application surface available during
     // maintenance. It never mounts administrative session middleware.
-    if (req.path.startsWith("/api/employee-portal/")) return next();
+    if (req.path.startsWith("/api/employee-portal/") || req.path === "/favicon.png") return next();
+    if (isWarehouseWorkspaceApi(req.method, req.path) && !/^\/api\/(?:auth\/|notifications(?:\/|$))/.test(req.path)) {
+      res.locals.warehouseMaintenanceRequest = true;
+      return next();
+    }
     if (isHrWorkspaceApi(req.method, req.path) || isManagerApi(req.method, req.path) || isSystemAdminApi(req.method, req.path)) {
       res.locals.hrMaintenanceRequest = true;
       return next(); // Authentication + fresh role check follow session loading.
     }
     if (req.method === "GET" || req.method === "HEAD") {
-      if (isHrWorkspacePage(req.path)) return next();
+      if (isHrWorkspacePage(req.path) || isWarehouseWorkspacePage(req.path)) return next();
       // Only SPA assets needed to render the isolated HR shell. This does not
       // permit navigation to ERP pages or access to their APIs.
       const devAsset = reloadTemplates && /^\/(?:@vite\/client$|@react-refresh$|@replit\/vite-plugin-dev-banner\/banner-script\.js$|src\/|node_modules\/\.vite\/|@fs\/)/.test(req.path);

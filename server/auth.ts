@@ -13,6 +13,8 @@ import { takeLimit } from "./employee-portal/database";
 import { tokenHash } from "./employee-portal/security";
 import { isDesignatedSystemAdmin, registerSystemAdminRoutes } from "./system-admin";
 import { setLoginPersistence } from "./login-session";
+import { enforceWarehouseWorkspaceScope } from "./warehouse-access";
+import { WAREHOUSE_WORKSPACE_PERMISSIONS, WAREHOUSE_WORKSPACE_ROLES } from "../shared/warehouse-access";
 
 const scryptAsync = promisify(scrypt);
 
@@ -46,6 +48,7 @@ declare module "express-session" {
     hrWorkspace?: boolean;
     managerWorkspace?: boolean;
     systemAdminWorkspace?: boolean;
+    warehouseWorkspace?: boolean;
     rememberMe?: boolean;
   }
 }
@@ -73,13 +76,15 @@ export function setupAuth(app: Express) {
       },
     })
   );
+  app.use(enforceWarehouseWorkspaceScope);
   app.use(enforceHrWorkspaceScope);
 
-  app.post(["/api/auth/login", "/api/hr-access/login", "/api/manager-access/login", "/api/system-admin/login"], async (req: Request, res: Response) => {
+  app.post(["/api/auth/login", "/api/hr-access/login", "/api/manager-access/login", "/api/system-admin/login", "/api/warehouse-access/login"], async (req: Request, res: Response) => {
     try {
       const hrLogin = req.path === "/api/hr-access/login";
       const managerLogin = req.path === "/api/manager-access/login";
       const systemAdminLogin = req.path === "/api/system-admin/login";
+      const warehouseLogin = req.path === "/api/warehouse-access/login";
       const { username, password } = req.body;
       if (typeof username !== "string" || typeof password !== "string" ||
         !username.trim() || !password || username.length > 100 || password.length > 256) {
@@ -90,7 +95,7 @@ export function setupAuth(app: Express) {
       }
       if(req.body.rememberMe!==undefined&&typeof req.body.rememberMe!=="boolean")
         return res.status(400).json({message:"خيار تذكّر الدخول غير صالح."});
-      if ((hrLogin || managerLogin || systemAdminLogin) && (!await takeLimit(`hr-login-ip:${tokenHash(req.ip || "unknown")}`, 30, 900) ||
+      if ((hrLogin || managerLogin || systemAdminLogin || warehouseLogin) && (!await takeLimit(`hr-login-ip:${tokenHash(req.ip || "unknown")}`, 30, 900) ||
         !await takeLimit(`hr-login-user:${tokenHash(username.trim().toLowerCase())}`, 10, 900)))
         return res.status(429).json({ message: "محاولات دخول متكررة. حاول بعد 15 دقيقة." });
 
@@ -114,6 +119,8 @@ export function setupAuth(app: Express) {
         return res.status(403).json({ message: "لا توجد علاقة مدير مباشر فعالة لهذا الحساب." });
       if (systemAdminLogin && !await isDesignatedSystemAdmin(user))
         return res.status(403).json({ message: "هذا المدخل مخصص لمدير النظام المعتمد فقط." });
+      if (warehouseLogin && !WAREHOUSE_WORKSPACE_ROLES.includes(user.role))
+        return res.status(403).json({ message: "هذا المدخل مخصص للمستودعات والمشتريات والإدارة." });
 
       // New session ID prevents fixation. Existing unmarked PIN-created
       // sessions must authenticate again using administrative credentials.
@@ -123,11 +130,14 @@ export function setupAuth(app: Express) {
       req.session.hrWorkspace = hrLogin;
       req.session.managerWorkspace = managerLogin;
       req.session.systemAdminWorkspace = systemAdminLogin;
+      req.session.warehouseWorkspace = warehouseLogin;
       setLoginPersistence(req.session,req.body.rememberMe===true);
       const { password: _, employeePin: _pin, financePin: _financePin, ...safeUser } = user;
-      const permissions = (managerLogin || systemAdminLogin) ? [] : hrLogin ? HR_WORKSPACE_PERMISSIONS : await getEffectivePermissionsForUser(user);
+      const effective = await getEffectivePermissionsForUser(user);
+      const permissions = (managerLogin || systemAdminLogin) ? [] : hrLogin ? HR_WORKSPACE_PERMISSIONS
+        : warehouseLogin ? effective.filter(key => WAREHOUSE_WORKSPACE_PERMISSIONS.includes(key)) : effective;
       await new Promise<void>((resolve, reject) => req.session.save(err => err ? reject(err) : resolve()));
-      return res.json({ ...safeUser, permissions, ...(systemAdminLogin ? { maintenanceScope: "system-admin" } : hrLogin ? { maintenanceScope: "hr" } : managerLogin ? { maintenanceScope: "manager" } : {}) });
+      return res.json({ ...safeUser, permissions, ...(warehouseLogin ? { maintenanceScope: "warehouse" } : systemAdminLogin ? { maintenanceScope: "system-admin" } : hrLogin ? { maintenanceScope: "hr" } : managerLogin ? { maintenanceScope: "manager" } : {}) });
     } catch (error) {
       console.error("Login error:", error);
       return res.status(500).json({
@@ -170,7 +180,8 @@ export function setupAuth(app: Express) {
       }
       const { password: _, employeePin: _pin, financePin: _financePin, ...safeUser } = user;
       const permissions = req.session.managerWorkspace ? [] : req.session.hrWorkspace ? HR_WORKSPACE_PERMISSIONS : await getEffectivePermissionsForUser(user);
-      return res.json({ ...safeUser, permissions, ...(req.session.hrWorkspace ? { maintenanceScope: "hr" } : req.session.managerWorkspace ? { maintenanceScope: "manager" } : {}) });
+      return res.json({ ...safeUser, permissions: req.session.warehouseWorkspace ? permissions.filter(key => WAREHOUSE_WORKSPACE_PERMISSIONS.includes(key)) : permissions,
+        ...(req.session.warehouseWorkspace ? { maintenanceScope: "warehouse" } : req.session.hrWorkspace ? { maintenanceScope: "hr" } : req.session.managerWorkspace ? { maintenanceScope: "manager" } : {}) });
     } catch (error) {
       return res.status(500).json({
         message: "حدث خطأ",
@@ -207,6 +218,7 @@ const API_PERMISSION_BYPASS: { prefix: string; key: string; exclude?: string[]; 
   { prefix: "/api/attendance/movements", key: "/attendance-monitor" },
   { prefix: "/api/attendance/audit-log", key: "/attendance-monitor" },
   { prefix: "/api/inventory-transactions", key: "/inventory" },
+  { prefix: "/api/warehouse-center", key: "/warehouses", readOnly: true },
   { prefix: "/api/inventory", key: "/inventory" },
   { prefix: "/api/warehouses", key: "/inventory", readOnly: true },
   { prefix: "/api/suppliers", key: "/suppliers", exclude: ["/approval"] },

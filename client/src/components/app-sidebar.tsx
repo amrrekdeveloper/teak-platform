@@ -95,7 +95,7 @@ const menuItems: MenuItem[] = [
   // 5. Manufacturing & Supply
   { titleAr: "أوامر العمل", titleEn: "Work Orders", icon: ClipboardCheck, path: "/work-orders", roles: ["owner", "assistant", "it", "production", "designer"], group: "manufacturing_supply" },
   { titleAr: "الإنتاج", titleEn: "Production", icon: Factory, path: "/production", roles: ["owner", "assistant", "it", "production"], group: "manufacturing_supply" },
-  { titleAr: "المخزون", titleEn: "Inventory", icon: Package, path: "/inventory", roles: ["owner", "assistant", "it", "warehouse", "purchasing"], group: "manufacturing_supply" },
+  { titleAr: "المستودعات", titleEn: "Warehouses", icon: Package, path: "/warehouses", roles: ["owner", "assistant", "it", "warehouse", "purchasing"], group: "manufacturing_supply" },
   { titleAr: "الموردون", titleEn: "Suppliers", icon: Building2, path: "/suppliers", roles: ["owner", "assistant", "it", "warehouse", "purchasing", "accountant"], group: "manufacturing_supply" },
   { titleAr: "المشتريات", titleEn: "Purchase Orders", icon: ShoppingCart, path: "/purchases", roles: ["owner", "assistant", "it", "purchasing"], group: "manufacturing_supply" },
   // 6. Field Operations & After-sales
@@ -360,6 +360,7 @@ export function AppSidebar({
 
   const { data: quotations = [] } = useQuery<any[]>({
     queryKey: ["/api/quotations"],
+    enabled: !!user && !user.maintenanceScope && ["owner", "assistant", "it", "sales", "designer"].includes(user.role),
     refetchInterval: 30000,
   });
   const newOrderCount = quotations.filter((q: any) =>
@@ -370,7 +371,7 @@ export function AppSidebar({
 
   const perms = (user as any).permissions as string[] | undefined;
   const filteredItems = perms
-    ? menuItems.filter((item) => perms.includes(item.path))
+    ? menuItems.filter((item) => perms.includes(item.path) || (item.path === "/warehouses" && perms.includes("/inventory")))
     : menuItems.filter(
         (item) => item.roles.includes(user.role) || (user.role === "owner" && !item.strictRoles)
       );
@@ -433,6 +434,7 @@ export function MobileMenuButton() {
 
   const { data: quotations = [] } = useQuery<any[]>({
     queryKey: ["/api/quotations"],
+    enabled: !!user && !user.maintenanceScope && ["owner", "assistant", "it", "sales", "designer"].includes(user.role),
     refetchInterval: 30000,
   });
   const newOrderCount = quotations.filter((q: any) =>
@@ -443,7 +445,7 @@ export function MobileMenuButton() {
 
   const perms = (user as any).permissions as string[] | undefined;
   const filteredItems = perms
-    ? menuItems.filter((item) => perms.includes(item.path))
+    ? menuItems.filter((item) => perms.includes(item.path) || (item.path === "/warehouses" && perms.includes("/inventory")))
     : menuItems.filter(
         (item) => item.roles.includes(user.role) || (user.role === "owner" && !item.strictRoles)
       );

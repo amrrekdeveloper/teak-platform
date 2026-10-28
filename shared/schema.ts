@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   pgTable,
   text,
   varchar,
@@ -770,6 +771,11 @@ export const inventory = pgTable("inventory", {
   materialNameEn: text("material_name_en").notNull(),
   sku: text("sku"),
   category: text("category"),
+  categoryId: integer("category_id").references(() => warehouseCategories.id),
+  itemKind: text("item_kind").notNull().default("material"),
+  serialNumber: text("serial_number"),
+  active: boolean("active").notNull().default(true),
+  version: integer("version").notNull().default(0),
   color: text("color"),
   imageUrl: text("image_url"),
   warehouseId: integer("warehouse_id"),
@@ -803,6 +809,10 @@ export const inventoryTransactions = pgTable("inventory_transactions", {
   contractId: integer("contract_id").references(() => contracts.id),
   supplierId: integer("supplier_id"),
   notes: text("notes"),
+  warehouseId: integer("warehouse_id"),
+  receiverName: text("receiver_name"),
+  balanceAfter: decimal("balance_after", { precision: 12, scale: 2 }),
+  reference: text("reference"),
   workOrderId: integer("work_order_id").references(() => workOrders.id),
   purchaseOrderId: integer("purchase_order_id"),
   performedBy: integer("performed_by").references(() => users.id),
@@ -842,6 +852,11 @@ export const warehouses = pgTable("warehouses", {
   id: serial("id").primaryKey(),
   nameAr: text("name_ar").notNull(),
   nameEn: text("name_en").notNull(),
+  warehouseType: text("warehouse_type").notNull().default("main"),
+  parentWarehouseId: integer("parent_warehouse_id").references((): AnyPgColumn => warehouses.id),
+  address: text("address").notNull().default(""),
+  description: text("description").notNull().default(""),
+  sections: text("sections").notNull().default(""),
   active: boolean("active").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
@@ -882,6 +897,48 @@ export const insertPurchaseOrderSchema = createInsertSchema(purchaseOrders).omit
 });
 export type InsertPurchaseOrder = z.infer<typeof insertPurchaseOrderSchema>;
 export type PurchaseOrder = typeof purchaseOrders.$inferSelect;
+
+export const warehouseCategories = pgTable("warehouse_categories", {
+  id: serial("id").primaryKey(),
+  nameAr: text("name_ar").notNull(),
+  nameEn: text("name_en").notNull(),
+  parentId: integer("parent_id").references((): AnyPgColumn => warehouseCategories.id),
+  active: boolean("active").notNull().default(true),
+});
+
+export const warehouseOperations = pgTable("warehouse_operations", {
+  key: text("key").primaryKey(),
+  payloadHash: text("payload_hash").notNull(),
+  result: jsonb("result").notNull(),
+  performedBy: integer("performed_by").references(() => users.id).notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const warehouseRequisitions = pgTable("warehouse_requisitions", {
+  id: serial("id").primaryKey(),
+  inventoryId: integer("inventory_id").references(() => inventory.id).notNull(),
+  warehouseId: integer("warehouse_id").references(() => warehouses.id).notNull(),
+  quantity: decimal("quantity", { precision: 12, scale: 2 }).notNull(),
+  reason: text("reason").notNull(),
+  requestedFor: text("requested_for").notNull(),
+  status: text("status").notNull().default("pending"),
+  decisionNote: text("decision_note"),
+  purchaseOrderId: integer("purchase_order_id").references(() => purchaseOrders.id),
+  createdBy: integer("created_by").references(() => users.id).notNull(),
+  decidedBy: integer("decided_by").references(() => users.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  decidedAt: timestamp("decided_at"),
+});
+
+export const warehousePurchaseReceipts = pgTable("warehouse_purchase_receipts", {
+  id: serial("id").primaryKey(),
+  purchaseOrderId: integer("purchase_order_id").references(() => purchaseOrders.id).notNull(),
+  lineIndex: integer("line_index").notNull(),
+  inventoryId: integer("inventory_id").references(() => inventory.id).notNull(),
+  quantity: decimal("quantity", { precision: 12, scale: 2 }).notNull(),
+  transactionId: integer("transaction_id").references(() => inventoryTransactions.id).notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
 
 export const deliveryStatusEnum = pgEnum("delivery_status", [
   "scheduled",

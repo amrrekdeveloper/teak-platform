@@ -325,7 +325,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
-      window.location.href = "/login";
+      window.location.href = /^\/dashboard\/(?:warehouses|purchases|suppliers|inventory)/.test(window.location.pathname) ? "/warehouse-login" : "/login";
     }
   }, [isLoading, isAuthenticated]);
 
@@ -416,7 +416,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                       <Button
                         variant="ghost"
                         className="w-full justify-start text-xs h-8 gap-2 text-destructive hover:text-destructive"
-                        onClick={async () => { setProfileOpen(false); await logout(); window.location.href = "/login"; }}
+                        onClick={async () => { setProfileOpen(false); await logout(); window.location.href = user.maintenanceScope === "warehouse" ? "/warehouse-login" : "/login"; }}
                         disabled={isLoggingOut}
                         data-testid="button-popover-logout"
                       >

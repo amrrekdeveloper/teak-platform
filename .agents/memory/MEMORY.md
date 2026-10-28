@@ -34,3 +34,4 @@
 - [Attendance assignment concurrency](attendance-assignment-concurrency.md) — dirty-field saves, explicit assignment comparison, and employees-before-evidence locking protect HR decisions.
 - [HR entry loading](hr-entry-loading.md) — keep HR entry independent; Vite can rewrite the request URL, so choose the HTML entry from the original navigation.
 - [Attendance movement corrections](attendance-movement-corrections.md) — reversible exclusions preserve original punches; all calculations and transitions must honor explicit HR decisions.
+- [Warehouse operations](warehouse-operations-policy.md) — mixed factory stock, keeper-owned physical receipts, purchasing separation, and explicit legacy warehouse assignment.

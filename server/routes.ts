@@ -16,6 +16,9 @@ import { setupAuth, requireAuth, requireRole, comparePasswords, hashPassword, ge
 import { initializeHrDataIntegrity, deleteUnusedEmployee } from "./hr-data-integrity";
 import { initializeSystemAdmin } from "./system-admin";
 import { recoverSystemAdminPassword } from "./system-admin-recovery";
+import { registerWarehouseCenter } from "./warehouse-center";
+import { WarehouseError, amount as warehouseAmount } from "./warehouse-domain";
+import { archiveWarehouseItem, createWarehouseItem, editWarehouseItem, moveWarehouseStock } from "./warehouse-stock";
 import { ensureAttendanceExtensions } from "./attendance-support";
 import { freezeCurrentAttendanceSchedules } from "./attendance-schedule-history";
 import { saveAttendanceSchedule } from "./attendance-settings-edit";
@@ -302,6 +305,11 @@ export async function registerRoutes(
   const systemAdminStatus = await initializeSystemAdmin({ hashPassword, comparePasswords });
   console.log(`System administrator setup: ${systemAdminStatus}`);
   const recoveryStatus = await recoverSystemAdminPassword({ hashPassword });
+  registerWarehouseCenter(app, async (result, actor) => {
+    await autoCreateJournalEntry({ type: "po_received", referenceId: result.purchaseOrderId,
+      referenceNumber: String(result.orderNumber), date: new Date().toISOString().slice(0, 10),
+      amount: Number(result.totalAmount), createdBy: actor });
+  });
   if (recoveryStatus !== "disabled") console.log(`System administrator password recovery: ${recoveryStatus}`);
   await initializeHrDataIntegrity();
 
@@ -3325,11 +3333,10 @@ export async function registerRoutes(
 
   app.post("/api/inventory", requireRole("owner", "assistant", "warehouse"), async (req, res) => {
     try {
-      const { insertInventorySchema } = await import("@shared/schema");
-      const parsed = insertInventorySchema.parse(req.body);
-      const item = await storage.createInventoryItem(parsed);
+      const item = await createWarehouseItem(req.body, req.session.userId!);
       res.status(201).json(item);
     } catch (error: any) {
+      if (error instanceof WarehouseError) return res.status(error.status).json({ message: error.message });
       if (error?.name === "ZodError") return res.status(400).json({ message: "بيانات غير صالحة", messageEn: "Invalid data", errors: error.errors });
       res.status(500).json({ message: "حدث خطأ في إضافة المادة", messageEn: "Error creating inventory item" });
     }
@@ -3339,19 +3346,21 @@ export async function registerRoutes(
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ message: "معرف غير صالح" });
-      await storage.deleteInventoryItem(id);
-      return res.json({ message: "تم حذف المادة بنجاح" });
-    } catch {
+      await archiveWarehouseItem(id, req.session.userId!);
+      return res.json({ message: "تمت أرشفة الصنف مع الاحتفاظ بسجله" });
+    } catch (error) {
+      if (error instanceof WarehouseError) return res.status(error.status).json({ message: error.message });
       return res.status(500).json({ message: "حدث خطأ أثناء الحذف" });
     }
   });
 
   app.patch("/api/inventory/:id", requireRole("owner", "assistant", "warehouse"), async (req, res) => {
     try {
-      const updated = await storage.updateInventoryItem(parseInt(req.params.id), req.body);
+      const updated = await editWarehouseItem(parseInt(req.params.id), req.body, req.session.userId!);
       if (!updated) return res.status(404).json({ message: "المادة غير موجودة", messageEn: "Item not found" });
       res.json(updated);
     } catch (error) {
+      if (error instanceof WarehouseError) return res.status(error.status).json({ message: error.message });
       res.status(500).json({ message: "حدث خطأ في تحديث المادة", messageEn: "Error updating inventory item" });
     }
   });
@@ -3366,14 +3375,13 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/inventory-transactions", requireRole("owner", "assistant", "warehouse"), async (req, res) => {
+  const recordInventoryMovement: import("express").RequestHandler = async (req, res) => {
     try {
       const { inventoryId, type, quantity, reason, contractId, supplierId, notes, workOrderId, purchaseOrderId } = req.body;
-      if (!inventoryId || !type || !quantity) {
+      if (!inventoryId || !type || quantity === undefined || quantity === null || quantity === "") {
         return res.status(400).json({ message: "بيانات ناقصة", messageEn: "Missing required fields" });
       }
-      const txQty = parseFloat(quantity);
-      if (txQty <= 0) return res.status(400).json({ message: "الكمية يجب أن تكون أكبر من صفر", messageEn: "Quantity must be greater than zero" });
+      const txQty = Number(warehouseAmount(quantity, type === "adjustment"));
 
       const STOCK_OUT_REASONS = ["production_use", "contract_delivery", "supplier_return", "damaged", "sample", "adjustment", "other"];
       const STOCK_IN_REASONS = ["purchase", "customer_return", "production_return", "adjustment", "transfer", "other"];
@@ -3406,26 +3414,16 @@ export async function registerRoutes(
         if (!supplier) return res.status(400).json({ message: "المورد غير موجود", messageEn: "Supplier not found" });
       }
 
-      const item = await storage.getInventoryItem(inventoryId);
-      if (!item) return res.status(404).json({ message: "المادة غير موجودة", messageEn: "Inventory item not found" });
-
-      const currentQty = parseFloat(item.quantity?.toString() || "0");
-      if (type === "stock_out" && txQty > currentQty) {
-        return res.status(400).json({ message: `الكمية المتوفرة (${currentQty}) غير كافية`, messageEn: `Insufficient stock (${currentQty} available)` });
-      }
-
       const contractIdNum = contractId ? parseInt(contractId) : null;
-      const tx = await storage.createInventoryTransaction({ inventoryId, type, quantity, reason, contractId: contractIdNum, supplierId: supplierIdNum, notes: notesText || null, workOrderId, purchaseOrderId, performedBy: req.session.userId });
-
-      let newQty = currentQty;
-      if (type === "stock_in") newQty = currentQty + txQty;
-      else if (type === "stock_out") newQty = currentQty - txQty;
-      else newQty = txQty;
-      await storage.updateInventoryItem(inventoryId, { quantity: newQty.toString() });
+      if (purchaseOrderId) return res.status(400).json({ message: "استلام أمر الشراء يكون من شاشة استلام المشتريات" });
+      const movementResult = await moveWarehouseStock({ ...req.body, quantity: warehouseAmount(quantity, type === "adjustment"),
+        contractId: contractIdNum, supplierId: supplierIdNum }, req.session.userId!);
+      const { item, ...tx } = movementResult;
+      const replayed = (movementResult as any).replayed;
 
       // Auto-create an expense journal entry on stock-out (Dr COGS / Cr Inventory) by cost.
       // Best-effort: a journal failure must not roll back the already-committed stock movement.
-      if (type === "stock_out") {
+      if (type === "stock_out" && item.itemKind === "material" && !replayed) {
         try {
           const unitCost = parseFloat(item.costPerUnit?.toString() || "0");
           const totalCost = unitCost * txQty;
@@ -3459,7 +3457,7 @@ export async function registerRoutes(
       // Customer return linked to a contract: reduce the contract's remaining
       // balance by the cost value of the returned items (floored at 0).
       // Best-effort: a balance-update failure must not roll back the movement.
-      if (type === "stock_in" && reason === "customer_return" && contractIdNum) {
+      if (type === "stock_in" && reason === "customer_return" && contractIdNum && !replayed) {
         try {
           const contract = await storage.getContract(contractIdNum);
           // Only reduce the balance of an active contract. Ignore links to
@@ -3480,10 +3478,14 @@ export async function registerRoutes(
 
       res.status(201).json(tx);
     } catch (error) {
+      if (error instanceof WarehouseError) return res.status(error.status).json({ message: error.message });
+      if (error instanceof z.ZodError) return res.status(400).json({ message: "بيانات الحركة غير مكتملة أو غير صالحة" });
       console.error("Inventory transaction error:", error);
       res.status(500).json({ message: "حدث خطأ في تسجيل الحركة", messageEn: "Error recording transaction" });
     }
-  });
+  };
+  app.post("/api/inventory-transactions", requireRole("owner", "assistant", "warehouse"), recordInventoryMovement);
+  app.post("/api/warehouse-center/movements", requireRole("owner", "assistant", "warehouse"), recordInventoryMovement);
 
   // ==================== SUPPLIERS ====================
 
@@ -3587,24 +3589,26 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/warehouses", requireRole("owner", "assistant"), async (req, res) => {
+  app.post("/api/warehouses", requireRole("owner", "assistant", "warehouse"), async (req, res) => {
     try {
-      const { insertWarehouseSchema } = await import("@shared/schema");
-      const parsed = insertWarehouseSchema.parse(req.body);
-      const warehouse = await storage.createWarehouse(parsed);
+      const { saveWarehouse } = await import("./warehouse-catalog");
+      const warehouse = await saveWarehouse(null, req.body);
       res.status(201).json(warehouse);
     } catch (error: any) {
+      if (error instanceof WarehouseError) return res.status(error.status).json({ message: error.message });
       if (error?.name === "ZodError") return res.status(400).json({ message: "بيانات غير صالحة", messageEn: "Invalid data", errors: error.errors });
       res.status(500).json({ message: "حدث خطأ في إضافة المستودع", messageEn: "Error creating warehouse" });
     }
   });
 
-  app.patch("/api/warehouses/:id", requireRole("owner", "assistant"), async (req, res) => {
+  app.patch("/api/warehouses/:id", requireRole("owner", "assistant", "warehouse"), async (req, res) => {
     try {
-      const updated = await storage.updateWarehouse(parseInt(req.params.id), req.body);
+      const { saveWarehouse } = await import("./warehouse-catalog");
+      const updated = await saveWarehouse(parseInt(req.params.id), req.body);
       if (!updated) return res.status(404).json({ message: "المستودع غير موجود", messageEn: "Warehouse not found" });
       res.json(updated);
     } catch (error) {
+      if (error instanceof WarehouseError) return res.status(error.status).json({ message: error.message });
       res.status(500).json({ message: "حدث خطأ في تحديث المستودع", messageEn: "Error updating warehouse" });
     }
   });

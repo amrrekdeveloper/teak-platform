@@ -11,6 +11,7 @@ export async function hasManagerAssignment(userId: number) {
 
 // Runs AFTER administrative sessions, BEFORE any business route handler.
 export const enforceHrWorkspaceScope: RequestHandler = async (req, res, next) => {
+  if (res.locals.warehouseAccessGranted) return next();
   if (!req.path.startsWith("/api/") && !req.path.startsWith("/uploads/hr-documents/")) return next();
   const restricted = res.locals.hrMaintenanceRequest || req.session.hrWorkspace || req.session.managerWorkspace || req.session.systemAdminWorkspace || isSystemAdminApi(req.method, req.path);
   if (!restricted) return next();

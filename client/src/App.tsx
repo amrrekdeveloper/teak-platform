@@ -9,6 +9,7 @@ import { LanguageProvider, useLanguage } from "@/components/language-provider";
 import { useAuth } from "@/hooks/use-auth";
 import { motion, AnimatePresence } from "framer-motion";
 import LandingPage from "@/pages/landing";
+import WarehouseLogin from "@/pages/warehouse-login";
 import LoginPage from "@/pages/login";
 import ProductsPage from "@/pages/products";
 import RequestQuotePage from "@/pages/request-quote";
@@ -28,7 +29,7 @@ import InvoiceViewPage from "@/pages/invoice-view";
 import WorkOrdersPage from "@/pages/work-orders";
 import WorkOrderDetailPage from "@/pages/work-order-detail";
 import ProductionPage from "@/pages/production";
-import InventoryPage from "@/pages/inventory";
+import WarehousesPage from "@/pages/warehouses";
 import SuppliersPage from "@/pages/suppliers";
 import PurchasesPage from "@/pages/purchases";
 import PurchaseDetailPage from "@/pages/purchase-detail";
@@ -185,6 +186,12 @@ function GuardedSettingsUsersPage() {
   return <SettingsPage initialTab="users" />;
 }
 
+function LegacyInventoryRoute() {
+  const [, setLocation] = useLocation();
+  useEffect(() => { setLocation("/warehouses/items"); }, [setLocation]);
+  return null;
+}
+
 function SplashScreen({ onFinish }: { onFinish: () => void }) {
   const [progress, setProgress] = useState(0);
 
@@ -320,7 +327,9 @@ function DashboardRoutes() {
         <Route path="/work-orders/:id" component={WorkOrderDetailPage} />
         <Route path="/work-orders" component={WorkOrdersPage} />
         <Route path="/production" component={ProductionPage} />
-        <Route path="/inventory" component={InventoryPage} />
+        <Route path="/warehouses/:section" component={WarehousesPage} />
+        <Route path="/warehouses" component={WarehousesPage} />
+        <Route path="/inventory" component={LegacyInventoryRoute} />
         <Route path="/suppliers" component={SuppliersPage} />
         <Route path="/purchases/:id" component={PurchaseDetailPage} />
         <Route path="/purchases" component={PurchasesPage} />
@@ -376,6 +385,8 @@ function Router() {
   return (
     <Switch>
       <Route path="/hr" nest component={HrWorkspace} />
+      <Route path="/warehouse-login" component={WarehouseLogin} />
+      <Route path="/warehouses/:section?">{() => { window.location.replace("/dashboard" + window.location.pathname + window.location.search); return null; }}</Route>
       <Route path="/" component={LandingPage} />
       <Route path="/login">{() => { window.location.replace("/employee-login"); return null; }}</Route>
       <Route path="/products" component={ProductsPage} />
@@ -414,6 +425,7 @@ function FloatingContactWrapper() {
   const isPublicPage =
     location !== "/hr" &&
     !location.startsWith("/hr/") &&
+    !location.startsWith("/warehouse-login") &&
     !location.startsWith("/dashboard") &&
     !location.startsWith("/login") &&
     !location.startsWith("/employee-login") &&
@@ -427,7 +439,7 @@ function FloatingContactWrapper() {
 
 function App() {
   const [showSplash, setShowSplash] = useState(() => {
-    if (window.location.pathname === "/hr" || window.location.pathname.startsWith("/hr/")) return false;
+    if (window.location.pathname === "/hr" || window.location.pathname.startsWith("/hr/") || window.location.pathname === "/warehouse-login" || window.location.pathname.startsWith("/dashboard/warehouses")) return false;
     if (sessionStorage.getItem("splashShown")) return false;
     return true;
   });
